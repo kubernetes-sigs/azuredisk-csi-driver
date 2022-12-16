@@ -45,6 +45,7 @@ import (
 var (
 	// ErrorNotVmssInstance indicates an instance is not belonging to any vmss.
 	ErrorNotVmssInstance = errors.New("not a vmss instance")
+	ErrScaleSetNotFound  = errors.New("scale set not found")
 
 	scaleSetNameRE         = regexp.MustCompile(`.*/subscriptions/(?:.*)/Microsoft.Compute/virtualMachineScaleSets/(.+)/virtualMachines(?:.*)`)
 	resourceGroupRE        = regexp.MustCompile(`.*/subscriptions/(?:.*)/resourceGroups/(.+)/providers/Microsoft.Compute/virtualMachineScaleSets/(?:.*)/virtualMachines(?:.*)`)
@@ -80,11 +81,14 @@ type ScaleSet struct {
 	// the same cluster.
 	flexScaleSet VMSet
 
+	// vmssCache is timed cache where the Store in the cache is a map of
+	// Key: consts.VMSSKey
+	// Value: sync.Map of [vmssName]*VMSSEntry
 	vmssCache *azcache.TimedCache
 
 	// vmssVMCache is timed cache where the Store in the cache is a map of
 	// Key: [resourcegroup/vmssName]
-	// Value: sync.Map of [vmName]*VMSSVirtualMachinesEntry
+	// Value: sync.Map of [vmName]*VMSSVirtualMachineEntry
 	vmssVMCache *azcache.TimedCache
 
 	// nonVmssUniformNodesCache is used to store node names from non uniform vm.
@@ -194,7 +198,7 @@ func (ss *ScaleSet) getVmssVMByNodeIdentity(node *nodeIdentity, crt azcache.Azur
 		}
 
 		if entry, ok := virtualMachines.Load(node.nodeName); ok {
-			result := entry.(*VMSSVirtualMachinesEntry)
+			result := entry.(*VMSSVirtualMachineEntry)
 			if result.VirtualMachine == nil {
 				klog.Warningf("VM is nil on Node %q, VM is in deleting state", node.nodeName)
 				return nil, true, nil
@@ -330,7 +334,7 @@ func (ss *ScaleSet) getVmssVMByInstanceID(resourceGroup, scaleSetName, instanceI
 		}
 
 		virtualMachines.Range(func(key, value interface{}) bool {
-			vmEntry := value.(*VMSSVirtualMachinesEntry)
+			vmEntry := value.(*VMSSVirtualMachineEntry)
 			if strings.EqualFold(vmEntry.ResourceGroup, resourceGroup) &&
 				strings.EqualFold(vmEntry.VMSSName, scaleSetName) &&
 				strings.EqualFold(vmEntry.InstanceID, instanceID) {
@@ -922,7 +926,7 @@ func (ss *ScaleSet) GetVMSetNames(service *v1.Service, nodes []*v1.Node) (*[]str
 		}
 		if !found {
 			klog.Errorf("ss.GetVMSetNames - scale set (%s) in service annotation not found", serviceVMSetName)
-			return nil, fmt.Errorf("scale set (%s) - not found", serviceVMSetName)
+			return nil, ErrScaleSetNotFound
 		}
 		return &[]string{serviceVMSetName}, nil
 	}
@@ -1252,7 +1256,7 @@ func (ss *ScaleSet) ensureVMSSInPool(service *v1.Service, nodes []*v1.Node, back
 			// in this scenario the vmSetName is an empty string and the name of vmss should be obtained from the provider IDs of nodes
 			resourceGroupName, vmssName, err := getVmssAndResourceGroupNameByVMProviderID(node.Spec.ProviderID)
 			if err != nil {
-				klog.V(4).Infof("ensureVMSSInPool: found VMAS node %s, will skip checking and continue", node.Name)
+				klog.V(4).Infof("ensureVMSSInPool: found VMSS node %s, will skip checking and continue", node.Name)
 				continue
 			}
 			// only vmsses in the resource group same as it's in azure config are included
@@ -2217,7 +2221,7 @@ func (ss *ScaleSet) GetAgentPoolVMSetNames(nodes []*v1.Node) (*[]string, error) 
 
 		names, err = ss.getAgentPoolScaleSets([]*v1.Node{node})
 		if err != nil {
-			return nil, fmt.Errorf("GetAgentPoolVMSetNames: failed to execute getAgentPoolScaleSets: %v", err)
+			return nil, fmt.Errorf("GetAgentPoolVMSetNames: failed to execute getAgentPoolScaleSets: %w", err)
 		}
 		vmSetNames = append(vmSetNames, *names...)
 	}

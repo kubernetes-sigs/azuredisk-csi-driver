@@ -28,7 +28,7 @@ import (
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	snapshotv1 "github.com/kubernetes-csi/external-snapshotter/client/v4/apis/volumesnapshot/v1"
 	snapshotclientset "github.com/kubernetes-csi/external-snapshotter/client/v4/clientset/versioned"
-	"github.com/onsi/ginkgo"
+	"github.com/onsi/ginkgo/v2"
 	"github.com/onsi/gomega"
 
 	apps "k8s.io/api/apps/v1"
@@ -48,7 +48,7 @@ import (
 	"k8s.io/kubernetes/test/e2e/framework"
 	"k8s.io/kubernetes/test/e2e/framework/deployment"
 	e2eevents "k8s.io/kubernetes/test/e2e/framework/events"
-	e2elog "k8s.io/kubernetes/test/e2e/framework/log"
+	e2ekubectl "k8s.io/kubernetes/test/e2e/framework/kubectl"
 	e2epod "k8s.io/kubernetes/test/e2e/framework/pod"
 	e2epv "k8s.io/kubernetes/test/e2e/framework/pv"
 	testutil "k8s.io/kubernetes/test/utils"
@@ -115,7 +115,7 @@ func (t *TestStorageClass) Create() storagev1.StorageClass {
 }
 
 func (t *TestStorageClass) Cleanup() {
-	e2elog.Logf("deleting StorageClass %s", t.storageClass.Name)
+	framework.Logf("deleting StorageClass %s", t.storageClass.Name)
 	err := t.client.StorageV1().StorageClasses().Delete(context.TODO(), t.storageClass.Name, metav1.DeleteOptions{})
 	framework.ExpectNoError(err)
 }
@@ -185,7 +185,7 @@ func (t *TestVolumeSnapshotClass) DeleteSnapshot(vs *snapshotv1.VolumeSnapshot) 
 func (t *TestVolumeSnapshotClass) Cleanup() {
 	// skip deleting volume snapshot storage class otherwise snapshot e2e test will fail, details:
 	// https://github.com/kubernetes-sigs/azuredisk-csi-driver/pull/260#issuecomment-583296932
-	e2elog.Logf("skip deleting VolumeSnapshotClass %s", t.volumeSnapshotClass.Name)
+	framework.Logf("skip deleting VolumeSnapshotClass %s", t.volumeSnapshotClass.Name)
 	//err := snapshotclientset.New(t.client).SnapshotV1().VolumeSnapshotClasses().Delete(t.volumeSnapshotClass.Name, nil)
 	//framework.ExpectNoError(err)
 }
@@ -357,7 +357,7 @@ func (t *TestPersistentVolumeClaim) Cleanup() {
 		framework.ExpectNoError(err)
 		t.ValidateProvisionedPersistentVolume()
 	}
-	e2elog.Logf("deleting PVC %q/%q", t.namespace.Name, t.persistentVolumeClaim.Name)
+	framework.Logf("deleting PVC %q/%q", t.namespace.Name, t.persistentVolumeClaim.Name)
 	err := e2epv.DeletePersistentVolumeClaim(t.client, t.persistentVolumeClaim.Name, t.namespace.Name)
 	framework.ExpectNoError(err)
 	// Wait for the PV to get deleted if reclaim policy is Delete. (If it's
@@ -519,7 +519,7 @@ func (t *TestDeployment) Create() {
 	var err error
 	t.deployment, err = t.client.AppsV1().Deployments(t.namespace.Name).Create(context.TODO(), t.deployment, metav1.CreateOptions{})
 	framework.ExpectNoError(err)
-	err = testutil.WaitForDeploymentComplete(t.client, t.deployment, e2elog.Logf, poll, pollLongTimeout)
+	err = testutil.WaitForDeploymentComplete(t.client, t.deployment, framework.Logf, poll, pollLongTimeout)
 	framework.ExpectNoError(err)
 	pods, err := deployment.GetPodsForDeployment(t.client, t.deployment)
 	framework.ExpectNoError(err)
@@ -563,7 +563,7 @@ func (t *TestDeployment) PollForStringInPodsExec(command []string, expectedStrin
 func (t *TestDeployment) DeletePodAndWait() {
 	ch := make(chan error, len(t.podNames))
 	for _, podName := range t.podNames {
-		e2elog.Logf("Deleting pod %q in namespace %q", podName, t.namespace.Name)
+		framework.Logf("Deleting pod %q in namespace %q", podName, t.namespace.Name)
 		go func(client clientset.Interface, ns, podName string) {
 			err := client.CoreV1().Pods(ns).Delete(context.TODO(), podName, metav1.DeleteOptions{})
 			ch <- err
@@ -580,9 +580,9 @@ func (t *TestDeployment) DeletePodAndWait() {
 	}
 
 	for _, podName := range t.podNames {
-		e2elog.Logf("Waiting for pod %q in namespace %q to be fully deleted", podName, t.namespace.Name)
+		framework.Logf("Waiting for pod %q in namespace %q to be fully deleted", podName, t.namespace.Name)
 		go func(client clientset.Interface, ns, podName string) {
-			err := e2epod.WaitForPodNoLongerRunningInNamespace(client, podName, ns)
+			err := e2epod.WaitForPodNotFoundInNamespace(client, podName, ns, e2epod.DefaultPodDeletionTimeout)
 			ch <- err
 		}(t.client, t.namespace.Name, podName)
 	}
@@ -590,21 +590,19 @@ func (t *TestDeployment) DeletePodAndWait() {
 	for _, podName := range t.podNames {
 		err := <-ch
 		if err != nil {
-			if !errors.IsNotFound(err) {
-				framework.ExpectNoError(fmt.Errorf("pod %q error waiting for delete: %v", podName, err))
-			}
+			framework.ExpectNoError(fmt.Errorf("pod %q error waiting for delete: %v", podName, err))
 		}
 	}
 }
 
 func (t *TestDeployment) Cleanup() {
-	e2elog.Logf("deleting Deployment %q/%q", t.namespace.Name, t.deployment.Name)
+	framework.Logf("deleting Deployment %q/%q", t.namespace.Name, t.deployment.Name)
 	body, err := t.Logs()
 	if err != nil {
-		e2elog.Logf("Error getting logs for %s: %v", t.deployment.Name, err)
+		framework.Logf("Error getting logs for %s: %v", t.deployment.Name, err)
 	} else {
 		for i, logs := range body {
-			e2elog.Logf("Pod %s has the following logs: %s", t.podNames[i], string(logs))
+			framework.Logf("Pod %s has the following logs: %s", t.podNames[i], string(logs))
 		}
 	}
 
@@ -727,7 +725,7 @@ func (t *TestStatefulset) PollForStringInPodsExec(command []string, expectedStri
 }
 
 func (t *TestStatefulset) DeletePodAndWait() {
-	e2elog.Logf("Deleting pod %q in namespace %q", t.podName, t.namespace.Name)
+	framework.Logf("Deleting pod %q in namespace %q", t.podName, t.namespace.Name)
 	err := t.client.CoreV1().Pods(t.namespace.Name).Delete(context.TODO(), t.podName, metav1.DeleteOptions{})
 	if err != nil {
 		if !apierrs.IsNotFound(err) {
@@ -740,12 +738,12 @@ func (t *TestStatefulset) DeletePodAndWait() {
 }
 
 func (t *TestStatefulset) Cleanup() {
-	e2elog.Logf("deleting StatefulSet %q/%q", t.namespace.Name, t.statefulset.Name)
+	framework.Logf("deleting StatefulSet %q/%q", t.namespace.Name, t.statefulset.Name)
 	body, err := t.Logs()
 	if err != nil {
-		e2elog.Logf("Error getting logs for pod %s: %v", t.podName, err)
+		framework.Logf("Error getting logs for pod %s: %v", t.podName, err)
 	} else {
-		e2elog.Logf("Pod %s has the following logs: %s", t.podName, body)
+		framework.Logf("Pod %s has the following logs: %s", t.podName, body)
 	}
 	err = t.client.AppsV1().StatefulSets(t.namespace.Name).Delete(context.TODO(), t.statefulset.Name, metav1.DeleteOptions{})
 	framework.ExpectNoError(err)
@@ -1007,12 +1005,12 @@ func (t *TestPod) Logs() ([]byte, error) {
 }
 
 func cleanupPodOrFail(client clientset.Interface, name, namespace string) {
-	e2elog.Logf("deleting Pod %q/%q", namespace, name)
+	framework.Logf("deleting Pod %q/%q", namespace, name)
 	body, err := podLogs(client, name, namespace)
 	if err != nil {
-		e2elog.Logf("Error getting logs for pod %s: %v", name, err)
+		framework.Logf("Error getting logs for pod %s: %v", name, err)
 	} else {
-		e2elog.Logf("Pod %s has the following logs: %s", name, body)
+		framework.Logf("Pod %s has the following logs: %s", name, body)
 	}
 	e2epod.DeletePodOrFail(client, namespace, name)
 }
@@ -1058,7 +1056,7 @@ func getWinImageTag(winServerVer string) string {
 func pollForStringWorker(namespace string, pod string, command []string, expectedString string, ch chan<- error) {
 	args := append([]string{"exec", pod, "--"}, command...)
 	err := wait.PollImmediate(poll, pollForStringTimeout, func() (bool, error) {
-		stdout, err := framework.RunKubectl(namespace, args...)
+		stdout, err := e2ekubectl.RunKubectl(namespace, args...)
 		if err != nil {
 			framework.Logf("Error waiting for output %q in pod %q: %v.", expectedString, pod, err)
 			return false, nil

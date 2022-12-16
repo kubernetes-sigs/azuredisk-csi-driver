@@ -18,6 +18,7 @@ package provider
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"sync"
@@ -156,7 +157,7 @@ func (fs *FlexScaleSet) getNodeNameByVMName(vmName string) (string, error) {
 	}
 
 	nodeName, err := getter(vmName, azcache.CacheReadTypeDefault)
-	if err == cloudprovider.InstanceNotFound {
+	if errors.Is(err, cloudprovider.InstanceNotFound) {
 		klog.V(2).Infof("Could not find node (%s) in the existing cache. Forcely freshing the cache to check again...", nodeName)
 		return getter(vmName, azcache.CacheReadTypeForceRefresh)
 	}
@@ -197,7 +198,7 @@ func (fs *FlexScaleSet) getNodeVmssFlexID(nodeName string) (string, error) {
 	}
 
 	vmssFlexID, err := getter(nodeName, azcache.CacheReadTypeDefault)
-	if err == cloudprovider.InstanceNotFound {
+	if errors.Is(err, cloudprovider.InstanceNotFound) {
 		klog.V(2).Infof("Could not find node (%s) in the existing cache. Forcely freshing the cache to check again...", nodeName)
 		return getter(nodeName, azcache.CacheReadTypeForceRefresh)
 	}
@@ -316,17 +317,28 @@ func (fs *FlexScaleSet) getVmssFlexByName(vmssFlexName string) (*compute.Virtual
 func (fs *FlexScaleSet) DeleteCacheForNode(nodeName string) error {
 	vmssFlexID, err := fs.getNodeVmssFlexID(nodeName)
 	if err != nil {
+		klog.Errorf("getNodeVmssFlexID(%s) failed with %v", nodeName, err)
 		return err
 	}
 
+	fs.lockMap.LockEntry(vmssFlexID)
+	defer fs.lockMap.UnlockEntry(vmssFlexID)
 	cached, err := fs.vmssFlexVMCache.Get(vmssFlexID, azcache.CacheReadTypeDefault)
 	if err != nil {
+		klog.Errorf("vmssFlexVMCache.Get(%s, %s) failed with %v", vmssFlexID, nodeName, err)
+		return err
+	}
+	if cached == nil {
+		err := fmt.Errorf("nil cache returned from %s", vmssFlexID)
+		klog.Errorf("DeleteCacheForNode(%s, %s) failed with %v", vmssFlexID, nodeName, err)
 		return err
 	}
 	vmMap := cached.(*sync.Map)
 	vmMap.Delete(nodeName)
 
+	fs.vmssFlexVMCache.Update(vmssFlexID, vmMap)
 	fs.vmssFlexVMNameToVmssID.Delete(nodeName)
 
+	klog.V(2).Infof("DeleteCacheForNode(%s, %s) successfully", vmssFlexID, nodeName)
 	return nil
 }
