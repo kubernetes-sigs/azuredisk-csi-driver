@@ -394,6 +394,8 @@ func TestAttachDetachRecover(t *testing.T) {
 			setupFunc: func(t *testing.T, mockCtl *gomock.Controller) *ReconcileAttachDetach {
 				newAzVolumeAttachment0 := testPrimaryAzVolumeAttachment0.DeepCopy()
 				newAzVolumeAttachment0.Status.State = azdiskv1beta2.Attaching
+				newAzVolumeAttachment0.Status.Detail = &azdiskv1beta2.AzVolumeAttachmentStatusDetail{}
+				newAzVolumeAttachment0.Status.Error = &azdiskv1beta2.AzError{}
 
 				newAzVolumeAttachment1 := testPrimaryAzVolumeAttachment1.DeepCopy()
 				newAzVolumeAttachment1.Status.State = azdiskv1beta2.Detaching
@@ -414,6 +416,8 @@ func TestAttachDetachRecover(t *testing.T) {
 				azVolumeAttachment, localErr := controller.azClient.DiskV1beta2().AzVolumeAttachments(testNamespace).Get(context.TODO(), testPrimaryAzVolumeAttachment0Name, metav1.GetOptions{})
 				require.NoError(t, localErr)
 				require.Equal(t, azVolumeAttachment.Status.State, azdiskv1beta2.AttachmentPending)
+				require.Nil(t, azVolumeAttachment.Status.Detail)
+				require.Nil(t, azVolumeAttachment.Status.Error)
 				require.Contains(t, azVolumeAttachment.Status.Annotations, consts.RecoverAnnotation)
 
 				azVolumeAttachment, localErr = controller.azClient.DiskV1beta2().AzVolumeAttachments(testNamespace).Get(context.TODO(), testPrimaryAzVolumeAttachment1Name, metav1.GetOptions{})

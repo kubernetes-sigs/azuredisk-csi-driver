@@ -765,6 +765,16 @@ func (r *ReconcileAttachDetach) recoverAzVolumeAttachment(ctx context.Context, r
 			case azdiskv1beta2.Attaching:
 				// reset state to Pending so Attach operation can be redone
 				targetState = azdiskv1beta2.AttachmentPending
+				innerUpdateFunc := updateFunc
+				updateFunc = func(obj client.Object) error {
+					if err := innerUpdateFunc(obj); err != nil {
+						return err
+					}
+					azv := obj.(*azdiskv1beta2.AzVolumeAttachment)
+					azv.Status.Detail = nil
+					azv.Status.Error = nil
+					return nil
+				}
 			case azdiskv1beta2.Detaching:
 				// reset state to Attached so Detach operation can be redone
 				targetState = azdiskv1beta2.Attached
