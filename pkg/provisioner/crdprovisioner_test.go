@@ -166,14 +166,21 @@ func NewTestCrdProvisioner(controller *gomock.Controller) *CrdProvisioner {
 	azVolumeAttachmentInformer := azureutils.NewAzVolumeAttachmentInformer(azInformerFactory)
 	azVolumeInformer := azureutils.NewAzVolumeInformer(azInformerFactory)
 	crdInformer := azureutils.NewCrdInformer(crdInformerFactory)
+	waitForLunEnabled := true
 
 	conditionWatcher := watcher.NewConditionWatcher(azInformerFactory, testNamespace, azNodeInformer, azVolumeAttachmentInformer, azVolumeInformer, crdInformer)
+	config := azdiskv1beta2.AzDiskDriverConfiguration{
+		ControllerConfig: azdiskv1beta2.ControllerConfiguration{
+			WaitForLunEnabled: waitForLunEnabled,
+		},
+		ObjectNamespace: testNamespace,
+	}
 
 	c := &CrdProvisioner{
 		azDiskClient:     fakeDiskClient,
 		kubeClient:       fakeKubeClient,
 		crdClient:        fakeCrdClient,
-		namespace:        testNamespace,
+		config:           &config,
 		conditionWatcher: conditionWatcher,
 		azCachedReader:   NewCachedReader(kubeInformerFactory, azInformerFactory, testNamespace),
 	}
@@ -300,7 +307,7 @@ func TestCrdProvisionerCreateVolume(t *testing.T) {
 				{
 					ObjectMeta: metav1.ObjectMeta{
 						Name:      testDiskName0,
-						Namespace: provisioner.namespace,
+						Namespace: provisioner.config.ObjectNamespace,
 					},
 					Spec: azdiskv1beta2.AzVolumeSpec{
 						VolumeName: testDiskName0,
@@ -357,7 +364,7 @@ func TestCrdProvisionerCreateVolume(t *testing.T) {
 				{
 					ObjectMeta: metav1.ObjectMeta{
 						Name:      testDiskName0,
-						Namespace: provisioner.namespace,
+						Namespace: provisioner.config.ObjectNamespace,
 					},
 					Spec: azdiskv1beta2.AzVolumeSpec{
 						VolumeName: testDiskName0,
@@ -414,7 +421,7 @@ func TestCrdProvisionerCreateVolume(t *testing.T) {
 				{
 					ObjectMeta: metav1.ObjectMeta{
 						Name:      testDiskName0,
-						Namespace: provisioner.namespace,
+						Namespace: provisioner.config.ObjectNamespace,
 					},
 					Spec: azdiskv1beta2.AzVolumeSpec{
 						VolumeName: testDiskName0,
@@ -550,7 +557,7 @@ func TestCrdProvisionerDeleteVolume(t *testing.T) {
 				{
 					ObjectMeta: metav1.ObjectMeta{
 						Name:      testDiskName0,
-						Namespace: provisioner.namespace,
+						Namespace: provisioner.config.ObjectNamespace,
 					},
 					Spec: azdiskv1beta2.AzVolumeSpec{
 						VolumeName:           testDiskName0,
@@ -579,7 +586,7 @@ func TestCrdProvisionerDeleteVolume(t *testing.T) {
 				{
 					ObjectMeta: metav1.ObjectMeta{
 						Name:      testDiskName0,
-						Namespace: provisioner.namespace,
+						Namespace: provisioner.config.ObjectNamespace,
 					},
 					Spec: azdiskv1beta2.AzVolumeSpec{
 						VolumeName:           testDiskName0,
@@ -700,7 +707,7 @@ func TestCrdProvisionerPublishVolume(t *testing.T) {
 							consts.VolumeNameLabel: testDiskURI0,
 							consts.RoleLabel:       string(azdiskv1beta2.PrimaryRole),
 						},
-						Namespace: provisioner.namespace,
+						Namespace: provisioner.config.ObjectNamespace,
 					},
 					Spec: azdiskv1beta2.AzVolumeAttachmentSpec{
 						VolumeName:    testDiskName0,
@@ -736,7 +743,7 @@ func TestCrdProvisionerPublishVolume(t *testing.T) {
 							consts.VolumeNameLabel: testDiskURI0,
 							consts.RoleLabel:       string(azdiskv1beta2.PrimaryRole),
 						},
-						Namespace: provisioner.namespace,
+						Namespace: provisioner.config.ObjectNamespace,
 					},
 					Spec: azdiskv1beta2.AzVolumeAttachmentSpec{
 						VolumeName:    testDiskName0,
@@ -771,7 +778,7 @@ func TestCrdProvisionerPublishVolume(t *testing.T) {
 							consts.VolumeNameLabel: testDiskName0,
 							consts.RoleLabel:       string(azdiskv1beta2.ReplicaRole),
 						},
-						Namespace: provisioner.namespace,
+						Namespace: provisioner.config.ObjectNamespace,
 					},
 					Spec: azdiskv1beta2.AzVolumeAttachmentSpec{
 						VolumeName:    testDiskName0,
@@ -795,7 +802,7 @@ func TestCrdProvisionerPublishVolume(t *testing.T) {
 							consts.VolumeNameLabel: testDiskName0,
 							consts.RoleLabel:       string(azdiskv1beta2.ReplicaRole),
 						},
-						Namespace: provisioner.namespace,
+						Namespace: provisioner.config.ObjectNamespace,
 					},
 					Spec: azdiskv1beta2.AzVolumeAttachmentSpec{
 						VolumeName:    testDiskName0,
@@ -841,7 +848,7 @@ func TestCrdProvisionerPublishVolume(t *testing.T) {
 							consts.VolumeNameLabel: testDiskName1,
 							consts.RoleLabel:       string(azdiskv1beta2.ReplicaRole),
 						},
-						Namespace: provisioner.namespace,
+						Namespace: provisioner.config.ObjectNamespace,
 					},
 					Spec: azdiskv1beta2.AzVolumeAttachmentSpec{
 						VolumeName:    testDiskName1,
@@ -934,7 +941,7 @@ func TestCrdProvisionerPublishVolume(t *testing.T) {
 						azExistingList = append(azExistingList, &azdiskv1beta2.AzVolume{
 							ObjectMeta: metav1.ObjectMeta{
 								Name:      diskName,
-								Namespace: provisioner.namespace,
+								Namespace: provisioner.config.ObjectNamespace,
 							},
 							Spec: azdiskv1beta2.AzVolumeSpec{
 								MaxMountReplicaCount: 1,
@@ -952,7 +959,7 @@ func TestCrdProvisionerPublishVolume(t *testing.T) {
 					azExistingList = append(azExistingList, &azdiskv1beta2.AzDriverNode{
 						ObjectMeta: metav1.ObjectMeta{
 							Name:      tt.nodeID,
-							Namespace: provisioner.namespace,
+							Namespace: provisioner.config.ObjectNamespace,
 						},
 					})
 				}
@@ -1049,7 +1056,7 @@ func TestCrdProvisionerWaitForAttach(t *testing.T) {
 							consts.NodeNameLabel:   testNodeName0,
 							consts.VolumeNameLabel: testDiskURI0,
 						},
-						Namespace: provisioner.namespace,
+						Namespace: provisioner.config.ObjectNamespace,
 					},
 					Spec: azdiskv1beta2.AzVolumeAttachmentSpec{
 						VolumeName:    testDiskName0,
@@ -1152,7 +1159,7 @@ func TestCrdProvisionerUnpublishVolume(t *testing.T) {
 				{
 					ObjectMeta: metav1.ObjectMeta{
 						Name:      testDiskName0,
-						Namespace: provisioner.namespace,
+						Namespace: provisioner.config.ObjectNamespace,
 					},
 					Spec: azdiskv1beta2.AzVolumeSpec{
 						MaxMountReplicaCount: 0,
@@ -1167,7 +1174,7 @@ func TestCrdProvisionerUnpublishVolume(t *testing.T) {
 							consts.NodeNameLabel:   testNodeName0,
 							consts.VolumeNameLabel: testDiskURI0,
 						},
-						Namespace: provisioner.namespace,
+						Namespace: provisioner.config.ObjectNamespace,
 					},
 					Spec: azdiskv1beta2.AzVolumeAttachmentSpec{
 						VolumeName:    testDiskName0,
@@ -1197,7 +1204,7 @@ func TestCrdProvisionerUnpublishVolume(t *testing.T) {
 				{
 					ObjectMeta: metav1.ObjectMeta{
 						Name:      testDiskName0,
-						Namespace: provisioner.namespace,
+						Namespace: provisioner.config.ObjectNamespace,
 					},
 					Spec: azdiskv1beta2.AzVolumeSpec{
 						MaxMountReplicaCount: 0,
@@ -1212,7 +1219,7 @@ func TestCrdProvisionerUnpublishVolume(t *testing.T) {
 							consts.NodeNameLabel:   testNodeName0,
 							consts.VolumeNameLabel: testDiskURI0,
 						},
-						Namespace: provisioner.namespace,
+						Namespace: provisioner.config.ObjectNamespace,
 					},
 					Spec: azdiskv1beta2.AzVolumeAttachmentSpec{
 						VolumeName:    testDiskName0,
@@ -1242,7 +1249,7 @@ func TestCrdProvisionerUnpublishVolume(t *testing.T) {
 				{
 					ObjectMeta: metav1.ObjectMeta{
 						Name:      testDiskName0,
-						Namespace: provisioner.namespace,
+						Namespace: provisioner.config.ObjectNamespace,
 					},
 					Spec: azdiskv1beta2.AzVolumeSpec{
 						MaxMountReplicaCount: 1,
@@ -1257,7 +1264,7 @@ func TestCrdProvisionerUnpublishVolume(t *testing.T) {
 							consts.NodeNameLabel:   testNodeName0,
 							consts.VolumeNameLabel: testDiskURI0,
 						},
-						Namespace: provisioner.namespace,
+						Namespace: provisioner.config.ObjectNamespace,
 					},
 					Spec: azdiskv1beta2.AzVolumeAttachmentSpec{
 						VolumeName:    testDiskName0,
@@ -1288,7 +1295,7 @@ func TestCrdProvisionerUnpublishVolume(t *testing.T) {
 				{
 					ObjectMeta: metav1.ObjectMeta{
 						Name:      testDiskName0,
-						Namespace: provisioner.namespace,
+						Namespace: provisioner.config.ObjectNamespace,
 					},
 					Spec: azdiskv1beta2.AzVolumeSpec{
 						MaxMountReplicaCount: 1,
@@ -1303,7 +1310,7 @@ func TestCrdProvisionerUnpublishVolume(t *testing.T) {
 							consts.NodeNameLabel:   testNodeName0,
 							consts.VolumeNameLabel: testDiskURI0,
 						},
-						Namespace: provisioner.namespace,
+						Namespace: provisioner.config.ObjectNamespace,
 					},
 					Spec: azdiskv1beta2.AzVolumeAttachmentSpec{
 						VolumeName:    testDiskName0,
@@ -1412,7 +1419,7 @@ func TestCrdProvisionerUnpublishVolume(t *testing.T) {
 
 			if tt.verifyDemotion {
 				for _, azVA := range tt.existingAzVolAttachment {
-					updated, err := provisioner.azDiskClient.DiskV1beta2().AzVolumeAttachments(provisioner.namespace).Get(context.TODO(), azVA.Name, metav1.GetOptions{})
+					updated, err := provisioner.azDiskClient.DiskV1beta2().AzVolumeAttachments(provisioner.config.ObjectNamespace).Get(context.TODO(), azVA.Name, metav1.GetOptions{})
 					assert.NoError(t, err)
 					assert.Equal(t, azdiskv1beta2.ReplicaRole, updated.Status.Detail.Role)
 				}
@@ -1441,7 +1448,7 @@ func TestCrdProvisionerExpandVolume(t *testing.T) {
 				{
 					ObjectMeta: metav1.ObjectMeta{
 						Name:      testDiskName0,
-						Namespace: provisioner.namespace,
+						Namespace: provisioner.config.ObjectNamespace,
 					},
 					Spec: azdiskv1beta2.AzVolumeSpec{
 						VolumeName: testDiskName0,
@@ -1479,7 +1486,7 @@ func TestCrdProvisionerExpandVolume(t *testing.T) {
 				{
 					ObjectMeta: metav1.ObjectMeta{
 						Name:      testDiskName0,
-						Namespace: provisioner.namespace,
+						Namespace: provisioner.config.ObjectNamespace,
 					},
 					Spec: azdiskv1beta2.AzVolumeSpec{
 						VolumeName: testDiskName0,

@@ -85,6 +85,7 @@ var (
 	nodePartition                            = flag.String("node-partition", consts.DefaultNodePartitionName, "The partition name for node plugin.")
 	controllerPartition                      = flag.String("controller-partition", consts.DefaultControllerPartitionName, "The partition name for controller plugin.")
 	workerThreads                            = flag.Int("worker-threads", consts.DefaultWorkerThreads, "The number of worker thread per custom resource controller (AzVolume, attach/detach and replica controllers).")
+	waitForLunEnabled                        = flag.Bool("wait-for-lun-enabled", consts.DefaultWaitForLunEnabled, "boolean field to enable waiting for lun in PublishVolume")
 )
 
 func main() {
@@ -144,6 +145,7 @@ func getDriverConfig() *azdiskv1beta2.AzDiskDriverConfiguration {
 				LeaderElectionNamespace: consts.ReleaseNamespace,
 				PartitionName:           consts.DefaultControllerPartitionName,
 				WorkerThreads:           consts.DefaultWorkerThreads,
+				WaitForLunEnabled:       consts.DefaultWaitForLunEnabled,
 			},
 			NodeConfig: azdiskv1beta2.NodeConfiguration{
 				VolumeAttachLimit:       consts.DefaultVolumeAttachLimit,
@@ -214,6 +216,7 @@ func getDriverConfig() *azdiskv1beta2.AzDiskDriverConfiguration {
 				LeaderElectionNamespace: *leaderElectionNamespace,
 				PartitionName:           *controllerPartition,
 				WorkerThreads:           *workerThreads,
+				WaitForLunEnabled:       *waitForLunEnabled,
 			},
 			NodeConfig: azdiskv1beta2.NodeConfiguration{
 				VolumeAttachLimit:       *volumeAttachLimit,

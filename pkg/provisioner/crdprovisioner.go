@@ -56,7 +56,7 @@ type CrdProvisioner struct {
 	azDiskClient         azdisk.Interface
 	kubeClient           kubeClientset.Interface // for crdprovisioner_test
 	crdClient            crdClientset.Interface  // for crdprovisioner_test
-	namespace            string
+	config               *azdiskv1beta2.AzDiskDriverConfiguration
 	conditionWatcher     *watcher.ConditionWatcher
 	azCachedReader       CachedReader
 	driverUninstallState uint32
@@ -177,10 +177,10 @@ func (a CachedReader) List(_ context.Context, objectList client.ObjectList, opts
 	return err
 }
 
-func NewCrdProvisioner(azdiskClient azdisk.Interface, objNamespace string, cw *watcher.ConditionWatcher, azCachedReader CachedReader, informer azureutils.GenericInformer) *CrdProvisioner {
+func NewCrdProvisioner(azdiskClient azdisk.Interface, config *azdiskv1beta2.AzDiskDriverConfiguration, cw *watcher.ConditionWatcher, azCachedReader CachedReader, informer azureutils.GenericInformer) *CrdProvisioner {
 	c := &CrdProvisioner{
 		azDiskClient:     azdiskClient,
-		namespace:        objNamespace,
+		config:           config,
 		conditionWatcher: cw,
 		azCachedReader:   azCachedReader,
 	}
@@ -212,7 +212,7 @@ func (c *CrdProvisioner) CreateVolume(
 	volumeContentSource *azdiskv1beta2.ContentVolumeSource,
 	accessibilityReq *azdiskv1beta2.TopologyRequirement) (*azdiskv1beta2.AzVolumeStatusDetail, error) {
 	var err error
-	azVolumeClient := c.azDiskClient.DiskV1beta2().AzVolumes(c.namespace)
+	azVolumeClient := c.azDiskClient.DiskV1beta2().AzVolumes(c.config.ObjectNamespace)
 
 	_, maxMountReplicaCount := azureutils.GetMaxSharesAndMaxMountReplicaCount(parameters, azureutils.HasMultiNodeAzVolumeCapabilityAccessMode(volumeCapabilities))
 
@@ -225,7 +225,7 @@ func (c *CrdProvisioner) CreateVolume(
 	defer func() { w.Finish(err) }()
 
 	azVolumeInstance := &azdiskv1beta2.AzVolume{}
-	err = c.azCachedReader.Get(ctx, types.NamespacedName{Namespace: c.namespace, Name: azVolumeName}, azVolumeInstance)
+	err = c.azCachedReader.Get(ctx, types.NamespacedName{Namespace: c.config.ObjectNamespace, Name: azVolumeName}, azVolumeInstance)
 	if err == nil {
 		updateFunc := func(obj client.Object) error {
 			updateInstance := obj.(*azdiskv1beta2.AzVolume)
@@ -356,7 +356,7 @@ func (c *CrdProvisioner) DeleteVolume(ctx context.Context, volumeID string, secr
 	// snapshot APIs through the CRD provisioner.
 	// Replace them in all instances in this file.
 	var err error
-	azVolumeClient := c.azDiskClient.DiskV1beta2().AzVolumes(c.namespace)
+	azVolumeClient := c.azDiskClient.DiskV1beta2().AzVolumes(c.config.ObjectNamespace)
 
 	var volumeName string
 	volumeName, err = azureutils.GetDiskName(volumeID)
@@ -367,7 +367,7 @@ func (c *CrdProvisioner) DeleteVolume(ctx context.Context, volumeID string, secr
 	azVolumeName := strings.ToLower(volumeName)
 
 	azVolumeInstance := &azdiskv1beta2.AzVolume{}
-	err = c.azCachedReader.Get(ctx, types.NamespacedName{Namespace: c.namespace, Name: azVolumeName}, azVolumeInstance)
+	err = c.azCachedReader.Get(ctx, types.NamespacedName{Namespace: c.config.ObjectNamespace, Name: azVolumeName}, azVolumeInstance)
 	ctx, w := workflow.New(ctx, workflow.WithDetails(workflow.GetObjectDetails(azVolumeInstance)...))
 	defer func() { w.Finish(err) }()
 
@@ -471,7 +471,7 @@ func (c *CrdProvisioner) PublishVolume(
 	volumeContext map[string]string,
 ) (map[string]string, error) {
 	var err error
-	azVAClient := c.azDiskClient.DiskV1beta2().AzVolumeAttachments(c.namespace)
+	azVAClient := c.azDiskClient.DiskV1beta2().AzVolumeAttachments(c.config.ObjectNamespace)
 	var volumeName string
 	volumeName, err = azureutils.GetDiskName(volumeID)
 	if err != nil {
@@ -484,7 +484,7 @@ func (c *CrdProvisioner) PublishVolume(
 
 	// return error if volume is not found
 	azVolume := &azdiskv1beta2.AzVolume{}
-	err = c.azCachedReader.Get(ctx, types.NamespacedName{Namespace: c.namespace, Name: volumeName}, azVolume)
+	err = c.azCachedReader.Get(ctx, types.NamespacedName{Namespace: c.config.ObjectNamespace, Name: volumeName}, azVolume)
 	if apiErrors.IsNotFound(err) {
 		err = status.Errorf(codes.NotFound, "volume (%s) does not exist: %v", volumeName, err)
 		return nil, err
@@ -492,7 +492,7 @@ func (c *CrdProvisioner) PublishVolume(
 
 	// return error if node is not found
 	azDriverNode := &azdiskv1beta2.AzDriverNode{}
-	if err = c.azCachedReader.Get(ctx, types.NamespacedName{Namespace: c.namespace, Name: nodeID}, azDriverNode); apiErrors.IsNotFound(err) {
+	if err = c.azCachedReader.Get(ctx, types.NamespacedName{Namespace: c.config.ObjectNamespace, Name: nodeID}, azDriverNode); apiErrors.IsNotFound(err) {
 		err = status.Errorf(codes.NotFound, "node (%s) does not exist: %v", nodeID, err)
 		return nil, err
 	}
@@ -507,7 +507,7 @@ func (c *CrdProvisioner) PublishVolume(
 
 	attachmentObj := &azdiskv1beta2.AzVolumeAttachment{}
 	var creationNeeded bool
-	err = c.azCachedReader.Get(ctx, types.NamespacedName{Namespace: c.namespace, Name: attachmentName}, attachmentObj)
+	err = c.azCachedReader.Get(ctx, types.NamespacedName{Namespace: c.config.ObjectNamespace, Name: attachmentName}, attachmentObj)
 	if err != nil {
 		if !apiErrors.IsNotFound(err) {
 			err = status.Errorf(codes.Internal, "failed to get AzVolumeAttachment CRI: %v", err)
@@ -517,7 +517,7 @@ func (c *CrdProvisioner) PublishVolume(
 		creationNeeded = true
 		attachmentObj = &azdiskv1beta2.AzVolumeAttachment{
 			ObjectMeta: metav1.ObjectMeta{
-				Namespace: c.namespace,
+				Namespace: c.config.ObjectNamespace,
 				Name:      attachmentName,
 				Labels: map[string]string{
 					consts.NodeNameLabel:   nodeID,
@@ -631,7 +631,9 @@ func (c *CrdProvisioner) PublishVolume(
 			return publishContext, err
 		}
 		if !isPreemptiveCreate {
-			publishContext, err = c.waitForLun(ctx, volumeID, nodeID)
+			if c.config.ControllerConfig.WaitForLunEnabled {
+				publishContext, err = c.waitForLun(ctx, volumeID, nodeID)
+			}
 			return publishContext, err
 		}
 	}
@@ -667,7 +669,9 @@ func (c *CrdProvisioner) PublishVolume(
 			}
 		} else {
 			if attachmentObj.Status.Error == nil {
-				publishContext, err = c.waitForLun(ctx, volumeID, nodeID)
+				if c.config.ControllerConfig.WaitForLunEnabled {
+					publishContext, err = c.waitForLun(ctx, volumeID, nodeID)
+				}
 				return publishContext, err
 			}
 			// if primary attachment failed with an error, and for whatever reason, controllerPublishVolume request was made instead of NodeStageVolume request, reset the state, detail and error here if ever reached
@@ -708,8 +712,9 @@ func (c *CrdProvisioner) PublishVolume(
 	if _, err = azureutils.UpdateCRIWithRetry(ctx, c.azCachedReader.azInformer, nil, c.azDiskClient, attachmentObj, updateFunc, consts.NormalUpdateMaxNetRetry, updateMode); err != nil {
 		return publishContext, err
 	}
-
-	publishContext, err = c.waitForLun(ctx, volumeID, nodeID)
+	if c.config.ControllerConfig.WaitForLunEnabled {
+		publishContext, err = c.waitForLun(ctx, volumeID, nodeID)
+	}
 	return publishContext, err
 }
 
@@ -748,7 +753,7 @@ func (c *CrdProvisioner) waitForLunOrAttach(ctx context.Context, volumeID, nodeI
 	attachmentName := azureutils.GetAzVolumeAttachmentName(volumeName, nodeID)
 
 	azVolumeAttachmentInstance := &azdiskv1beta2.AzVolumeAttachment{}
-	err = c.azCachedReader.Get(ctx, types.NamespacedName{Namespace: c.namespace, Name: attachmentName}, azVolumeAttachmentInstance)
+	err = c.azCachedReader.Get(ctx, types.NamespacedName{Namespace: c.config.ObjectNamespace, Name: attachmentName}, azVolumeAttachmentInstance)
 	if err != nil {
 		if !apiErrors.IsNotFound(err) {
 			err = status.Errorf(codes.Internal, "unexpected error while getting AzVolumeAttachment (%s): %v", attachmentName, err)
@@ -823,7 +828,7 @@ func (c *CrdProvisioner) UnpublishVolume(
 	volumeName = strings.ToLower(volumeName)
 
 	azVolumeAttachmentInstance := &azdiskv1beta2.AzVolumeAttachment{}
-	err = c.azCachedReader.Get(ctx, types.NamespacedName{Namespace: c.namespace, Name: attachmentName}, azVolumeAttachmentInstance)
+	err = c.azCachedReader.Get(ctx, types.NamespacedName{Namespace: c.config.ObjectNamespace, Name: attachmentName}, azVolumeAttachmentInstance)
 	ctx, w := workflow.New(ctx, workflow.WithDetails(workflow.GetObjectDetails(azVolumeAttachmentInstance)...))
 	defer func() { w.Finish(err) }()
 
@@ -852,7 +857,7 @@ func (c *CrdProvisioner) shouldDemote(volumeName string, mode consts.UnpublishMo
 	if mode == consts.Detach {
 		return false, nil
 	}
-	azVolumeInstance, err := c.azCachedReader.azInformer.Disk().V1beta2().AzVolumes().Lister().AzVolumes(c.namespace).Get(volumeName)
+	azVolumeInstance, err := c.azCachedReader.azInformer.Disk().V1beta2().AzVolumes().Lister().AzVolumes(c.config.ObjectNamespace).Get(volumeName)
 	if err != nil {
 		return false, err
 	}
@@ -937,7 +942,7 @@ func (c *CrdProvisioner) WaitForDetach(ctx context.Context, volumeID, nodeID str
 	volumeName = strings.ToLower(volumeName)
 	attachmentName := azureutils.GetAzVolumeAttachmentName(volumeName, nodeID)
 
-	lister := c.azCachedReader.azInformer.Disk().V1beta2().AzVolumeAttachments().Lister().AzVolumeAttachments(c.namespace)
+	lister := c.azCachedReader.azInformer.Disk().V1beta2().AzVolumeAttachments().Lister().AzVolumeAttachments(c.config.ObjectNamespace)
 
 	waiter := c.conditionWatcher.NewConditionWaiter(ctx, watcher.AzVolumeAttachmentType, attachmentName, waitForDetachVolumeFunc)
 	defer waiter.Close()
@@ -963,7 +968,7 @@ func (c *CrdProvisioner) ExpandVolume(
 	azVolumeName := strings.ToLower(volumeName)
 
 	azVolume := &azdiskv1beta2.AzVolume{}
-	err = c.azCachedReader.Get(ctx, types.NamespacedName{Namespace: c.namespace, Name: azVolumeName}, azVolume)
+	err = c.azCachedReader.Get(ctx, types.NamespacedName{Namespace: c.config.ObjectNamespace, Name: azVolumeName}, azVolume)
 	if err != nil || azVolume == nil {
 		err = status.Errorf(codes.Internal, "failed to retrieve volume id (%s): %v", volumeID, err)
 		return nil, err
@@ -1028,7 +1033,7 @@ func (c *CrdProvisioner) GetAzVolumeAttachment(ctx context.Context, volumeID str
 	}
 	attachmentName := azureutils.GetAzVolumeAttachmentName(diskName, nodeID)
 	azVolumeAttachmentInstance := &azdiskv1beta2.AzVolumeAttachment{}
-	err = c.azCachedReader.Get(ctx, types.NamespacedName{Namespace: c.namespace, Name: attachmentName}, azVolumeAttachmentInstance)
+	err = c.azCachedReader.Get(ctx, types.NamespacedName{Namespace: c.config.ObjectNamespace, Name: attachmentName}, azVolumeAttachmentInstance)
 	if err != nil {
 		return nil, err
 	}

@@ -71,3 +71,7 @@ cscope.*
 
 # golangci-lint
 /bin/*
+
+# translations
+
+/translations

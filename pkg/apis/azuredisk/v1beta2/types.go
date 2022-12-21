@@ -573,6 +573,8 @@ type ControllerConfiguration struct {
 	PartitionName string `json:"partitionName,omitempty"`
 	// The number of worker thread per custom resource controller (AzVolume, attach/detach and replica controllers).
 	WorkerThreads int `json:"workerThreads,omitempty"`
+	// boolean field to enable waiting for lun in PublishVolume
+	WaitForLunEnabled bool `json:"waitForLunEnabled,omitempty"`
 }
 
 type NodeConfiguration struct {

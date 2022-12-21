@@ -146,6 +146,7 @@ spec:
             - "--disable-avset-nodes=false"
             - "--allow-empty-cloud-config=false"
             - "--leader-election-namespace=kube-system"
+            - "--wait-for-lun-enabled=true"
           ports:
             - containerPort: 29602
               name: healthz

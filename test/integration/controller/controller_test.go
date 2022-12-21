@@ -129,9 +129,16 @@ func setUpProvisioner() error {
 	azVolumeAttachmentInformer := azureutils.NewAzVolumeAttachmentInformer(azInformerFactory)
 	azVolumeInformer := azureutils.NewAzVolumeInformer(azInformerFactory)
 	crdInformer := azureutils.NewCrdInformer(crdInformerFactory)
+	waitForLunEnabled := true
 
 	cw := watcher.NewConditionWatcher(azInformerFactory, namespace, azNodeInformer, azVolumeAttachmentInformer, azVolumeInformer)
-	crdProvisioner = provisioner.NewCrdProvisioner(azClient, namespace, cw, provisioner.NewCachedReader(kubeInformerFactory, azInformerFactory, namespace), crdInformer)
+	config := azdiskv1beta2.AzDiskDriverConfiguration{
+		ControllerConfig: azdiskv1beta2.ControllerConfiguration{
+			WaitForLunEnabled: waitForLunEnabled,
+		},
+		ObjectNamespace: namespace,
+	}
+	crdProvisioner = provisioner.NewCrdProvisioner(azClient, &config, cw, provisioner.NewCachedReader(kubeInformerFactory, azInformerFactory, namespace), crdInformer)
 
 	azureutils.StartInformersAndWaitForCacheSync(context.Background(), nodeInformer, azNodeInformer, azVolumeAttachmentInformer, azVolumeInformer)
 	return err
