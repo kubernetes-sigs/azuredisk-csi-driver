@@ -13,8 +13,7 @@
                 "cloudProviderRateLimitQPS": 6,
                 "cloudProviderRateLimitBucket": 20,
                 "apiServerConfig": {
-                    "--enable-admission-plugins": "NamespaceLifecycle,LimitRanger,ServiceAccount,DefaultStorageClass,ResourceQuota,AlwaysPullImages",
-                    "--disable-admission-plugins": "PodSecurity"
+                    "--enable-admission-plugins": "NamespaceLifecycle,LimitRanger,ServiceAccount,DefaultStorageClass,ResourceQuota,AlwaysPullImages"
                 },
                 "addons": [
                     {
