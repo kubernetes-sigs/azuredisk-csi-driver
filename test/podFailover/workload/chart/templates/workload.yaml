@@ -97,7 +97,7 @@ spec:
         app: pod-failover
         failureType: {{ .Values.failureType }}
     spec:
-      {{- if and (ne .Values.clusterProvisioner "aks-cli") .Values.schedulerName }}
+      {{- if and (eq .Values.installMethod "helm") .Values.schedulerName }}
       schedulerName: {{ .Values.schedulerName }}
       {{- end}}
       {{- if eq .Values.failureType "same-node-failover"}}
