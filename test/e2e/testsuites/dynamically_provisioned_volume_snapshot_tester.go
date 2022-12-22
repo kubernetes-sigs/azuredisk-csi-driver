@@ -25,14 +25,13 @@ import (
 	"sigs.k8s.io/azuredisk-csi-driver/test/utils/azure"
 	"sigs.k8s.io/azuredisk-csi-driver/test/utils/credentials"
 
-	"github.com/onsi/ginkgo"
+	"github.com/onsi/ginkgo/v2"
 	"github.com/pborman/uuid"
 
 	v1 "k8s.io/api/core/v1"
 	clientset "k8s.io/client-go/kubernetes"
 	restclientset "k8s.io/client-go/rest"
 	"k8s.io/kubernetes/test/e2e/framework"
-	e2elog "k8s.io/kubernetes/test/e2e/framework/log"
 )
 
 // DynamicallyProvisionedVolumeSnapshotTest will provision required StorageClass(es),VolumeSnapshotClass(es), PVC(s) and Pod(s)
@@ -86,7 +85,7 @@ func (t *DynamicallyProvisionedVolumeSnapshotTest) Run(client clientset.Interfac
 	defer func() {
 		// Only delete resource group the test created
 		if strings.HasPrefix(externalRG, credentials.ResourceGroupPrefix) {
-			e2elog.Logf("Deleting resource group %s", externalRG)
+			framework.Logf("Deleting resource group %s", externalRG)
 			err := azureClient.DeleteResourceGroup(ctx, externalRG)
 			framework.ExpectNoError(err)
 		}

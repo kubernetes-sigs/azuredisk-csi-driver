@@ -45,7 +45,7 @@ E2E_HELM_OPTIONS += ${EXTRA_HELM_OPTIONS}
 ifdef DISABLE_ZONE
 E2E_HELM_OPTIONS += --set node.supportZone=false
 endif
-GINKGO_FLAGS = -ginkgo.v
+GINKGO_FLAGS = -ginkgo.v -ginkgo.timeout=24h
 ifeq ($(ENABLE_TOPOLOGY), true)
 GINKGO_FLAGS += -ginkgo.focus="\[multi-az\]"
 else

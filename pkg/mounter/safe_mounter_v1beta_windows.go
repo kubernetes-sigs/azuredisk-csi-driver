@@ -47,6 +47,18 @@ type csiProxyMounterV1Beta struct {
 	VolumeClient *volumeclient.Client
 }
 
+func (mounter *csiProxyMounterV1Beta) IsMountPoint(file string) (bool, error) {
+	isNotMnt, err := mounter.IsLikelyNotMountPoint(file)
+	if err != nil {
+		return false, err
+	}
+	return !isNotMnt, nil
+}
+
+func (mounter *csiProxyMounterV1Beta) CanSafelySkipMountPointCheck() bool {
+	return false
+}
+
 // Mount just creates a soft link at target pointing to source.
 func (mounter *csiProxyMounterV1Beta) Mount(source string, target string, fstype string, options []string) error {
 	// Mount is called after the format is done.

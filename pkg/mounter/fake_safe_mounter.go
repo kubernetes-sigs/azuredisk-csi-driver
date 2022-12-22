@@ -80,6 +80,15 @@ func (f *FakeSafeMounter) IsLikelyNotMountPoint(file string) (bool, error) {
 	return true, nil
 }
 
+// IsMountPoint overrides mount.FakeMounter.IsMountPoint.
+func (f *FakeSafeMounter) IsMountPoint(file string) (bool, error) {
+	notMnt, err := f.IsLikelyNotMountPoint(file)
+	if err != nil {
+		return false, err
+	}
+	return !notMnt, nil
+}
+
 // SetNextCommandOutputScripts sets the output scripts for the next sequence of command invocations.
 func (f *FakeSafeMounter) SetNextCommandOutputScripts(scripts ...testingexec.FakeAction) {
 	for _, script := range scripts {
