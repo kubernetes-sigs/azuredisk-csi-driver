@@ -67,6 +67,7 @@ type DriverOptions struct {
 	SupportZone                bool
 	GetNodeInfoFromLabels      bool
 	EnableDiskCapacityCheck    bool
+	DisableUpdateCache         bool
 	VMSSCacheTTLInSeconds      int64
 	VMType                     string
 }
@@ -108,6 +109,7 @@ type DriverCore struct {
 	supportZone                bool
 	getNodeInfoFromLabels      bool
 	enableDiskCapacityCheck    bool
+	disableUpdateCache         bool
 	vmssCacheTTLInSeconds      int64
 	vmType                     string
 }
@@ -142,6 +144,7 @@ func newDriverV1(options *DriverOptions) *Driver {
 	driver.supportZone = options.SupportZone
 	driver.getNodeInfoFromLabels = options.GetNodeInfoFromLabels
 	driver.enableDiskCapacityCheck = options.EnableDiskCapacityCheck
+	driver.disableUpdateCache = options.DisableUpdateCache
 	driver.vmssCacheTTLInSeconds = options.VMSSCacheTTLInSeconds
 	driver.vmType = options.VMType
 	driver.volumeLocks = volumehelper.NewVolumeLocks()
@@ -206,6 +209,8 @@ func (d *Driver) Run(endpoint, kubeconfig string, disableAVSetNodes, testingMock
 		d.cloud.VMCacheTTLInSeconds = int(d.vmssCacheTTLInSeconds)
 		d.cloud.VmssCacheTTLInSeconds = int(d.vmssCacheTTLInSeconds)
 	}
+
+	d.cloud.DisableUpdateCache = d.disableUpdateCache
 
 	d.deviceHelper = optimization.NewSafeDeviceHelper()
 

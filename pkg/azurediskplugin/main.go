@@ -60,6 +60,7 @@ var (
 	enableListVolumes          = flag.Bool("enable-list-volumes", false, "boolean flag to enable ListVolumes on controller")
 	enableListSnapshots        = flag.Bool("enable-list-snapshots", false, "boolean flag to enable ListSnapshots on controller")
 	enableDiskCapacityCheck    = flag.Bool("enable-disk-capacity-check", false, "boolean flag to enable volume capacity check in CreateVolume")
+	disableUpdateCache         = flag.Bool("disable-update-cache", false, "boolean flag to disable update cache during disk attach/detach")
 	vmssCacheTTLInSeconds      = flag.Int64("vmss-cache-ttl-seconds", -1, "vmss cache TTL in seconds (600 by default)")
 )
 
@@ -103,6 +104,7 @@ func handle() {
 		SupportZone:                *supportZone,
 		GetNodeInfoFromLabels:      *getNodeInfoFromLabels,
 		EnableDiskCapacityCheck:    *enableDiskCapacityCheck,
+		DisableUpdateCache:         *disableUpdateCache,
 		VMSSCacheTTLInSeconds:      *vmssCacheTTLInSeconds,
 		VMType:                     *vmType,
 	}
