@@ -386,13 +386,6 @@ func (c *CrdProvisioner) DeleteVolume(ctx context.Context, volumeID string, secr
 		return nil
 	}
 
-	// if the driver is uninstalling, the delete request is rejected.
-	if c.IsDriverUninstall() {
-		err = fmt.Errorf("VolumeDeleteRequestError")
-		w.Logger().Error(err, "AzVolume deletion is being requested as the driver is uninstalling.")
-		return err
-	}
-
 	// if deletion failed requeue deletion
 	updateFunc := func(obj client.Object) error {
 		updateInstance := obj.(*azdiskv1beta2.AzVolume)
@@ -439,12 +432,19 @@ func (c *CrdProvisioner) DeleteVolume(ctx context.Context, volumeID string, secr
 	if updateObj, err = azureutils.UpdateCRIWithRetry(ctx, c.azCachedReader.azInformer, nil, c.azDiskClient, azVolumeInstance, updateFunc, consts.NormalUpdateMaxNetRetry, azureutils.UpdateCRIStatus); err != nil {
 		return err
 	}
-	azVolumeInstance = updateObj.(*azdiskv1beta2.AzVolume)
+
+	// if the driver is uninstalling, the delete request is rejected.
+	if c.IsDriverUninstall() {
+		err = fmt.Errorf("VolumeDeleteRequestError")
+		w.Logger().Error(err, "AzVolume deletion is being requested as the driver is uninstalling.")
+		return err
+	}
 
 	waiter := c.conditionWatcher.NewConditionWaiter(ctx, watcher.AzVolumeType, azVolumeName, waitForDeleteVolumeFunc)
 	defer waiter.Close()
 
 	// only make delete request if object's deletion timestamp is not set
+	azVolumeInstance = updateObj.(*azdiskv1beta2.AzVolume)
 	if azVolumeInstance.DeletionTimestamp.IsZero() {
 		err = azVolumeClient.Delete(ctx, azVolumeName, metav1.DeleteOptions{})
 		if err != nil {

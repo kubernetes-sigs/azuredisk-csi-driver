@@ -1251,7 +1251,7 @@ func (c *SharedState) manageReplicas(ctx context.Context, volumeName string) err
 	}
 
 	desiredReplicaCount, currentReplicaCount := azVolume.Spec.MaxMountReplicaCount, len(azVolumeAttachments)
-	w.Logger().Infof("Control number of replicas for volume (%s): desired=%d,\tcurrent:%d", azVolume.Spec.VolumeName, desiredReplicaCount, currentReplicaCount)
+	w.Logger().Infof("Control number of replicas for volume (%s): desired=%d, current:%d", azVolume.Spec.VolumeName, desiredReplicaCount, currentReplicaCount)
 
 	if desiredReplicaCount > currentReplicaCount {
 		w.Logger().Infof("Need %d more replicas for volume (%s)", desiredReplicaCount-currentReplicaCount, azVolume.Spec.VolumeName)
@@ -1294,7 +1294,7 @@ func (c *SharedState) createReplicas(ctx context.Context, remainingReplicas int,
 	}
 
 	var nodes []string
-	nodes, err = c.getNodesForReplica(ctx, volumeName, pods, remainingReplicas)
+	nodes, err = c.getNodesForReplica(ctx, volumeName, pods)
 	if err != nil {
 		w.Logger().Errorf(err, "failed to get a list of nodes for replica attachment")
 		return err
@@ -1325,7 +1325,7 @@ func (c *SharedState) createReplicas(ctx context.Context, remainingReplicas int,
 	return nil
 }
 
-func (c *SharedState) getNodesForReplica(ctx context.Context, volumeName string, pods []v1.Pod, numReplica int) ([]string, error) {
+func (c *SharedState) getNodesForReplica(ctx context.Context, volumeName string, pods []v1.Pod) ([]string, error) {
 	var err error
 	ctx, w := workflow.New(ctx)
 	defer func() { w.Finish(err) }()
