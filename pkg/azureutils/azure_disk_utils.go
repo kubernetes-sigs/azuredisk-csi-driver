@@ -390,6 +390,12 @@ func ParseDiskParameters(parameters map[string]string) (ManagedDiskParameters, e
 	}
 	for k, v := range parameters {
 		switch strings.ToLower(k) {
+		case "storage.kubernetes.io/csiprovisioneridentity":
+			// TODO: how to parse csiprovisioneridentity?
+			klog.Warningf("aliceyu? storage.kubernetes.io/csiprovisioneridentity")
+		case "requestedsizegib":
+			// TODO: how to parse requestedsizegib?
+			klog.Warningf("aliceyu? requestedsizegib")
 		case consts.SkuNameField:
 			diskParams.AccountType = v
 		case consts.LocationField:
