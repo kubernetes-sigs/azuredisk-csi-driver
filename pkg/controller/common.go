@@ -923,6 +923,14 @@ func getSupportedZones(nodeSelectorTerms []v1.NodeSelectorTerm, topologyKey stri
 	return supportedZones
 }
 
+func markDetachRequest(attachment *azdiskv1beta2.AzVolumeAttachment, caller operationRequester) {
+	attachment.Status.Annotations = azureutils.AddToMap(attachment.Status.Annotations, consts.VolumeDetachRequestAnnotation, string(caller))
+}
+
+func markCleanUp(attachment *azdiskv1beta2.AzVolumeAttachment, caller operationRequester) {
+	attachment.Status.Annotations = azureutils.AddToMap(attachment.Status.Annotations, consts.CleanUpAnnotation, string(caller))
+}
+
 func shouldCleanUp(attachment azdiskv1beta2.AzVolumeAttachment, mode azureutils.AttachmentRoleMode) bool {
 	return mode == azureutils.AllRoles || (attachment.Spec.RequestedRole == azdiskv1beta2.PrimaryRole && mode == azureutils.PrimaryOnly) || (attachment.Spec.RequestedRole == azdiskv1beta2.ReplicaRole && mode == azureutils.ReplicaOnly)
 }

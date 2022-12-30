@@ -20,6 +20,7 @@ import (
 	"container/list"
 	"context"
 	"fmt"
+	"reflect"
 	"sort"
 	"strings"
 	"sync"
@@ -1132,27 +1133,34 @@ func (c *SharedState) cleanUpAzVolumeAttachmentByNode(ctx context.Context, azDri
 	return attachments.Items, nil
 }
 
-func (c *SharedState) cleanUpAzVolumeAttachments(ctx context.Context, attachments []azdiskv1beta2.AzVolumeAttachment, cleanUp attachmentCleanUpMode, caller operationRequester) error {
+func (c *SharedState) cleanUpAzVolumeAttachments(ctx context.Context, attachments []azdiskv1beta2.AzVolumeAttachment, cleanUpMode attachmentCleanUpMode, caller operationRequester) error {
 	var err error
 
 	for _, attachment := range attachments {
-		var patchRequired bool
 		patched := attachment.DeepCopy()
 
-		// if caller is azdrivernode, don't append cleanup annotation
-		if (caller != azdrivernode && !metav1.HasAnnotation(patched.ObjectMeta, consts.CleanUpAnnotation)) ||
-			// replica attachments should always be detached regardless of the cleanup mode
-			((cleanUp == cleanUpAttachment || patched.Spec.RequestedRole == azdiskv1beta2.ReplicaRole) && !metav1.HasAnnotation(patched.ObjectMeta, consts.VolumeDetachRequestAnnotation)) {
-			patchRequired = true
-			if caller != azdrivernode {
-				patched.Status.Annotations = azureutils.AddToMap(patched.Status.Annotations, consts.CleanUpAnnotation, string(caller))
+		if attachment.Spec.RequestedRole == azdiskv1beta2.PrimaryRole {
+			if cleanUpMode == cleanUpAttachment && !volumeDetachRequested(patched) {
+				markDetachRequest(patched, caller)
+			} else if deleteRequested, _ := objectDeletionRequested(&attachment); !deleteRequested {
+				// if primary azvolumeattachments are being cleaned up for driver uninstall, issue a DELETE call and continue
+				// note that this DELETE request will remove AzVolumeAttachment CRI without detaching the volume from node
+				if err = c.cachedClient.Delete(ctx, patched); err != nil {
+					return err
+				}
 			}
-			if cleanUp == cleanUpAttachment || patched.Spec.RequestedRole == azdiskv1beta2.ReplicaRole {
-				patched.Status.Annotations = azureutils.AddToMap(patched.Status.Annotations, consts.VolumeDetachRequestAnnotation, string(caller))
+		} else {
+			// replica mount should always be detached in cleanup regardless to the cleanup mode
+			if !volumeDetachRequested(patched) {
+				markDetachRequest(patched, caller)
+			}
+			// append cleanup annotation to prevent replica recreations except for when the clean up was triggered by node controller due to node failure.
+			if caller != azdrivernode && !metav1.HasAnnotation(patched.ObjectMeta, consts.CleanUpAnnotation) {
+				markCleanUp(patched, caller)
 			}
 		}
 
-		if patchRequired {
+		if !reflect.DeepEqual(attachment.Status, patched.Status) {
 			if err = c.cachedClient.Status().Patch(ctx, patched, client.MergeFrom(&attachment)); err != nil && apiErrors.IsNotFound(err) {
 				err = status.Errorf(codes.Internal, "failed to patch AzVolumeAttachment (%s)", attachment.Name)
 				return err
