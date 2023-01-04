@@ -29,11 +29,11 @@ import (
 	"time"
 
 	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2022-03-01/compute"
-	"github.com/Azure/go-autorest/autorest/to"
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	v1 "k8s.io/api/core/v1"
+	"k8s.io/utils/pointer"
 	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 	"sigs.k8s.io/azuredisk-csi-driver/test/utils/testutil"
 )
@@ -1443,7 +1443,7 @@ func TestParseDiskParameters(t *testing.T) {
 				PerfProfile:             "None",
 				NetworkAccessPolicy:     "networkAccessPolicy",
 				DiskAccessID:            "diskAccessID",
-				EnableBursting:          to.BoolPtr(true),
+				EnableBursting:          pointer.Bool(true),
 				UserAgent:               "userAgent",
 				VolumeContext: map[string]string{
 					consts.SkuNameField:             "skuName",
@@ -1655,13 +1655,13 @@ func TestInsertDiskProperties(t *testing.T) {
 				Sku: &compute.DiskSku{Name: compute.StandardSSDLRS},
 				DiskProperties: &compute.DiskProperties{
 					NetworkAccessPolicy: compute.AllowPrivate,
-					DiskIOPSReadWrite:   to.Int64Ptr(6400),
-					DiskMBpsReadWrite:   to.Int64Ptr(100),
+					DiskIOPSReadWrite:   pointer.Int64(6400),
+					DiskMBpsReadWrite:   pointer.Int64(100),
 					CreationData: &compute.CreationData{
-						LogicalSectorSize: to.Int32Ptr(512),
+						LogicalSectorSize: pointer.Int32(512),
 					},
-					Encryption: &compute.Encryption{DiskEncryptionSetID: to.StringPtr("/subs/DiskEncryptionSetID")},
-					MaxShares:  to.Int32Ptr(3),
+					Encryption: &compute.Encryption{DiskEncryptionSetID: pointer.String("/subs/DiskEncryptionSetID")},
+					MaxShares:  pointer.Int32(3),
 				},
 			},
 			inputMap: map[string]string{},

@@ -29,7 +29,6 @@ import (
 	"unicode"
 
 	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2022-03-01/compute"
-	"github.com/Azure/go-autorest/autorest/to"
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	"github.com/pborman/uuid"
 	v1 "k8s.io/api/core/v1"
@@ -38,6 +37,7 @@ import (
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/klog/v2"
 	"k8s.io/mount-utils"
+	"k8s.io/utils/pointer"
 
 	clientset "k8s.io/client-go/kubernetes"
 	api "k8s.io/kubernetes/pkg/apis/core"
@@ -614,7 +614,7 @@ func ParseDiskParameters(parameters map[string]string) (ManagedDiskParameters, e
 			diskParams.DiskAccessID = v
 		case consts.EnableBurstingField:
 			if strings.EqualFold(v, consts.TrueValue) {
-				diskParams.EnableBursting = to.BoolPtr(true)
+				diskParams.EnableBursting = pointer.Bool(true)
 			}
 		case consts.UserAgentField:
 			diskParams.UserAgent = v
