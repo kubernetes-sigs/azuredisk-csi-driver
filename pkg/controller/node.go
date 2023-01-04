@@ -22,6 +22,7 @@ import (
 
 	"github.com/go-logr/logr"
 	corev1 "k8s.io/api/core/v1"
+	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
@@ -82,13 +83,13 @@ func (r *ReconcileNode) Reconcile(ctx context.Context, request reconcile.Request
 	}
 
 	// If the node has no DeletionTimestamp, it means it's either create event or update event
-	if n.ObjectMeta.DeletionTimestamp.IsZero() && !n.Spec.Unschedulable {
+	if n.ObjectMeta.DeletionTimestamp.IsZero() {
 		// Add the new schedulable node in availableAttachmentsMap
-		r.addNodeToAvailableAttachmentsMap(ctx, n.Name, n.GetLabels())
-
-		// Node is schedulable, proceed to attempt creation of replica attachment
-		logger.Info("Node is now available. Will requeue failed replica creation requests.")
-		r.tryCreateFailedReplicas(ctx, nodeavailability)
+		if ok := r.addNodeToAvailableAttachmentsMap(ctx, n.Name, n.GetLabels()); ok && !n.Spec.Unschedulable {
+			// Node is schedulable, proceed to attempt creation of replica attachment
+			logger.Info("Node is now available. Will requeue failed replica creation requests.")
+			r.tryCreateFailedReplicas(ctx, nodeavailability)
+		}
 	}
 
 	return reconcile.Result{}, nil
@@ -108,7 +109,8 @@ func (r *ReconcileNode) Recover(ctx context.Context, recoveryID string) error {
 	errCount := 0
 	for _, azNode := range azNodes.Items {
 		// if the corresponding node has been deleted, delete the azdrivernode object
-		_, err = r.kubeClient.CoreV1().Nodes().Get(ctx, azNode.Spec.NodeName, metav1.GetOptions{})
+		var node *v1.Node
+		node, err = r.kubeClient.CoreV1().Nodes().Get(ctx, azNode.Spec.NodeName, metav1.GetOptions{})
 		if err != nil {
 			if errors.IsNotFound(err) {
 				n := r.azClient.DiskV1beta2().AzDriverNodes(r.config.ObjectNamespace)
@@ -131,7 +133,7 @@ func (r *ReconcileNode) Recover(ctx context.Context, recoveryID string) error {
 				errCount++
 				continue
 			}
-			r.addNodeToAvailableAttachmentsMap(ctx, azNode.Name, azNode.GetLabels())
+			r.addNodeToAvailableAttachmentsMap(ctx, node.Name, node.GetLabels())
 		}
 	}
 
@@ -166,25 +168,30 @@ func NewNodeController(mgr manager.Manager, controllerSharedState *SharedState) 
 			return true
 		},
 		UpdateFunc: func(e event.UpdateEvent) bool {
-			// make sure only update event from node taint changed from "unschedulable" gets enqueued to reconciler queue
+
 			old, oldOk := e.ObjectOld.(*corev1.Node)
 			new, newOk := e.ObjectNew.(*corev1.Node)
 
-			wasUnschedulable := false
-			nowSchedulable := true
-			for _, taint := range old.Spec.Taints {
-				if taint.Key == "node.kubernetes.io/unschedulable" {
-					wasUnschedulable = true
+			if oldOk && newOk {
+				// update event from node taint changed from "unschedulable" gets enqueued to reconciler queue
+				wasUnschedulable := false
+				nowSchedulable := true
+				for _, taint := range old.Spec.Taints {
+					if taint.Key == "node.kubernetes.io/unschedulable" {
+						wasUnschedulable = true
+					}
 				}
-			}
-			for _, taint := range new.Spec.Taints {
-				if taint.Key == "node.kubernetes.io/unschedulable" {
-					nowSchedulable = false
+				for _, taint := range new.Spec.Taints {
+					if taint.Key == "node.kubernetes.io/unschedulable" {
+						nowSchedulable = false
+					}
 				}
-			}
 
-			if oldOk && newOk && wasUnschedulable && nowSchedulable {
-				return true
+				// update event when LabelInstanceTypeStable is added to node
+				_, oldLableOk := old.GetLabels()[v1.LabelInstanceTypeStable]
+				_, newLabelOk := new.GetLabels()[v1.LabelInstanceTypeStable]
+
+				return (wasUnschedulable && nowSchedulable) || (!oldLableOk && newLabelOk)
 			}
 			return false
 		},

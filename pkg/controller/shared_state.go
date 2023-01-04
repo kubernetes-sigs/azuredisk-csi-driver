@@ -1708,7 +1708,8 @@ func (c *SharedState) getNodesTopologySelector(ctx context.Context, nodes []v1.N
 	return topologySelector
 }
 
-func (c *SharedState) addNodeToAvailableAttachmentsMap(ctx context.Context, nodeName string, nodeLables map[string]string) {
+// addNodeToAvailableAttachmentsMap returns true if the node is added to or already in the availableAttachmentsMap, and false otherwise.
+func (c *SharedState) addNodeToAvailableAttachmentsMap(ctx context.Context, nodeName string, nodeLables map[string]string) bool {
 	if _, ok := c.availableAttachmentsMap.Load(nodeName); !ok {
 		capacity, err := azureutils.GetNodeRemainingDiskCount(ctx, c.cachedClient, nodeName)
 		if err != nil {
@@ -1717,7 +1718,7 @@ func (c *SharedState) addNodeToAvailableAttachmentsMap(ctx context.Context, node
 			capacity, err = azureutils.GetNodeMaxDiskCountWithLabels(nodeLables)
 			if err != nil {
 				klog.Errorf("Failed to add node(%s) in availableAttachmentsMap, because get capacity of available attachments is failed with error: %v", nodeName, err)
-				return
+				return false
 			}
 		}
 		var count atomic.Int32
@@ -1725,12 +1726,14 @@ func (c *SharedState) addNodeToAvailableAttachmentsMap(ctx context.Context, node
 		klog.Infof("Added node(%s) to availableAttachmentsMap with capacity: %d", nodeName, capacity)
 		c.availableAttachmentsMap.LoadOrStore(nodeName, &count)
 	}
+	return true
 }
 
 func (c *SharedState) deleteNodeFromAvailableAttachmentsMap(ctx context.Context, node string) {
 	klog.Infof("Deleted node(%s) from availableAttachmentsMap", node)
 	c.availableAttachmentsMap.Delete(node)
 }
+
 func (c *SharedState) decrementAttachmentCount(ctx context.Context, node string) bool {
 	remainingCapacity, nodeExists := c.availableAttachmentsMap.Load(node)
 	if nodeExists && remainingCapacity != nil {
@@ -1751,6 +1754,7 @@ func (c *SharedState) decrementAttachmentCount(ctx context.Context, node string)
 
 	return false
 }
+
 func (c *SharedState) incrementAttachmentCount(ctx context.Context, node string) bool {
 	remainingCapacity, nodeExists := c.availableAttachmentsMap.Load(node)
 	if nodeExists && remainingCapacity != nil {
