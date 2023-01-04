@@ -142,7 +142,7 @@ func (c *CloudProvisioner) CreateVolume(
 	defer func() { w.Finish(err) }()
 
 	var diskParams azureutils.ManagedDiskParameters
-	diskParams, err = azureutils.ParseDiskParameters(parameters)
+	diskParams, err = azureutils.ParseDiskParameters(parameters, azureutils.StrictValidation)
 	if err != nil {
 		err = status.Errorf(codes.InvalidArgument, "Failed parsing disk parameters: %v", err)
 		return nil, err

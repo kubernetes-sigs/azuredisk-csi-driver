@@ -60,7 +60,7 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 		return nil, err
 	}
 	params := req.GetParameters()
-	diskParams, err := azureutils.ParseDiskParameters(params)
+	diskParams, err := azureutils.ParseDiskParameters(params, azureutils.StrictValidation)
 	if err != nil {
 		return nil, status.Errorf(codes.InvalidArgument, "Failed parsing disk parameters: %v", err)
 	}
