@@ -1453,12 +1453,8 @@ func (c *SharedState) createAzVolumeFromCSISource(source *v1.CSIPersistentVolume
 
 	_, maxMountReplicaCount := azureutils.GetMaxSharesAndMaxMountReplicaCount(source.VolumeAttributes, false)
 
-	var volumeParams map[string]string
-	if source.VolumeAttributes == nil {
-		volumeParams = make(map[string]string)
-	} else {
-		volumeParams = source.VolumeAttributes
-	}
+	diskParameters, _ := azureutils.ParseDiskParameters(source.VolumeAttributes, azureutils.IgnoreUnknown)
+	volumeParams := diskParameters.VolumeContext
 
 	azVolumeName := strings.ToLower(diskName)
 
@@ -1531,14 +1527,18 @@ func (c *SharedState) createAzVolume(ctx context.Context, desiredAzVolume *azdis
 
 		azVolume.Status.Annotations = azureutils.AddToMap(azVolume.Status.Annotations, statusAnnotation...)
 		updated = azVolume.DeepCopy()
-
-	} else {
-		return nil
 	}
 
-	if _, err = c.azClient.DiskV1beta2().AzVolumes(c.config.ObjectNamespace).UpdateStatus(ctx, updated, metav1.UpdateOptions{}); err != nil {
-		return err
+	if updated != nil {
+		if _, err = azureutils.UpdateCRIWithRetry(ctx, nil, c.cachedClient, c.azClient, updated, func(obj client.Object) error {
+			azvolume := obj.(*azdiskv1beta2.AzVolume)
+			azvolume.Status = updated.Status
+			return nil
+		}, consts.NormalUpdateMaxNetRetry, azureutils.UpdateCRIStatus); err != nil {
+			return err
+		}
 	}
+
 	// if AzVolume CRI successfully recreated, also recreate the operation queue for the volume
 	c.createOperationQueue(desiredAzVolume.Name)
 	return nil

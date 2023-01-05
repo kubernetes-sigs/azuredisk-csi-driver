@@ -1400,15 +1400,18 @@ func TestNormalizeStorageAccountType(t *testing.T) {
 
 func TestParseDiskParameters(t *testing.T) {
 	testCases := []struct {
-		name           string
-		inputParams    map[string]string
-		expectedOutput ManagedDiskParameters
-		expectedError  error
+		name                          string
+		inputParams                   map[string]string
+		filterMode                    FilterMode
+		expectedManagedDiskParameters ManagedDiskParameters
+		expectedFilteredParameters    map[string]string
+		expectedError                 error
 	}{
 		{
 			name:        "nil disk parameters",
 			inputParams: nil,
-			expectedOutput: ManagedDiskParameters{
+			filterMode:  StrictValidation,
+			expectedManagedDiskParameters: ManagedDiskParameters{
 				Incremental:    true,
 				Tags:           make(map[string]string),
 				VolumeContext:  make(map[string]string),
@@ -1417,9 +1420,10 @@ func TestParseDiskParameters(t *testing.T) {
 			expectedError: nil,
 		},
 		{
-			name:        "invalid field in parameters",
+			name:        "invalid field in parameters in StrictValidation mode",
 			inputParams: map[string]string{"invalidField": "someValue"},
-			expectedOutput: ManagedDiskParameters{
+			filterMode:  StrictValidation,
+			expectedManagedDiskParameters: ManagedDiskParameters{
 				Incremental:    true,
 				Tags:           make(map[string]string),
 				VolumeContext:  map[string]string{"invalidField": "someValue"},
@@ -1428,9 +1432,23 @@ func TestParseDiskParameters(t *testing.T) {
 			expectedError: fmt.Errorf("invalid parameter %s in storage class", "invalidField"),
 		},
 		{
+			name:        "ignore invalid field in parameters in IgnoreUknown mode",
+			inputParams: map[string]string{consts.SkuNameField: "skuName", "invalidField": "someValue"},
+			filterMode:  IgnoreUnknown,
+			expectedManagedDiskParameters: ManagedDiskParameters{
+				AccountType:    "skuName",
+				Incremental:    true,
+				Tags:           make(map[string]string),
+				VolumeContext:  map[string]string{consts.SkuNameField: "skuName"},
+				DeviceSettings: make(map[string]string),
+			},
+			expectedError: nil,
+		},
+		{
 			name:        "invalid value in parameters",
 			inputParams: map[string]string{consts.LogicalSectorSizeField: "invalidValue"},
-			expectedOutput: ManagedDiskParameters{
+			filterMode:  StrictValidation,
+			expectedManagedDiskParameters: ManagedDiskParameters{
 				Incremental:    true,
 				Tags:           make(map[string]string),
 				VolumeContext:  map[string]string{consts.LogicalSectorSizeField: "invalidValue"},
@@ -1467,7 +1485,8 @@ func TestParseDiskParameters(t *testing.T) {
 				consts.IncrementalField:         "false",
 				consts.ZonedField:               "ignored",
 			},
-			expectedOutput: ManagedDiskParameters{
+			filterMode: StrictValidation,
+			expectedManagedDiskParameters: ManagedDiskParameters{
 				AccountType:         "skuName",
 				Location:            "location",
 				CachingMode:         v1.AzureDataDiskCachingMode("cachingMode"),
@@ -1528,9 +1547,9 @@ func TestParseDiskParameters(t *testing.T) {
 	for _, test := range testCases {
 		test := test
 		t.Run(test.name, func(t *testing.T) {
-			result, err := ParseDiskParameters(test.inputParams)
+			result, err := ParseDiskParameters(test.inputParams, test.filterMode)
 			require.Equal(t, test.expectedError, err)
-			assert.Equal(t, test.expectedOutput, result)
+			assert.Equal(t, test.expectedManagedDiskParameters, result)
 		})
 	}
 }

@@ -98,6 +98,13 @@ const (
 	AllRoles
 )
 
+type FilterMode int
+
+const (
+	StrictValidation FilterMode = iota
+	IgnoreUnknown
+)
+
 type LabelPair struct {
 	Key      string
 	Operator selection.Operator
@@ -376,8 +383,10 @@ func NormalizeNetworkAccessPolicy(networkAccessPolicy string) (compute.NetworkAc
 	return "", fmt.Errorf("azureDisk - %s is not supported NetworkAccessPolicy. Supported values are %s", networkAccessPolicy, compute.PossibleNetworkAccessPolicyValues())
 }
 
-func ParseDiskParameters(parameters map[string]string) (ManagedDiskParameters, error) {
+func ParseDiskParameters(parameters map[string]string, filterMode FilterMode) (ManagedDiskParameters, error) {
 	var err error
+	var invalidParameters []string
+
 	if parameters == nil {
 		parameters = make(map[string]string)
 	}
@@ -476,11 +485,21 @@ func ParseDiskParameters(parameters map[string]string) (ManagedDiskParameters, e
 			if deviceSettings, err := optimization.GetDeviceSettingFromAttribute(k); err == nil {
 				diskParams.DeviceSettings[filepath.Join(consts.DummyBlockDevicePathLinux, deviceSettings)] = v
 			} else {
-				return diskParams, fmt.Errorf("invalid parameter %s in storage class", k)
+				if filterMode == StrictValidation {
+					return diskParams, fmt.Errorf("invalid parameter %s in storage class", k)
+				}
+				invalidParameters = append(invalidParameters, k)
 			}
 		}
 	}
-	return diskParams, nil
+
+	if len(invalidParameters) > 0 {
+		for _, param := range invalidParameters {
+			delete(diskParams.VolumeContext, param)
+		}
+	}
+
+	return diskParams, err
 }
 
 func ParseMaxShares(maxSharesValue string) (int, error) {
