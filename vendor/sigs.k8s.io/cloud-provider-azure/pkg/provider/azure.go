@@ -28,6 +28,8 @@ import (
 	"sync"
 	"time"
 
+	ratelimitconfig "sigs.k8s.io/cloud-provider-azure/pkg/provider/config"
+
 	"github.com/Azure/go-autorest/autorest"
 	"github.com/Azure/go-autorest/autorest/adal"
 	"github.com/Azure/go-autorest/autorest/azure"
@@ -48,7 +50,6 @@ import (
 	"k8s.io/klog/v2"
 	"k8s.io/klog/v2/klogr"
 
-	"sigs.k8s.io/cloud-provider-azure/pkg/auth"
 	azclients "sigs.k8s.io/cloud-provider-azure/pkg/azureclients"
 	"sigs.k8s.io/cloud-provider-azure/pkg/azureclients/blobclient"
 	"sigs.k8s.io/cloud-provider-azure/pkg/azureclients/containerserviceclient"
@@ -107,8 +108,8 @@ var (
 // See https://kubernetes.io/docs/reference/using-api/deprecation-policy/#deprecating-a-flag-or-cli
 // for more details.
 type Config struct {
-	auth.AzureAuthConfig
-	CloudProviderRateLimitConfig
+	ratelimitconfig.AzureAuthConfig
+	ratelimitconfig.CloudProviderRateLimitConfig
 
 	// The cloud configure type for Azure cloud provider. Supported values are file, secret and merge.
 	CloudConfigType cloudConfigType `json:"cloudConfigType,omitempty" yaml:"cloudConfigType,omitempty"`
@@ -385,8 +386,8 @@ type Cloud struct {
 }
 
 // NewCloud returns a Cloud with initialized clients
-func NewCloud(configReader io.Reader, callFromCCM bool) (cloudprovider.Interface, error) {
-	az, err := NewCloudWithoutFeatureGates(configReader, callFromCCM)
+func NewCloud(ctx context.Context, configReader io.Reader, callFromCCM bool) (cloudprovider.Interface, error) {
+	az, err := NewCloudWithoutFeatureGates(ctx, configReader, callFromCCM)
 	if err != nil {
 		return nil, err
 	}
@@ -395,7 +396,7 @@ func NewCloud(configReader io.Reader, callFromCCM bool) (cloudprovider.Interface
 	return az, nil
 }
 
-func NewCloudFromConfigFile(configFilePath string, calFromCCM bool) (cloudprovider.Interface, error) {
+func NewCloudFromConfigFile(ctx context.Context, configFilePath string, calFromCCM bool) (cloudprovider.Interface, error) {
 	var (
 		cloud cloudprovider.Interface
 		err   error
@@ -410,15 +411,15 @@ func NewCloudFromConfigFile(configFilePath string, calFromCCM bool) (cloudprovid
 		}
 
 		defer config.Close()
-		cloud, err = NewCloud(config, calFromCCM)
+		cloud, err = NewCloud(ctx, config, calFromCCM)
 	} else {
 		// Pass explicit nil so plugins can actually check for nil. See
 		// "Why is my nil error value not equal to nil?" in golang.org/doc/faq.
-		cloud, err = NewCloud(nil, false)
+		cloud, err = NewCloud(ctx, nil, false)
 	}
 
 	if err != nil {
-		return nil, fmt.Errorf("could not init cloud provider azure: %v", err)
+		return nil, fmt.Errorf("could not init cloud provider azure: %w", err)
 	}
 	if cloud == nil {
 		return nil, fmt.Errorf("nil cloud")
@@ -445,7 +446,7 @@ func (az *Cloud) configSecretMetadata(secretName, secretNamespace, cloudConfigKe
 	}
 }
 
-func NewCloudFromSecret(clientBuilder cloudprovider.ControllerClientBuilder, secretName, secretNamespace, cloudConfigKey string) (cloudprovider.Interface, error) {
+func NewCloudFromSecret(ctx context.Context, clientBuilder cloudprovider.ControllerClientBuilder, secretName, secretNamespace, cloudConfigKey string) (cloudprovider.Interface, error) {
 	az := &Cloud{
 		nodeNames:                sets.NewString(),
 		nodeZones:                map[string]sets.String{},
@@ -460,9 +461,9 @@ func NewCloudFromSecret(clientBuilder cloudprovider.ControllerClientBuilder, sec
 
 	az.Initialize(clientBuilder, wait.NeverStop)
 
-	err := az.InitializeCloudFromSecret()
+	err := az.InitializeCloudFromSecret(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("NewCloudFromSecret: failed to initialize cloud from secret %s/%s: %v", az.SecretNamespace, az.SecretName, err)
+		return nil, fmt.Errorf("NewCloudFromSecret: failed to initialize cloud from secret %s/%s: %w", az.SecretNamespace, az.SecretName, err)
 	}
 
 	az.ipv6DualStackEnabled = true
@@ -472,17 +473,17 @@ func NewCloudFromSecret(clientBuilder cloudprovider.ControllerClientBuilder, sec
 
 // NewCloudWithoutFeatureGates returns a Cloud without trying to wire the feature gates.  This is used by the unit tests
 // that don't load the actual features being used in the cluster.
-func NewCloudWithoutFeatureGates(configReader io.Reader, callFromCCM bool) (*Cloud, error) {
+func NewCloudWithoutFeatureGates(ctx context.Context, configReader io.Reader, callFromCCM bool) (*Cloud, error) {
 	config, err := ParseConfig(configReader)
 	if err != nil {
 		return nil, err
 	}
 
-	return NewCloudWithoutFeatureGatesFromConfig(config, false, callFromCCM)
+	return NewCloudWithoutFeatureGatesFromConfig(ctx, config, false, callFromCCM)
 }
 
 // NewCloudWithoutFeatureGatesFromConfig returns a Cloud without trying to wire the feature gates.
-func NewCloudWithoutFeatureGatesFromConfig(config *Config, fromSecret, callFromCCM bool) (*Cloud, error) {
+func NewCloudWithoutFeatureGatesFromConfig(ctx context.Context, config *Config, fromSecret, callFromCCM bool) (*Cloud, error) {
 	az := &Cloud{
 		nodeNames:                sets.NewString(),
 		nodeZones:                map[string]sets.String{},
@@ -493,7 +494,7 @@ func NewCloudWithoutFeatureGatesFromConfig(config *Config, fromSecret, callFromC
 		nodePrivateIPs:           map[string]sets.String{},
 	}
 
-	err := az.InitializeCloudFromConfig(config, fromSecret, callFromCCM)
+	err := az.InitializeCloudFromConfig(ctx, config, false, callFromCCM)
 	if err != nil {
 		return nil, err
 	}
@@ -502,7 +503,7 @@ func NewCloudWithoutFeatureGatesFromConfig(config *Config, fromSecret, callFromC
 }
 
 // InitializeCloudFromConfig initializes the Cloud from config.
-func (az *Cloud) InitializeCloudFromConfig(config *Config, fromSecret, callFromCCM bool) error {
+func (az *Cloud) InitializeCloudFromConfig(ctx context.Context, config *Config, fromSecret, callFromCCM bool) error {
 	if config == nil {
 		// should not reach here
 		return fmt.Errorf("InitializeCloudFromConfig: cannot initialize from nil config")
@@ -560,13 +561,13 @@ func (az *Cloud) InitializeCloudFromConfig(config *Config, fromSecret, callFromC
 		}
 	}
 
-	env, err := auth.ParseAzureEnvironment(config.Cloud, config.ResourceManagerEndpoint, config.IdentitySystem)
+	env, err := ratelimitconfig.ParseAzureEnvironment(config.Cloud, config.ResourceManagerEndpoint, config.IdentitySystem)
 	if err != nil {
 		return err
 	}
 
-	servicePrincipalToken, err := auth.GetServicePrincipalToken(&config.AzureAuthConfig, env, env.ServiceManagementEndpoint)
-	if errors.Is(err, auth.ErrorNoAuth) {
+	servicePrincipalToken, err := ratelimitconfig.GetServicePrincipalToken(&config.AzureAuthConfig, env, env.ServiceManagementEndpoint)
+	if errors.Is(err, ratelimitconfig.ErrorNoAuth) {
 		// Only controller-manager would lazy-initialize from secret, and credentials are required for such case.
 		if fromSecret {
 			err := fmt.Errorf("no credentials provided for Azure cloud provider")
@@ -587,7 +588,7 @@ func (az *Cloud) InitializeCloudFromConfig(config *Config, fromSecret, callFromC
 	}
 
 	// Initialize rate limiting config options.
-	InitializeCloudProviderRateLimitConfig(&config.CloudProviderRateLimitConfig)
+	ratelimitconfig.InitializeCloudProviderRateLimitConfig(&config.CloudProviderRateLimitConfig)
 
 	resourceRequestBackoff := az.setCloudProviderBackoffDefaults(config)
 
@@ -621,12 +622,12 @@ func (az *Cloud) InitializeCloudFromConfig(config *Config, fromSecret, callFromC
 	}
 
 	if strings.EqualFold(consts.VMTypeVMSS, az.Config.VMType) {
-		az.VMSet, err = newScaleSet(az)
+		az.VMSet, err = newScaleSet(ctx, az)
 		if err != nil {
 			return err
 		}
 	} else if strings.EqualFold(consts.VMTypeVmssFlex, az.Config.VMType) {
-		az.VMSet, err = newFlexScaleSet(az)
+		az.VMSet, err = newFlexScaleSet(ctx, az)
 		if err != nil {
 			return err
 		}
@@ -745,11 +746,11 @@ func (az *Cloud) configureMultiTenantClients(servicePrincipalToken *adal.Service
 	var multiTenantServicePrincipalToken *adal.MultiTenantServicePrincipalToken
 	var networkResourceServicePrincipalToken *adal.ServicePrincipalToken
 	if az.Config.UsesNetworkResourceInDifferentTenant() {
-		multiTenantServicePrincipalToken, err = auth.GetMultiTenantServicePrincipalToken(&az.Config.AzureAuthConfig, &az.Environment)
+		multiTenantServicePrincipalToken, err = ratelimitconfig.GetMultiTenantServicePrincipalToken(&az.Config.AzureAuthConfig, &az.Environment)
 		if err != nil {
 			return err
 		}
-		networkResourceServicePrincipalToken, err = auth.GetNetworkResourceServicePrincipalToken(&az.Config.AzureAuthConfig, &az.Environment)
+		networkResourceServicePrincipalToken, err = ratelimitconfig.GetNetworkResourceServicePrincipalToken(&az.Config.AzureAuthConfig, &az.Environment)
 		if err != nil {
 			return err
 		}
@@ -1012,8 +1013,8 @@ func initDiskControllers(az *Cloud) error {
 	// needed by both blob disk and managed disk controllers
 
 	enableAttachDetachDiskRateLimiter := true
-	qps := rate.Limit(defaultAttachDetachDiskQPS)
-	bucket := defaultAttachDetachDiskBucket
+	qps := rate.Limit(ratelimitconfig.DefaultAttachDetachDiskQPS)
+	bucket := ratelimitconfig.DefaultAttachDetachDiskBucket
 
 	if az.Config.AttachDetachDiskRateLimit != nil {
 		enableAttachDetachDiskRateLimiter = az.Config.AttachDetachDiskRateLimit.CloudProviderRateLimit
@@ -1027,17 +1028,13 @@ func initDiskControllers(az *Cloud) error {
 		bucket)
 
 	common := &controllerCommon{
-		location:              az.Location,
-		storageEndpointSuffix: az.Environment.StorageEndpointSuffix,
-		resourceGroup:         az.ResourceGroup,
-		subscriptionID:        az.SubscriptionID,
-		cloud:                 az,
-		lockMap:               newLockMap(),
+		cloud:   az,
+		lockMap: newLockMap(),
 	}
 
 	logger := klogr.NewWithOptions(klogr.WithFormat(klogr.FormatKlog)).WithName("cloud-provider-azure").WithValues("type", "batch")
 
-	delayBeforeStart := defaultAttachDetachBatchInitialDelay
+	delayBeforeStart := ratelimitconfig.DefaultAttachDetachBatchInitialDelay
 	switch {
 	case az.Config.AttachDetachBatchInitialDelayInMillis < 0:
 		delayBeforeStart = 0
@@ -1103,13 +1100,6 @@ func initDiskControllers(az *Cloud) error {
 	common.attachDiskProcessor = batch.NewProcessor(attachBatchFn, attachDiskProcessOptions...)
 	common.detachDiskProcessor = batch.NewProcessor(detachBatchFn, detachDiskProcessorOptions...)
 
-	if az.HasExtendedLocation() {
-		common.extendedLocation = &ExtendedLocation{
-			Name: az.ExtendedLocationName,
-			Type: az.ExtendedLocationType,
-		}
-	}
-
 	az.ManagedDiskController = &ManagedDiskController{common: common}
 	az.controllerCommon = common
 
@@ -1120,7 +1110,7 @@ func initDiskControllers(az *Cloud) error {
 func (az *Cloud) SetInformers(informerFactory informers.SharedInformerFactory) {
 	klog.Infof("Setting up informers for Azure cloud provider")
 	nodeInformer := informerFactory.Core().V1().Nodes().Informer()
-	nodeInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
+	_, _ = nodeInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc: func(obj interface{}) {
 			node := obj.(*v1.Node)
 			az.updateNodeCaches(nil, node)

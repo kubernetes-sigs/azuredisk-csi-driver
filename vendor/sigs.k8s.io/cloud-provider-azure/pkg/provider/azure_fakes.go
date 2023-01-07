@@ -17,14 +17,16 @@ limitations under the License.
 package provider
 
 import (
+	"context"
 	"fmt"
+
+	"sigs.k8s.io/cloud-provider-azure/pkg/provider/config"
 
 	"github.com/golang/mock/gomock"
 
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/client-go/tools/record"
 
-	"sigs.k8s.io/cloud-provider-azure/pkg/auth"
 	"sigs.k8s.io/cloud-provider-azure/pkg/azureclients/diskclient/mockdiskclient"
 	"sigs.k8s.io/cloud-provider-azure/pkg/azureclients/interfaceclient/mockinterfaceclient"
 	"sigs.k8s.io/cloud-provider-azure/pkg/azureclients/loadbalancerclient/mockloadbalancerclient"
@@ -52,7 +54,7 @@ func NewTestScaleSet(ctrl *gomock.Controller) (*ScaleSet, error) {
 
 func newTestScaleSetWithState(ctrl *gomock.Controller) (*ScaleSet, error) {
 	cloud := GetTestCloud(ctrl)
-	ss, err := newScaleSet(cloud)
+	ss, err := newScaleSet(context.Background(), cloud)
 	if err != nil {
 		return nil, err
 	}
@@ -62,7 +64,7 @@ func newTestScaleSetWithState(ctrl *gomock.Controller) (*ScaleSet, error) {
 
 func NewTestFlexScaleSet(ctrl *gomock.Controller) (*FlexScaleSet, error) {
 	cloud := GetTestCloud(ctrl)
-	fs, err := newFlexScaleSet(cloud)
+	fs, err := newFlexScaleSet(context.Background(), cloud)
 	if err != nil {
 		return nil, err
 	}
@@ -74,7 +76,7 @@ func NewTestFlexScaleSet(ctrl *gomock.Controller) (*FlexScaleSet, error) {
 func GetTestCloud(ctrl *gomock.Controller) (az *Cloud) {
 	az = &Cloud{
 		Config: Config{
-			AzureAuthConfig: auth.AzureAuthConfig{
+			AzureAuthConfig: config.AzureAuthConfig{
 				TenantID:       "tenant",
 				SubscriptionID: "subscription",
 			},
@@ -136,9 +138,5 @@ func GetTestCloudWithExtendedLocation(ctrl *gomock.Controller) (az *Cloud) {
 	az = GetTestCloud(ctrl)
 	az.Config.ExtendedLocationName = "microsoftlosangeles1"
 	az.Config.ExtendedLocationType = "EdgeZone"
-	az.controllerCommon.extendedLocation = &ExtendedLocation{
-		Name: az.Config.ExtendedLocationName,
-		Type: az.Config.ExtendedLocationType,
-	}
 	return az
 }

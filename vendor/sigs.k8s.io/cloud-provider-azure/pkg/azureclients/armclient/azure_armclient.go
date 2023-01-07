@@ -30,13 +30,12 @@ import (
 	"time"
 	"unicode"
 
-	"sigs.k8s.io/cloud-provider-azure/pkg/azureclients"
-
 	"github.com/Azure/go-autorest/autorest"
 	"github.com/Azure/go-autorest/autorest/azure"
 	"github.com/Azure/go-autorest/tracing"
-
 	"k8s.io/klog/v2"
+
+	"sigs.k8s.io/cloud-provider-azure/pkg/azureclients"
 	"sigs.k8s.io/cloud-provider-azure/pkg/retry"
 	"sigs.k8s.io/cloud-provider-azure/pkg/version"
 )
@@ -76,7 +75,7 @@ func sender() autorest.Sender {
 				Timeout:   30 * time.Second, // the same as default transport
 				KeepAlive: 30 * time.Second, // the same as default transport
 			}).DialContext,
-			ForceAttemptHTTP2:     false,            // We disable HTTP/2 (which allows sharing connections) to get better distribution of requests across ARM front-end machines. ref:https://cs.opensource.google/go/go/+/refs/tags/go1.19:src/net/http/transport.go;l=1062
+			ForceAttemptHTTP2:     false,            // respect custom dialer (default is true)
 			MaxIdleConns:          100,              // Zero means no limit, the same as default transport
 			MaxIdleConnsPerHost:   100,              // Default is 2, ref:https://cs.opensource.google/go/go/+/go1.18.4:src/net/http/transport.go;l=58
 			IdleConnTimeout:       90 * time.Second, // the same as default transport

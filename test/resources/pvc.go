@@ -30,7 +30,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	clientset "k8s.io/client-go/kubernetes"
 	"k8s.io/kubernetes/test/e2e/framework"
-	e2elog "k8s.io/kubernetes/test/e2e/framework/log"
+
 	e2epv "k8s.io/kubernetes/test/e2e/framework/pv"
 )
 
@@ -151,7 +151,7 @@ func (t *TestPersistentVolumeClaim) Cleanup() {
 		framework.ExpectNoError(err)
 		t.ValidateProvisionedPersistentVolume()
 	}
-	e2elog.Logf("deleting PVC %q/%q", t.Namespace.Name, t.PersistentVolumeClaim.Name)
+	framework.Logf("deleting PVC %q/%q", t.Namespace.Name, t.PersistentVolumeClaim.Name)
 	err := e2epv.DeletePersistentVolumeClaim(t.Client, t.PersistentVolumeClaim.Name, t.Namespace.Name)
 	framework.ExpectNoError(err)
 	// Wait for the PV to get deleted if reclaim policy is Delete. (If it's

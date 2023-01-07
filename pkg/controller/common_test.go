@@ -575,11 +575,20 @@ func (s *mockStatusClient) updateStatus(ctx context.Context, obj client.Object) 
 	return nil
 }
 
-func (s *mockStatusClient) Patch(ctx context.Context, obj client.Object, _ client.Patch, _ ...client.PatchOption) error {
+func (s *mockStatusClient) Create(ctx context.Context, obj, subResource client.Object, _ ...client.SubResourceCreateOption) error {
+	return k8serrors.NewMethodNotSupported(
+		schema.GroupResource{
+			Group:    obj.GetObjectKind().GroupVersionKind().Group,
+			Resource: obj.GetObjectKind().GroupVersionKind().Kind,
+		},
+		"create")
+}
+
+func (s *mockStatusClient) Update(ctx context.Context, obj client.Object, _ ...client.SubResourceUpdateOption) error {
 	return s.updateStatus(ctx, obj)
 }
 
-func (s *mockStatusClient) Update(ctx context.Context, obj client.Object, _ ...client.UpdateOption) error {
+func (s *mockStatusClient) Patch(ctx context.Context, obj client.Object, _ client.Patch, _ ...client.SubResourcePatchOption) error {
 	return s.updateStatus(ctx, obj)
 }
 
@@ -587,8 +596,8 @@ func mockClients(mockClient *mockclient.MockClient, azVolumeClient azdisk.Interf
 	statusClient := mockStatusClient{azVolumeClient: azVolumeClient}
 	mockClient.EXPECT().Status().Return(&statusClient).AnyTimes()
 	mockClient.EXPECT().
-		Get(gomock.Any(), gomock.Any(), gomock.Any()).
-		DoAndReturn(func(ctx context.Context, key types.NamespacedName, obj runtime.Object) error {
+		Get(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+		DoAndReturn(func(ctx context.Context, key types.NamespacedName, obj runtime.Object, opts ...client.GetOption) error {
 			switch target := obj.(type) {
 			case *azdiskv1beta2.AzVolume:
 				azVolume, err := azVolumeClient.DiskV1beta2().AzVolumes(key.Namespace).Get(ctx, key.Name, metav1.GetOptions{})

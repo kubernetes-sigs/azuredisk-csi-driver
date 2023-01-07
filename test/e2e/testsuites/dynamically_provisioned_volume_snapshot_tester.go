@@ -28,7 +28,6 @@ import (
 	clientset "k8s.io/client-go/kubernetes"
 	restclientset "k8s.io/client-go/rest"
 	"k8s.io/kubernetes/test/e2e/framework"
-	e2elog "k8s.io/kubernetes/test/e2e/framework/log"
 	testconsts "sigs.k8s.io/azuredisk-csi-driver/test/const"
 	"sigs.k8s.io/azuredisk-csi-driver/test/e2e/driver"
 	"sigs.k8s.io/azuredisk-csi-driver/test/resources"
@@ -98,7 +97,7 @@ func (t *DynamicallyProvisionedVolumeSnapshotTest) Run(client clientset.Interfac
 	defer func() {
 		// Only delete resource group the test created
 		if strings.HasPrefix(externalRG, testconsts.ResourceGroupPrefix) {
-			e2elog.Logf("Deleting resource group %s", externalRG)
+			framework.Logf("Deleting resource group %s", externalRG)
 			err := azureClient.DeleteResourceGroup(ctx, externalRG)
 			framework.ExpectNoError(err)
 		}

@@ -81,7 +81,7 @@ func NewCachedReader(kubeInformerFactory informers.SharedInformerFactory, azInfo
 	}
 }
 
-func (a CachedReader) Get(_ context.Context, namespacedName types.NamespacedName, object client.Object) error {
+func (a CachedReader) Get(_ context.Context, namespacedName types.NamespacedName, object client.Object, opts ...client.GetOption) error {
 	var err error
 	switch target := object.(type) {
 	case *v1.Node:

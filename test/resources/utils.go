@@ -36,7 +36,8 @@ import (
 	clientset "k8s.io/client-go/kubernetes"
 	"k8s.io/klog/v2"
 	"k8s.io/kubernetes/test/e2e/framework"
-	e2elog "k8s.io/kubernetes/test/e2e/framework/log"
+	"k8s.io/kubernetes/test/e2e/framework/kubectl"
+
 	azdiskv1beta2 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1beta2"
 	azdisk "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned"
 	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
@@ -78,17 +79,17 @@ func VerifySuccessfulAzVolumeAttachments(pod PodDetails, azDiskClient *azdisk.Cl
 		numAttachments := len(pvAttachments.Items)
 
 		if numAttachments != expectedNumberOfReplicas+1 {
-			e2elog.Logf("expected %d attachments, found %d", expectedNumberOfReplicas+1, numAttachments)
+			framework.Logf("expected %d attachments, found %d", expectedNumberOfReplicas+1, numAttachments)
 			return
 		}
 		allAttachments = append(allAttachments, pvAttachments.Items...)
 
 		for _, attachment := range pvAttachments.Items {
 			if attachment.Status.State != azdiskv1beta2.Attached {
-				e2elog.Logf("found attachment %s, currently not attached", attachment.Name)
+				framework.Logf("found attachment %s, currently not attached", attachment.Name)
 				unattachedAttachments = append(unattachedAttachments, attachment)
 			} else {
-				e2elog.Logf("found attachment %s in attached state", attachment.Name)
+				framework.Logf("found attachment %s in attached state", attachment.Name)
 			}
 		}
 		if len(unattachedAttachments) > 0 {
@@ -102,7 +103,7 @@ func VerifySuccessfulAzVolumeAttachments(pod PodDetails, azDiskClient *azdisk.Cl
 func pollForStringWorker(namespace string, pod string, command []string, expectedString string, ch chan<- error) {
 	args := append([]string{"exec", pod, "--"}, command...)
 	err := wait.PollImmediate(testconsts.Poll, testconsts.PollForStringTimeout, func() (bool, error) {
-		stdout, err := framework.RunKubectl(namespace, args...)
+		stdout, err := kubectl.RunKubectl(namespace, args...)
 		if err != nil {
 			framework.Logf("Error waiting for output %q in pod %q: %v.", expectedString, pod, err)
 			return false, nil
