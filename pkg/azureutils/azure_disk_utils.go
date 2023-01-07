@@ -1219,7 +1219,7 @@ func UpdateCRIWithRetry(ctx context.Context, informerFactory azdiskinformers.Sha
 			curRetry++
 			return true
 		}
-		if isNetError(err) {
+		if IsNetError(err) {
 			defer func() { curNetRetry++ }()
 			return curNetRetry < maxNetRetry
 		}
@@ -1238,7 +1238,7 @@ func UpdateCRIWithRetry(ctx context.Context, informerFactory azdiskinformers.Sha
 	)
 
 	// if encountered net error from api server unavailability, exit process
-	if isNetError(err) {
+	if IsNetError(err) {
 		ExitOnNetError(err, maxNetRetry > 0 && curNetRetry >= maxNetRetry)
 	}
 	return updatedObj, err
@@ -1339,10 +1339,10 @@ func isFatalNetError(err error) bool {
 	if errors.Is(err, context.DeadlineExceeded) {
 		return false
 	}
-	return isNetError(err)
+	return IsNetError(err)
 }
 
-func isNetError(err error) bool {
+func IsNetError(err error) bool {
 	return net.IsConnectionRefused(err) || net.IsConnectionReset(err) || net.IsTimeout(err) || net.IsProbableEOF(err)
 }
 

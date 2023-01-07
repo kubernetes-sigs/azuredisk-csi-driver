@@ -54,7 +54,7 @@ func GetWorkflowFromObj(ctx context.Context, obj k8sRuntime.Object, opts ...Opti
 	w := Workflow{}.applyDefault()
 
 	w.requestID = GetRequestID(obj)
-	startTimeStr := getAnnotationFromRuntimeObject(obj, consts.RequestStartimeKey)
+	startTimeStr := getAnnotationFromRuntimeObject(obj, consts.RequestStartTimeKey)
 	if startTimeStr != "" {
 		w.startTime, _ = time.Parse(consts.RequestTimeFormat, startTimeStr)
 	}
@@ -177,7 +177,7 @@ func (w Workflow) AnnotateObject(obj k8sRuntime.Object) {
 	}
 	annotations[consts.RequesterKey] = w.name
 	annotations[consts.RequestIDKey] = w.requestID
-	annotations[consts.RequestStartimeKey] = w.startTime.Format(consts.RequestTimeFormat)
+	annotations[consts.RequestStartTimeKey] = w.startTime.Format(consts.RequestTimeFormat)
 	meta.SetAnnotations(annotations)
 }
 

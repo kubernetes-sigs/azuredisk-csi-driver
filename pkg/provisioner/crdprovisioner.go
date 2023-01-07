@@ -289,7 +289,7 @@ func (c *CrdProvisioner) CreateVolume(
 				Name:        azVolumeName,
 				Finalizers:  []string{consts.AzVolumeFinalizer},
 				Labels:      map[string]string{consts.PvNameLabel: pv, consts.PvcNameLabel: pvc, consts.PvcNamespaceLabel: namespace},
-				Annotations: map[string]string{consts.RequestIDKey: w.RequestID(), consts.RequestStartimeKey: w.StartTime().Format(consts.RequestTimeFormat)},
+				Annotations: map[string]string{consts.RequestIDKey: w.RequestID(), consts.RequestStartTimeKey: w.StartTime().Format(consts.RequestTimeFormat)},
 			},
 			Spec: azdiskv1beta2.AzVolumeSpec{
 				MaxMountReplicaCount:      maxMountReplicaCount,
@@ -531,7 +531,7 @@ func (c *CrdProvisioner) PublishVolume(
 				Annotations: map[string]string{
 					consts.VolumeAttachRequestAnnotation: "crdProvisioner",
 					consts.RequestIDKey:                  w.RequestID(),
-					consts.RequestStartimeKey:            w.StartTime().Format(consts.RequestTimeFormat),
+					consts.RequestStartTimeKey:           w.StartTime().Format(consts.RequestTimeFormat),
 				},
 			},
 			Spec: azdiskv1beta2.AzVolumeAttachmentSpec{

@@ -131,7 +131,7 @@ const (
 	PodNameKey                         = "disk.csi/azure.com/pod-name"
 	PreProvisionedVolumeAnnotation     = "disk.csi.azure.com/pre-provisioned"
 	RequestIDKey                       = "disk.csi.azure.com/request-id"
-	RequestStartimeKey                 = "disk.csi.azure.com/request-starttime"
+	RequestStartTimeKey                = "disk.csi.azure.com/request-starttime"
 	RequestTimeFormat                  = time.RFC3339Nano
 	RequesterKey                       = "disk.csi.azure.com/requester-name"
 	WorkflowKey                        = "disk.csi.azure.com/requester-name"

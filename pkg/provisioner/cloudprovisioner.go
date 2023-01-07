@@ -400,7 +400,7 @@ func (c *CloudProvisioner) PublishVolume(
 
 	var lun int32
 	var vmState *string
-	lun, vmState, err = c.cloud.GetDiskLun(diskName, volumeID, nodeName)
+	lun, vmState, err = c.GetDiskLun(diskName, volumeID, nodeName)
 	if err == cloudprovider.InstanceNotFound {
 		err = status.Errorf(codes.NotFound, "failed to get azure instance id for node %q: %v", nodeName, err)
 		return
@@ -463,7 +463,7 @@ func (c *CloudProvisioner) PublishVolume(
 		}
 	}
 
-	publishContext := map[string]string{"LUN": strconv.Itoa(int(lun))}
+	publishContext := map[string]string{azureconstants.LUN: strconv.Itoa(int(lun))}
 	attachResult.SetPublishContext(publishContext)
 	return
 }
@@ -877,6 +877,18 @@ func (c *CloudProvisioner) GetSnapshotAndResourceNameFromSnapshotID(snapshotID s
 	}
 
 	return snapshotName, resourceGroup, err
+}
+
+func (c *CloudProvisioner) GetNodeNameByProviderID(providerID string) (types.NodeName, error) {
+	return c.cloud.VMSet.GetNodeNameByProviderID(providerID)
+}
+
+func (c *CloudProvisioner) GetNodeDataDisks(nodeName types.NodeName) ([]compute.DataDisk, *string, error) {
+	return c.cloud.GetNodeDataDisks(nodeName, azcache.CacheReadTypeDefault)
+}
+
+func (c *CloudProvisioner) GetDiskLun(diskName, diskURI string, nodeName types.NodeName) (int32, *string, error) {
+	return c.cloud.GetDiskLun(diskName, diskURI, nodeName)
 }
 
 func (c *CloudProvisioner) getSnapshotByID(ctx context.Context, resourceGroup string, snapshotName string, sourceVolumeID string) (*azdiskv1beta2.Snapshot, error) {

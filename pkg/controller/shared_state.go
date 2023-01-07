@@ -1820,3 +1820,117 @@ func (c *SharedState) incrementAttachmentCount(ctx context.Context, node string)
 
 	return false
 }
+
+func (c *SharedState) getVolumeInfoFromPV(ctx context.Context, volumeName string) (string, map[string]string, error) {
+	w, _ := workflow.GetWorkflowFromContext(ctx)
+	var volumeContext map[string]string
+	var volumeHandle string
+
+	pv, err := c.kubeClient.CoreV1().PersistentVolumes().Get(ctx, volumeName, metav1.GetOptions{})
+	if err != nil {
+		w.Logger().Errorf(err, "failed to get PV (%s)", volumeName)
+		return volumeHandle, volumeContext, err
+	}
+
+	// if pv is migrated intree pv, convert it to csi pv for processing
+	// translate intree pv to csi pv to convert them into AzVolume resource
+	if utilfeature.DefaultFeatureGate.Enabled(features.CSIMigration) &&
+		utilfeature.DefaultFeatureGate.Enabled(features.CSIMigrationAzureDisk) &&
+		pv.Spec.AzureDisk != nil {
+		if pv, err = c.translateInTreePVToCSI(pv); err != nil {
+			w.Logger().Errorf(err, "failed to translate intree pv to csi pv (%s)", volumeName)
+			return volumeHandle, volumeContext, err
+		}
+	}
+
+	if pv.Spec.CSI == nil || pv.Spec.CSI.Driver != c.config.DriverName {
+		return volumeHandle, volumeContext, fmt.Errorf("PersistentVolume is not controlled by: %s", c.config.DriverName)
+	}
+	volumeContext = pv.Spec.CSI.VolumeAttributes
+	volumeHandle = pv.Spec.CSI.VolumeHandle
+	return volumeHandle, volumeContext, nil
+}
+
+func (c *SharedState) generateDesiredAzVolumeAttachment(
+	azVolumeAttachmentName,
+	nodeName,
+	volumeName,
+	volumeHandle string,
+	role azdiskv1beta2.Role,
+	volumeAttributes map[string]string) *azdiskv1beta2.AzVolumeAttachment {
+	desiredAzVolumeAttachment := &azdiskv1beta2.AzVolumeAttachment{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      azVolumeAttachmentName,
+			Namespace: c.config.ObjectNamespace,
+			Labels: map[string]string{
+				consts.NodeNameLabel:   nodeName,
+				consts.VolumeNameLabel: volumeName,
+				consts.RoleLabel:       string(role),
+			},
+			// if the volumeAttachment shows not yet attached, and VolumeAttachRequestAnnotation needs to be set from the controllerserver
+			// if the volumeAttachment shows attached but the actual volume isn't due to controller restart, VolumeAttachRequestAnnotation needs to be set by the noderserver during NodeStageVolume
+			Finalizers: []string{consts.AzVolumeAttachmentFinalizer},
+		},
+		Spec: azdiskv1beta2.AzVolumeAttachmentSpec{
+			VolumeName:    volumeName,
+			VolumeID:      volumeHandle,
+			NodeName:      nodeName,
+			RequestedRole: role,
+			VolumeContext: volumeAttributes,
+		},
+	}
+	azureutils.AnnotateAPIVersion(desiredAzVolumeAttachment)
+
+	return desiredAzVolumeAttachment
+}
+
+func (c *SharedState) recreateAzVolumeAttachment(ctx context.Context, azVolumeAttachmentName string, desiredAzVolumeAttachment *azdiskv1beta2.AzVolumeAttachment) error {
+	w, _ := workflow.GetWorkflowFromContext(ctx)
+
+	// check if the CRI exists already
+	azVolumeAttachment, err := azureutils.GetAzVolumeAttachment(ctx, c.cachedClient, c.azClient, azVolumeAttachmentName, c.config.ObjectNamespace, false)
+	if err != nil {
+		if apiErrors.IsNotFound(err) {
+			w.Logger().Infof("Recreating AzVolumeAttachment(%s)", azVolumeAttachmentName)
+			azVolumeAttachment, err = c.azClient.DiskV1beta2().AzVolumeAttachments(c.config.ObjectNamespace).Create(ctx, desiredAzVolumeAttachment, metav1.CreateOptions{})
+			if err != nil {
+				w.Logger().Errorf(err, "failed to create AzVolumeAttachment (%s)", azVolumeAttachmentName)
+				return err
+			}
+		} else {
+			w.Logger().Errorf(err, "failed to get AzVolumeAttachment (%s)", azVolumeAttachmentName)
+			return err
+		}
+	} else if apiVersion, ok := azureutils.GetFromMap(azVolumeAttachment.Annotations, consts.APIVersion); !ok || apiVersion != azdiskv1beta2.APIVersion {
+		w.Logger().Infof("Found AzVolumeAttachment (%s) with older api version. Converting to apiVersion(%s)", azVolumeAttachmentName, azdiskv1beta2.APIVersion)
+
+		updateFunc := func(obj client.Object) error {
+			azva := obj.(*azdiskv1beta2.AzVolumeAttachment)
+
+			for k, v := range desiredAzVolumeAttachment.Labels {
+				azva.Labels = azureutils.AddToMap(azva.Labels, k, v)
+			}
+
+			// migrate ObjectMeta.Annotations to Status.Annotations, because older api version doesn't have status annotation.
+			// this may introduce some unnecessary ObjectMeta.Annotations into Status.Annotations, but it's safer than missing some.
+			for k, v := range azVolumeAttachment.Annotations {
+				azva.Status.Annotations = azureutils.AddToMap(azva.Status.Annotations, k, v)
+			}
+
+			// for now, we don't empty the meta annotations after migrating them to status annotation for safety.
+			// note that this will leave some remnant garbage entries in meta annotations
+
+			for k, v := range desiredAzVolumeAttachment.Annotations {
+				azva.Annotations = azureutils.AddToMap(azva.Annotations, k, v)
+			}
+			return nil
+		}
+		_, err := azureutils.UpdateCRIWithRetry(ctx, nil, c.cachedClient, c.azClient, azVolumeAttachment, updateFunc, consts.NormalUpdateMaxNetRetry, azureutils.UpdateAll)
+		if err != nil {
+			w.Logger().Errorf(err, "failed to update AzVolumeAttachment (%s)", azVolumeAttachmentName)
+			return err
+		}
+	}
+
+	return nil
+}

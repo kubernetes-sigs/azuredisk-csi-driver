@@ -21,17 +21,21 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2022-03-01/compute"
 	"github.com/golang/mock/gomock"
 	"github.com/pborman/uuid"
 	"github.com/stretchr/testify/require"
 	apiErrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/wait"
 	fakev1 "k8s.io/client-go/kubernetes/fake"
 	"k8s.io/klog/v2/klogr"
+	"sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1beta2"
 	azdiskv1beta2 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1beta2"
 	azdiskfakes "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned/fake"
+	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils/mockclient"
@@ -50,6 +54,7 @@ func NewTestAttachDetachController(controller *gomock.Controller, namespace stri
 		retryInfo:         newRetryInfo(),
 		SharedState:       controllerSharedState,
 		logger:            klogr.New(),
+		volumeInfos:       make(map[string]*volumeInfo),
 	}
 }
 
@@ -66,12 +71,54 @@ func mockClientsAndAttachmentProvisioner(controller *ReconcileAttachDetach) {
 			return attachResult
 		}).
 		MaxTimes(1)
+
 	controller.cloudDiskAttacher.(*mockattachmentprovisioner.MockCloudDiskAttachDetacher).EXPECT().
 		UnpublishVolume(gomock.Any(), testManagedDiskURI0, gomock.Any()).
 		DoAndReturn(func(ctx context.Context, volumeID, nodeID string) error {
 			return nil
 		}).
 		MaxTimes(1)
+
+	controller.cloudDiskAttacher.(*mockattachmentprovisioner.MockCloudDiskAttachDetacher).EXPECT().
+		GetNodeDataDisks(gomock.Any()).
+		DoAndReturn(func(nodeName types.NodeName) ([]compute.DataDisk, *string, error) {
+			var disk0 = compute.DataDisk{Name: &testPersistentVolume0.Name}
+			var disks = []compute.DataDisk{0: disk0}
+			return disks, nil, nil
+		}).AnyTimes()
+
+	controller.cloudDiskAttacher.(*mockattachmentprovisioner.MockCloudDiskAttachDetacher).EXPECT().
+		GetDiskLun(gomock.Any(), gomock.Any(), gomock.Any()).
+		DoAndReturn(func(diskName, diskURI string, nodeName types.NodeName) (int32, *string, error) {
+			return int32(1), nil, nil
+		}).AnyTimes()
+
+	controller.cloudDiskAttacher.(*mockattachmentprovisioner.MockCloudDiskAttachDetacher).EXPECT().
+		CheckDiskExists(gomock.Any(), getTestDiskURI(testPersistentVolume2Name)).
+		DoAndReturn(func(ctx context.Context, diskURI string) (*compute.Disk, error) {
+			return nil, nil
+		}).MaxTimes(1)
+
+	controller.cloudDiskAttacher.(*mockattachmentprovisioner.MockCloudDiskAttachDetacher).EXPECT().
+		CheckDiskExists(gomock.Any(), gomock.Any()).
+		DoAndReturn(func(ctx context.Context, diskURI string) (*compute.Disk, error) {
+			return &compute.Disk{
+				ID:                &testPersistentVolume0Name,
+				ManagedByExtended: &[]string{testNode0Name, testNode1Name},
+			}, nil
+		}).AnyTimes()
+
+	controller.cloudDiskAttacher.(*mockattachmentprovisioner.MockCloudDiskAttachDetacher).EXPECT().
+		GetNodeNameByProviderID(testNode0Name).
+		DoAndReturn(func(providerID string) (types.NodeName, error) {
+			return types.NodeName(testNode0Name), nil
+		}).AnyTimes()
+
+	controller.cloudDiskAttacher.(*mockattachmentprovisioner.MockCloudDiskAttachDetacher).EXPECT().
+		GetNodeNameByProviderID(testNode1Name).
+		DoAndReturn(func(providerID string) (types.NodeName, error) {
+			return types.NodeName(testNode1Name), nil
+		}).AnyTimes()
 }
 
 func TestAttachDetachReconcile(t *testing.T) {
@@ -329,6 +376,7 @@ func TestAttachDetachRecover(t *testing.T) {
 					mockCtl,
 					testNamespace,
 					&testVolumeAttachment,
+					&testNode1,
 					&testPersistentVolume0)
 
 				mockClientsAndAttachmentProvisioner(controller)
@@ -340,7 +388,48 @@ func TestAttachDetachRecover(t *testing.T) {
 
 				azVolumeAttachments, localErr := controller.azClient.DiskV1beta2().AzVolumeAttachments(testNamespace).List(context.TODO(), metav1.ListOptions{})
 				require.NoError(t, localErr)
-				require.Len(t, azVolumeAttachments.Items, 1)
+				require.Len(t, azVolumeAttachments.Items, 2)
+
+				azVolumeAttachment := azVolumeAttachments.Items[1]
+				require.NotNil(t, azVolumeAttachment.Status.Detail)
+				require.NotNil(t, azVolumeAttachment.Status.Detail.PublishContext)
+				require.Equal(t, azVolumeAttachment.Status.Detail.PublishContext[azureconstants.LUN], "1")
+				require.NotNil(t, azVolumeAttachment.Status.Detail.Role)
+				require.Equal(t, azVolumeAttachment.Status.Detail.Role, v1beta2.Role("Replica"))
+				require.NotNil(t, azVolumeAttachment.Status.State)
+				require.Equal(t, azVolumeAttachment.Status.State, v1beta2.AzVolumeAttachmentAttachmentState("Attached"))
+			},
+		},
+		{
+			description: "[Success] Should create AzVolumeAttachment instances with Replica role using Azure Disk CSI Driver.",
+			setupFunc: func(t *testing.T, mockCtl *gomock.Controller) *ReconcileAttachDetach {
+
+				controller := NewTestAttachDetachController(
+					mockCtl,
+					testNamespace,
+					&testVolumeAttachment,
+					&testNode1,
+					&testPersistentVolume0)
+
+				mockClientsAndAttachmentProvisioner(controller)
+
+				return controller
+			},
+			verifyFunc: func(t *testing.T, controller *ReconcileAttachDetach, err error) {
+				require.NoError(t, err)
+
+				azVolumeAttachments, localErr := controller.azClient.DiskV1beta2().AzVolumeAttachments(testNamespace).List(context.TODO(), metav1.ListOptions{})
+				require.NoError(t, localErr)
+				require.Len(t, azVolumeAttachments.Items, 2)
+
+				azVolumeAttachment := azVolumeAttachments.Items[1]
+				require.NotNil(t, azVolumeAttachment.Status.Detail)
+				require.NotNil(t, azVolumeAttachment.Status.Detail.PublishContext)
+				require.Equal(t, azVolumeAttachment.Status.Detail.PublishContext[azureconstants.LUN], "1")
+				require.NotNil(t, azVolumeAttachment.Status.Detail.Role)
+				require.Equal(t, azVolumeAttachment.Status.Detail.Role, v1beta2.Role("Replica"))
+				require.NotNil(t, azVolumeAttachment.Status.State)
+				require.Equal(t, azVolumeAttachment.Status.State, v1beta2.AzVolumeAttachmentAttachmentState("Attached"))
 			},
 		},
 		{
@@ -379,23 +468,22 @@ func TestAttachDetachRecover(t *testing.T) {
 
 				annotations = azVolumeAttachment.Status.Annotations
 				require.Equal(t, annotations["testKey"], "testValue")
-				require.Equal(t, annotations[consts.VolumeAttachmentKey], testVolumeAttachment.Name)
 
 				require.NotNil(t, azVolumeAttachment.Spec.VolumeContext)
 				require.Equal(t, azVolumeAttachment.Spec.VolumeContext["testKey"], "testValue")
 
 				require.NotNil(t, azVolumeAttachment.Status.Detail)
 				require.NotNil(t, azVolumeAttachment.Status.Detail.PublishContext)
-				require.Equal(t, azVolumeAttachment.Status.Detail.PublishContext["testKey"], "testValue")
+				require.Equal(t, azVolumeAttachment.Status.Detail.PublishContext[azureconstants.LUN], "1")
 			},
 		},
 		{
 			description: "[Success] Should update AzVolumeAttachment CRIs to right state",
 			setupFunc: func(t *testing.T, mockCtl *gomock.Controller) *ReconcileAttachDetach {
-				newAzVolumeAttachment0 := testPrimaryAzVolumeAttachment0.DeepCopy()
-				newAzVolumeAttachment0.Status.State = azdiskv1beta2.Attaching
-				newAzVolumeAttachment0.Status.Detail = &azdiskv1beta2.AzVolumeAttachmentStatusDetail{}
-				newAzVolumeAttachment0.Status.Error = &azdiskv1beta2.AzError{}
+				newAzVolumeAttachment2 := testPrimaryAzVolumeAttachment2.DeepCopy()
+				newAzVolumeAttachment2.Status.State = azdiskv1beta2.Attaching
+				newAzVolumeAttachment2.Status.Detail = &azdiskv1beta2.AzVolumeAttachmentStatusDetail{}
+				newAzVolumeAttachment2.Status.Error = &azdiskv1beta2.AzError{}
 
 				newAzVolumeAttachment1 := testPrimaryAzVolumeAttachment1.DeepCopy()
 				newAzVolumeAttachment1.Status.State = azdiskv1beta2.Detaching
@@ -403,7 +491,7 @@ func TestAttachDetachRecover(t *testing.T) {
 				controller := NewTestAttachDetachController(
 					mockCtl,
 					testNamespace,
-					newAzVolumeAttachment0,
+					newAzVolumeAttachment2,
 					newAzVolumeAttachment1)
 
 				mockClientsAndAttachmentProvisioner(controller)
@@ -413,7 +501,7 @@ func TestAttachDetachRecover(t *testing.T) {
 			verifyFunc: func(t *testing.T, controller *ReconcileAttachDetach, err error) {
 				require.NoError(t, err)
 
-				azVolumeAttachment, localErr := controller.azClient.DiskV1beta2().AzVolumeAttachments(testNamespace).Get(context.TODO(), testPrimaryAzVolumeAttachment0Name, metav1.GetOptions{})
+				azVolumeAttachment, localErr := controller.azClient.DiskV1beta2().AzVolumeAttachments(testNamespace).Get(context.TODO(), testPrimaryAzVolumeAttachment2Name, metav1.GetOptions{})
 				require.NoError(t, localErr)
 				require.Equal(t, azVolumeAttachment.Status.State, azdiskv1beta2.AttachmentPending)
 				require.Nil(t, azVolumeAttachment.Status.Detail)

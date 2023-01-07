@@ -19,10 +19,13 @@ package controller
 import (
 	"context"
 	"errors"
+	"fmt"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
 
+	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2022-03-01/compute"
 	"github.com/go-logr/logr"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -31,9 +34,8 @@ import (
 	apiErrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
-	utilfeature "k8s.io/apiserver/pkg/util/feature"
-	"k8s.io/kubernetes/pkg/features"
 	azdiskv1beta2 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1beta2"
+	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/provisioner"
@@ -53,11 +55,21 @@ import (
 type CloudDiskAttachDetacher interface {
 	PublishVolume(ctx context.Context, volumeID string, nodeID string, volumeContext map[string]string) provisioner.CloudAttachResult
 	UnpublishVolume(ctx context.Context, volumeID string, nodeID string) error
+	GetNodeDataDisks(nodeName types.NodeName) ([]compute.DataDisk, *string, error)
+	GetDiskLun(diskName, diskURI string, nodeName types.NodeName) (int32, *string, error)
+	CheckDiskExists(ctx context.Context, diskURI string) (*compute.Disk, error)
+	GetNodeNameByProviderID(providerID string) (types.NodeName, error)
 }
 
 type CrdDetacher interface {
 	UnpublishVolume(ctx context.Context, volumeID string, nodeID string, secrets map[string]string, mode consts.UnpublishMode) error
 	WaitForDetach(ctx context.Context, volumeID, nodeID string) error
+}
+
+type volumeInfo struct {
+	syncedAzVolumeAttachments map[string]bool
+	handle                    string
+	attributes                map[string]string
 }
 
 /*
@@ -73,6 +85,7 @@ type ReconcileAttachDetach struct {
 	cloudDiskAttacher CloudDiskAttachDetacher
 	stateLock         *sync.Map
 	retryInfo         *retryInfo
+	volumeInfos       map[string]*volumeInfo
 }
 
 var _ reconcile.Reconciler = &ReconcileAttachDetach{}
@@ -181,7 +194,7 @@ func (r *ReconcileAttachDetach) triggerAttach(ctx context.Context, azVolumeAttac
 	// update status block
 	updateFunc := func(obj client.Object) error {
 		azv := obj.(*azdiskv1beta2.AzVolumeAttachment)
-		// Update state to attaching, Initialize finalizer and add label to the object
+		// Update state to attaching
 		_, derr := updateState(azv, azdiskv1beta2.Attaching, normalUpdate)
 		return derr
 	}
@@ -493,33 +506,6 @@ func (r *ReconcileAttachDetach) detachVolume(ctx context.Context, volumeID, node
 	return r.cloudDiskAttacher.UnpublishVolume(ctx, volumeID, node)
 }
 
-func (r *ReconcileAttachDetach) Recover(ctx context.Context, recoveryID string) error {
-	var err error
-	ctx, w := workflow.New(ctx)
-	defer func() { w.Finish(err) }()
-
-	w.Logger().V(5).Info("Recovering AzVolumeAttachment CRIs...")
-	// try to recreate missing AzVolumeAttachment CRI
-	var syncedVolumeAttachments, volumesToSync map[string]bool
-
-	for i := 0; i < maxRetry; i++ {
-		if syncedVolumeAttachments, volumesToSync, err = r.recreateAzVolumeAttachment(ctx, syncedVolumeAttachments, volumesToSync); err == nil {
-			break
-		}
-		w.Logger().Error(err, "failed to recreate missing AzVolumeAttachment CRI")
-	}
-	// retrigger any aborted operation from possible previous controller crash
-	recovered := &sync.Map{}
-	for i := 0; i < maxRetry; i++ {
-		if err = r.recoverAzVolumeAttachment(ctx, recovered, recoveryID); err == nil {
-			break
-		}
-		w.Logger().Error(err, "failed to recover AzVolumeAttachment state")
-	}
-
-	return err
-}
-
 func updateRole(azVolumeAttachment *azdiskv1beta2.AzVolumeAttachment, role azdiskv1beta2.Role) *azdiskv1beta2.AzVolumeAttachment {
 	if azVolumeAttachment == nil {
 		return nil
@@ -587,154 +573,159 @@ func reportError(azVolumeAttachment *azdiskv1beta2.AzVolumeAttachment, state azd
 	return updateState(azVolumeAttachment, state, forceUpdate)
 }
 
-func (r *ReconcileAttachDetach) recreateAzVolumeAttachment(ctx context.Context, syncedVolumeAttachments map[string]bool, volumesToSync map[string]bool) (map[string]bool, map[string]bool, error) {
+func (r *ReconcileAttachDetach) recreateAzVolumeAttachmentWithPrimaryRole(ctx context.Context) error {
+	var err error
 	w, _ := workflow.GetWorkflowFromContext(ctx)
 	// Get all volumeAttachments
 	volumeAttachments, err := r.kubeClient.StorageV1().VolumeAttachments().List(ctx, metav1.ListOptions{})
 	if err != nil {
-		return syncedVolumeAttachments, volumesToSync, err
-	}
-
-	if syncedVolumeAttachments == nil {
-		syncedVolumeAttachments = map[string]bool{}
-	}
-	if volumesToSync == nil {
-		volumesToSync = map[string]bool{}
+		w.Logger().Error(err, "failed to get a list of VolumeAttachments")
+		return err
 	}
 
 	// Loop through volumeAttachments and create Primary AzVolumeAttachments in correspondence
 	for _, volumeAttachment := range volumeAttachments.Items {
-		// skip if sync has been completed volumeAttachment
-		if syncedVolumeAttachments[volumeAttachment.Name] {
-			continue
-		}
 		if volumeAttachment.Spec.Attacher == r.config.DriverName {
 			pvName := volumeAttachment.Spec.Source.PersistentVolumeName
 			if pvName == nil {
 				continue
 			}
-			// get PV and retrieve diskName
-			pv, err := r.kubeClient.CoreV1().PersistentVolumes().Get(ctx, *pvName, metav1.GetOptions{})
-			if err != nil {
-				w.Logger().Errorf(err, "failed to get PV (%s)", *pvName)
-				return syncedVolumeAttachments, volumesToSync, err
-			}
-
-			// if pv is migrated intree pv, convert it to csi pv for processing
-			// translate intree pv to csi pv to convert them into AzVolume resource
-			if utilfeature.DefaultFeatureGate.Enabled(features.CSIMigration) &&
-				utilfeature.DefaultFeatureGate.Enabled(features.CSIMigrationAzureDisk) &&
-				pv.Spec.AzureDisk != nil {
-				// translate intree pv to csi pv to convert them into AzVolume resource
-				if utilfeature.DefaultFeatureGate.Enabled(features.CSIMigration) &&
-					utilfeature.DefaultFeatureGate.Enabled(features.CSIMigrationAzureDisk) &&
-					pv.Spec.AzureDisk != nil {
-					if pv, err = r.translateInTreePVToCSI(pv); err != nil {
-						w.Logger().V(5).Errorf(err, "skipping azVolumeAttachment creation for volumeAttachment (%s)", volumeAttachment.Name)
-					}
-				}
-			}
-
-			if pv.Spec.CSI == nil || pv.Spec.CSI.Driver != r.config.DriverName {
-				continue
-			}
-			volumesToSync[pv.Spec.CSI.VolumeHandle] = true
-
-			diskName, err := azureutils.GetDiskName(pv.Spec.CSI.VolumeHandle)
-			if err != nil {
-				w.Logger().Errorf(err, "failed to extract disk name from volumehandle (%s)", pv.Spec.CSI.VolumeHandle)
-				delete(volumesToSync, pv.Spec.CSI.VolumeHandle)
-				continue
-			}
-			volumeName := strings.ToLower(diskName)
 			nodeName := volumeAttachment.Spec.NodeName
-			azVolumeAttachmentName := azureutils.GetAzVolumeAttachmentName(diskName, nodeName)
-			r.azVolumeAttachmentToVaMap.Store(azVolumeAttachmentName, volumeAttachment.Name)
-
-			desiredAzVolumeAttachment := &azdiskv1beta2.AzVolumeAttachment{
-				ObjectMeta: metav1.ObjectMeta{
-					Name: azVolumeAttachmentName,
-					Labels: map[string]string{
-						consts.NodeNameLabel:   nodeName,
-						consts.VolumeNameLabel: volumeName,
-					},
-					// if the volumeAttachment shows not yet attached, and VolumeAttachRequestAnnotation needs to be set from the controllerserver
-					// if the volumeAttachment shows attached but the actual volume isn't due to controller restart, VolumeAttachRequestAnnotation needs to be set by the noderserver during NodeStageVolume
-					Finalizers: []string{consts.AzVolumeAttachmentFinalizer},
-				},
-				Spec: azdiskv1beta2.AzVolumeAttachmentSpec{
-					VolumeName:    volumeName,
-					VolumeID:      pv.Spec.CSI.VolumeHandle,
-					NodeName:      nodeName,
-					RequestedRole: azdiskv1beta2.PrimaryRole,
-					VolumeContext: pv.Spec.CSI.VolumeAttributes,
-				},
+			volumeName := strings.ToLower(*pvName)
+			azVolumeAttachmentName := azureutils.GetAzVolumeAttachmentName(volumeName, nodeName)
+			if err = r.recreateAzVolumeAttachmentFromVolumeInfo(ctx, volumeAttachment.Name, azVolumeAttachmentName, volumeName, nodeName); err != nil {
+				w.Logger().Errorf(err, "failed to recreate primary AzVolumeAttachment (%s) from volumeInfo.", azVolumeAttachmentName)
+				// don't return err yet. continue to recreate others
 			}
-			azureutils.AnnotateAPIVersion(desiredAzVolumeAttachment)
-
-			statusUpdateRequired := true
-			// check if the CRI exists already
-			azVolumeAttachment, err := azureutils.GetAzVolumeAttachment(ctx, r.cachedClient, r.azClient, azVolumeAttachmentName, r.config.ObjectNamespace, false)
-			if err != nil {
-				if apiErrors.IsNotFound(err) {
-					w.Logger().Infof("Recreating AzVolumeAttachment(%s)", azVolumeAttachmentName)
-
-					azVolumeAttachment, err = r.azClient.DiskV1beta2().AzVolumeAttachments(r.config.ObjectNamespace).Create(ctx, desiredAzVolumeAttachment, metav1.CreateOptions{})
-					if err != nil {
-						w.Logger().Errorf(err, "failed to create AzVolumeAttachment (%s) for volume (%s) and node (%s): %v", azVolumeAttachmentName, *pvName, nodeName, err)
-						return syncedVolumeAttachments, volumesToSync, err
-					}
-				} else {
-					w.Logger().Errorf(err, "failed to get AzVolumeAttachment (%s): %v", azVolumeAttachmentName, err)
-					return syncedVolumeAttachments, volumesToSync, err
-				}
-			} else if apiVersion, ok := azureutils.GetFromMap(azVolumeAttachment.Annotations, consts.APIVersion); !ok || apiVersion != azdiskv1beta2.APIVersion {
-				w.Logger().Infof("Found AzVolumeAttachment (%s) with older api version. Converting to apiVersion(%s)", azVolumeAttachmentName, azdiskv1beta2.APIVersion)
-
-				for k, v := range desiredAzVolumeAttachment.Labels {
-					azVolumeAttachment.Labels = azureutils.AddToMap(azVolumeAttachment.Labels, k, v)
-				}
-
-				for k, v := range azVolumeAttachment.Annotations {
-					azVolumeAttachment.Status.Annotations = azureutils.AddToMap(azVolumeAttachment.Status.Annotations, k, v)
-				}
-
-				// for now, we don't empty the meta annotatinos after migrating them to status annotation for safety.
-				// note that this will leave some remnant garbage entries in meta annotations
-
-				for k, v := range desiredAzVolumeAttachment.Annotations {
-					azVolumeAttachment.Annotations = azureutils.AddToMap(azVolumeAttachment.Status.Annotations, k, v)
-				}
-
-				azVolumeAttachment, err = r.azClient.DiskV1beta2().AzVolumeAttachments(r.config.ObjectNamespace).Update(ctx, azVolumeAttachment, metav1.UpdateOptions{})
-				if err != nil {
-					w.Logger().Errorf(err, "failed to update AzVolumeAttachment (%s) for volume (%s) and node (%s): %v", azVolumeAttachmentName, *pvName, nodeName, err)
-					return syncedVolumeAttachments, volumesToSync, err
-				}
-			} else {
-				statusUpdateRequired = false
-			}
-
-			if statusUpdateRequired {
-				azVolumeAttachment.Status.Annotations = azureutils.AddToMap(azVolumeAttachment.Status.Annotations, consts.VolumeAttachmentKey, volumeAttachment.Name)
-
-				// update status
-				_, err = r.azClient.DiskV1beta2().AzVolumeAttachments(r.config.ObjectNamespace).UpdateStatus(ctx, azVolumeAttachment, metav1.UpdateOptions{})
-				if err != nil {
-					w.Logger().Errorf(err, "failed to update status of AzVolumeAttachment (%s) for volume (%s) and node (%s): %v", azVolumeAttachmentName, *pvName, nodeName, err)
-					return syncedVolumeAttachments, volumesToSync, err
-				}
-			}
-
-			syncedVolumeAttachments[volumeAttachment.Name] = true
 		}
 	}
-	return syncedVolumeAttachments, volumesToSync, nil
+	return err
+}
+
+// recreateAzVolumeAttachmentWithReplicaRole fetches attachment information from VM to properly recreate replica AzVolumeAttachments
+// In a normal case, all replica AzVolumeAttachments should already be detached and deleted on driver uninstall. So nothing needs to be recreated here.
+// But in case of any failed detachment on previous driver uninstall, this function is needed.
+func (r *ReconcileAttachDetach) recreateAzVolumeAttachmentWithReplicaRole(ctx context.Context) error {
+	var err error
+	w, _ := workflow.GetWorkflowFromContext(ctx)
+	nodes, err := r.kubeClient.CoreV1().Nodes().List(ctx, metav1.ListOptions{})
+	if err != nil {
+		w.Logger().Errorf(err, "failed to get list of nodes")
+		return err
+	}
+	for _, node := range nodes.Items {
+		nodeName := node.Name
+		// Get all attached disks from VM
+		disks, _, err := r.cloudDiskAttacher.GetNodeDataDisks(types.NodeName(nodeName))
+		if err != nil {
+			w.Logger().Errorf(err, "failed to get data disks for node (%s).", nodeName)
+			// don't return err yet. continue to other nodes
+			continue
+		}
+
+		for _, dataDisk := range disks {
+			volumeName := strings.ToLower(*dataDisk.Name)
+			azVolumeAttachmentName := azureutils.GetAzVolumeAttachmentName(volumeName, nodeName)
+			if err = r.recreateAzVolumeAttachmentFromVolumeInfo(ctx, "", azVolumeAttachmentName, volumeName, nodeName); err != nil {
+				w.Logger().Errorf(err, "failed to recreate replica AzVolumeAttachment (%s) from volumeInfo.", azVolumeAttachmentName)
+				// don't return err yet. continue to recreate others
+			}
+		}
+	}
+
+	return err
+}
+
+func (r *ReconcileAttachDetach) recreateAzVolumeAttachmentFromVolumeInfo(ctx context.Context, volumeAttachmentName, azVolumeAttachmentName, volumeName, nodeName string) error {
+	w, _ := workflow.GetWorkflowFromContext(ctx)
+	volumeHandle, volumeContext, volumeInfo, hasSynced, err := r.loadOrStoreVolumeInfo(ctx, volumeName, azVolumeAttachmentName)
+	if hasSynced {
+		// this azVolumeAttachment has already been recreated
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	attached, err := r.isAttached(ctx, volumeHandle, nodeName)
+	if !attached && err == nil {
+		w.Logger().Infof("disk (%s) is not attached to node (%s). needn't create azVolumeAttachment for it.", volumeHandle, nodeName)
+		return nil
+	} else if err != nil {
+		// If there is an error checking the attachment status, we can still recreate the AzVolumeAttachment based on the previous information we got.
+		// This way we don't miss any AzVolumeAttachment
+		w.Logger().Infof("failed to check if disk (%s) is attached to node (%s) with error (%v).", volumeHandle, nodeName, err)
+	}
+	role := azdiskv1beta2.ReplicaRole
+	if volumeAttachmentName != "" {
+		r.azVolumeAttachmentToVaMap.Store(azVolumeAttachmentName, volumeAttachmentName)
+		// Set the role to Primary since it has a volumeAttachmentName
+		role = azdiskv1beta2.PrimaryRole
+	}
+
+	desiredAzVolumeAttachment := r.generateDesiredAzVolumeAttachment(azVolumeAttachmentName, nodeName, volumeName, volumeHandle, role, volumeContext)
+	if err = r.recreateAzVolumeAttachment(ctx, azVolumeAttachmentName, desiredAzVolumeAttachment); err != nil {
+		w.Logger().Errorf(err, "failed to recreate AzVolumeAttachment (%s)", azVolumeAttachmentName)
+		return err
+	}
+	volumeInfo.syncedAzVolumeAttachments[azVolumeAttachmentName] = true
+	return nil
+}
+
+func (r *ReconcileAttachDetach) loadOrStoreVolumeInfo(ctx context.Context, volumeName, azVolumeAttachmentName string) (string, map[string]string, *volumeInfo, bool, error) {
+	w, _ := workflow.GetWorkflowFromContext(ctx)
+	var err error
+	var volumeHandle string
+	var volumeContext map[string]string
+	hasSynced := false
+	vInfo, ok := r.volumeInfos[volumeName]
+	if ok {
+		volumeHandle = vInfo.handle
+		volumeContext = vInfo.attributes
+		if synced, hasAzVolumeAttachment := vInfo.syncedAzVolumeAttachments[azVolumeAttachmentName]; hasAzVolumeAttachment && synced {
+			hasSynced = true
+			return volumeHandle, volumeContext, vInfo, hasSynced, nil
+		}
+	} else {
+		w.Logger().Infof("getting volumeHandle and volumeContext from PersistentVolume for volume (%s)", volumeName)
+		volumeHandle, volumeContext, err = r.getVolumeInfoFromPV(ctx, volumeName)
+		if err != nil {
+			w.Logger().Errorf(err, "failed to find volume info from PersistentVolume for volume (%s)", volumeName)
+			return "", nil, vInfo, hasSynced, err
+		}
+		vInfo = newVolumeInfo(volumeHandle, volumeContext)
+		r.volumeInfos[volumeName] = vInfo
+	}
+	return volumeHandle, volumeContext, vInfo, hasSynced, nil
+}
+
+func newVolumeInfo(volumeHandle string, volumeContext map[string]string) *volumeInfo {
+	var vInfo volumeInfo
+	vInfo.handle = volumeHandle
+	vInfo.attributes = volumeContext
+	vInfo.syncedAzVolumeAttachments = make(map[string]bool)
+	return &vInfo
+}
+
+func (r *ReconcileAttachDetach) recreateAzVolumeAttachments(ctx context.Context) error {
+	var err error
+	w, _ := workflow.GetWorkflowFromContext(ctx)
+
+	// try to recreate missing AzVolumeAttachment CRI with Primary role from VolumeAttachment
+	if err = r.recreateAzVolumeAttachmentWithPrimaryRole(ctx); err != nil {
+		w.Logger().Error(err, "failed to recreate missing AzVolumeAttachment CRI with primary role from VolumeAttachments.")
+	}
+
+	// try to recreate replica AzVolumeAttachment that had failed to detach for any reason during driver uninstall
+	if err = r.recreateAzVolumeAttachmentWithReplicaRole(ctx); err != nil {
+		w.Logger().Error(err, "failed to recreate missing AzVolumeAttachment CRIs with replica role from VMs.")
+	}
+
+	return err
 }
 
 func (r *ReconcileAttachDetach) recoverAzVolumeAttachment(ctx context.Context, recoveredAzVolumeAttachments *sync.Map, recoveryID string) error {
 	w, _ := workflow.GetWorkflowFromContext(ctx)
-
+	w.Logger().Info("starting to recover AzVolumeAttachments")
 	// list all AzVolumeAttachment
 	azVolumeAttachments, err := r.azClient.DiskV1beta2().AzVolumeAttachments(r.config.ObjectNamespace).List(ctx, metav1.ListOptions{})
 	if err != nil {
@@ -753,52 +744,71 @@ func (r *ReconcileAttachDetach) recoverAzVolumeAttachment(ctx context.Context, r
 		}
 
 		wg.Add(1)
-		go func(azv azdiskv1beta2.AzVolumeAttachment, azvMap *sync.Map) {
+		go func(azva azdiskv1beta2.AzVolumeAttachment, azvaMap *sync.Map) {
 			defer wg.Done()
+			var publishCtx map[string]string
+			if lun, _, err := r.cloudDiskAttacher.GetDiskLun(azva.Spec.VolumeName, azva.Spec.VolumeID, types.NodeName(azva.Spec.NodeName)); err == nil {
+				publishCtx = map[string]string{azureconstants.LUN: strconv.Itoa(int(lun))}
+			}
 			var targetState azdiskv1beta2.AzVolumeAttachmentAttachmentState
 			updateMode := azureutils.UpdateCRIStatus
-			if azv.Spec.RequestedRole == azdiskv1beta2.ReplicaRole {
-				updateMode = azureutils.UpdateAll
-			}
 			updateFunc := func(obj client.Object) error {
 				var err error
-				azv := obj.(*azdiskv1beta2.AzVolumeAttachment)
-				if azv.Spec.RequestedRole == azdiskv1beta2.ReplicaRole {
-					// conversion logic from v1beta1 to v1beta2 for replicas come here
-					azv.Status.Annotations = azv.ObjectMeta.Annotations
-					azv.ObjectMeta.Annotations = map[string]string{consts.VolumeAttachRequestAnnotation: "CRI recovery"}
+				azva := obj.(*azdiskv1beta2.AzVolumeAttachment)
+				if azva.Status.Detail == nil {
+					azva.Status.Detail = &azdiskv1beta2.AzVolumeAttachmentStatusDetail{}
 				}
+				azva.Status.Detail.Role = azva.Spec.RequestedRole
+				azva.Status.Detail.PublishContext = publishCtx
+
 				// add a recover annotation to the CRI so that reconciliation can be triggered for the CRI even if CRI's current state == target state
-				azv.Status.Annotations = azureutils.AddToMap(azv.Status.Annotations, consts.RecoverAnnotation, recoveryID)
-				if azv.Status.State != targetState {
-					_, err = updateState(azv, targetState, forceUpdate)
+				azva.Status.Annotations = azureutils.AddToMap(azva.Status.Annotations, consts.RecoverAnnotation, recoveryID)
+				if azva.Status.State != targetState {
+					_, err = updateState(azva, targetState, forceUpdate)
 				}
 				return err
 			}
-			switch azv.Status.State {
-			case azdiskv1beta2.Attaching:
-				// reset state to Pending so Attach operation can be redone
-				targetState = azdiskv1beta2.AttachmentPending
-				updateFunc = azureutils.AppendToUpdateCRIFunc(updateFunc, func(obj client.Object) error {
-					azv := obj.(*azdiskv1beta2.AzVolumeAttachment)
-					azv.Status.Detail = nil
-					azv.Status.Error = nil
-					return nil
-				})
-			case azdiskv1beta2.Detaching:
-				// reset state to Attached so Detach operation can be redone
+
+			requireDelete := false
+			if attached, err := r.isAttached(ctx, azva.Spec.VolumeID, azva.Spec.NodeName); attached && err == nil {
 				targetState = azdiskv1beta2.Attached
-			default:
-				targetState = azv.Status.State
+			} else if !attached && err == nil {
+				// disk is not attached. Delete the azVolumeAttachment
+				w.Logger().V(5).Infof("need to delete the AzVolumeAttachment (%s)", azva.Name)
+				requireDelete = true
+			} else {
+				switch azva.Status.State {
+				case azdiskv1beta2.Attaching:
+					// reset state to Pending so Attach operation can be redone
+					targetState = azdiskv1beta2.AttachmentPending
+					updateFunc = azureutils.AppendToUpdateCRIFunc(updateFunc, func(obj client.Object) error {
+						azv := obj.(*azdiskv1beta2.AzVolumeAttachment)
+						azv.Status.Detail = nil
+						azv.Status.Error = nil
+						return nil
+					})
+				case azdiskv1beta2.Detaching:
+					// reset state to Attached so Detach operation can be redone
+					targetState = azdiskv1beta2.Attached
+				default:
+					targetState = azva.Status.State
+				}
 			}
 
-			if _, err := azureutils.UpdateCRIWithRetry(ctx, nil, r.cachedClient, r.azClient, &azv, updateFunc, consts.ForcedUpdateMaxNetRetry, updateMode); err != nil {
-				w.Logger().Errorf(err, "failed to update AzVolumeAttachment (%s) for recovery", azv.Name)
+			if requireDelete {
+				if err := r.cachedClient.Delete(ctx, &azva); err != nil {
+					w.Logger().Errorf(err, "failed to delete the AzVolumeAttachment (%s)", azva.Name)
+					return
+				}
 			} else {
-				// if update succeeded, add the CRI to the recoveryComplete list
-				azvMap.Store(azv.Name, struct{}{})
-				atomic.AddInt32(&numRecovered, 1)
+				if _, err := azureutils.UpdateCRIWithRetry(ctx, nil, r.cachedClient, r.azClient, &azva, updateFunc, consts.ForcedUpdateMaxNetRetry, updateMode); err != nil {
+					w.Logger().Errorf(err, "failed to update AzVolumeAttachment (%s) for recovery", azva.Name)
+					return
+				}
 			}
+			// if recover succeeded, add the CRI to the recoveryComplete list
+			azvaMap.Store(azva.Name, struct{}{})
+			atomic.AddInt32(&numRecovered, 1)
 		}(azVolumeAttachment, recoveredAzVolumeAttachments)
 	}
 	wg.Wait()
@@ -810,6 +820,63 @@ func (r *ReconcileAttachDetach) recoverAzVolumeAttachment(ctx context.Context, r
 	return nil
 }
 
+func (r *ReconcileAttachDetach) isAttached(ctx context.Context, volumeHandle, nodeName string) (bool, error) {
+	w, _ := workflow.GetWorkflowFromContext(ctx)
+	disk, err := r.cloudDiskAttacher.CheckDiskExists(ctx, volumeHandle)
+	if disk == nil && err == nil {
+		// there is possibility that disk is nil when it is throttled
+		// don't check disk state when GetDisk is throttled
+		// The rate limit of Get Disk call is 15000 times per 3 mins. We shouldn't get throttled often.
+		return false, fmt.Errorf("getting disk is throttled. %s", azureconstants.RateLimited)
+	}
+	if err != nil {
+		w.Logger().Errorf(err, "Volume (%s) not found", volumeHandle)
+		return false, err
+	}
+	if disk != nil {
+		// ManagedByExtended is the source of truth to check if the disk is attached to the node
+		// Description of disk managedByExtended can be found here: https://learn.microsoft.com/en-us/rest/api/compute/disks/get?tabs=HTTP#disk
+		for _, managedByNodeID := range *disk.ManagedByExtended {
+			// Get the node name from the node provider ID.
+			// The node name is not necessarily a substring of the node provider ID, so we need to use a helper function.
+			name, err := r.cloudDiskAttacher.GetNodeNameByProviderID(managedByNodeID)
+			if err != nil {
+				w.Logger().Errorf(err, "Failed to get node name by node ID (%s)", managedByNodeID)
+				continue
+			}
+			if strings.EqualFold(nodeName, string(name)) {
+				w.Logger().V(5).Infof("disk(%s) is attached to node(%s)", volumeHandle, nodeName)
+				return true, nil
+			}
+		}
+	}
+
+	return false, nil
+}
+
+func (r *ReconcileAttachDetach) Recover(ctx context.Context, recoveryID string) error {
+	var err error
+	ctx, w := workflow.New(ctx)
+	defer func() { w.Finish(err) }()
+
+	w.Logger().V(5).Info("Recovering AzVolumeAttachment CRIs...")
+
+	if err = r.recreateAzVolumeAttachments(ctx); err != nil {
+		w.Logger().Error(err, "failed to recreate missing AzVolumeAttachment CRI")
+	}
+
+	// retrigger any aborted operation from possible previous controller crash
+	recovered := &sync.Map{}
+	for i := 0; i < maxRetry; i++ {
+		if err = r.recoverAzVolumeAttachment(ctx, recovered, recoveryID); err == nil {
+			break
+		}
+		w.Logger().Errorf(err, "failed to recover AzVolumeAttachment with retry number (%d)", i)
+	}
+
+	return err
+}
+
 func NewAttachDetachController(mgr manager.Manager, cloudDiskAttacher CloudDiskAttachDetacher, crdDetacher CrdDetacher, controllerSharedState *SharedState) (*ReconcileAttachDetach, error) {
 	logger := mgr.GetLogger().WithValues("controller", "azvolumeattachment")
 	reconciler := ReconcileAttachDetach{
@@ -819,6 +886,7 @@ func NewAttachDetachController(mgr manager.Manager, cloudDiskAttacher CloudDiskA
 		retryInfo:         newRetryInfo(),
 		SharedState:       controllerSharedState,
 		logger:            logger,
+		volumeInfos:       make(map[string]*volumeInfo),
 	}
 
 	c, err := controller.New("azvolumeattachment-controller", mgr, controller.Options{

@@ -164,6 +164,7 @@ func (r *ReconcilePod) Recover(ctx context.Context) error {
 			w.Logger().V(5).Infof("failed to add necessary components for pod (%s)", podKey)
 			continue
 		}
+		// For cases like: upgrading driver V1 to V2, createReplicas() is needed here since V1 doesn't have any replica attachment.
 		if err := r.createReplicas(ctx, podKey); err != nil {
 			w.Logger().V(5).Infof("failed to create replica AzVolumeAttachments for pod (%s)", podKey)
 		}

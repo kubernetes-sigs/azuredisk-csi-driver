@@ -22,7 +22,9 @@ package mockattachmentprovisioner
 
 import (
 	context "context"
+	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2022-03-01/compute"
 	gomock "github.com/golang/mock/gomock"
+	"k8s.io/apimachinery/pkg/types"
 	reflect "reflect"
 	azureconstants "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 	provisioner "sigs.k8s.io/azuredisk-csi-driver/pkg/provisioner"
@@ -77,6 +79,68 @@ func (m *MockCloudDiskAttachDetacher) UnpublishVolume(ctx context.Context, volum
 func (mr *MockCloudDiskAttachDetacherMockRecorder) UnpublishVolume(ctx, volumeID, nodeID interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UnpublishVolume", reflect.TypeOf((*MockCloudDiskAttachDetacher)(nil).UnpublishVolume), ctx, volumeID, nodeID)
+}
+
+// GetNodeDataDisks mocks base method
+func (m *MockCloudDiskAttachDetacher) GetNodeDataDisks(nodeName types.NodeName) ([]compute.DataDisk, *string, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetNodeDataDisks", nodeName)
+	ret0, _ := ret[0].([]compute.DataDisk)
+	ret1, _ := ret[1].(*string)
+	ret2, _ := ret[2].(error)
+	return ret0, ret1, ret2
+}
+
+// GetNodeDataDisks indicates an expected call of GetNodeDataDisks
+func (mr *MockCloudDiskAttachDetacherMockRecorder) GetNodeDataDisks(nodeName interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetNodeDataDisks", reflect.TypeOf((*MockCloudDiskAttachDetacher)(nil).GetNodeDataDisks), nodeName)
+}
+
+// GetDiskLun mocks base method
+func (m *MockCloudDiskAttachDetacher) GetDiskLun(diskName, diskURI string, nodeName types.NodeName) (int32, *string, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetDiskLun", diskName, diskURI, nodeName)
+	ret0, _ := ret[0].(int32)
+	ret1, _ := ret[1].(*string)
+	ret2, _ := ret[2].(error)
+	return ret0, ret1, ret2
+}
+
+// GetDiskLun indicates an expected call of GetDiskLun
+func (mr *MockCloudDiskAttachDetacherMockRecorder) GetDiskLun(diskName, diskURI, nodeName interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetDiskLun", reflect.TypeOf((*MockCloudDiskAttachDetacher)(nil).GetDiskLun), diskName, diskURI, nodeName)
+}
+
+// CheckDiskExists mocks base method
+func (m *MockCloudDiskAttachDetacher) CheckDiskExists(ctx context.Context, diskURI string) (*compute.Disk, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "CheckDiskExists", ctx, diskURI)
+	ret0, _ := ret[0].(*compute.Disk)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// CheckDiskExists indicates an expected call of CheckDiskExists
+func (mr *MockCloudDiskAttachDetacherMockRecorder) CheckDiskExists(ctx, diskURI interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CheckDiskExists", reflect.TypeOf((*MockCloudDiskAttachDetacher)(nil).CheckDiskExists), ctx, diskURI)
+}
+
+// GetNodeNameByProviderID mocks base method
+func (m *MockCloudDiskAttachDetacher) GetNodeNameByProviderID(providerID string) (types.NodeName, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetNodeNameByProviderID", providerID)
+	ret0, _ := ret[0].(types.NodeName)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// CheckDiskExists indicates an expected call of GetNodeNameByProviderID
+func (mr *MockCloudDiskAttachDetacherMockRecorder) GetNodeNameByProviderID(providerID interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetNodeNameByProviderID", reflect.TypeOf((*MockCloudDiskAttachDetacher)(nil).GetNodeNameByProviderID), providerID)
 }
 
 // MockCrdDetacher is a mock of CrdDetacher interface

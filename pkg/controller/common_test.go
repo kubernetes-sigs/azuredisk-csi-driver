@@ -166,6 +166,7 @@ var (
 
 	testPrimaryAzVolumeAttachment0Name = azureutils.GetAzVolumeAttachmentName(testPersistentVolume0Name, testNode0Name)
 	testPrimaryAzVolumeAttachment1Name = azureutils.GetAzVolumeAttachmentName(testPersistentVolume1Name, testNode0Name)
+	testPrimaryAzVolumeAttachment2Name = azureutils.GetAzVolumeAttachmentName(testPersistentVolume2Name, testNode2Name)
 
 	testPrimaryAzVolumeAttachment0 = createTestAzVolumeAttachment(testPersistentVolume0Name, testNode0Name, azdiskv1beta2.PrimaryRole)
 
@@ -174,6 +175,8 @@ var (
 	testPrimaryAzVolumeAttachment1 = createTestAzVolumeAttachment(testPersistentVolume1Name, testNode0Name, azdiskv1beta2.PrimaryRole)
 
 	testPrimaryAzVolumeAttachment1Request = createReconcileRequest(testNamespace, testPrimaryAzVolumeAttachment1Name)
+
+	testPrimaryAzVolumeAttachment2 = createTestAzVolumeAttachment(testPersistentVolume2Name, testNode2Name, azdiskv1beta2.PrimaryRole)
 
 	testReplicaAzVolumeAttachmentName = azureutils.GetAzVolumeAttachmentName(testPersistentVolume0Name, testNode1Name)
 
