@@ -38,10 +38,6 @@ V2: Preview
 Please refer to [`disk.csi.azure.com` driver parameters](./docs/driver-parameters.md)
 > storage class `disk.csi.azure.com` parameters are compatible with built-in [azuredisk](https://kubernetes.io/docs/concepts/storage/volumes/#azuredisk) plugin
 
-### Set up CSI driver on AKS cluster (only for AKS users)
-
-follow guide [here](./docs/install-driver-on-aks.md)
-
 ### Prerequisite
 
 - The driver depends on [cloud provider config file](https://github.com/kubernetes/cloud-provider-azure/blob/master/docs/cloud-provider-config.md) (here is [config example](./deploy/example/azure.json)), config file path on different platforms:
@@ -56,6 +52,7 @@ follow guide [here](./docs/install-driver-on-aks.md)
 ### Install driver on a Kubernetes cluster
  - install by [helm charts](./charts)
  - install by [kubectl](./docs/install-azuredisk-csi-driver.md)
+ - install open source csi driver on AKS, follow guide [here](./docs/install-driver-on-aks.md)
  - install managed csi driver on following platforms:
    - [AKS](https://learn.microsoft.com/en-us/azure/aks/csi-storage-drivers)
    - [Azure RedHat OpenShift](https://docs.openshift.com/container-platform/4.11/storage/container_storage_interface/persistent-storage-csi-azure.html)
