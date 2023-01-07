@@ -25,7 +25,6 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	clientset "k8s.io/client-go/kubernetes"
 	"k8s.io/kubernetes/test/e2e/framework"
-	e2elog "k8s.io/kubernetes/test/e2e/framework/log"
 )
 
 type TestStorageClass struct {
@@ -52,7 +51,7 @@ func (t *TestStorageClass) Create() storagev1.StorageClass {
 }
 
 func (t *TestStorageClass) Cleanup() {
-	e2elog.Logf("deleting StorageClass %s", t.StorageClass.Name)
+	framework.Logf("deleting StorageClass %s", t.StorageClass.Name)
 	err := t.Client.StorageV1().StorageClasses().Delete(context.TODO(), t.StorageClass.Name, metav1.DeleteOptions{})
 	framework.ExpectNoError(err)
 }

@@ -26,7 +26,6 @@ import (
 	"k8s.io/apimachinery/pkg/util/wait"
 	clientset "k8s.io/client-go/kubernetes"
 	"k8s.io/kubernetes/test/e2e/framework"
-	e2elog "k8s.io/kubernetes/test/e2e/framework/log"
 	azdiskv1beta2 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1beta2"
 	azdisk "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned"
 	"sigs.k8s.io/azuredisk-csi-driver/test/e2e/driver"
@@ -118,13 +117,13 @@ func (t *AzDiskSchedulerExtenderPodSchedulingOnFailoverMultiplePV) Run(client cl
 		return allAttached, nil
 	})
 	if len(unattachedAttachments) > 0 {
-		e2elog.Logf("found %d azvolumeattachments not attached:", len(unattachedAttachments))
+		framework.Logf("found %d azvolumeattachments not attached:", len(unattachedAttachments))
 		for _, podAttachment := range unattachedAttachments {
 			switch podAttachment.Status.State {
 			case azdiskv1beta2.AttachmentFailed:
-				e2elog.Logf("azvolumeattachment: %s, err: %s", podAttachment.Name, podAttachment.Status.Error.Message)
+				framework.Logf("azvolumeattachment: %s, err: %s", podAttachment.Name, podAttachment.Status.Error.Message)
 			default:
-				e2elog.Logf("expected AzVolumeAttachment (%s) to be in Attached state but instead got %s", podAttachment.Name, podAttachment.Status.State)
+				framework.Logf("expected AzVolumeAttachment (%s) to be in Attached state but instead got %s", podAttachment.Name, podAttachment.Status.State)
 			}
 		}
 		ginkgo.Fail("failed due to replicas failing to attach in time.")

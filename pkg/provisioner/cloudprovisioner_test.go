@@ -26,6 +26,7 @@ import (
 	"time"
 
 	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2022-03-01/compute"
+	"github.com/Azure/go-autorest/autorest"
 	"github.com/Azure/go-autorest/autorest/azure"
 	"github.com/Azure/go-autorest/autorest/date"
 	autorestmocks "github.com/Azure/go-autorest/autorest/mocks"
@@ -169,6 +170,7 @@ var (
 	}
 
 	testVMName = "test-vm"
+	testVMID   = fmt.Sprint(virtualMachineURIFormat, testSubscription, testResourceGroup, "deadbeef-eded-eded-eded-0123456789abcd")
 	testVMURI  = fmt.Sprint(virtualMachineURIFormat, testSubscription, testResourceGroup, testVMName)
 	testVM     = compute.VirtualMachine{
 		Name: &testVMName,
@@ -265,6 +267,72 @@ func mockInvalidSnapshots(provisioner *CloudProvisioner) {
 	provisioner.GetCloud().SnapshotsClient.(*mocksnapshotclient.MockInterface).EXPECT().
 		Get(gomock.Any(), testSubscription, testResourceGroup, invalidSnapshotWithEmptyPropertiesName).
 		Return(invalidSnapshotWithEmptyProperties, nil).
+		AnyTimes()
+}
+
+func mockUpdateVM(provisioner *CloudProvisioner) {
+	provisioner.GetCloud().VirtualMachinesClient.(*mockvmclient.MockInterface).EXPECT().
+		Get(gomock.Any(), testResourceGroup, testVMName, gomock.Any()).
+		Return(testVM, nil).
+		AnyTimes()
+	provisioner.GetCloud().VirtualMachinesClient.(*mockvmclient.MockInterface).EXPECT().
+		Update(gomock.Any(), testResourceGroup, testVMName, gomock.Any(), gomock.Any()).
+		DoAndReturn(func(ctx context.Context, resourceGroupName string, nodeName string, parameters compute.VirtualMachineUpdate, source string) (*compute.VirtualMachine, *retry.Error) {
+			vm := &compute.VirtualMachine{
+				Name:                     &nodeName,
+				Plan:                     parameters.Plan,
+				VirtualMachineProperties: parameters.VirtualMachineProperties,
+				Identity:                 parameters.Identity,
+				Zones:                    parameters.Zones,
+				Tags:                     parameters.Tags,
+				ID:                       &testVMID,
+			}
+
+			return vm, nil
+		}).
+		AnyTimes()
+	provisioner.GetCloud().VirtualMachinesClient.(*mockvmclient.MockInterface).EXPECT().
+		UpdateAsync(gomock.Any(), testResourceGroup, testVMName, gomock.Any(), gomock.Any()).
+		DoAndReturn(func(ctx context.Context, resourceGroup, nodeName string, parameters compute.VirtualMachineUpdate, source string) (*azure.Future, *retry.Error) {
+			vm := &compute.VirtualMachine{
+				Name:                     &nodeName,
+				Plan:                     parameters.Plan,
+				VirtualMachineProperties: parameters.VirtualMachineProperties,
+				Identity:                 parameters.Identity,
+				Zones:                    parameters.Zones,
+				Tags:                     parameters.Tags,
+				ID:                       &testVMID,
+			}
+			c, err := json.Marshal(vm)
+			if err != nil {
+				return nil, retry.NewError(false, err)
+			}
+
+			r := autorestmocks.NewResponseWithContent(string(c))
+			r.Request.Method = http.MethodPut
+
+			f, err := azure.NewFutureFromResponse(r)
+			if err != nil {
+				return nil, retry.NewError(false, err)
+			}
+
+			return &f, nil
+		}).
+		AnyTimes()
+	provisioner.GetCloud().VirtualMachinesClient.(*mockvmclient.MockInterface).EXPECT().
+		WaitForUpdateResult(gomock.Any(), gomock.Any(), testResourceGroup, gomock.Any()).
+		DoAndReturn(func(ctx context.Context, future *azure.Future, resourceGroupName, source string) (*compute.VirtualMachine, *retry.Error) {
+			result := &compute.VirtualMachine{}
+			resp, _ := future.GetResult(autorestmocks.NewSender())
+			defer resp.Body.Close()
+			err := autorest.Respond(
+				resp,
+				azure.WithErrorUnlessStatusCode(http.StatusOK, http.StatusCreated),
+				autorest.ByUnmarshallingJSON(&result),
+				autorest.ByClosing())
+			result.Response = autorest.Response{Response: resp}
+			return result, retry.GetError(resp, err)
+		}).
 		AnyTimes()
 }
 
@@ -707,46 +775,7 @@ func TestPublishVolume(t *testing.T) {
 
 	mockExistingDisk(provisioner)
 	mockMissingDisk(provisioner)
-
-	provisioner.GetCloud().VirtualMachinesClient.(*mockvmclient.MockInterface).EXPECT().
-		Get(gomock.Any(), testResourceGroup, testVMName, gomock.Any()).
-		Return(testVM, nil).
-		AnyTimes()
-	provisioner.GetCloud().VirtualMachinesClient.(*mockvmclient.MockInterface).EXPECT().
-		Update(gomock.Any(), testResourceGroup, testVMName, gomock.Any(), gomock.Any()).
-		Return(nil).
-		AnyTimes()
-	provisioner.GetCloud().VirtualMachinesClient.(*mockvmclient.MockInterface).EXPECT().
-		UpdateAsync(gomock.Any(), testResourceGroup, testVMName, gomock.Any(), gomock.Any()).
-		DoAndReturn(func(ctx context.Context, resourceGroup, nodeName string, parameters compute.VirtualMachineUpdate, source string) (*azure.Future, *retry.Error) {
-			vm := &compute.VirtualMachine{
-				Name:                     &nodeName,
-				Plan:                     parameters.Plan,
-				VirtualMachineProperties: parameters.VirtualMachineProperties,
-				Identity:                 parameters.Identity,
-				Zones:                    parameters.Zones,
-				Tags:                     parameters.Tags,
-			}
-			c, err := json.Marshal(vm)
-			if err != nil {
-				return nil, retry.NewError(false, err)
-			}
-
-			r := autorestmocks.NewResponseWithContent(string(c))
-			r.Request.Method = http.MethodPut
-
-			f, err := azure.NewFutureFromResponse(r)
-			if err != nil {
-				return nil, retry.NewError(false, err)
-			}
-
-			return &f, nil
-		}).
-		AnyTimes()
-	provisioner.GetCloud().VirtualMachinesClient.(*mockvmclient.MockInterface).EXPECT().
-		WaitForUpdateResult(gomock.Any(), gomock.Any(), testResourceGroup, gomock.Any()).
-		Return(nil).
-		AnyTimes()
+	mockUpdateVM(provisioner)
 
 	provisioner.GetCloud().VirtualMachinesClient.(*mockvmclient.MockInterface).EXPECT().
 		Get(gomock.Any(), testResourceGroup, missingVMName, gomock.Any()).
@@ -801,6 +830,7 @@ func TestUnpublishVolume(t *testing.T) {
 
 	mockExistingDisk(provisioner)
 	mockMissingDisk(provisioner)
+	mockUpdateVM(provisioner)
 
 	lun := int32(1)
 	attachedDisks := []compute.DataDisk{
@@ -816,18 +846,6 @@ func TestUnpublishVolume(t *testing.T) {
 	provisioner.GetCloud().VirtualMachinesClient.(*mockvmclient.MockInterface).EXPECT().
 		Get(gomock.Any(), testResourceGroup, testVMName, gomock.Any()).
 		Return(testVMWithAttachedDisk, nil).
-		AnyTimes()
-	provisioner.GetCloud().VirtualMachinesClient.(*mockvmclient.MockInterface).EXPECT().
-		Update(gomock.Any(), testResourceGroup, testVMName, gomock.Any(), gomock.Any()).
-		Return(nil).
-		AnyTimes()
-	provisioner.GetCloud().VirtualMachinesClient.(*mockvmclient.MockInterface).EXPECT().
-		UpdateAsync(gomock.Any(), testResourceGroup, testVMName, gomock.Any(), gomock.Any()).
-		Return(nil, nil).
-		AnyTimes()
-	provisioner.GetCloud().VirtualMachinesClient.(*mockvmclient.MockInterface).EXPECT().
-		WaitForUpdateResult(gomock.Any(), gomock.Any(), testResourceGroup, gomock.Any()).
-		Return(nil).
 		AnyTimes()
 
 	provisioner.GetCloud().VirtualMachinesClient.(*mockvmclient.MockInterface).EXPECT().

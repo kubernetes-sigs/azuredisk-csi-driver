@@ -1852,8 +1852,8 @@ func TestUpdateCRIWithRetry(t *testing.T) {
 
 				cachedObj := originalObj.DeepCopy()
 				cachedClient := mockclient.NewMockClient(c)
-				cachedClient.EXPECT().Get(gomock.Any(), types.NamespacedName{Name: originalObj.Name}, gomock.Any()).
-					DoAndReturn(func(ctx context.Context, key interface{}, obj client.Object) error {
+				cachedClient.EXPECT().Get(gomock.Any(), types.NamespacedName{Name: originalObj.Name}, gomock.Any(), gomock.Any()).
+					DoAndReturn(func(ctx context.Context, key interface{}, obj client.Object, opt ...client.GetOption) error {
 						if objToUpdate, ok := obj.(*azdiskv1beta2.AzVolume); ok {
 							cachedObj.DeepCopyInto(objToUpdate)
 							return nil
@@ -1894,8 +1894,8 @@ func TestUpdateCRIWithRetry(t *testing.T) {
 
 				cachedObj := originalObj.DeepCopy()
 				cachedClient := mockclient.NewMockClient(c)
-				cachedClient.EXPECT().Get(gomock.Any(), types.NamespacedName{Name: originalObj.Name}, gomock.Any()).
-					DoAndReturn(func(ctx context.Context, key interface{}, obj client.Object) error {
+				cachedClient.EXPECT().Get(gomock.Any(), types.NamespacedName{Name: originalObj.Name}, gomock.Any(), gomock.Any()).
+					DoAndReturn(func(ctx context.Context, key interface{}, obj client.Object, opt ...client.GetOption) error {
 						if objToUpdate, ok := obj.(*azdiskv1beta2.AzVolume); ok {
 							cachedObj.DeepCopyInto(objToUpdate)
 							return nil
@@ -1947,8 +1947,8 @@ func TestUpdateCRIWithRetry(t *testing.T) {
 
 				cachedObj := originalObj.DeepCopy()
 				cachedClient := mockclient.NewMockClient(c)
-				cachedClient.EXPECT().Get(gomock.Any(), types.NamespacedName{Name: originalObj.Name}, gomock.Any()).
-					DoAndReturn(func(ctx context.Context, key interface{}, obj client.Object) error {
+				cachedClient.EXPECT().Get(gomock.Any(), types.NamespacedName{Name: originalObj.Name}, gomock.Any(), gomock.Any()).
+					DoAndReturn(func(ctx context.Context, key interface{}, obj client.Object, opt ...client.GetOption) error {
 						if objToUpdate, ok := obj.(*azdiskv1beta2.AzVolume); ok {
 							cachedObj.DeepCopyInto(objToUpdate)
 							return nil
@@ -2001,8 +2001,8 @@ func TestUpdateCRIWithRetry(t *testing.T) {
 
 				cachedObj := originalObj.DeepCopy()
 				cachedClient := mockclient.NewMockClient(c)
-				cachedClient.EXPECT().Get(gomock.Any(), types.NamespacedName{Name: originalObj.Name}, gomock.Any()).
-					DoAndReturn(func(ctx context.Context, key interface{}, obj client.Object) error {
+				cachedClient.EXPECT().Get(gomock.Any(), types.NamespacedName{Name: originalObj.Name}, gomock.Any(), gomock.Any()).
+					DoAndReturn(func(ctx context.Context, key interface{}, obj client.Object, opt ...client.GetOption) error {
 						if objToUpdate, ok := obj.(*azdiskv1beta2.AzVolume); ok {
 							cachedObj.DeepCopyInto(objToUpdate)
 							return nil
@@ -2043,8 +2043,8 @@ func TestUpdateCRIWithRetry(t *testing.T) {
 
 				cachedObj := originalObj.DeepCopy()
 				cachedClient := mockclient.NewMockClient(c)
-				cachedClient.EXPECT().Get(gomock.Any(), types.NamespacedName{Name: originalObj.Name}, gomock.Any()).
-					DoAndReturn(func(ctx context.Context, key interface{}, obj client.Object) error {
+				cachedClient.EXPECT().Get(gomock.Any(), types.NamespacedName{Name: originalObj.Name}, gomock.Any(), gomock.Any()).
+					DoAndReturn(func(ctx context.Context, key interface{}, obj client.Object, opt ...client.GetOption) error {
 						if objToUpdate, ok := obj.(*azdiskv1beta2.AzVolume); ok {
 							cachedObj.DeepCopyInto(objToUpdate)
 							return nil
@@ -2084,8 +2084,8 @@ func TestUpdateCRIWithRetry(t *testing.T) {
 				cachedObj := originalObj.DeepCopy()
 				cachedObj.Status.State = azdiskv1beta2.VolumeCreated
 				cachedClient := mockclient.NewMockClient(c)
-				cachedClient.EXPECT().Get(gomock.Any(), types.NamespacedName{Name: originalObj.Name}, gomock.Any()).
-					DoAndReturn(func(ctx context.Context, key interface{}, obj client.Object) error {
+				cachedClient.EXPECT().Get(gomock.Any(), types.NamespacedName{Name: originalObj.Name}, gomock.Any(), gomock.Any()).
+					DoAndReturn(func(ctx context.Context, key interface{}, obj client.Object, opt ...client.GetOption) error {
 						if objToUpdate, ok := obj.(*azdiskv1beta2.AzVolume); ok {
 							cachedObj.DeepCopyInto(objToUpdate)
 							return nil
@@ -2127,7 +2127,7 @@ func TestUpdateCRIWithRetry(t *testing.T) {
 
 				cachedClient := mockclient.NewMockClient(c)
 				cachedClient.EXPECT().Get(gomock.Any(), types.NamespacedName{Name: "pvc-non-existing"}, gomock.Any()).
-					DoAndReturn(func(ctx context.Context, key interface{}, obj client.Object) error {
+					DoAndReturn(func(ctx context.Context, key interface{}, obj client.Object, opt ...client.GetOption) error {
 						if _, ok := obj.(*azdiskv1beta2.AzVolume); ok {
 							return errors.New("not found")
 						}
@@ -2159,8 +2159,8 @@ func TestUpdateCRIWithRetry(t *testing.T) {
 
 				cachedObj := originalObj.DeepCopy()
 				cachedClient := mockclient.NewMockClient(c)
-				cachedClient.EXPECT().Get(gomock.Any(), types.NamespacedName{Name: originalObj.Name}, gomock.Any()).
-					DoAndReturn(func(ctx context.Context, key interface{}, obj client.Object) error {
+				cachedClient.EXPECT().Get(gomock.Any(), types.NamespacedName{Name: originalObj.Name}, gomock.Any(), gomock.Any()).
+					DoAndReturn(func(ctx context.Context, key interface{}, obj client.Object, opt ...client.GetOption) error {
 						if objToUpdate, ok := obj.(*azdiskv1beta2.AzVolume); ok {
 							cachedObj.DeepCopyInto(objToUpdate)
 							return nil
@@ -2203,8 +2203,8 @@ func TestUpdateCRIWithRetry(t *testing.T) {
 
 				cachedObj := originalObj.DeepCopy()
 				cachedClient := mockclient.NewMockClient(c)
-				cachedClient.EXPECT().Get(gomock.Any(), types.NamespacedName{Name: originalObj.Name}, gomock.Any()).
-					DoAndReturn(func(ctx context.Context, key interface{}, obj client.Object) error {
+				cachedClient.EXPECT().Get(gomock.Any(), types.NamespacedName{Name: originalObj.Name}, gomock.Any(), gomock.Any()).
+					DoAndReturn(func(ctx context.Context, key interface{}, obj client.Object, opt ...client.GetOption) error {
 						if objToUpdate, ok := obj.(*azdiskv1beta2.AzVolume); ok {
 							cachedObj.DeepCopyInto(objToUpdate)
 							return nil
@@ -2249,8 +2249,8 @@ func TestUpdateCRIWithRetry(t *testing.T) {
 
 				cachedObj := originalObj.DeepCopy()
 				cachedClient := mockclient.NewMockClient(c)
-				cachedClient.EXPECT().Get(gomock.Any(), types.NamespacedName{Name: originalObj.Name}, gomock.Any()).
-					DoAndReturn(func(ctx context.Context, key interface{}, obj client.Object) error {
+				cachedClient.EXPECT().Get(gomock.Any(), types.NamespacedName{Name: originalObj.Name}, gomock.Any(), gomock.Any()).
+					DoAndReturn(func(ctx context.Context, key interface{}, obj client.Object, opt ...client.GetOption) error {
 						if objToUpdate, ok := obj.(*azdiskv1beta2.AzVolumeAttachment); ok {
 							cachedObj.DeepCopyInto(objToUpdate)
 							return nil
@@ -2291,8 +2291,8 @@ func TestUpdateCRIWithRetry(t *testing.T) {
 
 				cachedObj := originalObj.DeepCopy()
 				cachedClient := mockclient.NewMockClient(c)
-				cachedClient.EXPECT().Get(gomock.Any(), types.NamespacedName{Name: originalObj.Name}, gomock.Any()).
-					DoAndReturn(func(ctx context.Context, key interface{}, obj client.Object) error {
+				cachedClient.EXPECT().Get(gomock.Any(), types.NamespacedName{Name: originalObj.Name}, gomock.Any(), gomock.Any()).
+					DoAndReturn(func(ctx context.Context, key interface{}, obj client.Object, opt ...client.GetOption) error {
 						if objToUpdate, ok := obj.(*azdiskv1beta2.AzVolumeAttachment); ok {
 							cachedObj.DeepCopyInto(objToUpdate)
 							return nil
@@ -2333,8 +2333,8 @@ func TestUpdateCRIWithRetry(t *testing.T) {
 
 				cachedObj := originalObj.DeepCopy()
 				cachedClient := mockclient.NewMockClient(c)
-				cachedClient.EXPECT().Get(gomock.Any(), types.NamespacedName{Name: originalObj.Name}, gomock.Any()).
-					DoAndReturn(func(ctx context.Context, key interface{}, obj client.Object) error {
+				cachedClient.EXPECT().Get(gomock.Any(), types.NamespacedName{Name: originalObj.Name}, gomock.Any(), gomock.Any()).
+					DoAndReturn(func(ctx context.Context, key interface{}, obj client.Object, opt ...client.GetOption) error {
 						if objToUpdate, ok := obj.(*azdiskv1beta2.AzVolumeAttachment); ok {
 							cachedObj.DeepCopyInto(objToUpdate)
 							return nil
@@ -2374,8 +2374,8 @@ func TestUpdateCRIWithRetry(t *testing.T) {
 				cachedObj := originalObj.DeepCopy()
 				cachedObj.Status.State = azdiskv1beta2.Attached
 				cachedClient := mockclient.NewMockClient(c)
-				cachedClient.EXPECT().Get(gomock.Any(), types.NamespacedName{Name: originalObj.Name}, gomock.Any()).
-					DoAndReturn(func(ctx context.Context, key interface{}, obj client.Object) error {
+				cachedClient.EXPECT().Get(gomock.Any(), types.NamespacedName{Name: originalObj.Name}, gomock.Any(), gomock.Any()).
+					DoAndReturn(func(ctx context.Context, key interface{}, obj client.Object, opt ...client.GetOption) error {
 						if objToUpdate, ok := obj.(*azdiskv1beta2.AzVolumeAttachment); ok {
 							cachedObj.DeepCopyInto(objToUpdate)
 							return nil
@@ -2417,7 +2417,7 @@ func TestUpdateCRIWithRetry(t *testing.T) {
 
 				cachedClient := mockclient.NewMockClient(c)
 				cachedClient.EXPECT().Get(gomock.Any(), types.NamespacedName{Name: "non-existing-attachment"}, gomock.Any()).
-					DoAndReturn(func(ctx context.Context, key interface{}, obj client.Object) error {
+					DoAndReturn(func(ctx context.Context, key interface{}, obj client.Object, opt ...client.GetOption) error {
 						if _, ok := obj.(*azdiskv1beta2.AzVolumeAttachment); ok {
 							return errors.New("not found")
 						}
@@ -2449,8 +2449,8 @@ func TestUpdateCRIWithRetry(t *testing.T) {
 
 				cachedObj := originalObj.DeepCopy()
 				cachedClient := mockclient.NewMockClient(c)
-				cachedClient.EXPECT().Get(gomock.Any(), types.NamespacedName{Name: originalObj.Name}, gomock.Any()).
-					DoAndReturn(func(ctx context.Context, key interface{}, obj client.Object) error {
+				cachedClient.EXPECT().Get(gomock.Any(), types.NamespacedName{Name: originalObj.Name}, gomock.Any(), gomock.Any()).
+					DoAndReturn(func(ctx context.Context, key interface{}, obj client.Object, opt ...client.GetOption) error {
 						if objToUpdate, ok := obj.(*azdiskv1beta2.AzVolumeAttachment); ok {
 							cachedObj.DeepCopyInto(objToUpdate)
 							return nil
@@ -2493,8 +2493,8 @@ func TestUpdateCRIWithRetry(t *testing.T) {
 
 				cachedObj := originalObj.DeepCopy()
 				cachedClient := mockclient.NewMockClient(c)
-				cachedClient.EXPECT().Get(gomock.Any(), types.NamespacedName{Name: originalObj.Name}, gomock.Any()).
-					DoAndReturn(func(ctx context.Context, key interface{}, obj client.Object) error {
+				cachedClient.EXPECT().Get(gomock.Any(), types.NamespacedName{Name: originalObj.Name}, gomock.Any(), gomock.Any()).
+					DoAndReturn(func(ctx context.Context, key interface{}, obj client.Object, opt ...client.GetOption) error {
 						if objToUpdate, ok := obj.(*azdiskv1beta2.AzVolumeAttachment); ok {
 							cachedObj.DeepCopyInto(objToUpdate)
 							return nil
@@ -2539,8 +2539,8 @@ func TestUpdateCRIWithRetry(t *testing.T) {
 
 				cachedObj := originalObj.DeepCopy()
 				cachedClient := mockclient.NewMockClient(c)
-				cachedClient.EXPECT().Get(gomock.Any(), types.NamespacedName{Name: originalObj.Name}, gomock.Any()).
-					DoAndReturn(func(ctx context.Context, key interface{}, obj client.Object) error {
+				cachedClient.EXPECT().Get(gomock.Any(), types.NamespacedName{Name: originalObj.Name}, gomock.Any(), gomock.Any()).
+					DoAndReturn(func(ctx context.Context, key interface{}, obj client.Object, opt ...client.GetOption) error {
 						if objToUpdate, ok := obj.(*storagev1.VolumeAttachment); ok {
 							cachedObj.DeepCopyInto(objToUpdate)
 							return nil
@@ -2585,8 +2585,8 @@ func TestUpdateCRIWithRetry(t *testing.T) {
 
 				cachedObj := originalObj.DeepCopy()
 				cachedClient := mockclient.NewMockClient(c)
-				cachedClient.EXPECT().Get(gomock.Any(), types.NamespacedName{Name: originalObj.Name}, gomock.Any()).
-					DoAndReturn(func(ctx context.Context, key interface{}, obj client.Object) error {
+				cachedClient.EXPECT().Get(gomock.Any(), types.NamespacedName{Name: originalObj.Name}, gomock.Any(), gomock.Any()).
+					DoAndReturn(func(ctx context.Context, key interface{}, obj client.Object, opt ...client.GetOption) error {
 						if objToUpdate, ok := obj.(*storagev1.VolumeAttachment); ok {
 							cachedObj.DeepCopyInto(objToUpdate)
 							return nil
@@ -2595,7 +2595,7 @@ func TestUpdateCRIWithRetry(t *testing.T) {
 						return fmt.Errorf("unexpected object type: %s", reflect.TypeOf(obj).Name())
 					}).
 					Times(1)
-				statusWriter := mockclient.NewMockStatusWriter(c)
+				statusWriter := mockclient.NewMockSubResourceWriter(c)
 				cachedClient.EXPECT().Status().Return(statusWriter).AnyTimes()
 				statusWriter.EXPECT().Update(gomock.Any(), gomock.Any()).
 					Return(nil).
@@ -2632,8 +2632,8 @@ func TestUpdateCRIWithRetry(t *testing.T) {
 
 				cachedObj := originalObj.DeepCopy()
 				cachedClient := mockclient.NewMockClient(c)
-				cachedClient.EXPECT().Get(gomock.Any(), types.NamespacedName{Name: originalObj.Name}, gomock.Any()).
-					DoAndReturn(func(ctx context.Context, key interface{}, obj client.Object) error {
+				cachedClient.EXPECT().Get(gomock.Any(), types.NamespacedName{Name: originalObj.Name}, gomock.Any(), gomock.Any()).
+					DoAndReturn(func(ctx context.Context, key interface{}, obj client.Object, opt ...client.GetOption) error {
 						if objToUpdate, ok := obj.(*storagev1.VolumeAttachment); ok {
 							cachedObj.DeepCopyInto(objToUpdate)
 							return nil
@@ -2673,8 +2673,8 @@ func TestUpdateCRIWithRetry(t *testing.T) {
 				cachedObj := originalObj.DeepCopy()
 				cachedObj.Status.AttachmentMetadata = map[string]string{azureconstants.LUN: "0"}
 				cachedClient := mockclient.NewMockClient(c)
-				cachedClient.EXPECT().Get(gomock.Any(), types.NamespacedName{Name: originalObj.Name}, gomock.Any()).
-					DoAndReturn(func(ctx context.Context, key interface{}, obj client.Object) error {
+				cachedClient.EXPECT().Get(gomock.Any(), types.NamespacedName{Name: originalObj.Name}, gomock.Any(), gomock.Any()).
+					DoAndReturn(func(ctx context.Context, key interface{}, obj client.Object, opt ...client.GetOption) error {
 						if objToUpdate, ok := obj.(*storagev1.VolumeAttachment); ok {
 							cachedObj.DeepCopyInto(objToUpdate)
 							return nil
@@ -2716,7 +2716,7 @@ func TestUpdateCRIWithRetry(t *testing.T) {
 
 				cachedClient := mockclient.NewMockClient(c)
 				cachedClient.EXPECT().Get(gomock.Any(), types.NamespacedName{Name: "non-existing-attachment"}, gomock.Any()).
-					DoAndReturn(func(ctx context.Context, key interface{}, obj client.Object) error {
+					DoAndReturn(func(ctx context.Context, key interface{}, obj client.Object, opt ...client.GetOption) error {
 						if _, ok := obj.(*storagev1.VolumeAttachment); ok {
 							return errors.New("not found")
 						}
@@ -2748,8 +2748,8 @@ func TestUpdateCRIWithRetry(t *testing.T) {
 
 				cachedObj := originalObj.DeepCopy()
 				cachedClient := mockclient.NewMockClient(c)
-				cachedClient.EXPECT().Get(gomock.Any(), types.NamespacedName{Name: originalObj.Name}, gomock.Any()).
-					DoAndReturn(func(ctx context.Context, key interface{}, obj client.Object) error {
+				cachedClient.EXPECT().Get(gomock.Any(), types.NamespacedName{Name: originalObj.Name}, gomock.Any(), gomock.Any()).
+					DoAndReturn(func(ctx context.Context, key interface{}, obj client.Object, opt ...client.GetOption) error {
 						if objToUpdate, ok := obj.(*storagev1.VolumeAttachment); ok {
 							cachedObj.DeepCopyInto(objToUpdate)
 							return nil
@@ -2796,8 +2796,8 @@ func TestUpdateCRIWithRetry(t *testing.T) {
 
 				cachedObj := originalObj.DeepCopy()
 				cachedClient := mockclient.NewMockClient(c)
-				cachedClient.EXPECT().Get(gomock.Any(), types.NamespacedName{Name: originalObj.Name}, gomock.Any()).
-					DoAndReturn(func(ctx context.Context, key interface{}, obj client.Object) error {
+				cachedClient.EXPECT().Get(gomock.Any(), types.NamespacedName{Name: originalObj.Name}, gomock.Any(), gomock.Any()).
+					DoAndReturn(func(ctx context.Context, key interface{}, obj client.Object, opt ...client.GetOption) error {
 						if objToUpdate, ok := obj.(*storagev1.VolumeAttachment); ok {
 							cachedObj.DeepCopyInto(objToUpdate)
 							return nil
@@ -2806,7 +2806,7 @@ func TestUpdateCRIWithRetry(t *testing.T) {
 						return fmt.Errorf("unexpected object type: %s", reflect.TypeOf(obj).Name())
 					}).
 					Times(1)
-				statusClient := mockclient.NewMockStatusWriter(c)
+				statusClient := mockclient.NewMockSubResourceWriter(c)
 				cachedClient.EXPECT().Status().Return(statusClient).AnyTimes()
 				statusClient.EXPECT().Update(gomock.Any(), gomock.Any(), gomock.Any()).
 					DoAndReturn(func(ctx context.Context, obj client.Object, opts ...client.UpdateOption) error {

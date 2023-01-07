@@ -625,7 +625,7 @@ func GetCloudProviderFromClient(
 		config.UserAgent = userAgent
 
 		// Create a new cloud provider
-		az, err = azure.NewCloudWithoutFeatureGatesFromConfig(config, fromSecret, false)
+		az, err = azure.NewCloudWithoutFeatureGatesFromConfig(context.TODO(), config, fromSecret, false)
 		if err != nil {
 			err = fmt.Errorf("failed to create cloud: %v", err)
 			klog.Errorf(err.Error())

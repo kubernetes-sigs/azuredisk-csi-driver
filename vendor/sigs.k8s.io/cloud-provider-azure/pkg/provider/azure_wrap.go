@@ -25,11 +25,11 @@ import (
 
 	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2022-03-01/compute"
 	"github.com/Azure/azure-sdk-for-go/services/network/mgmt/2021-08-01/network"
-	"github.com/Azure/go-autorest/autorest/to"
 
 	"k8s.io/apimachinery/pkg/types"
 	cloudprovider "k8s.io/cloud-provider"
 	"k8s.io/klog/v2"
+	"k8s.io/utils/pointer"
 
 	azcache "sigs.k8s.io/cloud-provider-azure/pkg/cache"
 	"sigs.k8s.io/cloud-provider-azure/pkg/consts"
@@ -86,7 +86,7 @@ func (az *Cloud) getRouteTable(crt azcache.AzureCacheReadType) (routeTable netwo
 		return routeTable, false, fmt.Errorf("Route table name is not configured")
 	}
 
-	cachedRt, err := az.rtCache.Get(az.RouteTableName, crt)
+	cachedRt, err := az.rtCache.GetWithDeepCopy(az.RouteTableName, crt)
 	if err != nil {
 		return routeTable, false, err
 	}
@@ -109,7 +109,7 @@ func (az *Cloud) getPIPCacheKey(pipResourceGroup string, pipName string) string 
 func (az *Cloud) getPublicIPAddress(pipResourceGroup string, pipName string, crt azcache.AzureCacheReadType) (network.PublicIPAddress, bool, error) {
 	pip := network.PublicIPAddress{}
 	cacheKey := az.getPIPCacheKey(pipResourceGroup, pipName)
-	cachedPIP, err := az.pipCache.Get(cacheKey, crt)
+	cachedPIP, err := az.pipCache.GetWithDeepCopy(cacheKey, crt)
 	if err != nil {
 		return pip, false, err
 	}
@@ -146,7 +146,7 @@ func (az *Cloud) getSubnet(virtualNetworkName string, subnetName string) (networ
 }
 
 func (az *Cloud) getAzureLoadBalancer(name string, crt azcache.AzureCacheReadType) (lb *network.LoadBalancer, exists bool, err error) {
-	cachedLB, err := az.lbCache.Get(name, crt)
+	cachedLB, err := az.lbCache.GetWithDeepCopy(name, crt)
 	if err != nil {
 		return lb, false, err
 	}
@@ -164,7 +164,7 @@ func (az *Cloud) getSecurityGroup(crt azcache.AzureCacheReadType) (network.Secur
 		return nsg, fmt.Errorf("securityGroupName is not configured")
 	}
 
-	securityGroup, err := az.nsgCache.Get(az.SecurityGroupName, crt)
+	securityGroup, err := az.nsgCache.GetWithDeepCopy(az.SecurityGroupName, crt)
 	if err != nil {
 		return nsg, err
 	}
@@ -177,7 +177,7 @@ func (az *Cloud) getSecurityGroup(crt azcache.AzureCacheReadType) (network.Secur
 }
 
 func (az *Cloud) getPrivateLinkService(frontendIPConfigID *string, crt azcache.AzureCacheReadType) (pls network.PrivateLinkService, err error) {
-	cachedPLS, err := az.plsCache.Get(*frontendIPConfigID, crt)
+	cachedPLS, err := az.plsCache.GetWithDeepCopy(*frontendIPConfigID, crt)
 	if err != nil {
 		return pls, err
 	}
@@ -212,7 +212,7 @@ func (az *Cloud) newVMCache() (*azcache.TimedCache, error) {
 		}
 
 		if vm.VirtualMachineProperties != nil &&
-			strings.EqualFold(to.String(vm.VirtualMachineProperties.ProvisioningState), string(compute.ProvisioningStateDeleting)) {
+			strings.EqualFold(pointer.StringDeref(vm.VirtualMachineProperties.ProvisioningState, ""), string(compute.ProvisioningStateDeleting)) {
 			klog.V(2).Infof("Virtual machine %q is under deleting", key)
 			return nil, nil
 		}

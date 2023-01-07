@@ -30,7 +30,7 @@ import (
 	"k8s.io/apimachinery/pkg/util/wait"
 	restclientset "k8s.io/client-go/rest"
 	"k8s.io/kubernetes/test/e2e/framework"
-	e2elog "k8s.io/kubernetes/test/e2e/framework/log"
+
 	testconsts "sigs.k8s.io/azuredisk-csi-driver/test/const"
 )
 
@@ -99,7 +99,7 @@ func (t *TestVolumeSnapshotClass) DeleteSnapshot(vs *snapshotv1.VolumeSnapshot) 
 func (t *TestVolumeSnapshotClass) Cleanup() {
 	// skip deleting volume snapshot storage class otherwise snapshot e2e test will fail, details:
 	// https://github.com/kubernetes-sigs/azuredisk-csi-driver/pull/260#issuecomment-583296932
-	e2elog.Logf("skip deleting VolumeSnapshotClass %s", t.VolumeSnapshotClass.Name)
+	framework.Logf("skip deleting VolumeSnapshotClass %s", t.VolumeSnapshotClass.Name)
 	//err := snapshotclientset.New(t.Client).SnapshotV1().VolumeSnapshotClasses().Delete(t.VolumeSnapshotClass.Name, nil)
 	//framework.ExpectNoError(err)
 }

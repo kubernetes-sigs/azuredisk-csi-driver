@@ -29,7 +29,6 @@ import (
 	"k8s.io/apimachinery/pkg/util/wait"
 	clientset "k8s.io/client-go/kubernetes"
 	"k8s.io/kubernetes/test/e2e/framework"
-	e2elog "k8s.io/kubernetes/test/e2e/framework/log"
 	e2epod "k8s.io/kubernetes/test/e2e/framework/pod"
 	testutils "k8s.io/kubernetes/test/utils"
 	imageutils "k8s.io/kubernetes/test/utils/image"
@@ -122,7 +121,7 @@ func (t *TestDeployment) Create() {
 	var err error
 	t.Deployment, err = t.Client.AppsV1().Deployments(t.Namespace.Name).Create(context.TODO(), t.Deployment, metav1.CreateOptions{})
 	framework.ExpectNoError(err)
-	err = testutils.WaitForDeploymentComplete(t.Client, t.Deployment, e2elog.Logf, testconsts.Poll, testconsts.PollLongTimeout)
+	err = testutils.WaitForDeploymentComplete(t.Client, t.Deployment, framework.Logf, testconsts.Poll, testconsts.PollLongTimeout)
 	framework.ExpectNoError(err)
 	pods, err := podutil.GetPodsForDeployment(t.Client, t.Deployment)
 	framework.ExpectNoError(err)
@@ -226,7 +225,7 @@ func (t *TestDeployment) ForceDeletePod(podName string) error {
 
 func (t *TestDeployment) WaitForPodTerminating(timeout time.Duration) {
 	conditionFunc := func(podName string, ch chan error) {
-		e2elog.Logf("Waiting for pod %q in namespace %q to start terminating", podName, t.Namespace.Name)
+		framework.Logf("Waiting for pod %q in namespace %q to start terminating", podName, t.Namespace.Name)
 		err := wait.PollImmediate(time.Duration(15)*time.Second, timeout, func() (bool, error) {
 			podObj, err := t.Client.CoreV1().Pods(t.Namespace.Name).Get(context.Background(), podName, metav1.GetOptions{})
 			if err != nil && !errors.IsNotFound(err) {
@@ -255,13 +254,13 @@ func (t *TestDeployment) WaitForPodStatus(conditionFunc func(podName string, ch 
 }
 
 func (t *TestDeployment) Cleanup() {
-	e2elog.Logf("deleting Deployment %q/%q", t.Namespace.Name, t.Deployment.Name)
+	framework.Logf("deleting Deployment %q/%q", t.Namespace.Name, t.Deployment.Name)
 	body, err := t.Logs()
 	if err != nil {
-		e2elog.Logf("Error getting logs for %s: %v", t.Deployment.Name, err)
+		framework.Logf("Error getting logs for %s: %v", t.Deployment.Name, err)
 	} else {
 		for i, logs := range body {
-			e2elog.Logf("Pod %s has the following logs: %s", t.Pods[i], logs)
+			framework.Logf("Pod %s has the following logs: %s", t.Pods[i], logs)
 		}
 	}
 	err = t.Client.AppsV1().Deployments(t.Namespace.Name).Delete(context.TODO(), t.Deployment.Name, metav1.DeleteOptions{})
