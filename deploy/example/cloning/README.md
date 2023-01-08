@@ -63,6 +63,9 @@ lost+found
 outfile
 ```
 
-### Use volume cloning to change disk sku, e.g. from LRS to ZRS, standard to premium disk
- 
-Delete existing storage class, create a new storage class with desired `skuName` value, and then follow steps above to create a new cloned PVC with new sku.
+### Use volume cloning to create a new disk with different sku
+>  disk sku could be from LRS to ZRS, standard to premium, while it does not support cross region or cross zone
+
+ - Delete existing storage class referenced by source disk PVC
+ - Create a new storage class with desired `skuName` value
+ - Follow steps above to create a new cloned PVC with new sku.
