@@ -20,6 +20,7 @@ import (
 	"context"
 	"fmt"
 	"reflect"
+	"strconv"
 	"strings"
 	"time"
 
@@ -485,4 +486,18 @@ func getDefaultDiskMBPSReadWrite(requestGiB int) int {
 		bandwidth = 4000
 	}
 	return bandwidth
+}
+
+// getVMSSInstanceName get instance name from vmss compute name, e.g. "aks-agentpool-20657377-vmss_2" -> "aks-agentpool-20657377-vmss000002"
+func getVMSSInstanceName(computeName string) (string, error) {
+	names := strings.Split(computeName, "_")
+	if len(names) != 2 {
+		return "", fmt.Errorf("invalid vmss compute name: %s", computeName)
+	}
+
+	instanceID, err := strconv.Atoi(names[1])
+	if err != nil {
+		return "", fmt.Errorf("parsing vmss compute name(%s) failed with %v", computeName, err)
+	}
+	return fmt.Sprintf("%s%06s", names[0], strconv.FormatInt(int64(instanceID), 36)), nil
 }

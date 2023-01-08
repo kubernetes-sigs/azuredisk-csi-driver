@@ -393,8 +393,30 @@ func (d *Driver) NodeGetInfo(ctx context.Context, req *csi.NodeGetInfoRequest) (
 		maxDataDiskCount = getMaxDataDiskCount(instanceType)
 	}
 
+	nodeID := d.NodeID
+	if d.cloud.UseInstanceMetadata && d.cloud.Metadata != nil {
+		metadata, err := d.cloud.Metadata.GetMetadata(azcache.CacheReadTypeDefault)
+		if err == nil && metadata != nil && metadata.Compute != nil {
+			klog.V(2).Infof("NodeGetInfo: NodeID(%s), metadata.Compute.Name(%s)", d.NodeID, metadata.Compute.Name)
+			if metadata.Compute.Name != "" {
+				if metadata.Compute.VMScaleSetName != "" {
+					id, err := getVMSSInstanceName(metadata.Compute.Name)
+					if err != nil {
+						klog.Errorf("getVMSSInstanceName failed with %v", err)
+					} else {
+						nodeID = id
+					}
+				} else {
+					nodeID = metadata.Compute.Name
+				}
+			}
+		} else {
+			klog.Warningf("get instance type(%s) failed with: %v", d.NodeID, err)
+		}
+	}
+
 	return &csi.NodeGetInfoResponse{
-		NodeId:             d.NodeID,
+		NodeId:             nodeID,
 		MaxVolumesPerNode:  maxDataDiskCount,
 		AccessibleTopology: topology,
 	}, nil
