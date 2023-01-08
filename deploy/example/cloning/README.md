@@ -62,3 +62,7 @@ $ kubectl exec nginx-restored-cloning -- ls /mnt/azuredisk
 lost+found
 outfile
 ```
+
+### Use volume cloning to change disk sku, e.g. from LRS to ZRS, standard to premium disk
+ 
+Delete existing storage class, create a new storage class with desired `skuName` value, and then follow steps above to create a new cloned PVC with new sku.
