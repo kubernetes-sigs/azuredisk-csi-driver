@@ -13,5 +13,4 @@ allowedTopologies:
       - key: topology.disk.csi.azure.com/zone
         values:
           - eastus2-1
-          - eastus2-2
 ---
