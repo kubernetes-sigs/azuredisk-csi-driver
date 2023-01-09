@@ -23,7 +23,6 @@ import (
 	"context"
 	"flag"
 	"fmt"
-	"os"
 	"strings"
 	"sync"
 	"time"
@@ -85,13 +84,11 @@ func initSchedulerExtender(ctx context.Context) {
 	kubeExtensionClientset, err = getKubernetesExtensionClientsets()
 	if err != nil {
 		klog.Fatalf("Failed to create kubernetes extension clientset %s ...", err)
-		os.Exit(1)
 	}
 
 	kubeClientset, err = getKubernetesClientset()
 	if err != nil {
 		klog.Fatalf("Failed to create kubernetes clientset %s ...", err)
-		os.Exit(1)
 	}
 
 	RegisterMetrics(metricsList...)
@@ -104,19 +101,28 @@ func initSchedulerExtender(ctx context.Context) {
 	pvcInformer = coreInformerFactory.Core().V1().PersistentVolumeClaims()
 	pvInformer = coreInformerFactory.Core().V1().PersistentVolumes()
 
-	pvcInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+	_, err = pvcInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		UpdateFunc: onPvcUpdate, // Using Update instead of Add because pvc is not bound on Add
 		DeleteFunc: onPvcDelete,
 	})
+	if err != nil {
+		klog.Fatalf("Failed to add PVC event handler: %s", err)
+	}
 
-	pvInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+	_, err = pvInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		UpdateFunc: onPvUpdate, // Using Update instead of Add because pvc is not bound on Add
 		DeleteFunc: onPvDelete,
 	})
+	if err != nil {
+		klog.Fatalf("Failed to add PV event handler: %s", err)
+	}
 
-	azVolumeAttachmentInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+	_, err = azVolumeAttachmentInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc: onAzVolAttAdd,
 	})
+	if err != nil {
+		klog.Fatalf("Failed to add AzVolume event handler: %s", err)
+	}
 
 	klog.V(2).Infof("Starting informers.")
 	go azurediskInformerFactory.Start(ctx.Done())
@@ -129,7 +135,6 @@ func initSchedulerExtender(ctx context.Context) {
 		pvcInformer.Informer().HasSynced,
 		pvInformer.Informer().HasSynced) {
 		klog.Fatalf("Failed to sync and populate the cache for informers %s ...", err)
-		os.Exit(1)
 	}
 }
 

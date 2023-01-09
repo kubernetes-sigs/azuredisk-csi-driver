@@ -481,9 +481,10 @@ func initState(client client.Client, azClient azdisk.Interface, kubeClient kuber
 	azNodeInformer := azureutils.NewAzNodeInformer(azInformerFactory)
 	azVolumeAttachmentInformer := azureutils.NewAzVolumeAttachmentInformer(azInformerFactory)
 	azVolumeInformer := azureutils.NewAzVolumeInformer(azInformerFactory)
+	conditionWatcher, _ := watcher.NewConditionWatcher(azInformerFactory, testNamespace, azNodeInformer, azVolumeAttachmentInformer, azVolumeInformer)
 
 	fakeDriverLifecycle := &FakeDriverLifecycle{
-		conditionWatcher: watcher.NewConditionWatcher(azInformerFactory, testNamespace, azNodeInformer, azVolumeAttachmentInformer, azVolumeInformer),
+		conditionWatcher: conditionWatcher,
 		azDiskClient:     azClient,
 	}
 
