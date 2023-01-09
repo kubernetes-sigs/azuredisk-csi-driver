@@ -64,7 +64,7 @@ outfile
 ```
 
 ### Use volume cloning to copy a new disk with different sku
->  disk sku change could be from LRS to ZRS, standard to premium, while it does not support cross region or cross zone
+>  disk sku change could be from LRS to ZRS, standard to premium, while cross zone or region is not supported 
 
  - Make sure application is not writing data to source disk
  - Delete existing storage class referenced by source disk PVC
