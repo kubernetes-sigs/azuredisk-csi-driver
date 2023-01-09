@@ -35,8 +35,7 @@ type Interface interface {
 	DiskV1beta2() diskv1beta2.DiskV1beta2Interface
 }
 
-// Clientset contains the clients for groups. Each group has exactly one
-// version included in a Clientset.
+// Clientset contains the clients for groups.
 type Clientset struct {
 	*discovery.DiscoveryClient
 	diskV1beta1 *diskv1beta1.DiskV1beta1Client
