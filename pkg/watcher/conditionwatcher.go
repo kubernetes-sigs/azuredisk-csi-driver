@@ -66,21 +66,33 @@ type ConditionWatcher struct {
 	namespace       string
 }
 
-func NewConditionWatcher(informerFactory azdiskinformers.SharedInformerFactory, namespace string, informers ...azureutils.GenericInformer) *ConditionWatcher {
+func NewConditionWatcher(informerFactory azdiskinformers.SharedInformerFactory, namespace string, informers ...azureutils.GenericInformer) (*ConditionWatcher, error) {
 	c := &ConditionWatcher{
 		informerFactory: informerFactory,
 		waitMap:         sync.Map{},
 		namespace:       namespace,
 	}
 
+	var err error
 	for _, informer := range informers {
-		informer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+		informer := informer.Informer()
+		var handlerReg cache.ResourceEventHandlerRegistration
+		handlerReg, err = informer.AddEventHandler(cache.ResourceEventHandlerFuncs{
 			AddFunc:    c.onCreate,
 			UpdateFunc: c.onUpdate,
 			DeleteFunc: c.onDelete,
 		})
+		if err != nil {
+			return nil, fmt.Errorf("failed to add event handler: %s", err)
+		}
+
+		defer func() {
+			if err != nil {
+				_ = informer.RemoveEventHandler(handlerReg)
+			}
+		}()
 	}
-	return c
+	return c, nil
 }
 
 func (c *ConditionWatcher) NewConditionWaiter(ctx context.Context, objType ObjectType, objName string, conditionFunc func(obj interface{}, expectDelete bool) (bool, error)) *ConditionWaiter {

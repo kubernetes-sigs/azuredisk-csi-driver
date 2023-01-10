@@ -81,7 +81,7 @@ func NewCachedReader(kubeInformerFactory informers.SharedInformerFactory, azInfo
 	}
 }
 
-func (a CachedReader) Get(_ context.Context, namespacedName types.NamespacedName, object client.Object) error {
+func (a CachedReader) Get(_ context.Context, namespacedName types.NamespacedName, object client.Object, opts ...client.GetOption) error {
 	var err error
 	switch target := object.(type) {
 	case *v1.Node:
@@ -177,7 +177,7 @@ func (a CachedReader) List(_ context.Context, objectList client.ObjectList, opts
 	return err
 }
 
-func NewCrdProvisioner(azdiskClient azdisk.Interface, config *azdiskv1beta2.AzDiskDriverConfiguration, cw *watcher.ConditionWatcher, azCachedReader CachedReader, informer azureutils.GenericInformer) *CrdProvisioner {
+func NewCrdProvisioner(azdiskClient azdisk.Interface, config *azdiskv1beta2.AzDiskDriverConfiguration, cw *watcher.ConditionWatcher, azCachedReader CachedReader, informer azureutils.GenericInformer) (*CrdProvisioner, error) {
 	c := &CrdProvisioner{
 		azDiskClient:     azdiskClient,
 		config:           config,
@@ -185,7 +185,7 @@ func NewCrdProvisioner(azdiskClient azdisk.Interface, config *azdiskv1beta2.AzDi
 		azCachedReader:   azCachedReader,
 	}
 
-	informer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+	_, err := informer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		UpdateFunc: func(_, new interface{}) {
 			crdObj := new.(*apiext.CustomResourceDefinition)
 			if crdObj.DeletionTimestamp != nil && (crdObj.Name == consts.AzVolumeAttachmentCRDName || crdObj.Name == consts.AzVolumeCRDName) {
@@ -195,8 +195,11 @@ func NewCrdProvisioner(azdiskClient azdisk.Interface, config *azdiskv1beta2.AzDi
 			}
 		},
 	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to add CRD event handler: %s", err)
+	}
 
-	return c
+	return c, nil
 }
 
 /*

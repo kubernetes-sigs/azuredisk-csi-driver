@@ -201,14 +201,20 @@ func (d *DriverV2) Run(endpoint, kubeconfig string, disableAVSetNodes, testingMo
 		azVolumeInformer := azureutils.NewAzVolumeInformer(azInformerFactory)
 		crdInformer := azureutils.NewCrdInformer(crdInformerFactory)
 
-		conditionWatcher := watcher.NewConditionWatcher(azInformerFactory, d.config.ObjectNamespace, azNodeInformer, azVolumeAttachmentInformer, azVolumeInformer)
+		conditionWatcher, err := watcher.NewConditionWatcher(azInformerFactory, d.config.ObjectNamespace, azNodeInformer, azVolumeAttachmentInformer, azVolumeInformer)
+		if err != nil {
+			klog.Fatalf("Failed to create ConditionWatcher, error: %v. Exiting application...", err)
+		}
 
-		d.crdProvisioner = provisioner.NewCrdProvisioner(
+		d.crdProvisioner, err = provisioner.NewCrdProvisioner(
 			d.azdiskClient,
 			d.config,
 			conditionWatcher,
 			provisioner.NewCachedReader(kubeInformerFactory, azInformerFactory, d.config.ObjectNamespace),
 			crdInformer)
+		if err != nil {
+			klog.Fatalf("Failed to create CrdProvisioner, error: %v. Exiting application...", err)
+		}
 
 		azureutils.StartInformersAndWaitForCacheSync(context.Background(), nodeInformer, azNodeInformer, azVolumeAttachmentInformer, azVolumeInformer, crdInformer)
 	}
@@ -484,13 +490,16 @@ func (d *DriverV2) registerAzDriverNodeOrDie(ctx context.Context) {
 	)
 
 	d.azDriverNodeInformer = azdiskInformerFactory.Disk().V1beta2().AzDriverNodes()
-	d.azDriverNodeInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+	_, err := d.azDriverNodeInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		DeleteFunc: func(obj interface{}) {
 			if azDriverNode, ok := obj.(*azdiskv1beta2.AzDriverNode); ok && strings.EqualFold(azDriverNode.Name, d.NodeID) {
 				_ = d.updateAzDriverNodeHeartbeat(context.Background())
 			}
 		},
 	})
+	if err != nil {
+		klog.Fatalf("Failed to add AzDriverNode event handler: %v", err)
+	}
 
 	azdiskInformerFactory.Start(ctx.Done())
 
@@ -498,7 +507,7 @@ func (d *DriverV2) registerAzDriverNodeOrDie(ctx context.Context) {
 		klog.Fatal("failed to sync azdrivernode informer")
 	}
 
-	err := d.registerAzDriverNode(ctx)
+	err = d.registerAzDriverNode(ctx)
 
 	if err != nil {
 		klog.Fatalf("failed to register azdrivernode: %v", err)

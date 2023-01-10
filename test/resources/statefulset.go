@@ -32,7 +32,6 @@ import (
 	clientset "k8s.io/client-go/kubernetes"
 	"k8s.io/klog/v2"
 	"k8s.io/kubernetes/test/e2e/framework"
-	e2elog "k8s.io/kubernetes/test/e2e/framework/log"
 	e2epv "k8s.io/kubernetes/test/e2e/framework/pv"
 	imageutils "k8s.io/kubernetes/test/utils/image"
 	testconsts "sigs.k8s.io/azuredisk-csi-driver/test/const"
@@ -189,7 +188,7 @@ func (t *TestStatefulset) PollForStringInPodsExec(command []string, expectedStri
 func (t *TestStatefulset) DeletePodAndWait() {
 	ch := make(chan error, len(t.PodNames))
 	for _, podName := range t.PodNames {
-		e2elog.Logf("Deleting pod %q in namespace %q", podName, t.Namespace.Name)
+		framework.Logf("Deleting pod %q in namespace %q", podName, t.Namespace.Name)
 		go func(client clientset.Interface, ns, podName string) {
 			err := client.CoreV1().Pods(ns).Delete(context.TODO(), podName, metav1.DeleteOptions{})
 			ch <- err
@@ -210,7 +209,7 @@ func (t *TestStatefulset) DeletePodAndWait() {
 }
 
 func (t *TestStatefulset) Cleanup(timeout time.Duration) {
-	e2elog.Logf("deleting StatefulSet %q/%q", t.Namespace.Name, t.Statefulset.Name)
+	framework.Logf("deleting StatefulSet %q/%q", t.Namespace.Name, t.Statefulset.Name)
 
 	err := t.Client.AppsV1().StatefulSets(t.Namespace.Name).Delete(context.TODO(), t.Statefulset.Name, metav1.DeleteOptions{})
 	framework.ExpectNoError(err)

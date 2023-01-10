@@ -354,7 +354,7 @@ func (p *Processor) applyDefaults() {
 }
 
 // NewProcessor returns a new batch processor.
-func NewProcessor(fn BatchFunc, options ...ProcessorOption) *Processor {
+func NewProcessor(fn ProcessFunc, options ...ProcessorOption) *Processor {
 	p := &Processor{fn: fn, verboseLogLevel: -1}
 
 	for _, option := range options {

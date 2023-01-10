@@ -131,14 +131,20 @@ func setUpProvisioner() error {
 	crdInformer := azureutils.NewCrdInformer(crdInformerFactory)
 	waitForLunEnabled := true
 
-	cw := watcher.NewConditionWatcher(azInformerFactory, namespace, azNodeInformer, azVolumeAttachmentInformer, azVolumeInformer)
+	cw, err := watcher.NewConditionWatcher(azInformerFactory, namespace, azNodeInformer, azVolumeAttachmentInformer, azVolumeInformer)
+	if err != nil {
+		return fmt.Errorf("Failed to create ConditionWatcher: %v", err)
+	}
 	config := azdiskv1beta2.AzDiskDriverConfiguration{
 		ControllerConfig: azdiskv1beta2.ControllerConfiguration{
 			WaitForLunEnabled: waitForLunEnabled,
 		},
 		ObjectNamespace: namespace,
 	}
-	crdProvisioner = provisioner.NewCrdProvisioner(azClient, &config, cw, provisioner.NewCachedReader(kubeInformerFactory, azInformerFactory, namespace), crdInformer)
+	crdProvisioner, err = provisioner.NewCrdProvisioner(azClient, &config, cw, provisioner.NewCachedReader(kubeInformerFactory, azInformerFactory, namespace), crdInformer)
+	if err != nil {
+		return fmt.Errorf("Failed to create CrdProvisioner: %v", err)
+	}
 
 	azureutils.StartInformersAndWaitForCacheSync(context.Background(), nodeInformer, azNodeInformer, azVolumeAttachmentInformer, azVolumeInformer)
 	return err

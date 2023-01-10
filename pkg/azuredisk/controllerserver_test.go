@@ -24,7 +24,9 @@ import (
 	"testing"
 
 	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2022-03-01/compute"
+	azautorest "github.com/Azure/go-autorest/autorest/azure"
 	"github.com/Azure/go-autorest/autorest/date"
+	autorestmocks "github.com/Azure/go-autorest/autorest/mocks"
 	"github.com/Azure/go-autorest/autorest/to"
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	"github.com/golang/mock/gomock"
@@ -821,8 +823,18 @@ func TestControllerPublishVolume(t *testing.T) {
 				dataDisks[0] = compute.DataDisk{Lun: to.Int32Ptr(int32(0)), Name: &testVolumeName}
 				vm.StorageProfile.DataDisks = &dataDisks
 				mockVMsClient := d.getCloud().VirtualMachinesClient.(*mockvmclient.MockInterface)
-				mockVMsClient.EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(vm, nil).AnyTimes()
-				mockVMsClient.EXPECT().Update(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(&retry.Error{RawError: fmt.Errorf("error")}).AnyTimes()
+				mockVMsClient.EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+					Return(vm, nil).
+					AnyTimes()
+				mockVMsClient.EXPECT().UpdateAsync(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+					DoAndReturn(func(ctx context.Context, resourceGroupName string, VMName string, parameters compute.VirtualMachineUpdate, source string) (*azautorest.Future, *retry.Error) {
+						fut, _ := azautorest.NewFutureFromResponse(autorestmocks.NewResponseWithStatus("OK", 200))
+						return &fut, nil
+					}).
+					AnyTimes()
+				mockVMsClient.EXPECT().WaitForUpdateResult(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+					Return(nil, &retry.Error{RawError: fmt.Errorf("error")}).
+					AnyTimes()
 				expectedErr := status.Errorf(codes.Internal, "update instance \"unit-test-node\" failed with Retriable: false, RetryAfter: 0s, HTTPStatusCode: 0, RawError: error")
 				_, err := d.ControllerPublishVolume(context.Background(), req)
 				if !reflect.DeepEqual(err, expectedErr) {

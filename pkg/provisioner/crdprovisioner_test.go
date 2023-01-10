@@ -168,7 +168,7 @@ func NewTestCrdProvisioner(controller *gomock.Controller) *CrdProvisioner {
 	crdInformer := azureutils.NewCrdInformer(crdInformerFactory)
 	waitForLunEnabled := true
 
-	conditionWatcher := watcher.NewConditionWatcher(azInformerFactory, testNamespace, azNodeInformer, azVolumeAttachmentInformer, azVolumeInformer, crdInformer)
+	conditionWatcher, _ := watcher.NewConditionWatcher(azInformerFactory, testNamespace, azNodeInformer, azVolumeAttachmentInformer, azVolumeInformer, crdInformer)
 	config := azdiskv1beta2.AzDiskDriverConfiguration{
 		ControllerConfig: azdiskv1beta2.ControllerConfiguration{
 			WaitForLunEnabled: waitForLunEnabled,
@@ -200,7 +200,7 @@ func UpdateTestCrdProvisionerWithNewClient(provisioner *CrdProvisioner, azDiskCl
 	azVolumeInformer := azureutils.NewAzVolumeInformer(azInformerFactory)
 	crdInformer := azureutils.NewCrdInformer(crdInformerFactory)
 
-	conditionWatcher := watcher.NewConditionWatcher(azInformerFactory, testNamespace, azNodeInformer, azVolumeAttachmentInformer, azVolumeInformer, crdInformer)
+	conditionWatcher, _ := watcher.NewConditionWatcher(azInformerFactory, testNamespace, azNodeInformer, azVolumeAttachmentInformer, azVolumeInformer, crdInformer)
 
 	provisioner.azDiskClient = azDiskClient
 	provisioner.kubeClient = kubeClient

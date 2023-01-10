@@ -29,7 +29,7 @@ import (
 	"k8s.io/apimachinery/pkg/util/wait"
 	clientset "k8s.io/client-go/kubernetes"
 	"k8s.io/kubernetes/test/e2e/framework"
-	e2elog "k8s.io/kubernetes/test/e2e/framework/log"
+
 	azdiskv1beta2 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1beta2"
 	azdisk "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned"
 	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
@@ -51,7 +51,7 @@ func WaitForAllVolumeAttachmentsToDelete(testTimeout int, tickerDuration time.Du
 		case <-ticker.C:
 			tickerCount++
 			numberOfAttachedVolumeAttachments = CountAllVolumeAttachments(cs)
-			e2elog.Logf("%.1f min: %d VolumeAttachments are created", float64(tickerCount)*tickerDuration.Minutes(), numberOfAttachedVolumeAttachments)
+			framework.Logf("%.1f min: %d VolumeAttachments are created", float64(tickerCount)*tickerDuration.Minutes(), numberOfAttachedVolumeAttachments)
 			if numberOfAttachedVolumeAttachments <= 0 {
 				return
 			}
@@ -61,7 +61,7 @@ func WaitForAllVolumeAttachmentsToDelete(testTimeout int, tickerDuration time.Du
 
 // Returns the number of VolumeAttachments in the cluster
 func CountAllVolumeAttachments(cs clientset.Interface) int {
-	e2elog.Logf("Getting all VolumeAttachments")
+	framework.Logf("Getting all VolumeAttachments")
 	vatts, err := cs.StorageV1().VolumeAttachments().List(context.TODO(), metav1.ListOptions{})
 	if !errors.IsNotFound(err) {
 		framework.ExpectNoError(err)
@@ -129,7 +129,7 @@ func WaitForAllReplicaAttachmentsToAttach(testTimeout int, tickerDuration time.D
 		case <-ticker.C:
 			tickerCount++
 			numberOfAttachedReplicaAtts = CountAllAttachedReplicaAttachments(cs)
-			e2elog.Logf("%.1f min: %d replica attachments are attached", float64(tickerCount)*tickerDuration.Minutes(), numberOfAttachedReplicaAtts)
+			framework.Logf("%.1f min: %d replica attachments are attached", float64(tickerCount)*tickerDuration.Minutes(), numberOfAttachedReplicaAtts)
 			if numberOfAttachedReplicaAtts >= desiredNumberOfReplicaAtts {
 				return
 			}
@@ -152,7 +152,7 @@ func WaitForAllReplicaAttachmentsToDetach(testTimeout int, tickerDuration time.D
 		case <-ticker.C:
 			tickerCount++
 			numberOfAttachedReplicaAtts = CountAllAttachedReplicaAttachments(cs)
-			e2elog.Logf("%.1f min: %d replica attachments are attached", float64(tickerCount)*tickerDuration.Minutes(), numberOfAttachedReplicaAtts)
+			framework.Logf("%.1f min: %d replica attachments are attached", float64(tickerCount)*tickerDuration.Minutes(), numberOfAttachedReplicaAtts)
 			if numberOfAttachedReplicaAtts <= 0 {
 				return
 			}
@@ -162,14 +162,14 @@ func WaitForAllReplicaAttachmentsToDetach(testTimeout int, tickerDuration time.D
 
 // Returns the number of attached replica attachments in the cluster
 func CountAllAttachedReplicaAttachments(cs *azdisk.Clientset) int {
-	e2elog.Logf("Getting all replica attachments")
+	framework.Logf("Getting all replica attachments")
 	roleReq, err := azureutils.CreateLabelRequirements(consts.RoleLabel, selection.Equals, string(azdiskv1beta2.ReplicaRole))
 	framework.ExpectNoError(err)
 	labelSelector := labels.NewSelector().Add(*roleReq)
 
 	replicaAtts, err := cs.DiskV1beta2().AzVolumeAttachments(consts.DefaultAzureDiskCrdNamespace).List(context.TODO(), metav1.ListOptions{LabelSelector: labelSelector.String()})
 	if err != nil {
-		e2elog.Failf("Failed to get replica attachments: %v.", err)
+		framework.Failf("Failed to get replica attachments: %v.", err)
 	}
 
 	numberOfAttachedReplicaAtts := 0

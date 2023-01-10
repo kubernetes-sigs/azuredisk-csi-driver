@@ -77,7 +77,7 @@ func main() {
 
 	queue := workqueue.NewRateLimitingQueue(workqueue.DefaultControllerRateLimiter())
 
-	volumeInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
+	_, err := volumeInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc: func(obj interface{}) {
 			key, err := cache.MetaNamespaceKeyFunc(obj)
 			log.Infof("Add myresource: %s", key)
@@ -100,6 +100,9 @@ func main() {
 			}
 		},
 	})
+	if err != nil {
+		log.Fatalf("failed to add event handler: %s", err)
+	}
 
 	controller := Controller{
 		logger:    log.NewEntry(log.New()),

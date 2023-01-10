@@ -30,17 +30,16 @@ import (
 	clientset "k8s.io/client-go/kubernetes"
 	deploymentutil "k8s.io/kubernetes/pkg/controller/deployment/util"
 	"k8s.io/kubernetes/test/e2e/framework"
-	e2elog "k8s.io/kubernetes/test/e2e/framework/log"
 	e2epod "k8s.io/kubernetes/test/e2e/framework/pod"
 )
 
 func CleanupPodOrFail(client clientset.Interface, name, namespace string) {
-	e2elog.Logf("deleting Pod %q/%q", namespace, name)
+	framework.Logf("deleting Pod %q/%q", namespace, name)
 	body, err := PodLogs(client, name, namespace)
 	if err != nil {
-		e2elog.Logf("Error getting logs for pod %s: %v", name, err)
+		framework.Logf("Error getting logs for pod %s: %v", name, err)
 	} else {
-		e2elog.Logf("Pod %s has the following logs: %s", name, body)
+		framework.Logf("Pod %s has the following logs: %s", name, body)
 	}
 	e2epod.DeletePodOrFail(client, namespace, name)
 }
@@ -87,7 +86,7 @@ func DeleteAllPodsWithMatchingLabelWithSleep(cs clientset.Interface, ns *v1.Name
 
 func DeleteAllPodsWithMatchingLabel(cs clientset.Interface, ns *v1.Namespace, matchLabels map[string]string) {
 
-	e2elog.Logf("Deleting all pods with %v labels in namespace %s", matchLabels, ns.Name)
+	framework.Logf("Deleting all pods with %v labels in namespace %s", matchLabels, ns.Name)
 	labelSelector := metav1.LabelSelector{MatchLabels: matchLabels}
 	err := cs.CoreV1().Pods(ns.Name).DeleteCollection(context.TODO(), metav1.DeleteOptions{}, metav1.ListOptions{LabelSelector: labels.Set(labelSelector.MatchLabels).String()})
 	if !errors.IsNotFound(err) {
@@ -96,7 +95,7 @@ func DeleteAllPodsWithMatchingLabel(cs clientset.Interface, ns *v1.Namespace, ma
 }
 
 func CountAllPodsWithMatchingLabel(cs clientset.Interface, ns *v1.Namespace, matchLabels map[string]string, state string) int {
-	e2elog.Logf("Getting all pods with %v labels in namespace %s", matchLabels, ns.Name)
+	framework.Logf("Getting all pods with %v labels in namespace %s", matchLabels, ns.Name)
 	var listOptions metav1.ListOptions
 	labelSelector := metav1.LabelSelector{MatchLabels: matchLabels}
 	if state != "" {
@@ -126,7 +125,7 @@ func WaitForAllPodsWithMatchingLabelToRun(testTimeout int, tickerDuration time.D
 		case <-ticker.C:
 			tickerCount++
 			numberOfRunningPods = CountAllPodsWithMatchingLabel(cs, ns, map[string]string{"group": "azuredisk-scale-tester"}, string(v1.PodRunning))
-			e2elog.Logf("%.1f min: %d pods are running", float64(tickerCount)*tickerDuration.Minutes(), numberOfRunningPods)
+			framework.Logf("%.1f min: %d pods are running", float64(tickerCount)*tickerDuration.Minutes(), numberOfRunningPods)
 			if numberOfRunningPods >= desiredNumberOfPods {
 				return
 			}
@@ -149,7 +148,7 @@ func WaitForAllPodsWithMatchingLabelToDelete(testTimeout int, tickerDuration tim
 		case <-ticker.C:
 			tickerCount++
 			numberOfRunningPods = CountAllPodsWithMatchingLabel(cs, ns, map[string]string{"group": "azuredisk-scale-tester"}, string(v1.PodRunning))
-			e2elog.Logf("%.1f min: %d pods are running", float64(tickerCount)*tickerDuration.Minutes(), numberOfRunningPods)
+			framework.Logf("%.1f min: %d pods are running", float64(tickerCount)*tickerDuration.Minutes(), numberOfRunningPods)
 			if numberOfRunningPods <= 0 {
 				return
 			}
