@@ -220,12 +220,10 @@ func (c *SharedState) addToOperationQueue(ctx context.Context, volumeName string
 					lockable.Unlock()
 					err := operation.operationFunc(operation.ctx)
 					lockable.Lock()
-					if err != nil {
-						if shouldRequeueReplicaOperation(operation.isReplicaGarbageCollection, err) {
-							// if failed, push it to the end of the queue
-							if operationQueue.isActive {
-								operationQueue.PushBack(operation)
-							}
+					if shouldRequeueReplicaOperation(operation.isReplicaGarbageCollection, err) {
+						// if operation failed, push it to the end of the queue
+						if operationQueue.isActive {
+							operationQueue.PushBack(operation)
 						}
 					}
 				}
@@ -1121,7 +1119,6 @@ func (c *SharedState) cleanUpAzVolumeAttachmentByNode(ctx context.Context, azDri
 
 	for volumeName, cleanUps := range cleanUpMap {
 		volumeName := volumeName
-		defer w.Finish(nil)
 		c.addToOperationQueue(ctx,
 			volumeName,
 			caller,

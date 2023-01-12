@@ -87,37 +87,37 @@ func (r *ReconcileReplica) Reconcile(ctx context.Context, request reconcile.Requ
 			return reconcile.Result{}, nil
 		}
 
-		// create a replica attachment was requested for a detach, create a replacement replica if the attachment is not being cleaned up
-		if volumeDetachRequested(azVolumeAttachment) {
-			switch azVolumeAttachment.Status.State {
-			case azdiskv1beta2.DetachmentFailed:
-				// if detachment failed and the driver is uninstalling, delete azvolumeattachment CRI to let uninstallation proceed
-				if r.driverLifecycle.IsDriverUninstall() {
-					r.logger.Info("Deleting AzVolumeAttachment in DetachmentFailed state without detaching disk", workflow.GetObjectDetails(azVolumeAttachment)...)
-					if err := r.cachedClient.Delete(ctx, azVolumeAttachment); err != nil {
-						return reconcile.Result{Requeue: true}, err
-					}
-				} else {
-					if _, err := azureutils.UpdateCRIWithRetry(ctx, nil, r.cachedClient, r.azClient, azVolumeAttachment, func(obj client.Object) error {
-						azVolumeAttachment := obj.(*azdiskv1beta2.AzVolumeAttachment)
-						_, err = updateState(azVolumeAttachment, azdiskv1beta2.ForceDetachPending, normalUpdate)
-						return err
-					}, consts.NormalUpdateMaxNetRetry, azureutils.UpdateCRIStatus); err != nil {
-						return reconcile.Result{Requeue: true}, err
+		if deleteRequested, _ := objectDeletionRequested(azVolumeAttachment); !deleteRequested {
+			// create a replica attachment was requested for a detach, create a replacement replica if the attachment is not being cleaned up
+			if volumeDetachRequested(azVolumeAttachment) {
+				if azVolumeAttachment.Status.State == azdiskv1beta2.DetachmentFailed {
+					// if detachment failed and the driver is uninstalling, delete azvolumeattachment CRI to let uninstallation proceed
+					if r.driverLifecycle.IsDriverUninstall() {
+						r.logger.Info("Deleting AzVolumeAttachment in DetachmentFailed state without detaching disk", workflow.GetObjectDetails(azVolumeAttachment)...)
+						if err := r.cachedClient.Delete(ctx, azVolumeAttachment); err != nil {
+							return reconcile.Result{Requeue: true}, err
+						}
+					} else {
+						if _, err := azureutils.UpdateCRIWithRetry(ctx, nil, r.cachedClient, r.azClient, azVolumeAttachment, func(obj client.Object) error {
+							azVolumeAttachment := obj.(*azdiskv1beta2.AzVolumeAttachment)
+							_, err = updateState(azVolumeAttachment, azdiskv1beta2.ForceDetachPending, normalUpdate)
+							return err
+						}, consts.NormalUpdateMaxNetRetry, azureutils.UpdateCRIStatus); err != nil {
+							return reconcile.Result{Requeue: true}, err
+						}
 					}
 				}
-			}
 
-			if !isCleanupRequested(azVolumeAttachment) {
+				if !isCleanupRequested(azVolumeAttachment) {
+					go r.handleReplicaDelete(context.Background(), azVolumeAttachment)
+				}
+				// if replica attachment failed, delete the CRI and create a replacement
+			} else if azVolumeAttachment.Status.State == azdiskv1beta2.AttachmentFailed {
+				if err := r.cachedClient.Delete(ctx, azVolumeAttachment); err != nil {
+					return reconcile.Result{Requeue: true}, err
+				}
 				go r.handleReplicaDelete(context.Background(), azVolumeAttachment)
 			}
-			// if replica attachment failed, delete it and create a replacement
-		} else if azVolumeAttachment.Status.State == azdiskv1beta2.AttachmentFailed {
-			// if attachment failed for replica AzVolumeAttachment, delete the CRI so that replace replica AzVolumeAttachment can be created.
-			if err := r.cachedClient.Delete(ctx, azVolumeAttachment); err != nil {
-				return reconcile.Result{Requeue: true}, err
-			}
-			go r.handleReplicaDelete(context.Background(), azVolumeAttachment)
 		}
 	}
 	return reconcile.Result{}, nil
@@ -156,7 +156,7 @@ func (r *ReconcileReplica) triggerGarbageCollection(ctx context.Context, volumeN
 		return
 	}
 
-	workflowCtx, w := workflow.New(context.Background(), workflow.WithDetails(consts.VolumeNameLabel, volumeName))
+	workflowCtx, w := workflow.New(deletionCtx, workflow.WithDetails(consts.VolumeNameLabel, volumeName))
 	w.Logger().V(5).Infof("Garbage collection of AzVolumeAttachments for AzVolume (%s) scheduled in %s.", volumeName, r.timeUntilGarbageCollection.String())
 
 	go func() {

@@ -246,8 +246,9 @@ func newLockableEntry(entry interface{}) *lockableEntry {
 	}
 }
 
+// Return true for all errors unless the operation is replica garbage collection that had been aborted due to context cancellation
 func shouldRequeueReplicaOperation(isReplicaGarbageCollection bool, err error) bool {
-	return !isReplicaGarbageCollection || !errors.Is(err, context.Canceled)
+	return err != nil && !(isReplicaGarbageCollection && errors.Is(err, context.Canceled))
 }
 
 type filterPlugin interface {
