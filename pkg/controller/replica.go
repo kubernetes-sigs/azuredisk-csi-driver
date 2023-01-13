@@ -94,17 +94,20 @@ func (r *ReconcileReplica) Reconcile(ctx context.Context, request reconcile.Requ
 				// if detachment failed and the driver is uninstalling, delete azvolumeattachment CRI to let uninstallation proceed
 				if r.driverLifecycle.IsDriverUninstall() {
 					r.logger.Info("Deleting AzVolumeAttachment in DetachmentFailed state without detaching disk", workflow.GetObjectDetails(azVolumeAttachment)...)
-					_ = r.cachedClient.Delete(ctx, azVolumeAttachment)
-				}
-
-				if _, err := azureutils.UpdateCRIWithRetry(ctx, nil, r.cachedClient, r.azClient, azVolumeAttachment, func(obj client.Object) error {
-					azVolumeAttachment := obj.(*azdiskv1beta2.AzVolumeAttachment)
-					_, err = updateState(azVolumeAttachment, azdiskv1beta2.ForceDetachPending, normalUpdate)
-					return err
-				}, consts.NormalUpdateMaxNetRetry, azureutils.UpdateCRIStatus); err != nil {
-					return reconcile.Result{Requeue: true}, err
+					if err := r.cachedClient.Delete(ctx, azVolumeAttachment); err != nil {
+						return reconcile.Result{Requeue: true}, err
+					}
+				} else {
+					if _, err := azureutils.UpdateCRIWithRetry(ctx, nil, r.cachedClient, r.azClient, azVolumeAttachment, func(obj client.Object) error {
+						azVolumeAttachment := obj.(*azdiskv1beta2.AzVolumeAttachment)
+						_, err = updateState(azVolumeAttachment, azdiskv1beta2.ForceDetachPending, normalUpdate)
+						return err
+					}, consts.NormalUpdateMaxNetRetry, azureutils.UpdateCRIStatus); err != nil {
+						return reconcile.Result{Requeue: true}, err
+					}
 				}
 			}
+
 			if !isCleanupRequested(azVolumeAttachment) {
 				go r.handleReplicaDelete(context.Background(), azVolumeAttachment)
 			}
