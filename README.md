@@ -30,7 +30,7 @@ V2: Preview
 |Driver Version  |Image                                                            | supported k8s version |
 |----------------|-----------------------------------------------------------------|-----------------------|
 |`main_v2` branch|                                                                 | 1.21+                 |
-|v2.0.0-beta.9   |mcr.microsoft.com/oss/kubernetes-csi/azuredisk-csi:v2.0.0-beta.9 | 1.21+                 |
+|v2.0.0-beta.10   |mcr.microsoft.com/oss/kubernetes-csi/azuredisk-csi:v2.0.0-beta.10 | 1.21+                 |
 
 ### Driver parameters
 
