@@ -439,7 +439,7 @@ func (d *DriverV2) StartControllersAndDieOnExit(ctx context.Context) {
 		recoveryID := uuid.NewUUID().String()
 
 		// recover lost states if necessary
-		w.Logger().Infof("Elected as leader; initiating CRI deperecation / recovery with recoveryID: %s ...", recoveryID)
+		w.Logger().Infof("Elected as leader; initiating CRI deprecation / recovery with recoveryID: %s ...", recoveryID)
 		if err := nodeReconciler.Recover(ctx, recoveryID); err != nil {
 			errors = append(errors, err)
 		}

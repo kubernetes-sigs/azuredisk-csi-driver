@@ -19,6 +19,7 @@ package controller
 import (
 	"container/list"
 	"context"
+	"errors"
 	"fmt"
 	"reflect"
 	"sort"
@@ -971,9 +972,11 @@ func (c *SharedState) getNodesWithReplica(ctx context.Context, volumeName string
 
 	nodes := []string{}
 	for _, azVolumeAttachment := range azVolumeAttachments {
-		nodes = append(nodes, azVolumeAttachment.Spec.NodeName)
+		if deleteRequested, _ := objectDeletionRequested(&azVolumeAttachment); !deleteRequested {
+			nodes = append(nodes, azVolumeAttachment.Spec.NodeName)
+		}
 	}
-	w.Logger().V(5).Infof("Nodes with AzVolumeAttachments for volume %s are: %v, Len: %d", volumeName, nodes, len(nodes))
+	w.Logger().V(5).Infof("Nodes with replica AzVolumeAttachments for volume %s are: %v, Len: %d", volumeName, nodes, len(nodes))
 	return nodes, nil
 }
 
@@ -1248,17 +1251,16 @@ func (c *SharedState) manageReplicas(ctx context.Context, volumeName string) err
 	// replica management should not be executed or retried if AzVolume is scheduled for a deletion or not created.
 	deleteRequested, _ := objectDeletionRequested(azVolume)
 	if !isCreated(azVolume) || deleteRequested {
-		w.Logger().Errorf(err, "azVolume is scheduled for deletion or has no underlying volume object")
+		w.Logger().Errorf(errors.New("no valid azVolume"), "azVolume (%s) is scheduled for deletion or has no underlying volume object", azVolume.Name)
 		return nil
 	}
 
-	azVolumeAttachments, err := azureutils.GetAzVolumeAttachmentsForVolume(ctx, c.cachedClient, volumeName, azureutils.ReplicaOnly)
+	currentReplicaCount, err := c.countValidReplicasForVolume(ctx, volumeName)
 	if err != nil {
-		w.Logger().Errorf(err, "failed to list replica AzVolumeAttachments")
 		return err
 	}
 
-	desiredReplicaCount, currentReplicaCount := azVolume.Spec.MaxMountReplicaCount, len(azVolumeAttachments)
+	desiredReplicaCount := azVolume.Spec.MaxMountReplicaCount
 	w.Logger().Infof("Control number of replicas for volume (%s): desired=%d, current:%d", azVolume.Spec.VolumeName, desiredReplicaCount, currentReplicaCount)
 
 	if desiredReplicaCount > currentReplicaCount {
@@ -1273,6 +1275,25 @@ func (c *SharedState) manageReplicas(ctx context.Context, volumeName string) err
 		}
 	}
 	return nil
+}
+
+// Count the number of replica attachments that aren't scheduled for deletion for a given volume
+func (c *SharedState) countValidReplicasForVolume(ctx context.Context, volumeName string) (int, error) {
+	w, _ := workflow.GetWorkflowFromContext(ctx)
+	validReplicaCount := 0
+
+	azVolumeAttachments, err := azureutils.GetAzVolumeAttachmentsForVolume(ctx, c.cachedClient, volumeName, azureutils.ReplicaOnly)
+	if err != nil {
+		w.Logger().Errorf(err, "failed to list replica AzVolumeAttachments")
+		return validReplicaCount, err
+	}
+
+	for _, azVolumeAttachment := range azVolumeAttachments {
+		if deleteRequested, _ := objectDeletionRequested(&azVolumeAttachment); !deleteRequested {
+			validReplicaCount++
+		}
+	}
+	return validReplicaCount, nil
 }
 
 func (c *SharedState) createReplicas(ctx context.Context, remainingReplicas int, volumeName, volumeID string, volumeContext map[string]string) error {
@@ -1679,8 +1700,10 @@ func (c *SharedState) getReplicaNodesForPods(ctx context.Context, pods []v1.Pod)
 				continue
 			}
 			for _, attachment := range attachments {
-				node := attachment.Spec.NodeName
-				replicaNodes.add(node)
+				if deleteRequested, _ := objectDeletionRequested(&attachment); !deleteRequested {
+					node := attachment.Spec.NodeName
+					replicaNodes.add(node)
+				}
 			}
 		}
 	}
