@@ -1658,7 +1658,7 @@ func (c *SharedState) getQualifiedNodesForPodAffinityTerm(ctx context.Context, n
 	replicaNodes = c.getReplicaNodesForPods(ctx, pods)
 	for replicaNode := range replicaNodes {
 		if !candidateNodes.has(replicaNode) {
-			candidateNodes.remove(replicaNode)
+			replicaNodes.remove(replicaNode)
 		}
 	}
 
