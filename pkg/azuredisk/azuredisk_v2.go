@@ -227,7 +227,7 @@ func (d *DriverV2) Run(endpoint, kubeconfig string, disableAVSetNodes, testingMo
 		d.cloudProvisioner, err = provisioner.NewCloudProvisioner(
 			d.kubeClient,
 			d.config.CloudConfig,
-			d.config.NodeConfig.EnablePerfOptimization,
+			d.isPerfOptimizationEnabled(),
 			topologyKey,
 			userAgent,
 			d.config.ControllerConfig.EnableDiskOnlineResize,
@@ -266,7 +266,7 @@ func (d *DriverV2) Run(endpoint, kubeconfig string, disableAVSetNodes, testingMo
 
 	d.deviceHelper = optimization.NewSafeDeviceHelper()
 
-	if d.config.NodeConfig.EnablePerfOptimization {
+	if d.isPerfOptimizationEnabled() {
 		d.nodeInfo, err = optimization.NewNodeInfo(context.Background(), d.cloudProvisioner.GetCloud(), d.NodeID)
 		if err != nil {
 			klog.Errorf("Failed to get node info. Error: %v", err)
@@ -615,4 +615,8 @@ func (d *DriverV2) updateOrCreateAzDriverNode(ctx context.Context, status azDriv
 	}
 
 	return nil
+}
+
+func (d *DriverV2) isPerfOptimizationEnabled() bool {
+	return d.config.NodeConfig.Enabled && d.config.NodeConfig.EnablePerfOptimization
 }
