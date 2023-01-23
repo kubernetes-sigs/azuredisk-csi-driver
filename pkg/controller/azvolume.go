@@ -24,7 +24,6 @@ import (
 	"github.com/go-logr/logr"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
-	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	azdiskv1beta2 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1beta2"
@@ -600,28 +599,4 @@ func NewAzVolumeController(mgr manager.Manager, volumeProvisioner VolumeProvisio
 	logger.V(2).Info("Controller set-up successful.")
 
 	return &reconciler, nil
-}
-
-func getVolumeCapabilityFromPv(pv *v1.PersistentVolume) []azdiskv1beta2.VolumeCapability {
-	volCaps := []azdiskv1beta2.VolumeCapability{}
-
-	for _, accessMode := range pv.Spec.AccessModes {
-		volCap := azdiskv1beta2.VolumeCapability{}
-		// default to Mount
-		if pv.Spec.VolumeMode != nil && *pv.Spec.VolumeMode == v1.PersistentVolumeBlock {
-			volCap.AccessType = azdiskv1beta2.VolumeCapabilityAccessBlock
-		}
-		switch accessMode {
-		case v1.ReadWriteOnce:
-			volCap.AccessMode = azdiskv1beta2.VolumeCapabilityAccessModeSingleNodeSingleWriter
-		case v1.ReadWriteMany:
-			volCap.AccessMode = azdiskv1beta2.VolumeCapabilityAccessModeMultiNodeMultiWriter
-		case v1.ReadOnlyMany:
-			volCap.AccessMode = azdiskv1beta2.VolumeCapabilityAccessModeMultiNodeReaderOnly
-		default:
-			volCap.AccessMode = azdiskv1beta2.VolumeCapabilityAccessModeUnknown
-		}
-		volCaps = append(volCaps, volCap)
-	}
-	return volCaps
 }
