@@ -1,5 +1,17 @@
 # Azure Disk CSI Driver Debugging
 
+- [Azure Disk CSI Driver Debugging](#azure-disk-csi-driver-debugging)
+  - [Control Plane Debugging](#control-plane-debugging)
+    - [V2 Control Plane Debugging](#v2-control-plane-debugging)
+      - [Operator Debugging](#operator-debugging)
+      - [Scheduler Extender Debugging](#scheduler-extender-debugging)
+  - [Node Debugging](#node-debugging)
+    - [Linux Node Debugging](#linux-node-debugging)
+    - [Windows Node Debugging](#windows-node-debugging)
+  - [Debugging With the AzureDiskCSIDriver PowerShell Module](#debugging-with-the-azurediskcsidriver-powershell-module)
+  - [Advanced Debugging](#advanced-debugging)
+  - [Additional References](#additional-references)
+
 ## Control Plane Debugging
 
 Creating, deleting, resizing, attaching and detaching disks and creating and deleting snapshots are control plane operations handled by the Azure Disk CSI Driver controller. The controller is typically deployed with multiple replica pods in an active-passive mode. The active, or leader, pod performs the control plane operations and is indicated via a [Lease](https://kubernetes.io/docs/concepts/architecture/leases/) object. Sidecar containers deployed in the CSI controller pod interact with the Kubernetes API server to orchestrate the control plane operations. Since each sidecar handles a subset of the operations, the leader may be different for each grouping of operations. The table below describes the sidecars and the operations they perform.
@@ -131,6 +143,28 @@ Use the following command to get the CSI Proxy log on a Windows node.
 
 ```bash
 kubectl exec -it "${DRIVERPOD}" -n kube-system -c azuredisk -- cmd type :\k\csi-proxy.err.log
+```
+
+## Debugging With the AzureDiskCSIDriver PowerShell Module
+
+The AzureDiskCSIDriver PowerShell module can be used to ease retrieval of CSI driver log messages and analyze operations.
+
+To use the module, change the current directory to the root of this repository and import it into your PowerShell session.
+
+```powershell
+PS> Import-Module ./hack/AzureDiskCSIDriver.psd1
+```
+
+You can use the `Get-CSIMessage` cmdlet to get log messages from the CSI driver. For example, the following command gets the CSI controller logs from the `azuredisk` container for the day of January 3rd, 2023 between noon and 13:00 UTC.
+
+```powershell
+PS> Get-CSIMessage -Controller -After "2023-01-03T12:00Z" -Before "2023-01-03T12:00Z"
+```
+
+The `Find-CSIOperation` and `Measure-CSIOperation` cmdlets are used to find and measure CSI operation latency. The following example measures the CSI operation latencies for the day of January 3rd, 2023 UTC.
+
+```powershell
+PS>  Get-CSIMessage -Controller -After "2023-01-03Z" -Before "2023-01-04Z" | Find-CSIOperation | Measure-CSIOperation
 ```
 
 ## Advanced Debugging
