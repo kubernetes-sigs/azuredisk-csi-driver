@@ -495,7 +495,6 @@ func (r *ReconcileAzVolume) recoverAzVolume(ctx context.Context, recoveredAzVolu
 	for _, azVolume := range azVolumes.Items {
 		// skip if AzVolume already recovered
 		if _, ok := recoveredAzVolumes.Load(azVolume.Name); ok {
-			numRecovered++
 			continue
 		}
 
