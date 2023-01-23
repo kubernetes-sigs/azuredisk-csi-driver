@@ -100,6 +100,13 @@ func TestRun(t *testing.T) {
 			},
 		},
 		{
+			name: "Successful run without cloud config",
+			testFunc: func(t *testing.T) {
+				d, _ := NewFakeDriver(t)
+				d.Run("tcp://127.0.0.1:0", "", true, true)
+			},
+		},
+		{
 			name: "Successful run with node ID missing",
 			testFunc: func(t *testing.T) {
 				if err := ioutil.WriteFile(fakeCredFile, []byte(fakeCredContent), 0666); err != nil {
