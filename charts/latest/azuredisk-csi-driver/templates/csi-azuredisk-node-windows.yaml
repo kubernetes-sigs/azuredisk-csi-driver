@@ -130,6 +130,9 @@ spec:
             - containerPort: {{ .Values.node.livenessProbe.healthPort }}
               name: healthz
               protocol: TCP
+            - containerPort: {{ .Values.node.metricsPort }}
+              name: metrics
+              protocol: TCP
           livenessProbe:
             failureThreshold: 5
             httpGet:
