@@ -12,9 +12,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-FROM registry.k8s.io/build-image/debian-base:bullseye-v1.4.2
-
-RUN apt update && apt upgrade -y && apt-mark unhold libcap2 && clean-install util-linux e2fsprogs mount ca-certificates udev xfsprogs btrfs-progs
+FROM alpine:3.15.1
+RUN apk upgrade --available --no-cache && \
+    apk add --no-cache util-linux e2fsprogs e2fsprogs-extra ca-certificates udev xfsprogs xfsprogs-extra btrfs-progs btrfs-progs-extra
 
 LABEL maintainers="andyzhangx"
 LABEL description="Azure Disk CSI Driver"
