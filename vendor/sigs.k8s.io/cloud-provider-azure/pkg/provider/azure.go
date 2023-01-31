@@ -1035,12 +1035,6 @@ func initDiskControllers(az *Cloud) error {
 	logger := klogr.NewWithOptions(klogr.WithFormat(klogr.FormatKlog)).WithName("cloud-provider-azure").WithValues("type", "batch")
 
 	delayBeforeStart := ratelimitconfig.DefaultAttachDetachBatchInitialDelay
-	switch {
-	case az.Config.AttachDetachBatchInitialDelayInMillis < 0:
-		delayBeforeStart = 0
-	case az.Config.AttachDetachBatchInitialDelayInMillis > 0:
-		delayBeforeStart = time.Duration(az.Config.AttachDetachBatchInitialDelayInMillis) * time.Millisecond
-	}
 
 	processorOptions := []batch.ProcessorOption{
 		batch.WithVerboseLogLevel(3),
