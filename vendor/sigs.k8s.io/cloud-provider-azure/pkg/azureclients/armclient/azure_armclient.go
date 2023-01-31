@@ -82,7 +82,7 @@ func sender() autorest.Sender {
 			TLSHandshakeTimeout:   10 * time.Second, // the same as default transport
 			ExpectContinueTimeout: 1 * time.Second,  // the same as default transport
 			TLSClientConfig: &tls.Config{
-				MinVersion:    tls.VersionTLS12,     //force to use TLS 1.2
+				MinVersion:    tls.VersionTLS12,     // force to use TLS 1.2
 				Renegotiation: tls.RenegotiateNever, // the same as default transport https://pkg.go.dev/crypto/tls#RenegotiationSupport
 			},
 		}
@@ -155,13 +155,14 @@ func New(authorizer autorest.Authorizer, clientConfig azureclients.ClientConfig,
 		apiVersion:       apiVersion,
 		regionalEndpoint: fmt.Sprintf("%s.%s", clientConfig.Location, url.Host),
 	}
+
 	client.client.Sender = autorest.DecorateSender(client.client,
 		autorest.DoCloseIfError(),
 		retry.DoExponentialBackoffRetry(backoff),
 		DoDumpRequest(10),
 	)
 
-	client.client.Sender = autorest.DecorateSender(client.client.Sender, sendDecoraters...)
+	client.client.Sender = autorest.DecorateSender(client.client, sendDecoraters...)
 
 	return client
 }

@@ -451,6 +451,9 @@ golang.org/x/net/trace
 ## explicit; go 1.11
 golang.org/x/oauth2
 golang.org/x/oauth2/internal
+# golang.org/x/sync v0.1.0
+## explicit
+golang.org/x/sync/semaphore
 # golang.org/x/sys v0.4.0
 ## explicit; go 1.17
 golang.org/x/sys/cpu
@@ -484,7 +487,7 @@ golang.org/x/text/secure/bidirule
 golang.org/x/text/transform
 golang.org/x/text/unicode/bidi
 golang.org/x/text/unicode/norm
-# golang.org/x/time v0.0.0-20220210224613-90d013bbcef8
+# golang.org/x/time v0.3.0
 ## explicit
 golang.org/x/time/rate
 # google.golang.org/appengine v1.6.7
@@ -1048,6 +1051,7 @@ k8s.io/klog/v2/internal/clock
 k8s.io/klog/v2/internal/dbg
 k8s.io/klog/v2/internal/serialize
 k8s.io/klog/v2/internal/severity
+k8s.io/klog/v2/klogr
 # k8s.io/kube-openapi v0.0.0-20221012153701-172d655c2280
 ## explicit; go 1.18
 k8s.io/kube-openapi/pkg/builder3/util
@@ -1161,7 +1165,7 @@ k8s.io/utils/trace
 ## explicit; go 1.17
 sigs.k8s.io/apiserver-network-proxy/konnectivity-client/pkg/client
 sigs.k8s.io/apiserver-network-proxy/konnectivity-client/proto/client
-# sigs.k8s.io/cloud-provider-azure v1.26.1-0.20230111054726-ff4897de44b0
+# sigs.k8s.io/cloud-provider-azure v1.26.1-0.20230111054726-ff4897de44b0 => github.com/edreed/cloud-provider-azure v0.7.3-0.20230109174017-9397319d7638
 ## explicit; go 1.19
 sigs.k8s.io/cloud-provider-azure/pkg/azureclients
 sigs.k8s.io/cloud-provider-azure/pkg/azureclients/armclient
@@ -1203,6 +1207,7 @@ sigs.k8s.io/cloud-provider-azure/pkg/azureclients/vmssclient/mockvmssclient
 sigs.k8s.io/cloud-provider-azure/pkg/azureclients/vmssvmclient
 sigs.k8s.io/cloud-provider-azure/pkg/azureclients/vmssvmclient/mockvmssvmclient
 sigs.k8s.io/cloud-provider-azure/pkg/azureclients/zoneclient
+sigs.k8s.io/cloud-provider-azure/pkg/batch
 sigs.k8s.io/cloud-provider-azure/pkg/cache
 sigs.k8s.io/cloud-provider-azure/pkg/consts
 sigs.k8s.io/cloud-provider-azure/pkg/metrics
@@ -1257,3 +1262,4 @@ sigs.k8s.io/yaml
 # k8s.io/sample-apiserver => k8s.io/sample-apiserver v0.26.0
 # k8s.io/sample-cli-plugin => k8s.io/sample-cli-plugin v0.26.0
 # k8s.io/sample-controller => k8s.io/sample-controller v0.26.0
+# sigs.k8s.io/cloud-provider-azure => github.com/edreed/cloud-provider-azure v0.7.3-0.20230109174017-9397319d7638

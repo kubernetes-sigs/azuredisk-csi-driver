@@ -33,8 +33,10 @@ import (
 	"github.com/Azure/go-autorest/autorest"
 	"github.com/Azure/go-autorest/autorest/adal"
 	"github.com/Azure/go-autorest/autorest/azure"
+	"golang.org/x/time/rate"
 
 	v1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/informers"
@@ -44,9 +46,9 @@ import (
 	corelisters "k8s.io/client-go/listers/core/v1"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/record"
-	"k8s.io/client-go/util/flowcontrol"
 	cloudprovider "k8s.io/cloud-provider"
 	"k8s.io/klog/v2"
+	"k8s.io/klog/v2/klogr"
 
 	azclients "sigs.k8s.io/cloud-provider-azure/pkg/azureclients"
 	"sigs.k8s.io/cloud-provider-azure/pkg/azureclients/blobclient"
@@ -74,8 +76,10 @@ import (
 	"sigs.k8s.io/cloud-provider-azure/pkg/azureclients/vmssclient"
 	"sigs.k8s.io/cloud-provider-azure/pkg/azureclients/vmssvmclient"
 	"sigs.k8s.io/cloud-provider-azure/pkg/azureclients/zoneclient"
+	"sigs.k8s.io/cloud-provider-azure/pkg/batch"
 	azcache "sigs.k8s.io/cloud-provider-azure/pkg/cache"
 	"sigs.k8s.io/cloud-provider-azure/pkg/consts"
+	"sigs.k8s.io/cloud-provider-azure/pkg/metrics"
 	nodemanager "sigs.k8s.io/cloud-provider-azure/pkg/nodemanager"
 	"sigs.k8s.io/cloud-provider-azure/pkg/retry"
 
@@ -265,6 +269,11 @@ type Config struct {
 	PutVMSSVMBatchSize int `json:"putVMSSVMBatchSize" yaml:"putVMSSVMBatchSize"`
 	// PrivateLinkServiceResourceGroup determines the specific resource group of the private link services user want to use
 	PrivateLinkServiceResourceGroup string `json:"privateLinkServiceResourceGroup,omitempty" yaml:"privateLinkServiceResourceGroup,omitempty"`
+	// AttachDetachBatchInitialDelayInMillis determines the initial attach/detach disk batch processing delay in milliseconds.
+	// A value of `0` indicates to use the default initial delay of 1s.
+	// A negative value indicates no initial delay.
+	// A positive value determines the initial delay in milliseconds.
+	AttachDetachBatchInitialDelayInMillis int `json:"attachDetachBatchInitialDelayInMillis,omitempty" yaml:"attachDetachBatchInitialDelayInMillis,omitempty"`
 }
 
 type InitSecretConfig struct {
@@ -470,6 +479,11 @@ func NewCloudWithoutFeatureGates(ctx context.Context, configReader io.Reader, ca
 		return nil, err
 	}
 
+	return NewCloudWithoutFeatureGatesFromConfig(ctx, config, false, callFromCCM)
+}
+
+// NewCloudWithoutFeatureGatesFromConfig returns a Cloud without trying to wire the feature gates.
+func NewCloudWithoutFeatureGatesFromConfig(ctx context.Context, config *Config, fromSecret, callFromCCM bool) (*Cloud, error) {
 	az := &Cloud{
 		nodeNames:                sets.NewString(),
 		nodeZones:                map[string]sets.String{},
@@ -480,7 +494,7 @@ func NewCloudWithoutFeatureGates(ctx context.Context, configReader io.Reader, ca
 		nodePrivateIPs:           map[string]sets.String{},
 	}
 
-	err = az.InitializeCloudFromConfig(ctx, config, false, callFromCCM)
+	err := az.InitializeCloudFromConfig(ctx, config, false, callFromCCM)
 	if err != nil {
 		return nil, err
 	}
@@ -998,19 +1012,93 @@ func initDiskControllers(az *Cloud) error {
 	// Common controller contains the function
 	// needed by both blob disk and managed disk controllers
 
-	qps := float32(ratelimitconfig.DefaultAtachDetachDiskQPS)
-	bucket := ratelimitconfig.DefaultAtachDetachDiskBucket
+	enableAttachDetachDiskRateLimiter := true
+	qps := rate.Limit(ratelimitconfig.DefaultAttachDetachDiskQPS)
+	bucket := ratelimitconfig.DefaultAttachDetachDiskBucket
+
 	if az.Config.AttachDetachDiskRateLimit != nil {
-		qps = az.Config.AttachDetachDiskRateLimit.CloudProviderRateLimitQPSWrite
+		enableAttachDetachDiskRateLimiter = az.Config.AttachDetachDiskRateLimit.CloudProviderRateLimit
+		qps = rate.Limit(az.Config.AttachDetachDiskRateLimit.CloudProviderRateLimitQPSWrite)
 		bucket = az.Config.AttachDetachDiskRateLimit.CloudProviderRateLimitBucketWrite
 	}
-	klog.V(2).Infof("attach/detach disk operation rate limit QPS: %f, Bucket: %d", qps, bucket)
+	klog.V(2).Infof(
+		"attach/detach disk operation rate limiter configuration - Enabled: %t QPS: %f, Bucket: %d",
+		enableAttachDetachDiskRateLimiter,
+		qps,
+		bucket)
 
 	common := &controllerCommon{
-		cloud:             az,
-		lockMap:           newLockMap(),
-		diskOpRateLimiter: flowcontrol.NewTokenBucketRateLimiter(qps, bucket),
+		cloud:   az,
+		lockMap: newLockMap(),
 	}
+
+	logger := klogr.NewWithOptions(klogr.WithFormat(klogr.FormatKlog)).WithName("cloud-provider-azure").WithValues("type", "batch")
+
+	delayBeforeStart := ratelimitconfig.DefaultAttachDetachBatchInitialDelay
+	switch {
+	case az.Config.AttachDetachBatchInitialDelayInMillis < 0:
+		delayBeforeStart = 0
+	case az.Config.AttachDetachBatchInitialDelayInMillis > 0:
+		delayBeforeStart = time.Duration(az.Config.AttachDetachBatchInitialDelayInMillis) * time.Millisecond
+	}
+
+	processorOptions := []batch.ProcessorOption{
+		batch.WithVerboseLogLevel(3),
+		batch.WithDelayBeforeStart(delayBeforeStart),
+	}
+
+	if enableAttachDetachDiskRateLimiter {
+		attachDetachRateLimiter := rate.NewLimiter(qps, bucket)
+		processorOptions = append(processorOptions, batch.WithGlobalLimiter(attachDetachRateLimiter))
+	}
+
+	attachBatchFn := func(ctx context.Context, key string, values []interface{}) ([]interface{}, error) {
+		subscriptionID, resourceGroup, nodeName := metrics.AttributesFromKey(key)
+
+		disksToAttach := make([]*AttachDiskParams, len(values))
+		for i, value := range values {
+			disksToAttach[i] = value.(*AttachDiskParams)
+		}
+
+		lunChans, err := common.attachDiskBatchToNode(ctx, subscriptionID, resourceGroup, types.NodeName(nodeName), disksToAttach)
+		if err != nil {
+			return nil, err
+		}
+
+		results := make([]interface{}, len(lunChans))
+		for i, lun := range lunChans {
+			results[i] = lun
+		}
+
+		return results, nil
+	}
+
+	attachDiskProcessOptions := append(processorOptions,
+		batch.WithLogger(logger.WithValues("operation", "attach_disk")),
+		batch.WithMetricsRecorder(metrics.NewBatchProcessorMetricsRecorder("batch", "updateasync", "attach_disk")))
+
+	detachBatchFn := func(ctx context.Context, key string, values []interface{}) ([]interface{}, error) {
+		subscriptionID, resourceGroup, nodeName := metrics.AttributesFromKey(key)
+
+		disksToDetach := make([]*detachDiskParams, len(values))
+		for i, value := range values {
+			disksToDetach[i] = value.(*detachDiskParams)
+		}
+
+		err := common.detachDiskBatchFromNode(ctx, subscriptionID, resourceGroup, types.NodeName(nodeName), disksToDetach)
+		if err != nil {
+			return nil, err
+		}
+
+		return make([]interface{}, len(disksToDetach)), nil
+	}
+
+	detachDiskProcessorOptions := append(processorOptions,
+		batch.WithLogger(logger.WithValues("operation", "detach_disk")),
+		batch.WithMetricsRecorder(metrics.NewBatchProcessorMetricsRecorder("batch", "update", "detach_disk")))
+
+	common.attachDiskProcessor = batch.NewProcessor(attachBatchFn, attachDiskProcessOptions...)
+	common.detachDiskProcessor = batch.NewProcessor(detachBatchFn, detachDiskProcessorOptions...)
 
 	az.ManagedDiskController = &ManagedDiskController{common: common}
 	az.controllerCommon = common

@@ -202,3 +202,8 @@ func (t *TimedCache) Update(key string, data interface{}) {
 		})
 	}
 }
+
+// ListKeys returns a list of all of the keys of objects currently in the cache.
+func (t *TimedCache) ListKeys() []string {
+	return t.Store.ListKeys()
+}
