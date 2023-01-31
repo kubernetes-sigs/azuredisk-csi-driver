@@ -1410,7 +1410,7 @@ func (c *SharedState) createAzVolumeFromPv(ctx context.Context, pv v1.Persistent
 
 	var desiredAzVolume *azdiskv1beta2.AzVolume
 	requiredBytes, _ := pv.Spec.Capacity.Storage().AsInt64()
-	volumeCapability := getVolumeCapabilityFromPv(&pv)
+	volumeCapability := c.getVolumeCapabilityFromPv(&pv)
 
 	// translate intree pv to csi pv to convert them into AzVolume resource
 	if utilfeature.DefaultFeatureGate.Enabled(features.CSIMigration) &&
@@ -1469,6 +1469,30 @@ func (c *SharedState) createAzVolumeFromPv(ctx context.Context, pv v1.Persistent
 		return err
 	}
 	return nil
+}
+
+func (c *SharedState) getVolumeCapabilityFromPv(pv *v1.PersistentVolume) []azdiskv1beta2.VolumeCapability {
+	volCaps := []azdiskv1beta2.VolumeCapability{}
+
+	for _, accessMode := range pv.Spec.AccessModes {
+		volCap := azdiskv1beta2.VolumeCapability{}
+		// default to Mount
+		if pv.Spec.VolumeMode != nil && *pv.Spec.VolumeMode == v1.PersistentVolumeBlock {
+			volCap.AccessType = azdiskv1beta2.VolumeCapabilityAccessBlock
+		}
+		switch accessMode {
+		case v1.ReadWriteOnce:
+			volCap.AccessMode = azdiskv1beta2.VolumeCapabilityAccessModeSingleNodeSingleWriter
+		case v1.ReadWriteMany:
+			volCap.AccessMode = azdiskv1beta2.VolumeCapabilityAccessModeMultiNodeMultiWriter
+		case v1.ReadOnlyMany:
+			volCap.AccessMode = azdiskv1beta2.VolumeCapabilityAccessModeMultiNodeReaderOnly
+		default:
+			volCap.AccessMode = azdiskv1beta2.VolumeCapabilityAccessModeUnknown
+		}
+		volCaps = append(volCaps, volCap)
+	}
+	return volCaps
 }
 
 func (c *SharedState) createAzVolumeFromCSISource(source *v1.CSIPersistentVolumeSource) (*azdiskv1beta2.AzVolume, error) {
