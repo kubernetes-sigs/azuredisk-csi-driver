@@ -14,6 +14,7 @@ metadata:
 driver: disk.csi.azure.com
 deletionPolicy: Delete
 parameters:
+  resourceGroup: EXISTING_RESOURCE_GROUP_NAME  # optional, only set this when snapshot is not taken in the same resource group as agent node
   incremental: "true"  # available values: "true"(by default), "false"
 ```
 
