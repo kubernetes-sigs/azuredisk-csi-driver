@@ -207,7 +207,9 @@ container-linux:
 		--file ./pkg/azurediskplugin/Dockerfile \
 		--platform="linux/$(ARCH)" \
 		--build-arg ARCH=${ARCH} \
-		--build-arg PLUGIN_NAME=${PLUGIN_NAME}
+		--build-arg PLUGIN_NAME=${PLUGIN_NAME} \
+		--provenance=false \
+		--sbom=false
 
 .PHONY: container-windows
 container-windows:
@@ -219,7 +221,9 @@ container-windows:
 		--file ./pkg/azurediskplugin/Windows.Dockerfile \
 		--build-arg ARCH=${ARCH} \
 		--build-arg PLUGIN_NAME=${PLUGIN_NAME} \
-		--build-arg OSVERSION=$(OSVERSION)
+		--build-arg OSVERSION=$(OSVERSION) \
+		--provenance=false \
+		--sbom=false
 
 .PHONY: azdiskschedulerextender-container
 azdiskschedulerextender-container: azdiskschedulerextender
@@ -233,7 +237,9 @@ azdiskschedulerextender-container-linux:
 		--platform="linux/$(ARCH)" \
 		--tag $(AZ_DISK_SCHEDULER_EXTENDER_IMAGE_TAG)-linux-$(ARCH) \
 		--file ./pkg/azdiskschedulerextender/Dockerfile \
-		--build-arg ARCH=${ARCH}
+		--build-arg ARCH=${ARCH} \
+		--provenance=false \
+		--sbom=false
 
 .PHONY: container-setup
 container-setup:
