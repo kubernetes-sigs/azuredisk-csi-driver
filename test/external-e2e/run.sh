@@ -22,8 +22,7 @@ PROJECT_ROOT=$(git rev-parse --show-toplevel)
 DRIVER="test"
 
 install_ginkgo () {
-    apt update -y
-    apt install -y golang-ginkgo-dev
+    go install github.com/onsi/ginkgo/v2/ginkgo@latest
 }
 
 setup_e2e_binaries() {
