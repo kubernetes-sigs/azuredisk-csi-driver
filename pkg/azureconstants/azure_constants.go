@@ -61,6 +61,7 @@ const (
 	ResizeRequired                = "resizeRequired"
 	SubscriptionIDField           = "subscriptionid"
 	ResourceGroupField            = "resourcegroup"
+	DataAccessAuthModeField       = "dataaccessauthmode"
 	ResourceNotFound              = "ResourceNotFound"
 	SkuNameField                  = "skuname"
 	SourceDiskSearchMaxDepth      = 10

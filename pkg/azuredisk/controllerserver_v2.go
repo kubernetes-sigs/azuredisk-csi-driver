@@ -745,7 +745,7 @@ func (d *DriverV2) CreateSnapshot(ctx context.Context, req *csi.CreateSnapshotRe
 	var customTags string
 	// set incremental snapshot as true by default
 	incremental := true
-	var resourceGroup, subsID string
+	var resourceGroup, subsID, dataAccessAuthMode string
 	var err error
 
 	parameters := req.GetParameters()
@@ -761,6 +761,8 @@ func (d *DriverV2) CreateSnapshot(ctx context.Context, req *csi.CreateSnapshotRe
 			resourceGroup = v
 		case consts.SubscriptionIDField:
 			subsID = v
+		case consts.DataAccessAuthModeField:
+			dataAccessAuthMode = v
 		default:
 			return nil, status.Errorf(codes.Internal, "AzureDisk - invalid option %s in VolumeSnapshotClass", k)
 		}
@@ -799,6 +801,13 @@ func (d *DriverV2) CreateSnapshot(ctx context.Context, req *csi.CreateSnapshotRe
 		Location: &d.cloud.Location,
 		Tags:     tags,
 	}
+	if dataAccessAuthMode != "" {
+		if err := azureutils.ValidateDataAccessAuthMode(dataAccessAuthMode); err != nil {
+			return nil, status.Error(codes.InvalidArgument, err.Error())
+		}
+		snapshot.SnapshotProperties.DataAccessAuthMode = compute.DataAccessAuthMode(dataAccessAuthMode)
+	}
+
 	mc := metrics.NewMetricContext(consts.AzureDiskCSIDriverName, "controller_create_snapshot", d.cloud.ResourceGroup, d.cloud.SubscriptionID, d.Name)
 	isOperationSucceeded := false
 	defer func() {
