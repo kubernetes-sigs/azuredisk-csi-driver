@@ -533,6 +533,19 @@ func ValidateDiskEncryptionType(encryptionType string) error {
 	return fmt.Errorf("DiskEncryptionType(%s) is not supported", encryptionType)
 }
 
+func ValidateDataAccessAuthMode(dataAccessAuthMode string) error {
+	if dataAccessAuthMode == "" {
+		return nil
+	}
+	supportedModes := compute.PossibleDataAccessAuthModeValues()
+	for _, s := range supportedModes {
+		if dataAccessAuthMode == string(s) {
+			return nil
+		}
+	}
+	return fmt.Errorf("dataAccessAuthMode(%s) is not supported", dataAccessAuthMode)
+}
+
 func ParseDiskParameters(parameters map[string]string) (ManagedDiskParameters, error) {
 	var err error
 	if parameters == nil {
