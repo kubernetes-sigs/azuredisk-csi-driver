@@ -85,10 +85,10 @@ func (d *azureDiskDriver) GetDynamicProvisionStorageClass(parameters map[string]
 	return getStorageClass(generateName, provisioner, parameters, mountOptions, reclaimPolicy, bindingMode, allowedTopologies)
 }
 
-func (d *azureDiskDriver) GetVolumeSnapshotClass(namespace string) *snapshotv1.VolumeSnapshotClass {
+func (d *azureDiskDriver) GetVolumeSnapshotClass(namespace string, parameters map[string]string) *snapshotv1.VolumeSnapshotClass {
 	provisioner := d.driverName
 	generateName := fmt.Sprintf("%s-%s-dynamic-sc-", namespace, normalizeProvisioner(provisioner))
-	return getVolumeSnapshotClass(generateName, provisioner)
+	return getVolumeSnapshotClass(generateName, provisioner, parameters)
 }
 
 func (d *azureDiskDriver) GetPersistentVolume(volumeID, fsType, size string, volumeMode v1.PersistentVolumeMode, accessMode v1.PersistentVolumeAccessMode, reclaimPolicy *v1.PersistentVolumeReclaimPolicy, namespace string, volumeContext map[string]string) *v1.PersistentVolume {
