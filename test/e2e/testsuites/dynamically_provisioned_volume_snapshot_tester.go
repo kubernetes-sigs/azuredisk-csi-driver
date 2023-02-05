@@ -94,10 +94,10 @@ func (t *DynamicallyProvisionedVolumeSnapshotTest) Run(client clientset.Interfac
 
 	ginkgo.By("creating volume snapshot class with external rg " + externalRG)
 	tvsc, cleanup := CreateVolumeSnapshotClass(restclient, namespace, t.SnapshotStorageClassParameters, t.CSIDriver)
-	mp := map[string]string{
-		"resourceGroup": externalRG,
+	if tvsc.volumeSnapshotClass.Parameters == nil {
+		tvsc.volumeSnapshotClass.Parameters = map[string]string{}
 	}
-	tvsc.volumeSnapshotClass.Parameters = mp
+	tvsc.volumeSnapshotClass.Parameters["resourceGroup"] = externalRG
 	tvsc.Create()
 	defer cleanup()
 
