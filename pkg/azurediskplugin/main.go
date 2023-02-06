@@ -63,6 +63,8 @@ var (
 	disableUpdateCache           = flag.Bool("disable-update-cache", false, "boolean flag to disable update cache during disk attach/detach")
 	vmssCacheTTLInSeconds        = flag.Int64("vmss-cache-ttl-seconds", -1, "vmss cache TTL in seconds (600 by default)")
 	attachDetachInitialDelayInMs = flag.Int64("attach-detach-initial-delay-ms", 1000, "initial delay in milliseconds for batch disk attach/detach")
+	enableTrafficManager         = flag.Bool("enable-traffic-manager", false, "boolean flag to enable traffic manager")
+	trafficManagerPort           = flag.Int64("traffic-manager-port", 7788, "default traffic manager port")
 )
 
 func main() {
@@ -99,6 +101,8 @@ func handle() {
 		UseCSIProxyGAInterface:       *useCSIProxyGAInterface,
 		EnableDiskOnlineResize:       *enableDiskOnlineResize,
 		AllowEmptyCloudConfig:        *allowEmptyCloudConfig,
+		EnableTrafficManager:         *enableTrafficManager,
+		TrafficManagerPort:           *trafficManagerPort,
 		EnableAsyncAttach:            *enableAsyncAttach,
 		EnableListVolumes:            *enableListVolumes,
 		EnableListSnapshots:          *enableListSnapshots,

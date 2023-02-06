@@ -147,7 +147,8 @@ func GetCachingMode(attributes map[string]string) (compute.CachingTypes, error) 
 }
 
 // GetCloudProviderFromClient get Azure Cloud Provider
-func GetCloudProviderFromClient(ctx context.Context, kubeClient *clientset.Clientset, secretName, secretNamespace, userAgent string, allowEmptyCloudConfig bool) (*azure.Cloud, error) {
+func GetCloudProviderFromClient(ctx context.Context, kubeClient *clientset.Clientset, secretName, secretNamespace, userAgent string,
+	allowEmptyCloudConfig bool, enableTrafficMgr bool, trafficMgrPort int64) (*azure.Cloud, error) {
 	var config *azure.Config
 	var fromSecret bool
 	var err error
@@ -211,6 +212,11 @@ func GetCloudProviderFromClient(ctx context.Context, kubeClient *clientset.Clien
 			CloudProviderRateLimit: false,
 		}
 		config.UserAgent = userAgent
+		if enableTrafficMgr && trafficMgrPort > 0 {
+			trafficMgrAddr := fmt.Sprintf("http://localhost:%d/", trafficMgrPort)
+			klog.V(2).Infof("set ResourceManagerEndpoint as %s", trafficMgrAddr)
+			config.ResourceManagerEndpoint = trafficMgrAddr
+		}
 		if err = az.InitializeCloudFromConfig(ctx, config, fromSecret, false); err != nil {
 			klog.Warningf("InitializeCloudFromConfig failed with error: %v", err)
 		}
@@ -224,7 +230,8 @@ func GetCloudProviderFromClient(ctx context.Context, kubeClient *clientset.Clien
 }
 
 // GetCloudProviderFromConfig get Azure Cloud Provider
-func GetCloudProvider(ctx context.Context, kubeConfig, secretName, secretNamespace, userAgent string, allowEmptyCloudConfig bool) (*azure.Cloud, error) {
+func GetCloudProvider(ctx context.Context, kubeConfig, secretName, secretNamespace, userAgent string,
+	allowEmptyCloudConfig, enableTrafficMgr bool, trafficMgrPort int64) (*azure.Cloud, error) {
 	kubeClient, err := GetKubeClient(kubeConfig)
 	if err != nil {
 		klog.Warningf("get kubeconfig(%s) failed with error: %v", kubeConfig, err)
@@ -232,7 +239,8 @@ func GetCloudProvider(ctx context.Context, kubeConfig, secretName, secretNamespa
 			return nil, fmt.Errorf("failed to get KubeClient: %v", err)
 		}
 	}
-	return GetCloudProviderFromClient(ctx, kubeClient, secretName, secretNamespace, userAgent, allowEmptyCloudConfig)
+	return GetCloudProviderFromClient(ctx, kubeClient, secretName, secretNamespace, userAgent,
+		allowEmptyCloudConfig, enableTrafficMgr, trafficMgrPort)
 }
 
 // GetKubeConfig gets config object from config file

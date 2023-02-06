@@ -68,6 +68,8 @@ type DriverOptions struct {
 	GetNodeInfoFromLabels        bool
 	EnableDiskCapacityCheck      bool
 	DisableUpdateCache           bool
+	EnableTrafficManager         bool
+	TrafficManagerPort           int64
 	AttachDetachInitialDelayInMs int64
 	VMSSCacheTTLInSeconds        int64
 	VMType                       string
@@ -111,6 +113,8 @@ type DriverCore struct {
 	getNodeInfoFromLabels        bool
 	enableDiskCapacityCheck      bool
 	disableUpdateCache           bool
+	enableTrafficManager         bool
+	trafficManagerPort           int64
 	vmssCacheTTLInSeconds        int64
 	attachDetachInitialDelayInMs int64
 	vmType                       string
@@ -148,6 +152,8 @@ func newDriverV1(options *DriverOptions) *Driver {
 	driver.enableDiskCapacityCheck = options.EnableDiskCapacityCheck
 	driver.disableUpdateCache = options.DisableUpdateCache
 	driver.attachDetachInitialDelayInMs = options.AttachDetachInitialDelayInMs
+	driver.enableTrafficManager = options.EnableTrafficManager
+	driver.trafficManagerPort = options.TrafficManagerPort
 	driver.vmssCacheTTLInSeconds = options.VMSSCacheTTLInSeconds
 	driver.vmType = options.VMType
 	driver.volumeLocks = volumehelper.NewVolumeLocks()
@@ -177,7 +183,8 @@ func (d *Driver) Run(endpoint, kubeconfig string, disableAVSetNodes, testingMock
 	userAgent := GetUserAgent(d.Name, d.customUserAgent, d.userAgentSuffix)
 	klog.V(2).Infof("driver userAgent: %s", userAgent)
 
-	cloud, err := azureutils.GetCloudProvider(context.Background(), kubeconfig, d.cloudConfigSecretName, d.cloudConfigSecretNamespace, userAgent, d.allowEmptyCloudConfig)
+	cloud, err := azureutils.GetCloudProvider(context.Background(), kubeconfig, d.cloudConfigSecretName, d.cloudConfigSecretNamespace,
+		userAgent, d.allowEmptyCloudConfig, d.enableTrafficManager, d.trafficManagerPort)
 	if err != nil {
 		klog.Fatalf("failed to get Azure Cloud Provider, error: %v", err)
 	}

@@ -108,7 +108,8 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 	localCloud := d.cloud
 
 	if diskParams.UserAgent != "" {
-		localCloud, err = azureutils.GetCloudProvider(ctx, d.kubeconfig, d.cloudConfigSecretName, d.cloudConfigSecretNamespace, diskParams.UserAgent, d.allowEmptyCloudConfig)
+		localCloud, err = azureutils.GetCloudProvider(ctx, d.kubeconfig, d.cloudConfigSecretName, d.cloudConfigSecretNamespace, diskParams.UserAgent,
+			d.allowEmptyCloudConfig, d.enableTrafficManager, d.trafficManagerPort)
 		if err != nil {
 			return nil, status.Errorf(codes.Internal, "create cloud with UserAgent(%s) failed with: (%s)", diskParams.UserAgent, err)
 		}
@@ -823,7 +824,8 @@ func (d *Driver) CreateSnapshot(ctx context.Context, req *csi.CreateSnapshotRequ
 			location = v
 		case consts.UserAgentField:
 			newUserAgent := v
-			localCloud, err = azureutils.GetCloudProvider(ctx, d.kubeconfig, d.cloudConfigSecretName, d.cloudConfigSecretNamespace, newUserAgent, d.allowEmptyCloudConfig)
+			localCloud, err = azureutils.GetCloudProvider(ctx, d.kubeconfig, d.cloudConfigSecretName, d.cloudConfigSecretNamespace, newUserAgent,
+				d.allowEmptyCloudConfig, d.enableTrafficManager, d.trafficManagerPort)
 			if err != nil {
 				return nil, status.Errorf(codes.Internal, "create cloud with UserAgent(%s) failed with: (%s)", newUserAgent, err)
 			}
