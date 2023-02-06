@@ -734,6 +734,9 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 			ShouldOverwrite:        false,
 			PodWithSnapshot:        podWithSnapshot,
 			StorageClassParameters: map[string]string{"skuName": "StandardSSD_LRS"},
+			SnapshotStorageClassParameters: map[string]string{
+				"incremental": "false", "dataAccessAuthMode": "AzureActiveDirectory",
+			},
 		}
 		if isAzureStackCloud {
 			test.StorageClassParameters = map[string]string{"skuName": "Standard_LRS"}
@@ -783,6 +786,9 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 			PodOverwrite:           podOverwrite,
 			PodWithSnapshot:        podWithSnapshot,
 			StorageClassParameters: map[string]string{"skuName": "StandardSSD_LRS"},
+			SnapshotStorageClassParameters: map[string]string{
+				"incremental": "true", "dataAccessAuthMode": "None",
+			},
 		}
 		if isAzureStackCloud {
 			test.StorageClassParameters = map[string]string{"skuName": "Standard_LRS"}

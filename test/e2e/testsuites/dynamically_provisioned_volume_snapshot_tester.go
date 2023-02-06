@@ -41,12 +41,13 @@ import (
 // And finally delete the snapshot
 // This test only supports a single volume
 type DynamicallyProvisionedVolumeSnapshotTest struct {
-	CSIDriver              driver.PVTestDriver
-	Pod                    PodDetails
-	ShouldOverwrite        bool
-	PodOverwrite           PodDetails
-	PodWithSnapshot        PodDetails
-	StorageClassParameters map[string]string
+	CSIDriver                      driver.PVTestDriver
+	Pod                            PodDetails
+	ShouldOverwrite                bool
+	PodOverwrite                   PodDetails
+	PodWithSnapshot                PodDetails
+	StorageClassParameters         map[string]string
+	SnapshotStorageClassParameters map[string]string
 }
 
 func (t *DynamicallyProvisionedVolumeSnapshotTest) Run(client clientset.Interface, restclient restclientset.Interface, namespace *v1.Namespace) {
@@ -92,11 +93,11 @@ func (t *DynamicallyProvisionedVolumeSnapshotTest) Run(client clientset.Interfac
 	}()
 
 	ginkgo.By("creating volume snapshot class with external rg " + externalRG)
-	tvsc, cleanup := CreateVolumeSnapshotClass(restclient, namespace, t.CSIDriver)
-	mp := map[string]string{
-		"resourceGroup": externalRG,
+	tvsc, cleanup := CreateVolumeSnapshotClass(restclient, namespace, t.SnapshotStorageClassParameters, t.CSIDriver)
+	if tvsc.volumeSnapshotClass.Parameters == nil {
+		tvsc.volumeSnapshotClass.Parameters = map[string]string{}
 	}
-	tvsc.volumeSnapshotClass.Parameters = mp
+	tvsc.volumeSnapshotClass.Parameters["resourceGroup"] = externalRG
 	tvsc.Create()
 	defer cleanup()
 
