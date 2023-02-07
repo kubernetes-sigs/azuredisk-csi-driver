@@ -10,7 +10,7 @@
 
 Name | Meaning | Available Value | Mandatory | Default value
 --- | --- | --- | --- | ---
-skuName | azure disk storage account type (alias: `storageAccountType`)| `Standard_LRS`, `Premium_LRS`, `StandardSSD_LRS`, `UltraSSD_LRS`, `Premium_ZRS`, `StandardSSD_ZRS`, `PremiumV2_LRS`([PremiumV2_LRS](https://learn.microsoft.com/en-us/azure/virtual-machines/disks-deploy-premium-v2) is in preview, need to sign up  first) | No | `StandardSSD_LRS`
+skuName | azure disk storage account type (alias: `storageAccountType`)| `Standard_LRS`, `Premium_LRS`, `StandardSSD_LRS`, `UltraSSD_LRS`, `Premium_ZRS`, `StandardSSD_ZRS`, `PremiumV2_LRS`<br>(Note: [PremiumV2_LRS](https://learn.microsoft.com/en-us/azure/virtual-machines/disks-deploy-premium-v2) only supports `None` caching mode) | No | `StandardSSD_LRS`
 kind | managed or unmanaged(blob based) disk | `managed` (`dedicated`, `shared` are deprecated) | No | `managed`
 fsType | File System Type | `ext4`, `ext3`, `ext2`, `xfs`, `btrfs` on Linux, `ntfs` on Windows | No | `ext4` on Linux, `ntfs` on Windows
 cachingMode | [Azure Data Disk Host Cache Setting](https://docs.microsoft.com/en-us/azure/virtual-machines/windows/premium-storage-performance#disk-caching) | `None`, `ReadOnly`, `ReadWrite`<br>(`ReadWrite` caching mode is deprecated, `PremiumV2_LRS` only supports `None` caching mode) | No | `ReadOnly`
