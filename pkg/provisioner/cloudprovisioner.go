@@ -44,6 +44,7 @@ import (
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/workflow"
 	azcache "sigs.k8s.io/cloud-provider-azure/pkg/cache"
 	azure "sigs.k8s.io/cloud-provider-azure/pkg/provider"
+	"sigs.k8s.io/cloud-provider-azure/pkg/retry"
 )
 
 var (
@@ -408,7 +409,9 @@ func (c *CloudProvisioner) PublishVolume(
 		if vmState != nil && strings.ToLower(*vmState) == "failed" {
 			w.Logger().Infof("VM(%q) is in failed state, update VM first", nodeName)
 			if err = c.cloud.UpdateVM(ctx, nodeName); err != nil {
-				err = status.Errorf(codes.Internal, "update instance %q failed with %v", nodeName, err)
+				if _, ok := err.(*retry.PartialUpdateError); !ok {
+					err = status.Errorf(codes.Internal, "update instance %q failed with %v", nodeName, err)
+				}
 				return
 			}
 		}
