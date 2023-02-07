@@ -160,7 +160,7 @@ spec:
 {{- if eq .Values.controller.enableTrafficManager true }}
         - image: mcr.microsoft.com/aks/ccp/ccp-auto-thrust:master.221118.2
           imagePullPolicy: IfNotPresent
-          name: ccp-auto-thrust
+          name: proxy
           command:
             - /ccp-auto-thrust
           args:
