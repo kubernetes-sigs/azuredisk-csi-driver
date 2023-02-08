@@ -49,7 +49,7 @@ controller:
   disableAvailabilitySetNodes: false
   vmType: ""
   provisionerWorkerThreads: 100
-  attacherWorkerThreads: 500
+  attacherWorkerThreads: 1000
   vmssCacheTTLInSeconds: -1
   logLevel: 5
   tolerations:
