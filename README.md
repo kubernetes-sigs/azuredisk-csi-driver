@@ -52,8 +52,10 @@ Please refer to [`disk.csi.azure.com` driver parameters](./docs/driver-parameter
 ### Install driver on a Kubernetes cluster
  - install by [helm charts](./charts)
  - install by [kubectl](./docs/install-azuredisk-csi-driver.md)
- - install open source csi driver on AKS, follow guide [here](./docs/install-driver-on-aks.md)
- - install managed csi driver on following platforms:
+ - install open source CSI driver on following platforms:
+    - [AKS](./docs/install-driver-on-aks.md)
+    - [Azure RedHat OpenShift](https://github.com/ezYakaEagle442/aro-pub-storage/blob/master/setup-store-CSI-driver-azure-disk.md)
+ - install managed CSI driver on following platforms:
    - [AKS](https://learn.microsoft.com/en-us/azure/aks/csi-storage-drivers)
    - [Azure RedHat OpenShift](https://docs.openshift.com/container-platform/4.11/storage/container_storage_interface/persistent-storage-csi-azure.html)
 
