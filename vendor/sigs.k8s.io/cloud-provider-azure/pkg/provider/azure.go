@@ -363,6 +363,9 @@ type Cloud struct {
 	lbCache  *azcache.TimedCache
 	nsgCache *azcache.TimedCache
 	rtCache  *azcache.TimedCache
+	// public ip cache
+	// key: [resourceGroupName]
+	// Value: sync.Map of [pipName]*PublicIPAddress
 	pipCache *azcache.TimedCache
 	// use LB frontEndIpConfiguration ID as the key and search for PLS attached to the frontEnd
 	plsCache *azcache.TimedCache
@@ -1007,9 +1010,10 @@ func initDiskControllers(az *Cloud) error {
 	klog.V(2).Infof("attach/detach disk operation rate limit QPS: %f, Bucket: %d", qps, bucket)
 
 	common := &controllerCommon{
-		cloud:             az,
-		lockMap:           newLockMap(),
-		diskOpRateLimiter: flowcontrol.NewTokenBucketRateLimiter(qps, bucket),
+		cloud:                        az,
+		lockMap:                      newLockMap(),
+		diskOpRateLimiter:            flowcontrol.NewTokenBucketRateLimiter(qps, bucket),
+		AttachDetachInitialDelayInMs: defaultAttachDetachInitialDelayInMs,
 	}
 
 	az.ManagedDiskController = &ManagedDiskController{common: common}
