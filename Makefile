@@ -175,7 +175,9 @@ container-linux:
 		--file ./pkg/azurediskplugin/Dockerfile \
 		--platform="linux/$(ARCH)" \
 		--build-arg ARCH=${ARCH} \
-		--build-arg PLUGIN_NAME=${PLUGIN_NAME}
+		--build-arg PLUGIN_NAME=${PLUGIN_NAME} \
+		--provenance=false \
+		--sbom=false
 
 .PHONY: container-windows
 container-windows:
@@ -187,7 +189,9 @@ container-windows:
 		--file ./pkg/azurediskplugin/Windows.Dockerfile \
 		--build-arg ARCH=${ARCH} \
 		--build-arg PLUGIN_NAME=${PLUGIN_NAME} \
-		--build-arg OSVERSION=$(OSVERSION) 
+		--build-arg OSVERSION=$(OSVERSION) \
+		--provenance=false \
+		--sbom=false
 
 .PHONY: container-all
 container-all: azuredisk-windows
