@@ -37,31 +37,32 @@ func init() {
 }
 
 var (
-	endpoint                   = flag.String("endpoint", "unix://tmp/csi.sock", "CSI endpoint")
-	nodeID                     = flag.String("nodeid", "", "node id")
-	version                    = flag.Bool("version", false, "Print the version and exit.")
-	metricsAddress             = flag.String("metrics-address", "0.0.0.0:29604", "export the metrics")
-	kubeconfig                 = flag.String("kubeconfig", "", "Absolute path to the kubeconfig file. Required only when running out of cluster.")
-	driverName                 = flag.String("drivername", consts.DefaultDriverName, "name of the driver")
-	volumeAttachLimit          = flag.Int64("volume-attach-limit", -1, "maximum number of attachable volumes per node")
-	supportZone                = flag.Bool("support-zone", true, "boolean flag to get zone info in NodeGetInfo")
-	getNodeInfoFromLabels      = flag.Bool("get-node-info-from-labels", false, "boolean flag to get zone info from node labels in NodeGetInfo")
-	disableAVSetNodes          = flag.Bool("disable-avset-nodes", false, "disable DisableAvailabilitySetNodes in cloud config for controller")
-	vmType                     = flag.String("vm-type", "", "type of agent node. available values: vmss, standard")
-	enablePerfOptimization     = flag.Bool("enable-perf-optimization", false, "boolean flag to enable disk perf optimization")
-	cloudConfigSecretName      = flag.String("cloud-config-secret-name", "azure-cloud-provider", "cloud config secret name")
-	cloudConfigSecretNamespace = flag.String("cloud-config-secret-namespace", "kube-system", "cloud config secret namespace")
-	customUserAgent            = flag.String("custom-user-agent", "", "custom userAgent")
-	userAgentSuffix            = flag.String("user-agent-suffix", "", "userAgent suffix")
-	useCSIProxyGAInterface     = flag.Bool("use-csiproxy-ga-interface", true, "boolean flag to enable csi-proxy GA interface on Windows")
-	enableDiskOnlineResize     = flag.Bool("enable-disk-online-resize", true, "boolean flag to enable disk online resize")
-	allowEmptyCloudConfig      = flag.Bool("allow-empty-cloud-config", true, "Whether allow running driver without cloud config")
-	enableAsyncAttach          = flag.Bool("enable-async-attach", false, "boolean flag to enable async attach")
-	enableListVolumes          = flag.Bool("enable-list-volumes", false, "boolean flag to enable ListVolumes on controller")
-	enableListSnapshots        = flag.Bool("enable-list-snapshots", false, "boolean flag to enable ListSnapshots on controller")
-	enableDiskCapacityCheck    = flag.Bool("enable-disk-capacity-check", false, "boolean flag to enable volume capacity check in CreateVolume")
-	disableUpdateCache         = flag.Bool("disable-update-cache", false, "boolean flag to disable update cache during disk attach/detach")
-	vmssCacheTTLInSeconds      = flag.Int64("vmss-cache-ttl-seconds", -1, "vmss cache TTL in seconds (600 by default)")
+	endpoint                     = flag.String("endpoint", "unix://tmp/csi.sock", "CSI endpoint")
+	nodeID                       = flag.String("nodeid", "", "node id")
+	version                      = flag.Bool("version", false, "Print the version and exit.")
+	metricsAddress               = flag.String("metrics-address", "0.0.0.0:29604", "export the metrics")
+	kubeconfig                   = flag.String("kubeconfig", "", "Absolute path to the kubeconfig file. Required only when running out of cluster.")
+	driverName                   = flag.String("drivername", consts.DefaultDriverName, "name of the driver")
+	volumeAttachLimit            = flag.Int64("volume-attach-limit", -1, "maximum number of attachable volumes per node")
+	supportZone                  = flag.Bool("support-zone", true, "boolean flag to get zone info in NodeGetInfo")
+	getNodeInfoFromLabels        = flag.Bool("get-node-info-from-labels", false, "boolean flag to get zone info from node labels in NodeGetInfo")
+	disableAVSetNodes            = flag.Bool("disable-avset-nodes", false, "disable DisableAvailabilitySetNodes in cloud config for controller")
+	vmType                       = flag.String("vm-type", "", "type of agent node. available values: vmss, standard")
+	enablePerfOptimization       = flag.Bool("enable-perf-optimization", false, "boolean flag to enable disk perf optimization")
+	cloudConfigSecretName        = flag.String("cloud-config-secret-name", "azure-cloud-provider", "cloud config secret name")
+	cloudConfigSecretNamespace   = flag.String("cloud-config-secret-namespace", "kube-system", "cloud config secret namespace")
+	customUserAgent              = flag.String("custom-user-agent", "", "custom userAgent")
+	userAgentSuffix              = flag.String("user-agent-suffix", "", "userAgent suffix")
+	useCSIProxyGAInterface       = flag.Bool("use-csiproxy-ga-interface", true, "boolean flag to enable csi-proxy GA interface on Windows")
+	enableDiskOnlineResize       = flag.Bool("enable-disk-online-resize", true, "boolean flag to enable disk online resize")
+	allowEmptyCloudConfig        = flag.Bool("allow-empty-cloud-config", true, "Whether allow running driver without cloud config")
+	enableAsyncAttach            = flag.Bool("enable-async-attach", false, "boolean flag to enable async attach")
+	enableListVolumes            = flag.Bool("enable-list-volumes", false, "boolean flag to enable ListVolumes on controller")
+	enableListSnapshots          = flag.Bool("enable-list-snapshots", false, "boolean flag to enable ListSnapshots on controller")
+	enableDiskCapacityCheck      = flag.Bool("enable-disk-capacity-check", false, "boolean flag to enable volume capacity check in CreateVolume")
+	disableUpdateCache           = flag.Bool("disable-update-cache", false, "boolean flag to disable update cache during disk attach/detach")
+	vmssCacheTTLInSeconds        = flag.Int64("vmss-cache-ttl-seconds", -1, "vmss cache TTL in seconds (600 by default)")
+	attachDetachInitialDelayInMs = flag.Int64("attach-detach-initial-delay-ms", 1000, "initial delay in milliseconds for batch disk attach/detach")
 )
 
 func main() {
@@ -87,26 +88,27 @@ func main() {
 
 func handle() {
 	driverOptions := azuredisk.DriverOptions{
-		NodeID:                     *nodeID,
-		DriverName:                 *driverName,
-		VolumeAttachLimit:          *volumeAttachLimit,
-		EnablePerfOptimization:     *enablePerfOptimization,
-		CloudConfigSecretName:      *cloudConfigSecretName,
-		CloudConfigSecretNamespace: *cloudConfigSecretNamespace,
-		CustomUserAgent:            *customUserAgent,
-		UserAgentSuffix:            *userAgentSuffix,
-		UseCSIProxyGAInterface:     *useCSIProxyGAInterface,
-		EnableDiskOnlineResize:     *enableDiskOnlineResize,
-		AllowEmptyCloudConfig:      *allowEmptyCloudConfig,
-		EnableAsyncAttach:          *enableAsyncAttach,
-		EnableListVolumes:          *enableListVolumes,
-		EnableListSnapshots:        *enableListSnapshots,
-		SupportZone:                *supportZone,
-		GetNodeInfoFromLabels:      *getNodeInfoFromLabels,
-		EnableDiskCapacityCheck:    *enableDiskCapacityCheck,
-		DisableUpdateCache:         *disableUpdateCache,
-		VMSSCacheTTLInSeconds:      *vmssCacheTTLInSeconds,
-		VMType:                     *vmType,
+		NodeID:                       *nodeID,
+		DriverName:                   *driverName,
+		VolumeAttachLimit:            *volumeAttachLimit,
+		EnablePerfOptimization:       *enablePerfOptimization,
+		CloudConfigSecretName:        *cloudConfigSecretName,
+		CloudConfigSecretNamespace:   *cloudConfigSecretNamespace,
+		CustomUserAgent:              *customUserAgent,
+		UserAgentSuffix:              *userAgentSuffix,
+		UseCSIProxyGAInterface:       *useCSIProxyGAInterface,
+		EnableDiskOnlineResize:       *enableDiskOnlineResize,
+		AllowEmptyCloudConfig:        *allowEmptyCloudConfig,
+		EnableAsyncAttach:            *enableAsyncAttach,
+		EnableListVolumes:            *enableListVolumes,
+		EnableListSnapshots:          *enableListSnapshots,
+		SupportZone:                  *supportZone,
+		GetNodeInfoFromLabels:        *getNodeInfoFromLabels,
+		EnableDiskCapacityCheck:      *enableDiskCapacityCheck,
+		DisableUpdateCache:           *disableUpdateCache,
+		AttachDetachInitialDelayInMs: *attachDetachInitialDelayInMs,
+		VMSSCacheTTLInSeconds:        *vmssCacheTTLInSeconds,
+		VMType:                       *vmType,
 	}
 	driver := azuredisk.NewDriver(&driverOptions)
 	if driver == nil {
