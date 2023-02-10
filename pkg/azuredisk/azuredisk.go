@@ -50,26 +50,27 @@ import (
 
 // DriverOptions defines driver parameters specified in driver deployment
 type DriverOptions struct {
-	NodeID                     string
-	DriverName                 string
-	VolumeAttachLimit          int64
-	EnablePerfOptimization     bool
-	CloudConfigSecretName      string
-	CloudConfigSecretNamespace string
-	CustomUserAgent            string
-	UserAgentSuffix            string
-	UseCSIProxyGAInterface     bool
-	EnableDiskOnlineResize     bool
-	AllowEmptyCloudConfig      bool
-	EnableAsyncAttach          bool
-	EnableListVolumes          bool
-	EnableListSnapshots        bool
-	SupportZone                bool
-	GetNodeInfoFromLabels      bool
-	EnableDiskCapacityCheck    bool
-	DisableUpdateCache         bool
-	VMSSCacheTTLInSeconds      int64
-	VMType                     string
+	NodeID                       string
+	DriverName                   string
+	VolumeAttachLimit            int64
+	EnablePerfOptimization       bool
+	CloudConfigSecretName        string
+	CloudConfigSecretNamespace   string
+	CustomUserAgent              string
+	UserAgentSuffix              string
+	UseCSIProxyGAInterface       bool
+	EnableDiskOnlineResize       bool
+	AllowEmptyCloudConfig        bool
+	EnableAsyncAttach            bool
+	EnableListVolumes            bool
+	EnableListSnapshots          bool
+	SupportZone                  bool
+	GetNodeInfoFromLabels        bool
+	EnableDiskCapacityCheck      bool
+	DisableUpdateCache           bool
+	AttachDetachInitialDelayInMs int64
+	VMSSCacheTTLInSeconds        int64
+	VMType                       string
 }
 
 // CSIDriver defines the interface for a CSI driver.
@@ -88,30 +89,31 @@ type hostUtil interface {
 // DriverCore contains fields common to both the V1 and V2 driver, and implements all interfaces of CSI drivers
 type DriverCore struct {
 	csicommon.CSIDriver
-	perfOptimizationEnabled    bool
-	cloudConfigSecretName      string
-	cloudConfigSecretNamespace string
-	customUserAgent            string
-	userAgentSuffix            string
-	kubeconfig                 string
-	cloud                      *azure.Cloud
-	mounter                    *mount.SafeFormatAndMount
-	deviceHelper               optimization.Interface
-	nodeInfo                   *optimization.NodeInfo
-	ioHandler                  azureutils.IOHandler
-	hostUtil                   hostUtil
-	useCSIProxyGAInterface     bool
-	enableDiskOnlineResize     bool
-	allowEmptyCloudConfig      bool
-	enableAsyncAttach          bool
-	enableListVolumes          bool
-	enableListSnapshots        bool
-	supportZone                bool
-	getNodeInfoFromLabels      bool
-	enableDiskCapacityCheck    bool
-	disableUpdateCache         bool
-	vmssCacheTTLInSeconds      int64
-	vmType                     string
+	perfOptimizationEnabled      bool
+	cloudConfigSecretName        string
+	cloudConfigSecretNamespace   string
+	customUserAgent              string
+	userAgentSuffix              string
+	kubeconfig                   string
+	cloud                        *azure.Cloud
+	mounter                      *mount.SafeFormatAndMount
+	deviceHelper                 optimization.Interface
+	nodeInfo                     *optimization.NodeInfo
+	ioHandler                    azureutils.IOHandler
+	hostUtil                     hostUtil
+	useCSIProxyGAInterface       bool
+	enableDiskOnlineResize       bool
+	allowEmptyCloudConfig        bool
+	enableAsyncAttach            bool
+	enableListVolumes            bool
+	enableListSnapshots          bool
+	supportZone                  bool
+	getNodeInfoFromLabels        bool
+	enableDiskCapacityCheck      bool
+	disableUpdateCache           bool
+	vmssCacheTTLInSeconds        int64
+	attachDetachInitialDelayInMs int64
+	vmType                       string
 }
 
 // Driver is the v1 implementation of the Azure Disk CSI Driver.
@@ -145,6 +147,7 @@ func newDriverV1(options *DriverOptions) *Driver {
 	driver.getNodeInfoFromLabels = options.GetNodeInfoFromLabels
 	driver.enableDiskCapacityCheck = options.EnableDiskCapacityCheck
 	driver.disableUpdateCache = options.DisableUpdateCache
+	driver.attachDetachInitialDelayInMs = options.AttachDetachInitialDelayInMs
 	driver.vmssCacheTTLInSeconds = options.VMSSCacheTTLInSeconds
 	driver.vmType = options.VMType
 	driver.volumeLocks = volumehelper.NewVolumeLocks()
@@ -213,6 +216,7 @@ func (d *Driver) Run(endpoint, kubeconfig string, disableAVSetNodes, testingMock
 
 		if d.cloud.ManagedDiskController != nil {
 			d.cloud.DisableUpdateCache = d.disableUpdateCache
+			d.cloud.AttachDetachInitialDelayInMs = int(d.attachDetachInitialDelayInMs)
 		}
 	}
 
