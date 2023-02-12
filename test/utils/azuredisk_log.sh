@@ -49,6 +49,16 @@ kubectl get pods -n${NS} -l${LABEL} \
 #    | awk 'NR>1 {print $1}' \
 #    | xargs -I {} bash -c "echo 'dumping logs for ${NS}/{}' && kubectl logs {} -n${NS}"
 
+if [ -z "$NODE_MACHINE_TYPE" ]; then
+  echo "NODE_MACHINE_TYPE is not defined"
+else
+  echo "print out controller proxy logs ..."
+  echo "======================================================================================"
+  kubectl get pods -n${NS} -l${LABEL} \
+    | awk 'NR>1 {print $1}' \
+    | xargs -I {} bash -c "echo 'dumping logs for ${NS}/{}/${DRIVER}' && kubectl logs {} -c proxy -n${NS}"
+fi
+
 echo "print out csi-$DRIVER-node logs ..."
 echo "======================================================================================"
 LABEL="app=csi-$DRIVER-node"
