@@ -77,9 +77,9 @@ controller:
   provisionerWorkerThreads: 100
   provisionerQps: 50
   provisionerBurst: 100
-  attacherWorkerThreads: 500
-  attacherQps: 50
-  attacherBurst: 100
+  attacherWorkerThreads: 1000
+  attacherQps: 200
+  attacherBurst: 400
   driverWorkerThreads: 100
   vmssCacheTTLInSeconds: -1
   kubeClientQPS: 60
