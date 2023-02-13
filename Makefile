@@ -51,6 +51,9 @@ GINKGO_FLAGS += -ginkgo.focus="\[multi-az\]"
 else
 GINKGO_FLAGS += -ginkgo.focus="\[single-az\]"
 endif
+ifdef NODE_MACHINE_TYPE  # capz cluster
+E2E_HELM_OPTIONS += --set controller.enableTrafficManager=true
+endif
 GOPATH ?= $(shell go env GOPATH)
 GOBIN ?= $(GOPATH)/bin
 GO111MODULE = on

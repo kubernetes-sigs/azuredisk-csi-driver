@@ -40,6 +40,8 @@ controller:
   cloudConfigSecretName: azure-cloud-provider
   cloudConfigSecretNamespace: kube-system
   allowEmptyCloudConfig: false
+  enableTrafficManager: false
+  trafficManagerPort: 7788
   replicas: 2
   metricsPort: 29604
   livenessProbe:

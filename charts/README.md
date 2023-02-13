@@ -154,6 +154,8 @@ The following table lists the configurable parameters of the latest Azure Disk C
 | `controller.cloudConfigSecretName`                | cloud config secret name of controller driver              | `azure-cloud-provider`
 | `controller.cloudConfigSecretNamespace`           | cloud config secret namespace of controller driver         | `kube-system`
 | `controller.allowEmptyCloudConfig`                | Whether allow running controller driver without cloud config          | `false`
+| `controller.enableTrafficManager`                 | Whether enable [traffic manager proxy](https://github.com/Azure/aks-traffic-manager) sidecar          | `false`
+| `controller.trafficManagerPort`                   | default [traffic manager proxy](https://github.com/Azure/aks-traffic-manager) port number          | `7788`
 | `controller.replicas`                             | the replicas of csi-azuredisk-controller                   | `2`                                                            |
 | `controller.metricsPort`                          | metrics port of csi-azuredisk-controller                   | `29604`                                                        |
 | `controller.livenessProbe.healthPort`             | health check port for liveness probe                       | `29602` |
