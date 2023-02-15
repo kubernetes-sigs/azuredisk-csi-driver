@@ -84,6 +84,17 @@ lost+found
 outfile
 ```
 
+### Tips
+### Use snapshot feature to create a copy of a disk with a different SKU
+> The disk SKU change can be from LRS to ZRS, from standard to premium, or even across zones, however cross-region changes are not supported.
+
+> For information on storage class settings with cross-zone support, please refer to [allowed-topology storage class](../storageclass-azuredisk-csi-allowed-topology.yaml)
+
+ - Before proceeding, ensure that the application is not writing data to the source disk.
+ - Take a snapshot of the existing disk PVC.
+ - Create a new storage class, such as "new-sku-sc," with the desired SKU name value
+ - Create a new PVC with the storage class name "new-sku-sc" based on the snapshot.
+
 #### Links
  - [CSI Snapshotter](https://github.com/kubernetes-csi/external-snapshotter)
  - [Announcing general availability of incremental snapshots of Managed Disks](https://azure.microsoft.com/en-gb/blog/announcing-general-availability-of-incremental-snapshots-of-managed-disks/)
