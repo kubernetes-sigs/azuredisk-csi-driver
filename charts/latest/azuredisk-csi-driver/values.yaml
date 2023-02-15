@@ -145,6 +145,15 @@ snapshot:
       requests:
         cpu: 10m
         memory: 20Mi
+  VolumeSnapshotClass:
+    enabled: false
+    name: csi-azuredisk-vsc
+    deletionPolicy: Delete
+    parameters:
+      incremental: '"true"' # available values: "true", "false" ("true" by default for Azure Public Cloud, and "false" by default for Azure Stack Cloud)
+      resourceGroup: "" # available values: EXISTING RESOURCE GROUP (If not specified, snapshot will be stored in the same resource group as source Azure disk)
+      tags: "" # tag format: 'key1=val1,key2=val2'
+    additionalLabels: {}
 
 feature:
   enableFSGroupPolicy: true
