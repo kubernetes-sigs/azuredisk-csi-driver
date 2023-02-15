@@ -1,6 +1,5 @@
 # Azure Disk Snapshot feature
 
-- Snapshot feature is beta since Kubernetes v1.17.0, refer to [Snapshot & Restore Feature](https://kubernetes-csi.github.io/docs/snapshot-restore-feature.html) for more details.
 - [Use velero to backup & restore Azure disk by snapshot feature](https://velero.io/blog/csi-integration/)
 
 ## Introduction
