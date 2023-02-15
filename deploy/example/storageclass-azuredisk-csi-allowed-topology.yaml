@@ -7,7 +7,6 @@ provisioner: disk.csi.azure.com
 parameters:
   skuName: StandardSSD_LRS  # alias: storageaccounttype, available values: Standard_LRS, Premium_LRS, StandardSSD_LRS, UltraSSD_LRS
 reclaimPolicy: Delete
-volumeBindingMode: WaitForFirstConsumer  # available values: "WaitForFirstConsumer", "Immediate"
 allowedTopologies:
   - matchLabelExpressions:
       - key: topology.disk.csi.azure.com/zone
