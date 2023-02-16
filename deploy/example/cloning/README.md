@@ -68,5 +68,5 @@ outfile
 
  - Before proceeding, ensure that the application is not writing data to the source disk.
  - Delete the existing storage class that is referenced by the source disk PVC.
- - Create a new storage class with the desired `skuName` value.
+ - Create a new storage class with same name and desired `skuName` value.
  - Follow the steps outlined above to create a new cloned PVC with the new SKU
