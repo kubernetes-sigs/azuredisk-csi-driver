@@ -22,9 +22,9 @@ V2: Preview
 |Driver Version  |Image                                                      | supported k8s version |
 |----------------|-----------------------------------------------------------|-----------------------|
 |`master` branch |mcr.microsoft.com/k8s/csi/azuredisk-csi:latest             | 1.21+                 |
+|v1.27.0         |mcr.microsoft.com/oss/kubernetes-csi/azuredisk-csi:v1.27.0 | 1.21+                 |
 |v1.26.2         |mcr.microsoft.com/oss/kubernetes-csi/azuredisk-csi:v1.26.2 | 1.21+                 |
 |v1.25.0         |mcr.microsoft.com/oss/kubernetes-csi/azuredisk-csi:v1.25.0 | 1.21+                 |
-|v1.24.0         |mcr.microsoft.com/oss/kubernetes-csi/azuredisk-csi:v1.24.0 | 1.21+                 |
 
 #### V2
 
