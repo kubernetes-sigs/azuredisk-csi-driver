@@ -22,6 +22,9 @@ data:
       customUserAgent: {{ .Values.driver.customUserAgent }}
       userAgentSuffix: {{ .Values.driver.userAgentSuffix }}
       allowEmptyCloudConfig: {{ .Values.controller.allowEmptyCloudConfig }}
+      enableTrafficManager: {{ .Values.controller.enableTrafficManager }}
+      trafficManagerPort: {{ .Values.controller.trafficManagerPort }}
+      disableUpdateCache: {{ .Values.controller.disableUpdateCache }}
       vmssCacheTTLInSeconds: {{ .Values.controller.vmssCacheTTLInSeconds }}
       enableAzureClientAttachDetachRateLimiter: {{ .Values.controller.enableAzureClientAttachDetachRateLimiter }}
       azureClientAttachDetachRateLimiterQPS: {{ .Values.controller.azureClientAttachDetachRateLimiterQPS }}
@@ -202,6 +205,18 @@ spec:
             - name: socket-dir
               mountPath: /csi
           resources: {{- toYaml .Values.controller.resources.livenessProbe | nindent 12 }}
+{{- if eq .Values.controller.enableTrafficManager true }}
+        - image: mcr.microsoft.com/aks/ccp/ccp-auto-thrust:master.221118.2
+          imagePullPolicy: IfNotPresent
+          name: proxy
+          command:
+            - /ccp-auto-thrust
+          args:
+            - "--port={{ .Values.controller.trafficManagerPort }}"
+          ports:
+          - containerPort: {{ .Values.controller.trafficManagerPort }}
+            protocol: TCP
+{{- end }}
         - name: azuredisk
 {{- if hasPrefix "/" .Values.image.azuredisk.repository }}
           image: "{{ .Values.image.baseRepo }}{{ .Values.image.azuredisk.repository }}:{{ .Values.image.azuredisk.tag }}"

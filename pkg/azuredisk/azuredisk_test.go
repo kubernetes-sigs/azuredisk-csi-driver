@@ -79,13 +79,7 @@ func TestRun(t *testing.T) {
 					}
 				}()
 
-				originalCredFile, ok := os.LookupEnv(consts.DefaultAzureCredentialFileEnv)
-				if ok {
-					defer os.Setenv(consts.DefaultAzureCredentialFileEnv, originalCredFile)
-				} else {
-					defer os.Unsetenv(consts.DefaultAzureCredentialFileEnv)
-				}
-				os.Setenv(consts.DefaultAzureCredentialFileEnv, fakeCredFile)
+				t.Setenv(consts.DefaultAzureCredentialFileEnv, fakeCredFile)
 
 				err := createConfigFile(validKubeConfigPath, validKubeConfigContent)
 				defer deleteConfig(validKubeConfigPath)
@@ -103,6 +97,18 @@ func TestRun(t *testing.T) {
 			},
 		},
 		{
+			name: "Successful run without cloud config",
+			testFunc: func(t *testing.T) {
+				err := createConfigFile(validKubeConfigPath, validKubeConfigContent)
+				defer deleteConfig(validKubeConfigPath)
+				if err != nil {
+					t.Error(err)
+				}
+				d, _ := NewFakeDriver(t)
+				d.Run("tcp://127.0.0.1:0", validKubeConfigPath, true, true)
+			},
+		},
+		{
 			name: "Successful run with node ID missing",
 			testFunc: func(t *testing.T) {
 				if err := ioutil.WriteFile(fakeCredFile, []byte(fakeCredContent), 0666); err != nil {
@@ -115,13 +121,7 @@ func TestRun(t *testing.T) {
 					}
 				}()
 
-				originalCredFile, ok := os.LookupEnv(consts.DefaultAzureCredentialFileEnv)
-				if ok {
-					defer os.Setenv(consts.DefaultAzureCredentialFileEnv, originalCredFile)
-				} else {
-					defer os.Unsetenv(consts.DefaultAzureCredentialFileEnv)
-				}
-				os.Setenv(consts.DefaultAzureCredentialFileEnv, fakeCredFile)
+				t.Setenv(consts.DefaultAzureCredentialFileEnv, fakeCredFile)
 
 				err := createConfigFile(validKubeConfigPath, validKubeConfigContent)
 				defer deleteConfig(validKubeConfigPath)
@@ -154,13 +154,7 @@ func TestRun(t *testing.T) {
 					}
 				}()
 
-				originalCredFile, ok := os.LookupEnv(consts.DefaultAzureCredentialFileEnv)
-				if ok {
-					defer os.Setenv(consts.DefaultAzureCredentialFileEnv, originalCredFile)
-				} else {
-					defer os.Unsetenv(consts.DefaultAzureCredentialFileEnv)
-				}
-				os.Setenv(consts.DefaultAzureCredentialFileEnv, fakeCredFile)
+				t.Setenv(consts.DefaultAzureCredentialFileEnv, fakeCredFile)
 
 				d := newDriverV1(&azdiskv1beta2.AzDiskDriverConfiguration{
 					NodeConfig: azdiskv1beta2.NodeConfiguration{

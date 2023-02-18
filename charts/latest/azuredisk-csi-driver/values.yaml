@@ -6,23 +6,23 @@ image:
     pullPolicy: IfNotPresent
   csiProvisioner:
     repository: /oss/kubernetes-csi/csi-provisioner
-    tag: v3.2.0
+    tag: v3.3.0
     pullPolicy: IfNotPresent
   csiAttacher:
     repository: /oss/kubernetes-csi/csi-attacher
-    tag: v3.5.0
+    tag: v4.0.0
     pullPolicy: IfNotPresent
   csiResizer:
     repository: /oss/kubernetes-csi/csi-resizer
-    tag: v1.5.0
+    tag: v1.6.0
     pullPolicy: IfNotPresent
   livenessProbe:
     repository: /oss/kubernetes-csi/livenessprobe
-    tag: v2.7.0
+    tag: v2.8.0
     pullPolicy: IfNotPresent
   nodeDriverRegistrar:
     repository: /oss/kubernetes-csi/csi-node-driver-registrar
-    tag: v2.5.1
+    tag: v2.6.2
     pullPolicy: IfNotPresent
 
 serviceAccount:
@@ -40,6 +40,8 @@ controller:
   cloudConfigSecretName: azure-cloud-provider
   cloudConfigSecretNamespace: kube-system
   allowEmptyCloudConfig: false
+  enableTrafficManager: false
+  trafficManagerPort: 7788
   replicas: 2
   metricsPort: 29604
   livenessProbe:
@@ -48,8 +50,8 @@ controller:
   runOnControlPlane: false
   disableAvailabilitySetNodes: false
   vmType: ""
-  provisionerWorkerThreads: 50
-  attacherWorkerThreads: 500
+  provisionerWorkerThreads: 100
+  attacherWorkerThreads: 1000
   vmssCacheTTLInSeconds: -1
   logLevel: 5
   tolerations:
@@ -157,6 +159,7 @@ driver:
   azureGoSDKLogLevel: "" # available values: ""(no logs), DEBUG, INFO, WARNING, ERROR
   httpsProxy: ""
   httpProxy: ""
+  noProxy: ""
 
 linux:
   enabled: true

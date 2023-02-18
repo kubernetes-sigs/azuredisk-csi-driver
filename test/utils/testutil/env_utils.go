@@ -75,7 +75,7 @@ func SkipIfNotDynamicallyResizeSupported(location string) {
 	}
 
 	if !supportsDynamicResize {
-		ginkgo.Skip("test case not supported no regions without dynamic resize support")
+		ginkgo.Skip("test case not supported on regions without dynamic resize support")
 	}
 }
 

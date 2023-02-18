@@ -84,6 +84,9 @@ controller:
   vmssCacheTTLInSeconds: -1
   kubeClientQPS: 60
   kubeClientBurst: 240
+  enableTrafficManager: false
+  trafficManagerPort: 7788
+  disableUpdateCache: false
   enableAzureClientAttachDetachRateLimiter: true
   azureClientAttachDetachRateLimiterQPS: 1.333
   azureClientAttachDetachRateLimiterBucket: 240

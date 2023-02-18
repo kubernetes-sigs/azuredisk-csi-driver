@@ -22,11 +22,13 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"path"
 	"path/filepath"
 	"testing"
 	"time"
 
 	"github.com/onsi/ginkgo/v2"
+	"github.com/onsi/ginkgo/v2/reporters"
 	"github.com/onsi/gomega"
 	"k8s.io/kubernetes/test/e2e/framework"
 	"k8s.io/kubernetes/test/e2e/framework/config"
@@ -110,6 +112,7 @@ var _ = ginkgo.BeforeSuite(func() {
 			AzureClientAttachDetachRateLimiterBucket: consts.DefaultAzureClientAttachDetachRateLimiterBucket,
 		}
 		azureCloud, err = azureutils.GetCloudProviderFromClient(
+			context.Background(),
 			kubeclient,
 			cloudConfig,
 			azuredisk.GetUserAgent(consts.DefaultDriverName, "E2E", ""),
@@ -228,7 +231,12 @@ var _ = ginkgo.AfterSuite(func() {
 
 func TestE2E(t *testing.T) {
 	gomega.RegisterFailHandler(ginkgo.Fail)
-	ginkgo.RunSpecs(t, "AzureDisk CSI Driver End-to-End Tests")
+	reportDir := os.Getenv(testconsts.ReportDirEnvVar)
+	if reportDir == "" {
+		reportDir = testconsts.DefaultReportDir
+	}
+	r := []ginkgo.Reporter{reporters.NewJUnitReporter(path.Join(reportDir, "junit_01.xml"))}
+	ginkgo.RunSpecsWithDefaultAndCustomReporters(t, "AzureDisk CSI Driver End-to-End Tests", r)
 }
 
 // handleFlags sets up all flags and parses the command line.
@@ -237,4 +245,11 @@ func handleFlags() {
 	framework.RegisterCommonFlags(flag.CommandLine)
 	framework.RegisterClusterFlags(flag.CommandLine)
 	flag.Parse()
+}
+
+func getFSType(IsWindowsCluster bool) string {
+	if IsWindowsCluster {
+		return "ntfs"
+	}
+	return "ext4"
 }

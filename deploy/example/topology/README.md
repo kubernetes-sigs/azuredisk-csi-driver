@@ -37,3 +37,4 @@ volumeBindingMode: WaitForFirstConsumer
 #### Links
  - [Azure Availability Zones](https://github.com/kubernetes-sigs/cloud-provider-azure/blob/master/docs/using-availability-zones.md)
  - [Allowed Topologies](https://kubernetes.io/docs/concepts/storage/storage-classes/#allowed-topologies)
+ - [Use volume cloning to create a new ZRS disk from LRS disk](../cloning#use-volume-cloning-to-create-a-new-disk-with-different-sku)

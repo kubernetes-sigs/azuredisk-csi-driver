@@ -70,7 +70,7 @@ helm repo update azuredisk-csi-driver
 ### install a specific version
 
 ```console
-helm install azuredisk-csi-driver azuredisk-csi-driver/azuredisk-csi-driver --namespace kube-system --version v1.23.0
+helm install azuredisk-csi-driver azuredisk-csi-driver/azuredisk-csi-driver --namespace kube-system --version v1.26.2
 ```
 
 ### install on Azure Stack
@@ -129,19 +129,19 @@ The following table lists the configurable parameters of the latest Azure Disk C
 | `image.azuredisk.tag`                             | azuredisk-csi-driver docker image tag                      | ``                                                       |
 | `image.azuredisk.pullPolicy`                      | azuredisk-csi-driver image pull policy                     | `IfNotPresent`                                                 |
 | `image.csiProvisioner.repository`                 | csi-provisioner docker image                               | `/oss/kubernetes-csi/csi-provisioner`         |
-| `image.csiProvisioner.tag`                        | csi-provisioner docker image tag                           | `v3.2.0`                                                       |
+| `image.csiProvisioner.tag`                        | csi-provisioner docker image tag                           | `v3.3.0`                                                       |
 | `image.csiProvisioner.pullPolicy`                 | csi-provisioner image pull policy                          | `IfNotPresent`                                                 |
 | `image.csiAttacher.repository`                    | csi-attacher docker image                                  | `/oss/kubernetes-csi/csi-attacher`            |
-| `image.csiAttacher.tag`                           | csi-attacher docker image tag                              | `v3.5.0`                                                       |
+| `image.csiAttacher.tag`                           | csi-attacher docker image tag                              | `v4.0.0`                                                       |
 | `image.csiAttacher.pullPolicy`                    | csi-attacher image pull policy                             | `IfNotPresent`                                                 |
 | `image.csiResizer.repository`                     | csi-resizer docker image                                   | `/oss/kubernetes-csi/csi-resizer`             |
-| `image.csiResizer.tag`                            | csi-resizer docker image tag                               | `v1.5.0`                                                       |
+| `image.csiResizer.tag`                            | csi-resizer docker image tag                               | `v1.6.0`                                                       |
 | `image.csiResizer.pullPolicy`                     | csi-resizer image pull policy                              | `IfNotPresent`                                                 |
 | `image.livenessProbe.repository`                  | liveness-probe docker image                                | `/oss/kubernetes-csi/livenessprobe`           |
-| `image.livenessProbe.tag`                         | liveness-probe docker image tag                            | `v2.7.0`                                                       |
+| `image.livenessProbe.tag`                         | liveness-probe docker image tag                            | `v2.8.0`                                                       |
 | `image.livenessProbe.pullPolicy`                  | liveness-probe image pull policy                           | `IfNotPresent`                                                 |
 | `image.nodeDriverRegistrar.repository`            | csi-node-driver-registrar docker image                     | `/oss/kubernetes-csi/csi-node-driver-registrar` |
-| `image.nodeDriverRegistrar.tag`                   | csi-node-driver-registrar docker image tag                 | `v2.5.1`                                                       |
+| `image.nodeDriverRegistrar.tag`                   | csi-node-driver-registrar docker image tag                 | `v2.6.2`                                                       |
 | `image.nodeDriverRegistrar.pullPolicy`            | csi-node-driver-registrar image pull policy                | `IfNotPresent`                                                 |
 | `imagePullSecrets`                                | Specify docker-registry secret names as an array           | [] (does not add image pull secrets to deployed pods)        |                                       |
 | `serviceAccount.create`                           | whether create service account of csi-azuredisk-controller, csi-azuredisk-node, and snapshot-controller| `true`                                                    |
@@ -154,6 +154,8 @@ The following table lists the configurable parameters of the latest Azure Disk C
 | `controller.cloudConfigSecretName`                | cloud config secret name of controller driver              | `azure-cloud-provider`
 | `controller.cloudConfigSecretNamespace`           | cloud config secret namespace of controller driver         | `kube-system`
 | `controller.allowEmptyCloudConfig`                | Whether allow running controller driver without cloud config          | `false`
+| `controller.enableTrafficManager`                 | Whether enable [traffic manager proxy](https://github.com/Azure/aks-traffic-manager) sidecar          | `false`
+| `controller.trafficManagerPort`                   | default [traffic manager proxy](https://github.com/Azure/aks-traffic-manager) port number          | `7788`
 | `controller.replicas`                             | the replicas of csi-azuredisk-controller                   | `2`                                                            |
 | `controller.metricsPort`                          | metrics port of csi-azuredisk-controller                   | `29604`                                                        |
 | `controller.livenessProbe.healthPort`             | health check port for liveness probe                       | `29602` |

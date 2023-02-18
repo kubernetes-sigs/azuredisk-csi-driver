@@ -69,6 +69,7 @@ var (
 	enableDiskCapacityCheck                  = flag.Bool("enable-disk-capacity-check", consts.DefaultEnableDiskCapacityCheck, "boolean flag to enable volume capacity check in CreateVolume")
 	kubeClientQPS                            = flag.Float64("kube-client-qps", consts.DefaultKubeClientQPS, "QPS for the rest client.")
 	kubeClientBurst                          = flag.Int("kube-client-burst", consts.DefaultKubeClientQPS, "Burst for the rest client.")
+	disableUpdateCache                       = flag.Bool("disable-update-cache", false, "boolean flag to disable update cache during disk attach/detach")
 	vmssCacheTTLInSeconds                    = flag.Int64("vmss-cache-ttl-seconds", consts.DefaultVMSSCacheTTLInSeconds, "vmss cache TTL in seconds")
 	enableAzureClientAttachDetachRateLimiter = flag.Bool("enable-attach-detach-rate-limiter", consts.DefaultEnableAzureClientAttachDetachRateLimiter, "Azure client rate limiter for attach/detach operations")
 	azureClientAttachDetachRateLimiterQPS    = flag.Float64("attach-detach-rate-limiter-qps", consts.DefaultAzureClientAttachDetachRateLimiterQPS, "QPS for azure client rate limiter for attach/detach operations")
@@ -86,6 +87,8 @@ var (
 	controllerPartition                      = flag.String("controller-partition", consts.DefaultControllerPartitionName, "The partition name for controller plugin.")
 	workerThreads                            = flag.Int("worker-threads", consts.DefaultWorkerThreads, "The number of worker thread per custom resource controller (AzVolume, attach/detach and replica controllers).")
 	waitForLunEnabled                        = flag.Bool("wait-for-lun-enabled", consts.DefaultWaitForLunEnabled, "boolean field to enable waiting for lun in PublishVolume")
+	enableTrafficManager                     = flag.Bool("enable-traffic-manager", false, "boolean flag to enable traffic manager")
+	trafficManagerPort                       = flag.Int64("traffic-manager-port", 7788, "default traffic manager port")
 )
 
 func main() {
@@ -162,7 +165,10 @@ func getDriverConfig() *azdiskv1beta2.AzDiskDriverConfiguration {
 				SecretNamespace:                                  consts.DefaultCloudConfigSecretNamespace,
 				CustomUserAgent:                                  consts.DefaultCustomUserAgent,
 				UserAgentSuffix:                                  consts.DefaultUserAgentSuffix,
+				EnableTrafficManager:                             consts.DefaultEnableTrafficManager,
+				TrafficManagerPort:                               consts.DefaultTrafficManagerPort,
 				AllowEmptyCloudConfig:                            consts.DefaultAllowEmptyCloudConfig,
+				DisableUpdateCache:                               consts.DefaultDisableUpdateCache,
 				VMSSCacheTTLInSeconds:                            consts.DefaultVMSSCacheTTLInSeconds,
 				EnableAzureClientAttachDetachRateLimiter:         consts.DefaultEnableAzureClientAttachDetachRateLimiter,
 				AzureClientAttachDetachRateLimiterQPS:            consts.DefaultAzureClientAttachDetachRateLimiterQPS,
@@ -233,7 +239,10 @@ func getDriverConfig() *azdiskv1beta2.AzDiskDriverConfiguration {
 				SecretNamespace:                                  *cloudConfigSecretNamespace,
 				CustomUserAgent:                                  *customUserAgent,
 				UserAgentSuffix:                                  *userAgentSuffix,
+				EnableTrafficManager:                             *enableTrafficManager,
+				TrafficManagerPort:                               *trafficManagerPort,
 				AllowEmptyCloudConfig:                            *allowEmptyCloudConfig,
+				DisableUpdateCache:                               *disableUpdateCache,
 				VMSSCacheTTLInSeconds:                            *vmssCacheTTLInSeconds,
 				EnableAzureClientAttachDetachRateLimiter:         *enableAzureClientAttachDetachRateLimiter,
 				AzureClientAttachDetachRateLimiterQPS:            float32(*azureClientAttachDetachRateLimiterQPS),

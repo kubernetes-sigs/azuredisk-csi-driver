@@ -1221,7 +1221,7 @@ func TestNodeExpandVolume(t *testing.T) {
 			},
 			expectedErr:   resizeErr,
 			skipOnDarwin:  true, // ResizeFs not supported on Darwin
-			outputScripts: []testingexec.FakeAction{findmntAction, blkidAction, resize2fsFailedAction},
+			outputScripts: []testingexec.FakeAction{findmntAction, blkidAction, resize2fsFailedAction, blockdevSizeTooSmallAction},
 		},
 		{
 			desc: "Resize too small failure",

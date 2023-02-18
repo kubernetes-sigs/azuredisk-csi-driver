@@ -30,7 +30,6 @@ import (
 	"time"
 
 	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2022-03-01/compute"
-	"github.com/Azure/go-autorest/autorest/to"
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/assert"
@@ -44,6 +43,7 @@ import (
 	k8sRuntime "k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	testingClient "k8s.io/client-go/testing"
+	"k8s.io/utils/pointer"
 	azdiskv1beta2 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1beta2"
 	azdisk "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned"
 	azdiskfakes "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned/fake"
@@ -380,13 +380,7 @@ users:
 				os.Remove(fakeCredFile)
 			}()
 
-			originalCredFile, ok := os.LookupEnv(consts.DefaultAzureCredentialFileEnv)
-			if ok {
-				defer os.Setenv(consts.DefaultAzureCredentialFileEnv, originalCredFile)
-			} else {
-				defer os.Unsetenv(consts.DefaultAzureCredentialFileEnv)
-			}
-			os.Setenv(consts.DefaultAzureCredentialFileEnv, fakeCredFile)
+			t.Setenv(consts.DefaultAzureCredentialFileEnv, fakeCredFile)
 		}
 		if test.createFakeKubeConfig {
 			if err := createTestFile(fakeKubeConfig); err != nil {
@@ -401,6 +395,7 @@ users:
 			}
 		}
 		cloud, err := GetCloudProvider(
+			context.Background(),
 			test.kubeconfig,
 			"",
 			"",
@@ -408,7 +403,9 @@ users:
 			test.allowEmptyCloudConfig,
 			consts.DefaultEnableAzureClientAttachDetachRateLimiter,
 			consts.DefaultAzureClientAttachDetachRateLimiterQPS,
-			consts.DefaultAzureClientAttachDetachRateLimiterBucket)
+			consts.DefaultAzureClientAttachDetachRateLimiterBucket,
+			consts.DefaultEnableTrafficManager,
+			-1)
 		if !reflect.DeepEqual(err, test.expectedErr) && (err == nil || !strings.Contains(err.Error(), test.expectedErr.Error())) {
 			t.Errorf("desc: %s,\n input: %q, GetCloudProvider err: %v, expectedErr: %v", test.desc, test.kubeconfig, err, test.expectedErr)
 		}
@@ -1268,7 +1265,35 @@ func TestValidateDiskEncryptionType(t *testing.T) {
 	}
 	for _, test := range tests {
 		err := ValidateDiskEncryptionType(test.diskEncryptionType)
-		assert.Equal(t, err, test.expectedErr)
+		assert.Equal(t, test.expectedErr, err)
+	}
+}
+
+func TestValidateDataAccessAuthMode(t *testing.T) {
+	tests := []struct {
+		dataAccessAuthMode string
+		expectedErr        error
+	}{
+		{
+			dataAccessAuthMode: "",
+			expectedErr:        nil,
+		},
+		{
+			dataAccessAuthMode: "None",
+			expectedErr:        nil,
+		},
+		{
+			dataAccessAuthMode: "AzureActiveDirectory",
+			expectedErr:        nil,
+		},
+		{
+			dataAccessAuthMode: "invalid",
+			expectedErr:        fmt.Errorf("dataAccessAuthMode(invalid) is not supported"),
+		},
+	}
+	for _, test := range tests {
+		err := ValidateDataAccessAuthMode(test.dataAccessAuthMode)
+		assert.Equal(t, test.expectedErr, err)
 	}
 }
 
@@ -1508,7 +1533,7 @@ func TestParseDiskParameters(t *testing.T) {
 				PerfProfile:             "None",
 				NetworkAccessPolicy:     "networkAccessPolicy",
 				DiskAccessID:            "diskAccessID",
-				EnableBursting:          to.BoolPtr(true),
+				EnableBursting:          pointer.Bool(true),
 				UserAgent:               "userAgent",
 				VolumeContext: map[string]string{
 					consts.SkuNameField:             "skuName",
@@ -1720,13 +1745,13 @@ func TestInsertDiskProperties(t *testing.T) {
 				Sku: &compute.DiskSku{Name: compute.StandardSSDLRS},
 				DiskProperties: &compute.DiskProperties{
 					NetworkAccessPolicy: compute.AllowPrivate,
-					DiskIOPSReadWrite:   to.Int64Ptr(6400),
-					DiskMBpsReadWrite:   to.Int64Ptr(100),
+					DiskIOPSReadWrite:   pointer.Int64(6400),
+					DiskMBpsReadWrite:   pointer.Int64(100),
 					CreationData: &compute.CreationData{
-						LogicalSectorSize: to.Int32Ptr(512),
+						LogicalSectorSize: pointer.Int32(512),
 					},
-					Encryption: &compute.Encryption{DiskEncryptionSetID: to.StringPtr("/subs/DiskEncryptionSetID")},
-					MaxShares:  to.Int32Ptr(3),
+					Encryption: &compute.Encryption{DiskEncryptionSetID: pointer.String("/subs/DiskEncryptionSetID")},
+					MaxShares:  pointer.Int32(3),
 				},
 			},
 			inputMap: map[string]string{},

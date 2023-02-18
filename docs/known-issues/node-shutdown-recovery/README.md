@@ -5,6 +5,7 @@
 When agent node is shutdown(deallocated), pods would be evicted from the `NotReady` node, while disk volume could not be unmounted(pod with in `Terminating` state forever) due to following upstream issues:
    - [Propose to taint node "shutdown" condition](https://github.com/kubernetes/kubernetes/issues/58635)
    - [add node shutdown KEP](https://github.com/kubernetes/enhancements/pull/1116)
+   - [Non Graceful node shutdown](https://kubernetes.io/docs/concepts/architecture/nodes/#non-graceful-node-shutdown)
 
 **Work around**:
 > get example [here](./statefulset-azuredisk.yaml)

@@ -195,7 +195,7 @@ func (c *controllerCommon) AttachDisk(ctx context.Context, async bool, diskName,
 				return -1, err
 			}
 			if strings.EqualFold(string(nodeName), string(attachedNode)) {
-				klog.Warningf("volume %s is actually attached to current node %s, invalidate vm cache and return error", diskURI, nodeName)
+				klog.Warningf("volume %s is actually attached to current node %s", diskURI, nodeName)
 				// update VM(invalidate vm cache)
 				if errUpdate := c.UpdateVM(ctx, nodeName); errUpdate != nil {
 					return -1, errUpdate
@@ -359,7 +359,7 @@ func (c *controllerCommon) attachDiskBatchToNode(ctx context.Context, subscripti
 			}
 		}
 
-		err = c.waitForUpdateResult(resultCtx, vmset, nodeName, future, err)
+		err = c.waitForUpdateResult(resultCtx, vmset, nodeName, future, err, "attach_disk")
 
 		for i, disk := range disksToAttach {
 			lunChans[i] <- attachDiskResult{lun: diskMap[disk.diskURI].lun, err: err}
@@ -376,10 +376,10 @@ func (c *controllerCommon) attachDiskBatchToNode(ctx context.Context, subscripti
 }
 
 // waitForUpdateResult handles asynchronous VM update operations and retries with backoff if OperationPreempted error is observed
-func (c *controllerCommon) waitForUpdateResult(ctx context.Context, vmset VMSet, nodeName types.NodeName, future *azure.Future, updateErr error) (err error) {
+func (c *controllerCommon) waitForUpdateResult(ctx context.Context, vmset VMSet, nodeName types.NodeName, future *azure.Future, updateErr error, source string) (err error) {
 	err = updateErr
 	if err == nil {
-		err = vmset.WaitForUpdateResult(ctx, future, nodeName, "attach_disk")
+		err = vmset.WaitForUpdateResult(ctx, future, nodeName, source)
 	}
 
 	if vmUpdateRequired(future, err) {
@@ -387,7 +387,7 @@ func (c *controllerCommon) waitForUpdateResult(ctx context.Context, vmset VMSet,
 			klog.Errorf("Retry VM Update on node (%s) due to error (%v)", nodeName, err)
 			future, err = vmset.UpdateVMAsync(ctx, nodeName)
 			if err == nil {
-				err = vmset.WaitForUpdateResult(ctx, future, nodeName, "attach_disk")
+				err = vmset.WaitForUpdateResult(ctx, future, nodeName, source)
 			}
 			return !vmUpdateRequired(future, err), nil
 		}); derr != nil {
@@ -486,11 +486,19 @@ func (c *controllerCommon) UpdateVM(ctx context.Context, nodeName types.NodeName
 	defer c.lockMap.UnlockEntry(node)
 
 	defer func() {
-		_ = vmset.DeleteCacheForNode(string(nodeName))
+		// invalidate the cache if there is error in update vm
+		if err != nil {
+			_ = vmset.DeleteCacheForNode(string(nodeName))
+		}
 	}()
 
 	klog.V(2).Infof("azureDisk - update: vm(%s)", nodeName)
-	return vmset.UpdateVM(ctx, nodeName)
+	future, err := vmset.UpdateVMAsync(ctx, nodeName)
+	if future == nil {
+		return status.Errorf(codes.Internal, "nil future was returned: %v", err)
+	}
+
+	return c.waitForUpdateResult(ctx, vmset, nodeName, future, err, "update_vm")
 }
 
 // GetNodeDataDisks invokes vmSet interfaces to get data disks for the node.

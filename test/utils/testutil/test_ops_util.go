@@ -30,7 +30,6 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/serializer"
 	restclientset "k8s.io/client-go/rest"
 	"k8s.io/kubernetes/test/e2e/framework"
-
 	testconsts "sigs.k8s.io/azuredisk-csi-driver/test/const"
 )
 
