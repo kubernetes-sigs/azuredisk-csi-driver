@@ -218,24 +218,24 @@ func (d *DriverV2) Run(endpoint, kubeconfig string, disableAVSetNodes, testingMo
 		}
 
 		azureutils.StartInformersAndWaitForCacheSync(context.Background(), nodeInformer, azNodeInformer, azVolumeAttachmentInformer, azVolumeInformer, crdInformer)
+	}
 
-		// d.cloudProvisioner is set by NewFakeDriver for unit tests.
-		if d.cloudProvisioner == nil {
-			userAgent := GetUserAgent(d.Name, d.config.CloudConfig.CustomUserAgent, d.config.CloudConfig.UserAgentSuffix)
-			klog.V(2).Infof("driver userAgent: %s", userAgent)
+	// d.cloudProvisioner is set by NewFakeDriver for unit tests.
+	if d.cloudProvisioner == nil {
+		userAgent := GetUserAgent(d.Name, d.config.CloudConfig.CustomUserAgent, d.config.CloudConfig.UserAgentSuffix)
+		klog.V(2).Infof("driver userAgent: %s", userAgent)
 
-			d.cloudProvisioner, err = provisioner.NewCloudProvisioner(
-				ctx,
-				d.kubeClient,
-				d.config.CloudConfig,
-				d.isPerfOptimizationEnabled(),
-				topologyKey,
-				userAgent,
-				d.config.ControllerConfig.EnableDiskOnlineResize,
-				d.config.ControllerConfig.EnableAsyncAttach)
-			if err != nil {
-				klog.Fatalf("Failed to get controller provisioner. Error: %v", err)
-			}
+		d.cloudProvisioner, err = provisioner.NewCloudProvisioner(
+			ctx,
+			d.kubeClient,
+			d.config.CloudConfig,
+			d.isPerfOptimizationEnabled(),
+			topologyKey,
+			userAgent,
+			d.config.ControllerConfig.EnableDiskOnlineResize,
+			d.config.ControllerConfig.EnableAsyncAttach)
+		if err != nil {
+			klog.Fatalf("Failed to get controller provisioner. Error: %v", err)
 		}
 	}
 
