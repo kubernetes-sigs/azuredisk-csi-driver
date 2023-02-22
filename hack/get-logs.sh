@@ -135,7 +135,7 @@ fi
 #
 POD_NAMES=()
 for SELECTOR in "${SELECTORS[@]}"; do
-  mapfile -t TEMP < <(kubectl get pods -n kube-system -l "${SELECTOR}" -o jsonpath='{range .items[*]}{.metadata.name}{"\n"}{end}')
+  mapfile -t TEMP < <(kubectl get pods -n "${NAMESPACE}" -l "${SELECTOR}" -o jsonpath='{range .items[*]}{.metadata.name}{"\n"}{end}')
   POD_NAMES+=("${TEMP[@]}")
 done
 
