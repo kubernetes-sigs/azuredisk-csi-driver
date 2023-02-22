@@ -40,7 +40,7 @@ var (
 	endpoint                     = flag.String("endpoint", "unix://tmp/csi.sock", "CSI endpoint")
 	nodeID                       = flag.String("nodeid", "", "node id")
 	version                      = flag.Bool("version", false, "Print the version and exit.")
-	metricsAddress               = flag.String("metrics-address", "0.0.0.0:29604", "export the metrics")
+	metricsAddress               = flag.String("metrics-address", "", "export the metrics")
 	kubeconfig                   = flag.String("kubeconfig", "", "Absolute path to the kubeconfig file. Required only when running out of cluster.")
 	driverName                   = flag.String("drivername", consts.DefaultDriverName, "name of the driver")
 	volumeAttachLimit            = flag.Int64("volume-attach-limit", -1, "maximum number of attachable volumes per node")
@@ -123,6 +123,9 @@ func handle() {
 }
 
 func exportMetrics() {
+	if *metricsAddress == "" {
+		return
+	}
 	l, err := net.Listen("tcp", *metricsAddress)
 	if err != nil {
 		klog.Warningf("failed to get listener for metrics endpoint: %v", err)
