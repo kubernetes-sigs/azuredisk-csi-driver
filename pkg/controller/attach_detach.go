@@ -30,6 +30,7 @@ import (
 	storagev1 "k8s.io/api/storage/v1"
 	apiErrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 	utilfeature "k8s.io/apiserver/pkg/util/feature"
 	"k8s.io/kubernetes/pkg/features"
 	azdiskv1beta2 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1beta2"
@@ -438,6 +439,7 @@ func (r *ReconcileAttachDetach) demote(ctx context.Context, azVolumeAttachment *
 }
 
 func (r *ReconcileAttachDetach) updateVolumeAttachmentWithResult(ctx context.Context, azVolumeAttachment *azdiskv1beta2.AzVolumeAttachment) error {
+	ctx, w := workflow.New(ctx)
 	var vaName string
 	vaName, err := r.waitForVolumeAttachmentName(ctx, azVolumeAttachment)
 	if err != nil {
@@ -453,8 +455,13 @@ func (r *ReconcileAttachDetach) updateVolumeAttachmentWithResult(ctx context.Con
 		}
 		return nil
 	}
-	va := storagev1.VolumeAttachment{ObjectMeta: metav1.ObjectMeta{Name: vaName}}
-	_, err = azureutils.UpdateCRIWithRetry(ctx, nil, r.cachedClient, r.azClient, &va, vaUpdateFunc, consts.ForcedUpdateMaxNetRetry, azureutils.UpdateCRIStatus)
+
+	originalVA := &storagev1.VolumeAttachment{}
+	if err = r.cachedClient.Get(ctx, types.NamespacedName{Namespace: azVolumeAttachment.Namespace, Name: vaName}, originalVA); err != nil {
+		w.Logger().Errorf(err, "failed to get original VolumeAttachment (%s)", vaName)
+		return err
+	}
+	_, err = azureutils.UpdateCRIWithRetry(ctx, nil, r.cachedClient, r.azClient, originalVA, vaUpdateFunc, consts.ForcedUpdateMaxNetRetry, azureutils.UpdateCRIStatus)
 	return err
 }
 
