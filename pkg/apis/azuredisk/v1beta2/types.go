@@ -609,6 +609,12 @@ type CloudConfiguration struct {
 	UserAgentSuffix string `json:"userAgentSuffix,omitempty"`
 	// Whether allow running driver without cloud config
 	AllowEmptyCloudConfig bool `json:"allowEmptyCloudConfig,omitempty"`
+	// whether trafficManager should be enabled
+	EnableTrafficManager bool `json:"enableTrafficManager"`
+	// trafficManager port number if trafficManager is enabled
+	TrafficManagerPort int64 `json:"trafficManagerPort"`
+	// whether to disable automatic cache update after a successful vmset vm update
+	DisableUpdateCache bool `json:"disableUpdateCache,omitEmpty"`
 	// vmss cache TTL in seconds (600 by default)
 	VMSSCacheTTLInSeconds int64 `json:"vmssCacheTTLInSeconds,omitempty"`
 	// enable azure client attach/detach rate limiter

@@ -32,7 +32,7 @@ const (
 type PVTestDriver interface {
 	GetDynamicProvisionStorageClass(parameters map[string]string, mountOptions []string, reclaimPolicy *v1.PersistentVolumeReclaimPolicy, bindingMode *storagev1.VolumeBindingMode, allowedTopologyValues []string, namespace string) *storagev1.StorageClass
 	GetPersistentVolume(volumeID, fsType, size string, volumeMode v1.PersistentVolumeMode, accessMode v1.PersistentVolumeAccessMode, reclaimPolicy *v1.PersistentVolumeReclaimPolicy, namespace string, volumeContext map[string]string) *v1.PersistentVolume
-	GetVolumeSnapshotClass(namespace string) *snapshotv1.VolumeSnapshotClass
+	GetVolumeSnapshotClass(namespace string, parameters map[string]string) *snapshotv1.VolumeSnapshotClass
 }
 
 // DynamicPVTestDriver represents an interface for a CSI driver that supports DynamicPV
@@ -48,7 +48,7 @@ type PreProvisionedVolumeTestDriver interface {
 }
 
 type VolumeSnapshotTestDriver interface {
-	GetVolumeSnapshotClass(namespace string) *snapshotv1.VolumeSnapshotClass
+	GetVolumeSnapshotClass(namespace string, parameters map[string]string) *snapshotv1.VolumeSnapshotClass
 }
 
 func getStorageClass(
@@ -83,13 +83,13 @@ func getStorageClass(
 	}
 }
 
-func getVolumeSnapshotClass(generateName string, provisioner string) *snapshotv1.VolumeSnapshotClass {
+func getVolumeSnapshotClass(generateName, provisioner string, parameters map[string]string) *snapshotv1.VolumeSnapshotClass {
 	return &snapshotv1.VolumeSnapshotClass{
 		TypeMeta: metav1.TypeMeta{
 			Kind:       testconsts.VolumeSnapshotClassKind,
 			APIVersion: testconsts.SnapshotAPIVersion,
 		},
-
+		Parameters: parameters,
 		ObjectMeta: metav1.ObjectMeta{
 			GenerateName: generateName,
 		},

@@ -47,6 +47,18 @@ type csiProxyMounterV1Beta struct {
 	VolumeClient *volumeclient.Client
 }
 
+func (mounter *csiProxyMounterV1Beta) IsMountPoint(file string) (bool, error) {
+	isNotMnt, err := mounter.IsLikelyNotMountPoint(file)
+	if err != nil {
+		return false, err
+	}
+	return !isNotMnt, nil
+}
+
+func (mounter *csiProxyMounterV1Beta) CanSafelySkipMountPointCheck() bool {
+	return false
+}
+
 // Mount just creates a soft link at target pointing to source.
 func (mounter *csiProxyMounterV1Beta) Mount(source string, target string, fstype string, options []string) error {
 	// Mount is called after the format is done.
@@ -335,10 +347,12 @@ func (mounter *csiProxyMounterV1Beta) GetVolumeStats(ctx context.Context, path s
 	if err != nil || resp == nil {
 		return nil, fmt.Errorf("GetVolumeStats(%s) failed with error: %v, response: %v", volIDResp.VolumeId, err, resp)
 	}
+	// in v1beta interface, VolumeSize is actually availableSize
+	availableSize := resp.VolumeSize
 	volUsage := &csi.VolumeUsage{
 		Unit:      csi.VolumeUsage_BYTES,
-		Available: resp.VolumeSize - resp.VolumeUsedSize,
-		Total:     resp.VolumeSize,
+		Available: availableSize,
+		Total:     availableSize + resp.VolumeUsedSize,
 		Used:      resp.VolumeUsedSize,
 	}
 	return volUsage, nil

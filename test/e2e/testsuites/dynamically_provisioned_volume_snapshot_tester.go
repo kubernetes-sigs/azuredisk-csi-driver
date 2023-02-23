@@ -21,6 +21,10 @@ import (
 	"fmt"
 	"strings"
 
+	"sigs.k8s.io/azuredisk-csi-driver/test/e2e/driver"
+	"sigs.k8s.io/azuredisk-csi-driver/test/utils/azure"
+	"sigs.k8s.io/azuredisk-csi-driver/test/utils/credentials"
+
 	"github.com/onsi/ginkgo/v2"
 	"github.com/pborman/uuid"
 	v1 "k8s.io/api/core/v1"
@@ -29,10 +33,7 @@ import (
 	restclientset "k8s.io/client-go/rest"
 	"k8s.io/kubernetes/test/e2e/framework"
 	testconsts "sigs.k8s.io/azuredisk-csi-driver/test/const"
-	"sigs.k8s.io/azuredisk-csi-driver/test/e2e/driver"
 	"sigs.k8s.io/azuredisk-csi-driver/test/resources"
-	"sigs.k8s.io/azuredisk-csi-driver/test/utils/azure"
-	"sigs.k8s.io/azuredisk-csi-driver/test/utils/credentials"
 	volutil "sigs.k8s.io/azuredisk-csi-driver/test/utils/volume"
 )
 
@@ -43,12 +44,13 @@ import (
 // And finally delete the snapshot
 // This test only supports a single volume
 type DynamicallyProvisionedVolumeSnapshotTest struct {
-	CSIDriver              driver.PVTestDriver
-	Pod                    resources.PodDetails
-	ShouldOverwrite        bool
-	PodOverwrite           resources.PodDetails
-	PodWithSnapshot        resources.PodDetails
-	StorageClassParameters map[string]string
+	CSIDriver                      driver.PVTestDriver
+	Pod                            resources.PodDetails
+	ShouldOverwrite                bool
+	PodOverwrite                   resources.PodDetails
+	PodWithSnapshot                resources.PodDetails
+	StorageClassParameters         map[string]string
+	SnapshotStorageClassParameters map[string]string
 }
 
 func (t *DynamicallyProvisionedVolumeSnapshotTest) Run(client clientset.Interface, restclient restclientset.Interface, namespace *v1.Namespace, schedulerName string) {
@@ -104,11 +106,11 @@ func (t *DynamicallyProvisionedVolumeSnapshotTest) Run(client clientset.Interfac
 	}()
 
 	ginkgo.By("creating volume snapshot class with external rg " + externalRG)
-	tvsc, cleanup := resources.CreateVolumeSnapshotClass(restclient, namespace, t.CSIDriver)
-	mp := map[string]string{
-		"resourceGroup": externalRG,
+	tvsc, cleanup := resources.CreateVolumeSnapshotClass(restclient, namespace, t.SnapshotStorageClassParameters, t.CSIDriver)
+	if tvsc.VolumeSnapshotClass.Parameters == nil {
+		tvsc.VolumeSnapshotClass.Parameters = map[string]string{}
 	}
-	tvsc.VolumeSnapshotClass.Parameters = mp
+	tvsc.VolumeSnapshotClass.Parameters["resourceGroup"] = externalRG
 	tvsc.Create()
 	defer cleanup()
 

@@ -66,6 +66,8 @@ const (
 
 	KubeconfigEnvVar = "KUBECONFIG"
 
+	ReportDirEnvVar         = "ARTIFACTS"
+	DefaultReportDir        = "/workspace/_artifacts"
 	TestMigrationEnvVar     = "TEST_MIGRATION"
 	TestWindowsEnvVar       = "TEST_WINDOWS"
 	TestWinServerVerEnvVar  = "WINDOWS_SERVER_VERSION"

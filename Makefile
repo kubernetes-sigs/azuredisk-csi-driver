@@ -20,7 +20,7 @@ IMAGE_NAME ?= azuredisk-csi
 SCHEDULER_EXTENDER_IMAGE_NAME ?= azdiskschedulerextender-csi
 ifneq ($(BUILD_V2), true)
 PLUGIN_NAME = azurediskplugin
-IMAGE_VERSION ?= v1.24.0
+IMAGE_VERSION ?= v1.28.0
 CHART_VERSION ?= latest
 else
 PLUGIN_NAME = azurediskpluginv2
@@ -40,8 +40,8 @@ ifndef PUBLISH
 override IMAGE_VERSION := $(IMAGE_VERSION)-$(GIT_COMMIT)
 endif
 endif
-IMAGE_TAG ?= $(REGISTRY)/$(IMAGE_NAME):$(IMAGE_VERSION)
-IMAGE_TAG_LATEST = $(REGISTRY)/$(IMAGE_NAME):latest
+CSI_IMAGE_TAG ?= $(REGISTRY)/$(IMAGE_NAME):$(IMAGE_VERSION)
+CSI_IMAGE_TAG_LATEST = $(REGISTRY)/$(IMAGE_NAME):latest
 AZ_DISK_SCHEDULER_EXTENDER_IMAGE_TAG ?= $(REGISTRY)/$(SCHEDULER_EXTENDER_IMAGE_NAME):$(IMAGE_VERSION)
 AZ_DISK_SCHEDULER_EXTENDER_IMAGE_TAG_LATEST = $(REGISTRY)/$(SCHEDULER_EXTENDER_IMAGE_NAME):latest
 REV = $(shell git describe --long --tags --dirty)
@@ -49,19 +49,22 @@ BUILD_DATE ?= $(shell date -u +"%Y-%m-%dT%H:%M:%SZ")
 ENABLE_TOPOLOGY ?= false
 SCHEDULER_EXTENDER_LDFLAGS ?= "-X ${PKG}/pkg/azuredisk.schedulerVersion=${IMAGE_VERSION} -X ${PKG}/pkg/azuredisk.gitCommit=${GIT_COMMIT} -X ${PKG}/pkg/azuredisk.buildDate=${BUILD_DATE} -X ${PKG}/pkg/azuredisk.DriverName=${DRIVER_NAME} -extldflags "-static""
 LDFLAGS ?= "-X ${PKG}/pkg/azuredisk.driverVersion=${IMAGE_VERSION} -X ${PKG}/pkg/azuredisk.gitCommit=${GIT_COMMIT} -X ${PKG}/pkg/azuredisk.buildDate=${BUILD_DATE} -extldflags "-static"" ${GOTAGS}
-E2E_HELM_OPTIONS ?= --set image.azuredisk.repository=$(REGISTRY)/$(IMAGE_NAME) --set image.azuredisk.tag=$(IMAGE_VERSION) --set image.azuredisk.pullPolicy=Always --set image.schedulerExtender.repository=$(REGISTRY)/$(SCHEDULER_EXTENDER_IMAGE_NAME) --set image.schedulerExtender.tag=$(IMAGE_VERSION) --set image.schedulerExtender.pullPolicy=Always --set driver.userAgentSuffix="e2e-test"
+E2E_HELM_OPTIONS ?= --set image.azuredisk.repository=$(REGISTRY)/$(IMAGE_NAME) --set image.azuredisk.tag=$(IMAGE_VERSION) --set image.azuredisk.pullPolicy=Always --set image.schedulerExtender.repository=$(REGISTRY)/$(SCHEDULER_EXTENDER_IMAGE_NAME) --set image.schedulerExtender.tag=$(IMAGE_VERSION) --set image.schedulerExtender.pullPolicy=Always --set driver.userAgentSuffix="e2e-test" --set snapshot.VolumeSnapshotClass.enabled=true --set snapshot.enabled=true
 E2E_HELM_OPTIONS += ${EXTRA_HELM_OPTIONS}
 ifdef DISABLE_ZONE
 E2E_HELM_OPTIONS += --set node.supportZone=false
 endif
 ARTIFACTS ?= /workspace/_artifacts
-GINKGO_COMMON_FLAGS = -ginkgo.v -ginkgo.timeout=3h -ginkgo.junit-report="$(ARTIFACTS)/junit_01.xml"
+GINKGO_COMMON_FLAGS = -ginkgo.v -ginkgo.timeout=24h -ginkgo.junit-report="$(ARTIFACTS)/junit_01.xml"
 ifeq ($(ENABLE_TOPOLOGY), true)
 GINKGO_FLAGS += -ginkgo.focus="\[multi-az\]"
 else
 GINKGO_FLAGS += -ginkgo.focus="\[single-az\]"
 endif
 GINKGO_FLAGS += $(GINKGO_COMMON_FLAGS)
+ifdef NODE_MACHINE_TYPE  # capz cluster
+E2E_HELM_OPTIONS += --set controller.enableTrafficManager=true
+endif
 GOPATH ?= $(shell go env GOPATH)
 GOBIN ?= $(GOPATH)/bin
 GO111MODULE = on
@@ -114,7 +117,7 @@ sanity-test: azuredisk
 
 .PHONY: sanity-test-v2
 sanity-test-v2: container-v2
-	go test -v -timeout=30m ./test/sanity --test-driver-version=v2 --image-tag ${IMAGE_TAG}
+	go test -v -timeout=30m ./test/sanity --test-driver-version=v2 --image-tag ${CSI_IMAGE_TAG}
 
 .PHONY: integration-test
 integration-test:
@@ -122,11 +125,11 @@ integration-test:
 
 .PHONY: integration-test-v2
 integration-test-v2: container-v2
-	go test -v -timeout=45m ./test/integration --test-driver-version=v2 --image-tag ${IMAGE_TAG}
+	go test -v -timeout=45m ./test/integration --test-driver-version=v2 --image-tag ${CSI_IMAGE_TAG}
 
 .PHONY: e2e-bootstrap
 e2e-bootstrap: install-helm
-	docker pull $(IMAGE_TAG) || make container-all push-manifest
+	docker pull $(CSI_IMAGE_TAG) || make container-all push-manifest
 ifeq ($(BUILD_V2), true)
 	docker pull $(AZ_DISK_SCHEDULER_EXTENDER_IMAGE_TAG) || make azdiskschedulerextender-all push-manifest-azdiskschedulerextender
 endif
@@ -192,18 +195,18 @@ azdiskschedulerextender:
 
 .PHONY: container
 container: azuredisk
-	docker build --no-cache -t $(IMAGE_TAG) --build-arg PLUGIN_NAME=${PLUGIN_NAME} --output=type=docker -f ./pkg/azurediskplugin/Dockerfile .
+	docker build --no-cache -t $(CSI_IMAGE_TAG) --build-arg PLUGIN_NAME=${PLUGIN_NAME} --output=type=docker -f ./pkg/azurediskplugin/Dockerfile .
 
 .PHONY: container-v2
 container-v2: azuredisk-v2
-	docker build --no-cache -t $(IMAGE_TAG) --build-arg PLUGIN_NAME=${PLUGIN_NAME} --output=type=docker -f ./pkg/azurediskplugin/Dockerfile .
+	docker build --no-cache -t $(CSI_IMAGE_TAG) --build-arg PLUGIN_NAME=${PLUGIN_NAME} --output=type=docker -f ./pkg/azurediskplugin/Dockerfile .
 
 .PHONY: container-linux
 container-linux:
 	docker buildx build . \
 		--pull \
 		--output=type=$(OUTPUT_TYPE) \
-		--tag $(IMAGE_TAG)-linux-$(ARCH) \
+		--tag $(CSI_IMAGE_TAG)-linux-$(ARCH) \
 		--file ./pkg/azurediskplugin/Dockerfile \
 		--platform="linux/$(ARCH)" \
 		--build-arg ARCH=${ARCH} \
@@ -217,7 +220,7 @@ container-windows:
 		--pull \
 		--output=type=$(OUTPUT_TYPE) \
 		--platform="windows/$(ARCH)" \
-		--tag $(IMAGE_TAG)-windows-$(OSVERSION)-$(ARCH) \
+		--tag $(CSI_IMAGE_TAG)-windows-$(OSVERSION)-$(ARCH) \
 		--file ./pkg/azurediskplugin/Windows.Dockerfile \
 		--build-arg ARCH=${ARCH} \
 		--build-arg PLUGIN_NAME=${PLUGIN_NAME} \
@@ -272,37 +275,37 @@ container-all: azuredisk-windows container-setup
 
 .PHONY: push-manifest
 push-manifest:
-	docker manifest create --amend $(IMAGE_TAG) $(foreach osarch, $(ALL_OS_ARCH), $(IMAGE_TAG)-${osarch})
+	docker manifest create --amend $(CSI_IMAGE_TAG) $(foreach osarch, $(ALL_OS_ARCH), $(CSI_IMAGE_TAG)-${osarch})
 	# add "os.version" field to windows images (based on https://github.com/kubernetes/kubernetes/blob/master/build/pause/Makefile)
 	set -x; \
 	for arch in $(ALL_ARCH.windows); do \
 		for osversion in $(ALL_OSVERSIONS.windows); do \
 			BASEIMAGE=mcr.microsoft.com/windows/nanoserver:$${osversion}; \
 			full_version=`docker manifest inspect $${BASEIMAGE} | jq -r '.manifests[0].platform["os.version"]'`; \
-			docker manifest annotate --os windows --arch $${arch} --os-version $${full_version} $(IMAGE_TAG) $(IMAGE_TAG)-windows-$${osversion}-$${arch}; \
+			docker manifest annotate --os windows --arch $${arch} --os-version $${full_version} $(CSI_IMAGE_TAG) $(CSI_IMAGE_TAG)-windows-$${osversion}-$${arch}; \
 		done; \
 	done
-	docker manifest push --purge $(IMAGE_TAG)
-	docker manifest inspect $(IMAGE_TAG)
+	docker manifest push --purge $(CSI_IMAGE_TAG)
+	docker manifest inspect $(CSI_IMAGE_TAG)
 ifdef PUBLISH
-	docker manifest create --amend $(IMAGE_TAG_LATEST) $(foreach osarch, $(ALL_OS_ARCH), $(IMAGE_TAG)-${osarch})
+	docker manifest create --amend $(CSI_IMAGE_TAG_LATEST) $(foreach osarch, $(ALL_OS_ARCH), $(CSI_IMAGE_TAG)-${osarch})
 	set -x; \
 	for arch in $(ALL_ARCH.windows); do \
 		for osversion in $(ALL_OSVERSIONS.windows); do \
 			BASEIMAGE=mcr.microsoft.com/windows/nanoserver:$${osversion}; \
 			full_version=`docker manifest inspect $${BASEIMAGE} | jq -r '.manifests[0].platform["os.version"]'`; \
-			docker manifest annotate --os windows --arch $${arch} --os-version $${full_version} $(IMAGE_TAG_LATEST) $(IMAGE_TAG)-windows-$${osversion}-$${arch}; \
+			docker manifest annotate --os windows --arch $${arch} --os-version $${full_version} $(CSI_IMAGE_TAG_LATEST) $(CSI_IMAGE_TAG)-windows-$${osversion}-$${arch}; \
 		done; \
 	done
-	docker manifest inspect $(IMAGE_TAG_LATEST)
+	docker manifest inspect $(CSI_IMAGE_TAG_LATEST)
 endif
 
 .PHONY: push-latest
 push-latest:
 ifdef CI
-	docker manifest push --purge $(IMAGE_TAG_LATEST)
+	docker manifest push --purge $(CSI_IMAGE_TAG_LATEST)
 else
-	docker push $(IMAGE_TAG_LATEST)
+	docker push $(CSI_IMAGE_TAG_LATEST)
 endif
 
 .PHONY: push-manifest-azdiskschedulerextender

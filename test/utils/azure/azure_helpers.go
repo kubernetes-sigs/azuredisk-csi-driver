@@ -21,17 +21,20 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
+	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
+	"github.com/Azure/azure-sdk-for-go/sdk/azcore/cloud"
+	"github.com/Azure/azure-sdk-for-go/sdk/azidentity"
 	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2022-03-01/compute"
 	"github.com/Azure/azure-sdk-for-go/services/network/mgmt/2019-06-01/network"
 	"github.com/Azure/azure-sdk-for-go/services/resources/mgmt/2018-05-01/resources"
-	"github.com/Azure/go-autorest/autorest"
-	"github.com/Azure/go-autorest/autorest/adal"
 	"github.com/Azure/go-autorest/autorest/azure"
-	"github.com/Azure/go-autorest/autorest/to"
+	"github.com/jongio/azidext/go/azidext"
 	"github.com/stretchr/testify/assert"
+	"k8s.io/utils/pointer"
 )
 
 type Client struct {
@@ -52,17 +55,17 @@ func GetAzureClient(cloud, subscriptionID, clientID, tenantID, clientSecret stri
 		return nil, err
 	}
 
-	oauthConfig, err := getOAuthConfig(env, subscriptionID, tenantID)
+	options := azidentity.ClientSecretCredentialOptions{
+		ClientOptions: azcore.ClientOptions{
+			Cloud: getCloudConfig(env),
+		},
+	}
+	cred, err := azidentity.NewClientSecretCredential(tenantID, clientID, clientSecret, &options)
 	if err != nil {
 		return nil, err
 	}
 
-	armSpt, err := adal.NewServicePrincipalToken(*oauthConfig, clientID, clientSecret, env.ServiceManagementEndpoint)
-	if err != nil {
-		return nil, err
-	}
-
-	return getClient(env, subscriptionID, tenantID, armSpt), nil
+	return getClient(env, subscriptionID, tenantID, cred, env.TokenAudience), nil
 }
 
 func (az *Client) GetAzureDisksClient() (compute.DisksClient, error) {
@@ -144,29 +147,29 @@ func (az *Client) EnsureVirtualMachine(ctx context.Context, groupName, location,
 		groupName,
 		vmName,
 		compute.VirtualMachine{
-			Location: to.StringPtr(location),
+			Location: pointer.String(location),
 			VirtualMachineProperties: &compute.VirtualMachineProperties{
 				HardwareProfile: &compute.HardwareProfile{
 					VMSize: "Standard_DS2_v2",
 				},
 				StorageProfile: &compute.StorageProfile{
 					ImageReference: &compute.ImageReference{
-						Publisher: to.StringPtr("Canonical"),
-						Offer:     to.StringPtr("UbuntuServer"),
-						Sku:       to.StringPtr("16.04.0-LTS"),
-						Version:   to.StringPtr("latest"),
+						Publisher: pointer.String("Canonical"),
+						Offer:     pointer.String("UbuntuServer"),
+						Sku:       pointer.String("16.04.0-LTS"),
+						Version:   pointer.String("latest"),
 					},
 				},
 				OsProfile: &compute.OSProfile{
-					ComputerName:  to.StringPtr(vmName),
-					AdminUsername: to.StringPtr("azureuser"),
-					AdminPassword: to.StringPtr("Azureuser1234"),
+					ComputerName:  pointer.String(vmName),
+					AdminUsername: pointer.String("azureuser"),
+					AdminPassword: pointer.String("Azureuser1234"),
 					LinuxConfiguration: &compute.LinuxConfiguration{
-						DisablePasswordAuthentication: to.BoolPtr(true),
+						DisablePasswordAuthentication: pointer.Bool(true),
 						SSH: &compute.SSHConfiguration{
 							PublicKeys: &[]compute.SSHPublicKey{
 								{
-									Path:    to.StringPtr("/home/azureuser/.ssh/authorized_keys"),
+									Path:    pointer.String("/home/azureuser/.ssh/authorized_keys"),
 									KeyData: &publicKey,
 								},
 							},
@@ -178,7 +181,7 @@ func (az *Client) EnsureVirtualMachine(ctx context.Context, groupName, location,
 						{
 							ID: nic.ID,
 							NetworkInterfaceReferenceProperties: &compute.NetworkInterfaceReferenceProperties{
-								Primary: to.BoolPtr(true),
+								Primary: pointer.Bool(true),
 							},
 						},
 					},
@@ -214,12 +217,12 @@ func (az *Client) EnsureNIC(ctx context.Context, groupName, location, nicName, v
 		groupName,
 		nicName,
 		network.Interface{
-			Name:     to.StringPtr(nicName),
-			Location: to.StringPtr(location),
+			Name:     pointer.String(nicName),
+			Location: pointer.String(location),
 			InterfacePropertiesFormat: &network.InterfacePropertiesFormat{
 				IPConfigurations: &[]network.InterfaceIPConfiguration{
 					{
-						Name: to.StringPtr("ipConfig1"),
+						Name: pointer.String("ipConfig1"),
 						InterfaceIPConfigurationPropertiesFormat: &network.InterfaceIPConfigurationPropertiesFormat{
 							Subnet:                    &subnet,
 							PrivateIPAllocationMethod: network.Dynamic,
@@ -247,16 +250,16 @@ func (az *Client) EnsureVirtualNetworkAndSubnet(ctx context.Context, groupName, 
 		groupName,
 		vnetName,
 		network.VirtualNetwork{
-			Location: to.StringPtr(location),
+			Location: pointer.String(location),
 			VirtualNetworkPropertiesFormat: &network.VirtualNetworkPropertiesFormat{
 				AddressSpace: &network.AddressSpace{
 					AddressPrefixes: &[]string{"10.0.0.0/8"},
 				},
 				Subnets: &[]network.Subnet{
 					{
-						Name: to.StringPtr(subnetName),
+						Name: pointer.String(subnetName),
 						SubnetPropertiesFormat: &network.SubnetPropertiesFormat{
-							AddressPrefix: to.StringPtr("10.0.0.0/16"),
+							AddressPrefix: pointer.String("10.0.0.0/16"),
 						},
 					},
 				},
@@ -293,16 +296,28 @@ func AssertNotNil(t *testing.T, obj interface{}, msgsAndArgs ...interface{}) {
 	}
 }
 
-func getOAuthConfig(env azure.Environment, subscriptionID, tenantID string) (*adal.OAuthConfig, error) {
-	oauthConfig, err := adal.NewOAuthConfig(env.ActiveDirectoryEndpoint, tenantID)
-	if err != nil {
-		return nil, err
+func getCloudConfig(env azure.Environment) cloud.Configuration {
+	switch env.Name {
+	case azure.USGovernmentCloud.Name:
+		return cloud.AzureGovernment
+	case azure.ChinaCloud.Name:
+		return cloud.AzureChina
+	case azure.PublicCloud.Name:
+		return cloud.AzurePublic
+	default:
+		return cloud.Configuration{
+			ActiveDirectoryAuthorityHost: env.ActiveDirectoryEndpoint,
+			Services: map[cloud.ServiceName]cloud.ServiceConfiguration{
+				cloud.ResourceManager: {
+					Audience: env.TokenAudience,
+					Endpoint: env.ResourceManagerEndpoint,
+				},
+			},
+		}
 	}
-
-	return oauthConfig, nil
 }
 
-func getClient(env azure.Environment, subscriptionID, tenantID string, armSpt *adal.ServicePrincipalToken) *Client {
+func getClient(env azure.Environment, subscriptionID, tenantID string, cred *azidentity.ClientSecretCredential, scope string) *Client {
 	c := &Client{
 		environment:         env,
 		subscriptionID:      subscriptionID,
@@ -315,7 +330,16 @@ func getClient(env azure.Environment, subscriptionID, tenantID string, armSpt *a
 		sshPublicKeysClient: compute.NewSSHPublicKeysClientWithBaseURI(env.ResourceManagerEndpoint, subscriptionID),
 	}
 
-	authorizer := autorest.NewBearerAuthorizer(armSpt)
+	if !strings.HasSuffix(scope, "/.default") {
+		scope += "/.default"
+	}
+	// Use an adapter so azidentity in the Azure SDK can be used as Authorizer
+	// when calling the Azure Management Packages, which we currently use. Once
+	// the Azure SDK clients (found in /sdk) move to stable, we can update our
+	// clients and they will be able to use the creds directly without the
+	// authorizer.
+	authorizer := azidext.NewTokenCredentialAdapter(cred, []string{scope})
+
 	c.groupsClient.Authorizer = authorizer
 	c.vmClient.Authorizer = authorizer
 	c.nicClient.Authorizer = authorizer

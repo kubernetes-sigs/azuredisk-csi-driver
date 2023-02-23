@@ -48,7 +48,7 @@ var imageTag = flag.String("image-tag", "", "A flag to get the docker image tag"
 func TestIntegrationOnAzurePublicCloud(t *testing.T) {
 	flag.Parse()
 	// Test on AzurePublicCloud
-	os.Setenv("AZURE_VM_TYPE", "standard")
+	t.Setenv("AZURE_VM_TYPE", "standard")
 	creds, err := credentials.CreateAzureCredentialFile()
 	defer func() {
 		err := credentials.DeleteAzureCredentialFile()
@@ -58,11 +58,11 @@ func TestIntegrationOnAzurePublicCloud(t *testing.T) {
 	azure.AssertNotNil(t, creds)
 
 	// Set necessary env vars for sanity test
-	os.Setenv("AZURE_CREDENTIAL_FILE", testconsts.TempAzureCredentialFilePath)
+	t.Setenv("AZURE_CREDENTIAL_FILE", testconsts.TempAzureCredentialFilePath)
 
 	useDriverV2 := strings.EqualFold(*testDriverVersion, driverV2)
 
-	os.Setenv("NODEID", nodeid)
+	t.Setenv("NODEID", nodeid)
 
 	azureClient, err := azure.GetAzureClient(creds.Cloud, creds.SubscriptionID, creds.AADClientID, creds.TenantID, creds.AADClientSecret)
 	azure.AssertNoError(t, err)

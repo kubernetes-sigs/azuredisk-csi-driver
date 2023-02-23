@@ -96,6 +96,9 @@ type Driver struct {
 	supportZone                bool
 	getNodeInfoFromLabels      bool
 	enableDiskCapacityCheck    bool
+	enableTrafficManager       bool
+	trafficManagerPort         int64
+	disableUpdateCache         bool
 	vmssCacheTTLInSeconds      int64
 	vmType                     string
 }
@@ -125,6 +128,9 @@ func newDriverV1(config *azdiskv1beta2.AzDiskDriverConfiguration) *Driver {
 	driver.enableDiskCapacityCheck = config.ControllerConfig.EnableDiskCapacityCheck
 	driver.vmssCacheTTLInSeconds = config.CloudConfig.VMSSCacheTTLInSeconds
 	driver.vmType = config.ControllerConfig.VMType
+	driver.disableUpdateCache = config.CloudConfig.DisableUpdateCache
+	driver.enableTrafficManager = config.CloudConfig.EnableTrafficManager
+	driver.trafficManagerPort = config.CloudConfig.TrafficManagerPort
 	driver.volumeLocks = volumehelper.NewVolumeLocks()
 	driver.ioHandler = azureutils.NewOSIOHandler()
 	driver.hostUtil = hostutil.NewHostUtil()
@@ -153,6 +159,7 @@ func (d *Driver) Run(endpoint, kubeconfig string, disableAVSetNodes, testingMock
 	klog.V(2).Infof("driver userAgent: %s", userAgent)
 
 	cloud, err := azureutils.GetCloudProvider(
+		context.Background(),
 		kubeconfig,
 		d.cloudConfigSecretName,
 		d.cloudConfigSecretNamespace,
@@ -160,40 +167,48 @@ func (d *Driver) Run(endpoint, kubeconfig string, disableAVSetNodes, testingMock
 		d.allowEmptyCloudConfig,
 		consts.DefaultEnableAzureClientAttachDetachRateLimiter,
 		consts.DefaultAzureClientAttachDetachRateLimiterQPS,
-		consts.DefaultAzureClientAttachDetachRateLimiterBucket)
+		consts.DefaultAzureClientAttachDetachRateLimiterBucket,
+		d.enableTrafficManager,
+		d.trafficManagerPort)
 	if err != nil {
 		klog.Fatalf("failed to get Azure Cloud Provider, error: %v", err)
 	}
 	d.cloud = cloud
 	d.kubeconfig = kubeconfig
 
-	if d.vmType != "" {
-		klog.V(2).Infof("override VMType(%s) in cloud config as %s", d.cloud.VMType, d.vmType)
-		d.cloud.VMType = d.vmType
-	}
-
-	if d.NodeID == "" {
-		// Disable UseInstanceMetadata for controller to mitigate a timeout issue using IMDS
-		// https://github.com/kubernetes-sigs/azuredisk-csi-driver/issues/168
-		klog.V(2).Infof("disable UseInstanceMetadata for controller")
-		d.cloud.Config.UseInstanceMetadata = false
-
-		if d.cloud.VMType == azurecloudconsts.VMTypeStandard && d.cloud.DisableAvailabilitySetNodes {
-			klog.V(2).Infof("set DisableAvailabilitySetNodes as false since VMType is %s", d.cloud.VMType)
-			d.cloud.DisableAvailabilitySetNodes = false
+	if d.cloud != nil {
+		if d.vmType != "" {
+			klog.V(2).Infof("override VMType(%s) in cloud config as %s", d.cloud.VMType, d.vmType)
+			d.cloud.VMType = d.vmType
 		}
 
-		if d.cloud.VMType == azurecloudconsts.VMTypeVMSS && !d.cloud.DisableAvailabilitySetNodes && disableAVSetNodes {
-			klog.V(2).Infof("DisableAvailabilitySetNodes for controller since current VMType is vmss")
-			d.cloud.DisableAvailabilitySetNodes = true
-		}
-		klog.V(2).Infof("cloud: %s, location: %s, rg: %s, VMType: %s, PrimaryScaleSetName: %s, PrimaryAvailabilitySetName: %s, DisableAvailabilitySetNodes: %v", d.cloud.Cloud, d.cloud.Location, d.cloud.ResourceGroup, d.cloud.VMType, d.cloud.PrimaryScaleSetName, d.cloud.PrimaryAvailabilitySetName, d.cloud.DisableAvailabilitySetNodes)
-	}
+		if d.NodeID == "" {
+			// Disable UseInstanceMetadata for controller to mitigate a timeout issue using IMDS
+			// https://github.com/kubernetes-sigs/azuredisk-csi-driver/issues/168
+			klog.V(2).Infof("disable UseInstanceMetadata for controller")
+			d.cloud.Config.UseInstanceMetadata = false
 
-	if d.vmssCacheTTLInSeconds > 0 {
-		klog.V(2).Infof("reset vmssCacheTTLInSeconds as %d", d.vmssCacheTTLInSeconds)
-		d.cloud.VMCacheTTLInSeconds = int(d.vmssCacheTTLInSeconds)
-		d.cloud.VmssCacheTTLInSeconds = int(d.vmssCacheTTLInSeconds)
+			if d.cloud.VMType == azurecloudconsts.VMTypeStandard && d.cloud.DisableAvailabilitySetNodes {
+				klog.V(2).Infof("set DisableAvailabilitySetNodes as false since VMType is %s", d.cloud.VMType)
+				d.cloud.DisableAvailabilitySetNodes = false
+			}
+
+			if d.cloud.VMType == azurecloudconsts.VMTypeVMSS && !d.cloud.DisableAvailabilitySetNodes && disableAVSetNodes {
+				klog.V(2).Infof("DisableAvailabilitySetNodes for controller since current VMType is vmss")
+				d.cloud.DisableAvailabilitySetNodes = true
+			}
+			klog.V(2).Infof("cloud: %s, location: %s, rg: %s, VMType: %s, PrimaryScaleSetName: %s, PrimaryAvailabilitySetName: %s, DisableAvailabilitySetNodes: %v", d.cloud.Cloud, d.cloud.Location, d.cloud.ResourceGroup, d.cloud.VMType, d.cloud.PrimaryScaleSetName, d.cloud.PrimaryAvailabilitySetName, d.cloud.DisableAvailabilitySetNodes)
+		}
+
+		if d.vmssCacheTTLInSeconds > 0 {
+			klog.V(2).Infof("reset vmssCacheTTLInSeconds as %d", d.vmssCacheTTLInSeconds)
+			d.cloud.VMCacheTTLInSeconds = int(d.vmssCacheTTLInSeconds)
+			d.cloud.VmssCacheTTLInSeconds = int(d.vmssCacheTTLInSeconds)
+		}
+
+		if d.cloud.ManagedDiskController != nil {
+			d.cloud.DisableUpdateCache = d.disableUpdateCache
+		}
 	}
 
 	d.deviceHelper = optimization.NewSafeDeviceHelper()

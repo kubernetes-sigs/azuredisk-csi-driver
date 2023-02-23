@@ -332,6 +332,19 @@ func ValidateDiskEncryptionType(encryptionType string) error {
 	return fmt.Errorf("DiskEncryptionType(%s) is not supported", encryptionType)
 }
 
+func ValidateDataAccessAuthMode(dataAccessAuthMode string) error {
+	if dataAccessAuthMode == "" {
+		return nil
+	}
+	supportedModes := compute.PossibleDataAccessAuthModeValues()
+	for _, s := range supportedModes {
+		if dataAccessAuthMode == string(s) {
+			return nil
+		}
+	}
+	return fmt.Errorf("dataAccessAuthMode(%s) is not supported", dataAccessAuthMode)
+}
+
 func NormalizeStorageAccountType(storageAccountType, cloud string, disableAzureStackCloud bool) (compute.DiskStorageAccountTypes, error) {
 	if storageAccountType == "" {
 		if IsAzureStackCloud(cloud, disableAzureStackCloud) {
@@ -547,6 +560,7 @@ func CreateValidDiskName(volumeName string, usedForLabel bool) string {
 
 // GetCloudProviderFromClient get Azure Cloud Provider
 func GetCloudProviderFromClient(
+	ctx context.Context,
 	kubeClient *clientset.Clientset,
 	cloudConfig azdiskv1beta2.CloudConfiguration,
 	userAgent string) (*azure.Cloud, error) {
@@ -624,8 +638,14 @@ func GetCloudProviderFromClient(
 		}
 		config.UserAgent = userAgent
 
+		if cloudConfig.EnableTrafficManager && cloudConfig.TrafficManagerPort > 0 {
+			trafficMgrAddr := fmt.Sprintf("http://localhost:%d/", cloudConfig.TrafficManagerPort)
+			klog.V(2).Infof("set ResourceManagerEndpoint as %s", trafficMgrAddr)
+			config.ResourceManagerEndpoint = trafficMgrAddr
+		}
+
 		// Create a new cloud provider
-		az, err = azure.NewCloudWithoutFeatureGatesFromConfig(context.TODO(), config, fromSecret, false)
+		az, err = azure.NewCloudWithoutFeatureGatesFromConfig(ctx, config, fromSecret, false)
 		if err != nil {
 			err = fmt.Errorf("failed to create cloud: %v", err)
 			klog.Errorf(err.Error())
@@ -643,13 +663,17 @@ func GetCloudProviderFromClient(
 
 // GetCloudProviderFromConfig get Azure Cloud Provider
 func GetCloudProvider(
-	kubeConfig, secretName,
+	ctx context.Context,
+	kubeConfig,
+	secretName,
 	secretNamespace,
 	userAgent string,
-	allowEmptyCloudConfig bool,
+	allowEmptyCloudConfig,
 	enableAzureClientAttachDetachRateLimiter bool,
 	azureClientAttachDetachRateLimiterQPS float32,
-	azureClientAttachDetachRateLimiterBucket int) (*azure.Cloud, error) {
+	azureClientAttachDetachRateLimiterBucket int,
+	enableTrafficManager bool,
+	trafficManagerPort int64) (*azure.Cloud, error) {
 	kubeClient, err := GetKubeClient(kubeConfig)
 	if err != nil {
 		klog.Warningf("get kubeconfig(%s) failed with error: %v", kubeConfig, err)
@@ -664,11 +688,15 @@ func GetCloudProvider(
 		EnableAzureClientAttachDetachRateLimiter: enableAzureClientAttachDetachRateLimiter,
 		AzureClientAttachDetachRateLimiterQPS:    azureClientAttachDetachRateLimiterQPS,
 		AzureClientAttachDetachRateLimiterBucket: azureClientAttachDetachRateLimiterBucket,
+		EnableTrafficManager:                     enableTrafficManager,
+		TrafficManagerPort:                       trafficManagerPort,
 	}
 	return GetCloudProviderFromClient(
+		ctx,
 		kubeClient,
 		cloudConfig,
-		userAgent)
+		userAgent,
+	)
 }
 
 // GetKubeConfig gets config object from config file

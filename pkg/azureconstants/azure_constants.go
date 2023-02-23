@@ -78,6 +78,7 @@ const (
 	RestClientSubsystem            = "kube_client"
 	SubscriptionIDField            = "subscriptionid"
 	ResourceGroupField             = "resourcegroup"
+	DataAccessAuthModeField        = "dataaccessauthmode"
 	ResourceNotFound               = "ResourceNotFound"
 	SkuNameField                   = "skuname"
 	SourceDiskSearchMaxDepth       = 10
@@ -203,7 +204,10 @@ const (
 	DefaultCloudConfigSecretNamespace               = "kube-system"
 	DefaultCustomUserAgent                          = ""
 	DefaultUserAgentSuffix                          = ""
+	DefaultEnableTrafficManager                     = false
+	DefaultTrafficManagerPort                       = 7788
 	DefaultAllowEmptyCloudConfig                    = true
+	DefaultDisableUpdateCache                       = false
 	DefaultVMSSCacheTTLInSeconds                    = -1
 	DefaultKubeconfig                               = ""
 	DefaultKubeClientQPS                            = 15.0

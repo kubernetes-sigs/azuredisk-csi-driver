@@ -10,25 +10,24 @@
 
 Name | Meaning | Available Value | Mandatory | Default value
 --- | --- | --- | --- | ---
-skuName | azure disk storage account type (alias: `storageAccountType`)| `Standard_LRS`, `Premium_LRS`, `StandardSSD_LRS`, `UltraSSD_LRS`, `Premium_ZRS`, `StandardSSD_ZRS` | No | `StandardSSD_LRS`
+skuName | azure disk storage account type (alias: `storageAccountType`)| `Standard_LRS`, `Premium_LRS`, `StandardSSD_LRS`, `UltraSSD_LRS`, `Premium_ZRS`, `StandardSSD_ZRS`, `PremiumV2_LRS`<br>(Note: [PremiumV2_LRS](https://learn.microsoft.com/en-us/azure/virtual-machines/disks-deploy-premium-v2) only supports `None` caching mode) | No | `StandardSSD_LRS`
 kind | managed or unmanaged(blob based) disk | `managed` (`dedicated`, `shared` are deprecated) | No | `managed`
 fsType | File System Type | `ext4`, `ext3`, `ext2`, `xfs`, `btrfs` on Linux, `ntfs` on Windows | No | `ext4` on Linux, `ntfs` on Windows
-cachingMode | [Azure Data Disk Host Cache Setting](https://docs.microsoft.com/en-us/azure/virtual-machines/windows/premium-storage-performance#disk-caching) | `None`, `ReadOnly`, `ReadWrite`(`ReadWrite` caching mode is deprecated) | No | `ReadOnly`
+cachingMode | [Azure Data Disk Host Cache Setting](https://docs.microsoft.com/en-us/azure/virtual-machines/windows/premium-storage-performance#disk-caching) | `None`, `ReadOnly`, `ReadWrite`<br>(`ReadWrite` caching mode is deprecated, `PremiumV2_LRS` only supports `None` caching mode) | No | `ReadOnly`
 location | specify Azure location in which Azure disk will be created | `eastus`, `westus`, etc. | No | if empty, driver will use the same location name as current k8s cluster
 resourceGroup | specify the resource group in which azure disk will be created | existing resource group name | No | if empty, driver will use the same resource group name as current k8s cluster
-DiskIOPSReadWrite | [UltraSSD disk](https://docs.microsoft.com/en-us/azure/virtual-machines/linux/disks-ultra-ssd) IOPS Capability (minimum: 2 IOPS/GiB ) | 100~160000 | No | `500`
-DiskMBpsReadWrite | [UltraSSD disk](https://docs.microsoft.com/en-us/azure/virtual-machines/linux/disks-ultra-ssd) Throughput Capability(minimum: 0.032/GiB) | 1~2000 | No | `100`
+DiskIOPSReadWrite | [UltraSSD](https://learn.microsoft.com/en-us/azure/virtual-machines/disks-types#ultra-disks), [PremiumV2_LRS](https://learn.microsoft.com/en-us/azure/virtual-machines/disks-types#premium-ssd-v2-preview) disk IOPS capability |  | No | `500` for UltraSSD
+DiskMBpsReadWrite | [UltraSSD](https://learn.microsoft.com/en-us/azure/virtual-machines/disks-types#ultra-disks), [PremiumV2_LRS](https://learn.microsoft.com/en-us/azure/virtual-machines/disks-types#premium-ssd-v2-preview) disk throughput capability |  | No | `100` for UltraSSD
 LogicalSectorSize | Logical sector size in bytes for Ultra disk. Supported values are 512 ad 4096. 4096 is the default. | `512`, `4096` | No | `4096`
 tags | azure disk [tags](https://docs.microsoft.com/en-us/azure/azure-resource-manager/management/tag-resources) | tag format: `key1=val1,key2=val2` | No | ""
 diskEncryptionSetID | ResourceId of the disk encryption set to use for [enabling encryption at rest](https://docs.microsoft.com/en-us/azure/virtual-machines/windows/disk-encryption) | format: `/subscriptions/{subs-id}/resourceGroups/{rg-name}/providers/Microsoft.Compute/diskEncryptionSets/{diskEncryptionSet-name}` | No | ""
 diskEncryptionType | encryption type of the disk encryption set | `EncryptionAtRestWithCustomerKey`(by default), `EncryptionAtRestWithPlatformAndCustomerKeys` | No | ""
 writeAcceleratorEnabled | [Write Accelerator on Azure Disks](https://docs.microsoft.com/azure/virtual-machines/windows/how-to-enable-write-accelerator) | `true`, `false` | No | ""
-perfProfile | [Block device performance tuning using perfProfiles](./perf-profiles.md) | `none`, `basic` | No | `none`
+perfProfile | [Block device performance tuning using perfProfiles](./perf-profiles.md) | `none`, `basic`, `advanced` | No | `none`
 networkAccessPolicy | NetworkAccessPolicy property to prevent anybody from generating the SAS URI for a disk or a snapshot | `AllowAll`, `DenyAll`, `AllowPrivate` | No | `AllowAll`
-diskAccessID | ARM id of the DiskAccess resource for using private endpoints on disks | | No  | ``
+diskAccessID | ARM id of the [DiskAccess](https://aka.ms/disksprivatelinksdoc) resource for using private endpoints on disks | | No  | ``
 enableBursting | [enable on-demand bursting](https://docs.microsoft.com/en-us/azure/virtual-machines/disk-bursting) beyond the provisioned performance target of the disk. On-demand bursting only be applied to Premium disk, disk size > 512GB, Ultra & shared disk is not supported. Bursting is disabled by default. | `true`, `false` | No | `false`
 useragent | User agent used for [customer usage attribution](https://docs.microsoft.com/en-us/azure/marketplace/azure-partner-customer-usage-attribution)| | No  | Generated Useragent formatted `driverName/driverVersion compiler/version (OS-ARCH)`
-enableAsyncAttach | allow multiple disk attach operations (in batch) on one node in parallel, this could speed up disk attachment while may hit Azure API throttling when there are large number of volume attachments | `true`, `false` | No | `false`
 subscriptionID | specify Azure subscription ID in which Azure disk will be created  | Azure subscription ID | No | if not empty, `resourceGroup` must be provided
 
 - disk created by dynamic provisioning
@@ -49,6 +48,7 @@ In addition to the parameters supported by the V1 driver, Azure Disk CSI driver 
 Name | Meaning | Available Value | Mandatory | Default value
 --- | --- | --- | --- | ---
 perfProfile | [Block device performance tuning using perfProfiles](./perf-profiles.md) | `none`, `basic`, `advanced` | No | `none`
+enableAsyncAttach | The V2 driver uses a different strategy to manage Azure API throttling and ignores this parameter. | N/A | No | N/A
 maxShares | The total number of shared disk mounts allowed for the disk. Setting the value to 2 or more enables attachment replicas. | Supported values depend on the disk size. See [Share an Azure managed disk](https://docs.microsoft.com/en-us/azure/virtual-machines/disks-shared) for supported values. | No | 1
 maxMountReplicaCount | The number of replicas attachments to maintain. | This value must be in the range `[0..(maxShares - 1)]` | No        | If `accessMode` is `ReadWriteMany`, the default is `0`. Otherwise, the default is `maxShares - 1` |
 
@@ -71,6 +71,7 @@ Name | Meaning | Available Value | Mandatory | Default value
 --- | --- | --- | --- | ---
 resourceGroup | resource group for storing snapshot shots | EXISTING RESOURCE GROUP | No | If not specified, snapshot will be stored in the same resource group as source Azure disk
 incremental | take [full or incremental snapshot](https://docs.microsoft.com/en-us/azure/virtual-machines/windows/incremental-snapshots) | `true`, `false` | No | `true`
+dataAccessAuthMode | [enable data access authentication mode when creating a snapshot])(https://learn.microsoft.com/en-us/rest/api/compute/disks/create-or-update?tabs=HTTP#dataaccessauthmode) | `None`, `AzureActiveDirectory` | No | `None`
 tags | azure disk [tags](https://docs.microsoft.com/en-us/azure/azure-resource-manager/management/tag-resources) | tag format: 'key1=val1,key2=val2' | No | ""
 userAgent | User agent used for [customer usage attribution](https://docs.microsoft.com/en-us/azure/marketplace/azure-partner-customer-usage-attribution) | | No  | Generated Useragent formatted `driverName/driverVersion compiler/version (OS-ARCH)`
 subscriptionID | specify Azure subscription ID in which Azure disk will be created  | Azure subscription ID | No | if not empty, `resourceGroup` must be provided, `incremental` must set as `false`

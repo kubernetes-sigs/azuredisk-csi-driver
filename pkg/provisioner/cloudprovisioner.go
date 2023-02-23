@@ -44,6 +44,7 @@ import (
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/workflow"
 	azcache "sigs.k8s.io/cloud-provider-azure/pkg/cache"
 	azure "sigs.k8s.io/cloud-provider-azure/pkg/provider"
+	"sigs.k8s.io/cloud-provider-azure/pkg/retry"
 )
 
 var (
@@ -91,6 +92,7 @@ type listVolumeStatus struct {
 }
 
 func NewCloudProvisioner(
+	ctx context.Context,
 	kubeClient *clientset.Clientset,
 	cloudConfig azdiskv1beta2.CloudConfiguration,
 	perfOptimizationEnabled bool,
@@ -100,6 +102,7 @@ func NewCloudProvisioner(
 	enableAsyncAttach bool,
 ) (*CloudProvisioner, error) {
 	azCloud, err := azureutils.GetCloudProviderFromClient(
+		ctx,
 		kubeClient,
 		cloudConfig,
 		userAgent)
@@ -172,6 +175,7 @@ func (c *CloudProvisioner) CreateVolume(
 
 	if diskParams.UserAgent != "" {
 		localCloud, err = azureutils.GetCloudProviderFromClient(
+			ctx,
 			c.kubeClient,
 			c.cloudConfiguration,
 			diskParams.UserAgent)
@@ -408,7 +412,9 @@ func (c *CloudProvisioner) PublishVolume(
 		if vmState != nil && strings.ToLower(*vmState) == "failed" {
 			w.Logger().Infof("VM(%q) is in failed state, update VM first", nodeName)
 			if err = c.cloud.UpdateVM(ctx, nodeName); err != nil {
-				err = status.Errorf(codes.Internal, "update instance %q failed with %v", nodeName, err)
+				if _, ok := err.(*retry.PartialUpdateError); !ok {
+					err = status.Errorf(codes.Internal, "update instance %q failed with %v", nodeName, err)
+				}
 				return
 			}
 		}
@@ -568,7 +574,7 @@ func (c *CloudProvisioner) CreateSnapshot(
 	var customTags string
 	// set incremental snapshot as true by default
 	incremental := true
-	var resourceGroup string
+	var resourceGroup, subsID, dataAccessAuthMode string
 	var err error
 	localCloud := c.cloud
 	location := c.cloud.Location
@@ -583,11 +589,16 @@ func (c *CloudProvisioner) CreateSnapshot(
 			}
 		case azureconstants.ResourceGroupField:
 			resourceGroup = v
+		case azureconstants.SubscriptionIDField:
+			subsID = v
+		case azureconstants.DataAccessAuthModeField:
+			dataAccessAuthMode = v
 		case azureconstants.LocationField:
 			location = v
 		case azureconstants.UserAgentField:
 			newUserAgent := v
 			localCloud, err = azureutils.GetCloudProviderFromClient(
+				ctx,
 				c.kubeClient,
 				c.cloudConfiguration,
 				newUserAgent)
@@ -609,6 +620,9 @@ func (c *CloudProvisioner) CreateSnapshot(
 		if err != nil {
 			return nil, status.Errorf(codes.InvalidArgument, "could not get resource group from diskURI(%s) with error(%v)", sourceVolumeID, err)
 		}
+	}
+	if subsID == "" {
+		subsID = azureutils.GetSubscriptionIDFromURI(sourceVolumeID)
 	}
 
 	customTagsMap, err := volumehelper.ConvertTagsToMap(customTags)
@@ -632,15 +646,22 @@ func (c *CloudProvisioner) CreateSnapshot(
 		Location: &location,
 		Tags:     tags,
 	}
+	if dataAccessAuthMode != "" {
+		if err := azureutils.ValidateDataAccessAuthMode(dataAccessAuthMode); err != nil {
+			return nil, status.Error(codes.InvalidArgument, err.Error())
+		}
+		snapshot.SnapshotProperties.DataAccessAuthMode = compute.DataAccessAuthMode(dataAccessAuthMode)
+	}
 
 	klog.V(2).Infof("begin to create snapshot(%s, incremental: %v) under rg(%s)", snapshotName, incremental, resourceGroup)
 
-	rerr := localCloud.SnapshotsClient.CreateOrUpdate(ctx, localCloud.SubscriptionID, resourceGroup, snapshotName, snapshot)
+	rerr := localCloud.SnapshotsClient.CreateOrUpdate(ctx, subsID, resourceGroup, snapshotName, snapshot)
 	if rerr != nil {
 		if strings.Contains(rerr.Error().Error(), "existing disk") {
 			return nil, status.Error(codes.AlreadyExists, fmt.Sprintf("request snapshot(%s) under rg(%s) already exists, but the SourceVolumeId is different, error details: %v", snapshotName, resourceGroup, rerr.Error()))
 		}
 
+		azureutils.SleepIfThrottled(rerr.Error(), azureconstants.SnapshotOpThrottlingSleepSec)
 		return nil, status.Error(codes.Internal, fmt.Sprintf("create snapshot error: %v", rerr.Error()))
 	}
 	klog.V(2).Infof("create snapshot(%s) under rg(%s) successfully", snapshotName, resourceGroup)

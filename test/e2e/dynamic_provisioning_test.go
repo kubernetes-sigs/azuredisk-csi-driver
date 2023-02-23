@@ -57,6 +57,7 @@ type dynamicProvisioningTestSuite struct {
 
 func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerName string) {
 	f := framework.NewDefaultFramework("azuredisk")
+	f.NamespacePodSecurityEnforceLevel = admissionapi.LevelPrivileged
 
 	// Apply the minmally restrictive baseline Pod Security Standard profile to namespaces
 	// created by the Kubernetes end-to-end test framework to enable testing with a nil
@@ -338,6 +339,79 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 		}
 
 		test.Run(cs, ns, schedulerName)
+	})
+
+	ginkgo.It("should create a volume in separate resource group and bind it to a pod [kubernetes.io/azure-disk] [disk.csi.azure.com]", func() {
+		testutil.SkipIfTestingInWindowsCluster()
+		testutil.SkipIfUsingInTreeVolumePlugin()
+
+		pod := resources.PodDetails{
+			Cmd: testutil.ConvertToPowershellorCmdCommandIfNecessary("echo 'hello world' > /mnt/test-1/data && grep 'hello world' /mnt/test-1/data"),
+			Volumes: resources.NormalizeVolumes([]resources.VolumeDetails{
+				{
+					FSType:    "ext4",
+					ClaimSize: "10Gi",
+					VolumeMount: resources.VolumeMountDetails{
+						NameGenerate:      "test-volume-",
+						MountPathGenerate: "/mnt/test-",
+					},
+					VolumeAccessMode: v1.ReadWriteOnce,
+				},
+			}, t.allowedTopologyValues, isMultiZone),
+		}
+
+		test := testsuites.DynamicallyProvisionedExternalRgVolumeTest{
+			CSIDriver:              testDriver,
+			Pod:                    pod,
+			StorageClassParameters: map[string]string{"skuName": "Premium_LRS"},
+			SeparateResourceGroups: false,
+		}
+		if !testconsts.IsUsingInTreeVolumePlugin && testutil.IsZRSSupported(location) {
+			test.StorageClassParameters = map[string]string{"skuName": "StandardSSD_ZRS"}
+		}
+
+		test.Run(cs, ns)
+	})
+
+	ginkgo.It("should create multiple volumes, each in separate resource groups and attach them to a single pod [kubernetes.io/azure-disk] [disk.csi.azure.com]", func() {
+		testutil.SkipIfTestingInWindowsCluster()
+		testutil.SkipIfUsingInTreeVolumePlugin()
+
+		pod := resources.PodDetails{
+			Cmd: testutil.ConvertToPowershellorCmdCommandIfNecessary("echo 'hello world' > /mnt/test-1/data && echo 'hello world' > /mnt/test-2/data && grep 'hello world' /mnt/test-1/data && grep 'hello world' /mnt/test-2/data"),
+			Volumes: resources.NormalizeVolumes([]resources.VolumeDetails{
+				{
+					FSType:    "ext4",
+					ClaimSize: "10Gi",
+					VolumeMount: resources.VolumeMountDetails{
+						NameGenerate:      "test-volume-",
+						MountPathGenerate: "/mnt/test-",
+					},
+					VolumeAccessMode: v1.ReadWriteOnce,
+				},
+				{
+					FSType:    "ext4",
+					ClaimSize: "10Gi",
+					VolumeMount: resources.VolumeMountDetails{
+						NameGenerate:      "test-volume-",
+						MountPathGenerate: "/mnt/test-",
+					},
+					VolumeAccessMode: v1.ReadWriteOnce,
+				},
+			}, t.allowedTopologyValues, isMultiZone),
+		}
+
+		test := testsuites.DynamicallyProvisionedExternalRgVolumeTest{
+			CSIDriver:              testDriver,
+			Pod:                    pod,
+			StorageClassParameters: map[string]string{"skuName": "Premium_LRS"},
+			SeparateResourceGroups: true,
+		}
+		if !testconsts.IsUsingInTreeVolumePlugin && testutil.IsZRSSupported(location) {
+			test.StorageClassParameters = map[string]string{"skuName": "StandardSSD_ZRS"}
+		}
+
+		test.Run(cs, ns)
 	})
 
 	// Track issue https://github.com/kubernetes/kubernetes/issues/70505
@@ -693,7 +767,7 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 			Cmd:          testutil.ConvertToPowershellorCmdCommandIfNecessary("echo 'hello world' > /mnt/test-1/data"),
 			Volumes: resources.NormalizeVolumes([]resources.VolumeDetails{
 				{
-					FSType:    "ext4",
+					FSType:    getFSType(testconsts.IsWindowsCluster),
 					ClaimSize: "10Gi",
 					VolumeMount: resources.VolumeMountDetails{
 						NameGenerate:      "test-volume-",
@@ -714,6 +788,9 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 			ShouldOverwrite:        false,
 			PodWithSnapshot:        podWithSnapshot,
 			StorageClassParameters: map[string]string{consts.SkuNameField: "StandardSSD_LRS"},
+			SnapshotStorageClassParameters: map[string]string{
+				"incremental": "false", "dataAccessAuthMode": "AzureActiveDirectory",
+			},
 		}
 		if testconsts.IsAzureStackCloud {
 			test.StorageClassParameters = map[string]string{consts.SkuNameField: "Standard_LRS"}
@@ -763,6 +840,9 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 			PodOverwrite:           podOverwrite,
 			PodWithSnapshot:        podWithSnapshot,
 			StorageClassParameters: map[string]string{consts.SkuNameField: "StandardSSD_LRS"},
+			SnapshotStorageClassParameters: map[string]string{
+				"incremental": "true", "dataAccessAuthMode": "None",
+			},
 		}
 		if testconsts.IsAzureStackCloud {
 			test.StorageClassParameters = map[string]string{consts.SkuNameField: "Standard_LRS"}
@@ -1772,6 +1852,50 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool, schedulerNa
 			PodCheck:               podCheck,
 			StorageClassParameters: storageClassParameters,
 		}
+		test.Run(cs, ns, schedulerName)
+	})
+
+	ginkgo.It("should succeed with advanced perfProfile [disk.csi.azure.com] [Windows]", func() {
+		testutil.SkipIfUsingInTreeVolumePlugin()
+		testutil.SkipIfOnAzureStackCloud()
+		testutil.SkipIfTestingInWindowsCluster()
+		pods := []resources.PodDetails{
+			{
+				Cmd: testutil.ConvertToPowershellorCmdCommandIfNecessary("echo 'hello world' > /mnt/test-1/data && grep 'hello world' /mnt/test-1/data"),
+				Volumes: resources.NormalizeVolumes([]resources.VolumeDetails{
+					{
+						ClaimSize: "10Gi",
+						MountOptions: []string{
+							"barrier=1",
+							"acl",
+						},
+						VolumeMount: resources.VolumeMountDetails{
+							NameGenerate:      "test-volume-",
+							MountPathGenerate: "/mnt/test-",
+						},
+						VolumeAccessMode: v1.ReadWriteOnce,
+					},
+				}, t.allowedTopologyValues, isMultiZone),
+				IsWindows:    testconsts.IsWindowsCluster,
+				WinServerVer: testconsts.WinServerVer,
+			},
+		}
+		test := testsuites.DynamicallyProvisionedCmdVolumeTest{
+			CSIDriver: testDriver,
+			Pods:      pods,
+			StorageClassParameters: map[string]string{
+				"skuname":                             "StandardSSD_LRS",
+				"perfProfile":                         "advanced",
+				"device-setting/queue/max_sectors_kb": "211",
+				"device-setting/queue/scheduler":      "none",
+				"device-setting/device/queue_depth":   "17",
+				"device-setting/queue/nr_requests":    "44",
+				"device-setting/queue/read_ahead_kb":  "256",
+				"device-setting/queue/wbt_lat_usec":   "0",
+				"device-setting/queue/rotational":     "0",
+			},
+		}
+
 		test.Run(cs, ns, schedulerName)
 	})
 

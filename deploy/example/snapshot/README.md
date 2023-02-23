@@ -1,6 +1,5 @@
 # Azure Disk Snapshot feature
 
-- Snapshot feature is beta since Kubernetes v1.17.0, refer to [Snapshot & Restore Feature](https://kubernetes-csi.github.io/docs/snapshot-restore-feature.html) for more details.
 - [Use velero to backup & restore Azure disk by snapshot feature](https://velero.io/blog/csi-integration/)
 
 ## Introduction
@@ -14,6 +13,7 @@ metadata:
 driver: disk.csi.azure.com
 deletionPolicy: Delete
 parameters:
+  resourceGroup: EXISTING_RESOURCE_GROUP_NAME  # optional, only set this when snapshot is not taken in the same resource group as agent node
   incremental: "true"  # available values: "true"(by default), "false"
 ```
 
@@ -83,6 +83,17 @@ $ kubectl exec nginx-restored -- ls /mnt/azuredisk
 lost+found
 outfile
 ```
+
+### Tips
+### Use snapshot feature to create a copy of a disk with a different SKU
+> The disk SKU change can be from LRS to ZRS, from standard to premium, or even across zones, however cross-region changes are not supported.
+
+> For information on storage class settings with cross-zone support, please refer to [allowed-topology storage class](../storageclass-azuredisk-csi-allowed-topology.yaml)
+
+ - Before proceeding, ensure that the application is not writing data to the source disk.
+ - Take a snapshot of the existing disk PVC.
+ - Create a new storage class, such as "new-sku-sc," with the desired SKU name value
+ - Create a new PVC with the storage class name "new-sku-sc" based on the snapshot.
 
 #### Links
  - [CSI Snapshotter](https://github.com/kubernetes-csi/external-snapshotter)

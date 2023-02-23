@@ -54,7 +54,7 @@ spec:
             - "-Force"
       containers:
         - name: liveness-probe
-          image: mcr.microsoft.com/oss/kubernetes-csi/livenessprobe:v2.7.0
+          image: mcr.microsoft.com/oss/kubernetes-csi/livenessprobe:v2.8.0
           command:
             - "livenessprobe.exe"
           args:
@@ -72,7 +72,7 @@ spec:
               cpu: 10m
               memory: 40Mi
         - name: node-driver-registrar
-          image: mcr.microsoft.com/oss/kubernetes-csi/csi-node-driver-registrar:v2.5.1
+          image: mcr.microsoft.com/oss/kubernetes-csi/csi-node-driver-registrar:v2.6.2
           command:
             - "csi-node-driver-registrar.exe"
           args:

@@ -17,3 +17,5 @@ DriverInfo:
         volumeLimits: true
         snapshotDataSource: true
         pvcDataSource: true
+    SupportedSizeRange:
+        Min: 1Gi

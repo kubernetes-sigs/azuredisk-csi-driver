@@ -45,7 +45,7 @@ var imageTag = flag.String("image-tag", "", "A flag to get the docker image tag"
 
 func TestSanity(t *testing.T) {
 	// Set necessary env vars for creating azure credential file
-	os.Setenv("AZURE_VM_TYPE", vmType)
+	t.Setenv("AZURE_VM_TYPE", vmType)
 	flag.Parse()
 
 	creds, err := credentials.CreateAzureCredentialFile()
@@ -57,8 +57,8 @@ func TestSanity(t *testing.T) {
 	azure.AssertNotNil(t, creds)
 
 	// Set necessary env vars for sanity test
-	os.Setenv("AZURE_CREDENTIAL_FILE", testconsts.TempAzureCredentialFilePath)
-	os.Setenv("NODEID", nodeid)
+	t.Setenv("AZURE_CREDENTIAL_FILE", testconsts.TempAzureCredentialFilePath)
+	t.Setenv("NODEID", nodeid)
 
 	azureClient, err := azure.GetAzureClient(creds.Cloud, creds.SubscriptionID, creds.AADClientID, creds.TenantID, creds.AADClientSecret)
 	azure.AssertNoError(t, err)

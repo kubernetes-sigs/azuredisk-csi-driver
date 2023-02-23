@@ -309,6 +309,7 @@ func mockUpdateVM(provisioner *CloudProvisioner) {
 			}
 
 			r := autorestmocks.NewResponseWithContent(string(c))
+			defer r.Body.Close()
 			r.Request.Method = http.MethodPut
 
 			f, err := azure.NewFutureFromResponse(r)

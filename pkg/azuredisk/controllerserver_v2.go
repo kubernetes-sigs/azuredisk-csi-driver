@@ -504,6 +504,7 @@ func (d *DriverV2) CreateSnapshot(ctx context.Context, req *csi.CreateSnapshotRe
 	if len(snapshotName) == 0 {
 		return nil, status.Error(codes.InvalidArgument, "snapshot name must be provided")
 	}
+	snapshotName = azureutils.CreateValidDiskName(snapshotName, false)
 
 	mc := metrics.NewMetricContext(d.cloudProvisioner.GetMetricPrefix(), "controller_create_snapshot", d.cloudProvisioner.GetCloud().ResourceGroup, d.cloudProvisioner.GetCloud().SubscriptionID, d.Name)
 	isOperationSucceeded := false
