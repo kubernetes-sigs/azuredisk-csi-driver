@@ -115,7 +115,6 @@ node:
   supportZone: true
   allowEmptyCloudConfig: true
   maxUnavailable: 1
-  metricsPort: 29605
   logLevel: 5
   livenessProbe:
     healthPort: 29603
