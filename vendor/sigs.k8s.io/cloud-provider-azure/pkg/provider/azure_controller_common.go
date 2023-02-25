@@ -412,6 +412,8 @@ func (c *controllerCommon) DetachDisk(ctx context.Context, diskName, diskURI str
 	if err != nil {
 		return err
 	}
+	// always set diskMap for current volume detach
+	diskMap[disk] = diskName
 
 	klog.V(2).Infof("Trying to detach volume %s from node %s, diskMap len:%d, %s", diskURI, nodeName, len(diskMap), diskMap)
 	if len(diskMap) > 0 {
@@ -426,6 +428,7 @@ func (c *controllerCommon) DetachDisk(ctx context.Context, diskName, diskURI str
 			}
 		}
 	} else {
+		klog.Warningf("detach volume %s from node %s, diskMap is empty", diskURI, nodeName)
 		lun, _, errGetLun := c.GetDiskLun(diskName, diskURI, nodeName)
 		if errGetLun == nil || !strings.Contains(errGetLun.Error(), consts.CannotFindDiskLUN) {
 			return fmt.Errorf("disk(%s) is still attached to node(%s) on lun(%d), error: %w", diskURI, nodeName, lun, errGetLun)
