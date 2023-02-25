@@ -1,7 +1,6 @@
 package armbalancer
 
 import (
-	"fmt"
 	"math"
 	"net/http"
 	"strconv"
@@ -132,11 +131,6 @@ func (t *recyclableTransport) compareHost(reqHost string) bool {
 }
 
 func (t *recyclableTransport) RoundTrip(req *http.Request) (*http.Response, error) {
-	matched := t.compareHost(req.URL.Host)
-	if !matched {
-		return nil, fmt.Errorf("host %q is not supported by the configured ARM balancer, supported host name is %q", req.URL.Host, t.host)
-	}
-
 	t.lock.Lock()
 	tx := t.current
 	wg := t.activeCount
