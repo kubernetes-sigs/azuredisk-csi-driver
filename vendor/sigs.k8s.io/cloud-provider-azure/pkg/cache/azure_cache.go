@@ -156,7 +156,7 @@ func (t *TimedCache) get(key string, crt AzureCacheReadType) (interface{}, error
 		}
 	}
 
-	if time.Since(entry.CreatedOn) < time.Second {
+	if entry.Data != nil && time.Since(entry.CreatedOn) < time.Second {
 		klog.V(5).Infof("skip refreshing cache within 1s, cache created on: %v", entry.CreatedOn)
 		return entry.Data, nil
 	}
