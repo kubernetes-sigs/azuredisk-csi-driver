@@ -143,10 +143,6 @@ func (t *TimedCache) get(key string, crt AzureCacheReadType) (interface{}, error
 
 	entry.Lock.Lock()
 	defer entry.Lock.Unlock()
-	if time.Since(entry.CreatedOn) < time.Second {
-		klog.V(5).Infof("skip refreshing cache within 1s, cache created on: %v, now: %v", entry.CreatedOn, time.Now().UTC())
-		return entry.Data, nil
-	}
 
 	// entry exists and if cache is not force refreshed
 	if entry.Data != nil && crt != CacheReadTypeForceRefresh {
@@ -158,6 +154,11 @@ func (t *TimedCache) get(key string, crt AzureCacheReadType) (interface{}, error
 		if crt == CacheReadTypeDefault && time.Since(entry.CreatedOn) < t.TTL {
 			return entry.Data, nil
 		}
+	}
+
+	if time.Since(entry.CreatedOn) < time.Second {
+		klog.V(5).Infof("skip refreshing cache within 1s, cache created on: %v", entry.CreatedOn)
+		return entry.Data, nil
 	}
 	// Data is not cached yet, cache data is expired or requested force refresh
 	// cache it by getter. entry is locked before getting to ensure concurrent
