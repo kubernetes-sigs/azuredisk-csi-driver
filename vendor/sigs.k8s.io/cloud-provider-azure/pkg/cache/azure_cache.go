@@ -22,6 +22,7 @@ import (
 	"time"
 
 	"k8s.io/client-go/tools/cache"
+	"k8s.io/klog/v2"
 
 	"sigs.k8s.io/cloud-provider-azure/pkg/util/deepcopy"
 )
@@ -142,6 +143,10 @@ func (t *TimedCache) get(key string, crt AzureCacheReadType) (interface{}, error
 
 	entry.Lock.Lock()
 	defer entry.Lock.Unlock()
+	if time.Since(entry.CreatedOn) < time.Second {
+		klog.V(5).Infof("skip refreshing cache within 1s, cache created on: %v, now: %v", entry.CreatedOn, time.Now().UTC())
+		return entry.Data, nil
+	}
 
 	// entry exists and if cache is not force refreshed
 	if entry.Data != nil && crt != CacheReadTypeForceRefresh {
