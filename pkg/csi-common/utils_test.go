@@ -19,6 +19,7 @@ package csicommon
 import (
 	"bytes"
 	"context"
+	"errors"
 	"flag"
 	"os"
 	"testing"
@@ -108,15 +109,18 @@ func TestLogGRPC(t *testing.T) {
 	buf := new(bytes.Buffer)
 	klog.SetOutput(buf)
 
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) { return nil, nil }
+	var handlerErr error
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) { return nil, handlerErr }
 	info := grpc.UnaryServerInfo{
 		FullMethod: "fake",
 	}
 
 	tests := []struct {
-		name   string
-		req    interface{}
-		expStr string
+		name          string
+		req           interface{}
+		err           error
+		callStr       string
+		completionStr string
 	}{
 		{
 			"with secrets",
@@ -128,27 +132,61 @@ func TestLogGRPC(t *testing.T) {
 				},
 				XXX_sizecache: 100,
 			},
-			`GRPC request: {"secrets":"***stripped***","volume_id":"vol_1"}`,
+			nil,
+			`GRPC call: fake, request: {"secrets":"***stripped***","volume_id":"vol_1"}`,
+			`request: {"secrets":"***stripped***","volume_id":"vol_1"}, response: null`,
+		},
+		{
+			"with error and secrets",
+			&csi.NodeStageVolumeRequest{
+				VolumeId: "vol_1",
+				Secrets: map[string]string{
+					"account_name": "k8s",
+					"account_key":  "testkey",
+				},
+				XXX_sizecache: 100,
+			},
+			errors.New("failed"),
+			`GRPC call: fake, request: {"secrets":"***stripped***","volume_id":"vol_1"}`,
+			`request: {"secrets":"***stripped***","volume_id":"vol_1"}, response: null, error: "failed"`,
 		},
 		{
 			"without secrets",
 			&csi.ListSnapshotsRequest{
 				StartingToken: "testtoken",
 			},
-			`GRPC request: {"starting_token":"testtoken"}`,
+			nil,
+			`GRPC call: fake, request: {"starting_token":"testtoken"}`,
+			`request: {"starting_token":"testtoken"}, response: null`,
+		},
+		{
+			"with error and without secrets",
+			&csi.ListSnapshotsRequest{
+				StartingToken: "testtoken",
+			},
+			errors.New("failed"),
+			`GRPC call: fake, request: {"starting_token":"testtoken"}`,
+			`request: {"starting_token":"testtoken"}, response: null, error: "failed"`,
 		},
 	}
 
 	for _, test := range tests {
+		test := test
 		t.Run(test.name, func(t *testing.T) {
+			handlerErr = test.err
 			// EXECUTE
 			_, _ = logGRPC(context.Background(), test.req, &info, handler)
 			klog.Flush()
 
 			// ASSERT
 			assert.Contains(t, buf.String(), "GRPC call: fake")
-			assert.Contains(t, buf.String(), test.expStr)
-			assert.Contains(t, buf.String(), "GRPC response: null")
+			assert.Contains(t, buf.String(), test.callStr)
+			if handlerErr == nil {
+				assert.Contains(t, buf.String(), "GRPC succeeded: fake")
+			} else {
+				assert.Contains(t, buf.String(), "GRPC failed: fake")
+			}
+			assert.Contains(t, buf.String(), test.completionStr)
 
 			// CLEANUP
 			buf.Reset()
@@ -210,34 +248,38 @@ func TestNewNodeServiceCapability(t *testing.T) {
 func TestGetLogLevel(t *testing.T) {
 	tests := []struct {
 		method string
-		level  int32
+		levels logLevels
 	}{
 		{
 			method: "/csi.v1.Identity/Probe",
-			level:  6,
+			levels: logLevels{6, 6},
 		},
 		{
 			method: "/csi.v1.Node/NodeGetCapabilities",
-			level:  6,
+			levels: logLevels{6, 6},
 		},
 		{
 			method: "/csi.v1.Node/NodeGetVolumeStats",
-			level:  6,
+			levels: logLevels{6, 6},
+		},
+		{
+			method: "/csi.v1.Controller/ListVolumes",
+			levels: logLevels{6, 6},
 		},
 		{
 			method: "",
-			level:  2,
+			levels: logLevels{2, 6},
 		},
 		{
 			method: "unknown",
-			level:  2,
+			levels: logLevels{2, 6},
 		},
 	}
 
 	for _, test := range tests {
-		level := getLogLevel(test.method)
-		if level != test.level {
-			t.Errorf("returned level: (%v), expected level: (%v)", level, test.level)
+		levels := getLogLevel(test.method)
+		if levels != test.levels {
+			t.Errorf("returned level: (%v), expected level: (%v)", levels, test.levels)
 		}
 	}
 }

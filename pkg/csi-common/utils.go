@@ -19,6 +19,7 @@ package csicommon
 import (
 	"fmt"
 	"strings"
+	"time"
 
 	"golang.org/x/net/context"
 	"google.golang.org/grpc"
@@ -27,6 +28,22 @@ import (
 	"github.com/kubernetes-csi/csi-lib-utils/protosanitizer"
 
 	"k8s.io/klog/v2"
+)
+
+type logLevels struct {
+	normal  klog.Level
+	verbose klog.Level
+}
+
+var (
+	lowPriApis = map[string]logLevels{
+		"/csi.v1.Identity/Probe":           {6, 6},
+		"/csi.v1.Node/NodeGetCapabilities": {6, 6},
+		"/csi.v1.Node/NodeGetVolumeStats":  {6, 6},
+		"/csi.v1.Controller/ListVolumes":   {6, 6},
+	}
+
+	defaultLogLevels = logLevels{2, 6}
 )
 
 func ParseEndpoint(ep string) (string, string, error) {
@@ -63,26 +80,28 @@ func NewNodeServiceCapability(cap csi.NodeServiceCapability_RPC_Type) *csi.NodeS
 	}
 }
 
-func getLogLevel(method string) int32 {
-	if method == "/csi.v1.Identity/Probe" ||
-		method == "/csi.v1.Node/NodeGetCapabilities" ||
-		method == "/csi.v1.Node/NodeGetVolumeStats" ||
-		method == "/csi.v1.Controller/ListVolumes" {
-		return 6
+func getLogLevel(method string) logLevels {
+	if levels, ok := lowPriApis[method]; ok {
+		return levels
 	}
-	return 2
+
+	return defaultLogLevels
 }
 
 func logGRPC(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
-	level := klog.Level(getLogLevel(info.FullMethod))
-	klog.V(level).Infof("GRPC call: %s", info.FullMethod)
-	klog.V(level).Infof("GRPC request: %s", protosanitizer.StripSecrets(req))
+	levels := getLogLevel(info.FullMethod)
 
+	klog.V(levels.verbose).Infof("GRPC call: %s, request: %s", info.FullMethod, protosanitizer.StripSecrets(req))
+
+	startTime := time.Now()
 	resp, err := handler(ctx, req)
+	latency := time.Since(startTime).Seconds()
+
 	if err != nil {
-		klog.Errorf("GRPC error: %v", err)
+		klog.Errorf("GRPC failed: %s, latency: %.9f, request: %s, response: %s, error: %q", info.FullMethod, latency, protosanitizer.StripSecrets(req), protosanitizer.StripSecrets(resp), err)
 	} else {
-		klog.V(level).Infof("GRPC response: %s", protosanitizer.StripSecrets(resp))
+		klog.V(levels.normal).Infof("GRPC succeeded: %s, latency: %.9f, request: %s, response: %s", info.FullMethod, latency, protosanitizer.StripSecrets(req), protosanitizer.StripSecrets(resp))
 	}
+
 	return resp, err
 }
