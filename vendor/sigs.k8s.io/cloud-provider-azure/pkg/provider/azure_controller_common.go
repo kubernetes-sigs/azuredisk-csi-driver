@@ -279,6 +279,15 @@ func (c *controllerCommon) AttachDisk(ctx context.Context, async bool, diskName,
 		// invalidate the cache if there is error in disk attach
 		if err != nil {
 			_ = vmset.DeleteCacheForNode(string(nodeName))
+			// insert back DetachDiskRequest to diskMap when there is error
+			for k, v := range diskMap {
+				_, errInsert := c.insertAttachDiskRequest(k, node, v)
+				if errInsert == nil {
+					klog.V(2).Infof("insertAttachDiskRequest(%s, %s) to diskMap successfully", k, v)
+				} else {
+					klog.Errorf("insertDetachDiskRequest(%s, %s failed with %v", k, v, errInsert)
+				}
+			}
 		}
 	}()
 
@@ -412,8 +421,6 @@ func (c *controllerCommon) DetachDisk(ctx context.Context, diskName, diskURI str
 	if err != nil {
 		return err
 	}
-	// always set diskMap for current volume detach
-	diskMap[disk] = diskName
 
 	klog.V(2).Infof("Trying to detach volume %s from node %s, diskMap len:%d, %s", diskURI, nodeName, len(diskMap), diskMap)
 	if len(diskMap) > 0 {
@@ -437,6 +444,15 @@ func (c *controllerCommon) DetachDisk(ctx context.Context, diskName, diskURI str
 
 	if err != nil {
 		klog.Errorf("azureDisk - detach disk(%s, %s) failed, err: %v", diskName, diskURI, err)
+		// insert back DetachDiskRequest to diskMap when there is error
+		for k, v := range diskMap {
+			_, errInsert := c.insertDetachDiskRequest(v, k, node)
+			if errInsert == nil {
+				klog.V(2).Infof("insertDetachDiskRequest(%s, %s) to diskMap successfully", v, k)
+			} else {
+				klog.Errorf("insertDetachDiskRequest(%s, %s failed with %v", v, k, errInsert)
+			}
+		}
 		return err
 	}
 
