@@ -149,13 +149,13 @@ spec:
             - "--allow-empty-cloud-config=false"
             - "--leader-election-namespace=kube-system"
             - "--is-controller-plugin=true"
-            - "--kube-client-burst=240"
-            - "--kube-client-qps=32.0"
+            - "--kube-client-burst=400"
+            - "--kube-client-qps=200"
             - "--enable-attach-detach-rate-limiter=true"
             - "--attach-detach-rate-limiter-qps=1.333"
             - "--attach-detach-rate-limiter-bucket=240"
             - "--attach-detach-batch-initial-delay=1000"
-            - "--worker-threads=100"
+            - "--worker-threads=400"
           ports:
             - containerPort: 29602
               name: healthz

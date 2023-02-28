@@ -80,10 +80,10 @@ controller:
   attacherWorkerThreads: 1000
   attacherQps: 200
   attacherBurst: 400
-  driverWorkerThreads: 100
+  driverWorkerThreads: 400
   vmssCacheTTLInSeconds: -1
-  kubeClientQPS: 60
-  kubeClientBurst: 240
+  kubeClientQPS: 200
+  kubeClientBurst: 400
   enableTrafficManager: false
   trafficManagerPort: 7788
   disableUpdateCache: false
