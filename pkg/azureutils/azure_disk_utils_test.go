@@ -1223,7 +1223,35 @@ func TestValidateDiskEncryptionType(t *testing.T) {
 	}
 	for _, test := range tests {
 		err := ValidateDiskEncryptionType(test.diskEncryptionType)
-		assert.Equal(t, err, test.expectedErr)
+		assert.Equal(t, test.expectedErr, err)
+	}
+}
+
+func TestValidateDataAccessAuthMode(t *testing.T) {
+	tests := []struct {
+		dataAccessAuthMode string
+		expectedErr        error
+	}{
+		{
+			dataAccessAuthMode: "",
+			expectedErr:        nil,
+		},
+		{
+			dataAccessAuthMode: "None",
+			expectedErr:        nil,
+		},
+		{
+			dataAccessAuthMode: "AzureActiveDirectory",
+			expectedErr:        nil,
+		},
+		{
+			dataAccessAuthMode: "invalid",
+			expectedErr:        fmt.Errorf("dataAccessAuthMode(invalid) is not supported"),
+		},
+	}
+	for _, test := range tests {
+		err := ValidateDataAccessAuthMode(test.dataAccessAuthMode)
+		assert.Equal(t, test.expectedErr, err)
 	}
 }
 
