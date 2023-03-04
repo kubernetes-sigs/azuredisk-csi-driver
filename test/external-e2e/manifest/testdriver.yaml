@@ -19,3 +19,6 @@ DriverInfo:
         pvcDataSource: true
     SupportedSizeRange:
         Min: 1Gi
+    StressTestOptions:
+        NumPods: 10
+        NumRestarts: 10
