@@ -266,6 +266,11 @@ func (c *controllerCommon) AttachDisk(ctx context.Context, async bool, diskName,
 
 	klog.V(2).Infof("Trying to attach volume %s lun %d to node %s, diskMap len:%d, %s", diskURI, lun, nodeName, len(diskMap), diskMap)
 	if len(diskMap) == 0 {
+		// always check disk lun after disk attach complete
+		lun, vmState, errGetLun := c.GetDiskLun(diskName, diskURI, nodeName)
+		if errGetLun != nil {
+			return -1, fmt.Errorf("disk(%s) could not be found on node(%s), vmState: %s, error: %w", diskURI, nodeName, pointer.StringDeref(vmState, ""), errGetLun)
+		}
 		return lun, nil
 	}
 
