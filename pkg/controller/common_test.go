@@ -27,7 +27,6 @@ import (
 	"github.com/golang/mock/gomock"
 	v1 "k8s.io/api/core/v1"
 	storagev1 "k8s.io/api/storage/v1"
-	"k8s.io/apimachinery/pkg/api/errors"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -603,7 +602,7 @@ func mockClients(mockClient *mockclient.MockClient, azVolumeClient azdisk.Interf
 			case *azdiskv1beta2.AzVolume:
 				azVolume, err := azVolumeClient.DiskV1beta2().AzVolumes(key.Namespace).Get(ctx, key.Name, metav1.GetOptions{})
 				if err != nil {
-					if errors.IsNotFound(err) {
+					if k8serrors.IsNotFound(err) {
 						// check v1beta1 client
 						oldVolume, err := azVolumeClient.DiskV1beta1().AzVolumes(key.Namespace).Get(ctx, key.Name, metav1.GetOptions{})
 						if err != nil {
