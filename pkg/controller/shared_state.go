@@ -1154,6 +1154,7 @@ func (c *SharedState) cleanUpAzVolumeAttachments(ctx context.Context, attachment
 			if !volumeDetachRequested(patched) {
 				markDetachRequest(patched, caller)
 			}
+
 			// append cleanup annotation to prevent replica recreations except for when the clean up was triggered by node controller due to node failure.
 			if caller != azdrivernode && !metav1.HasAnnotation(patched.ObjectMeta, consts.CleanUpAnnotation) {
 				markCleanUp(patched, caller)
@@ -1538,9 +1539,11 @@ func (c *SharedState) createAzVolume(ctx context.Context, desiredAzVolume *azdis
 	var azVolume *azdiskv1beta2.AzVolume
 	var updated *azdiskv1beta2.AzVolume
 
-	if azVolume, err = c.azClient.DiskV1beta2().AzVolumes(c.config.ObjectNamespace).Get(ctx, desiredAzVolume.Name, metav1.GetOptions{}); err != nil {
+	azVolume, err = c.azClient.DiskV1beta2().AzVolumes(c.config.ObjectNamespace).Get(ctx, desiredAzVolume.Name, metav1.GetOptions{})
+	if err != nil {
 		if apiErrors.IsNotFound(err) {
-			if azVolume, err = c.azClient.DiskV1beta2().AzVolumes(c.config.ObjectNamespace).Create(ctx, desiredAzVolume, metav1.CreateOptions{}); err != nil {
+			azVolume, err = c.azClient.DiskV1beta2().AzVolumes(c.config.ObjectNamespace).Create(ctx, desiredAzVolume, metav1.CreateOptions{})
+			if err != nil {
 				return err
 			}
 			updated = azVolume.DeepCopy()
@@ -1570,17 +1573,16 @@ func (c *SharedState) createAzVolume(ctx context.Context, desiredAzVolume *azdis
 			azVolume.Annotations = azureutils.AddToMap(azVolume.Annotations, k, v)
 		}
 
-		updated = azVolume.DeepCopy()
-		if azVolume, err = c.azClient.DiskV1beta2().AzVolumes(c.config.ObjectNamespace).Update(ctx, updated, metav1.UpdateOptions{}); err != nil {
+		azVolume, err = c.azClient.DiskV1beta2().AzVolumes(c.config.ObjectNamespace).Update(ctx, azVolume, metav1.UpdateOptions{})
+		if err != nil {
 			return err
 		}
-
-		azVolume.Status.Annotations = azureutils.AddToMap(azVolume.Status.Annotations, statusAnnotation...)
 		updated = azVolume.DeepCopy()
+		updated.Status.Annotations = azureutils.AddToMap(updated.Status.Annotations, statusAnnotation...)
 	}
 
 	if updated != nil {
-		if _, err = azureutils.UpdateCRIWithRetry(ctx, nil, c.cachedClient, c.azClient, updated, func(obj client.Object) error {
+		if _, err = azureutils.UpdateCRIWithRetry(ctx, nil, c.cachedClient, c.azClient, azVolume, func(obj client.Object) error {
 			azvolume := obj.(*azdiskv1beta2.AzVolume)
 			azvolume.Status = updated.Status
 			return nil

@@ -1118,68 +1118,35 @@ func GetAzVolumeAttachmentState(volumeAttachmentStatus storagev1.VolumeAttachmen
 
 type UpdateCRIFunc func(client.Object) error
 
-func UpdateCRIWithRetry(ctx context.Context, informerFactory azdiskinformers.SharedInformerFactory, cachedClient client.Client, azDiskClient azdisk.Interface, obj client.Object, updateFunc UpdateCRIFunc, maxNetRetry int, updateMode CRIUpdateMode) (client.Object, error) {
+func UpdateCRIWithRetry(ctx context.Context, informerFactory azdiskinformers.SharedInformerFactory, cachedClient client.Client, azDiskClient azdisk.Interface, originalObj client.Object, updateFunc UpdateCRIFunc, maxNetRetry int, updateMode CRIUpdateMode) (client.Object, error) {
 	var err error
 
 	curNetRetry := 0
 	curRetry := 0
 
-	objName := obj.GetName()
 	ctx, w := workflow.New(ctx, workflow.WithCaller(1))
 	defer func() {
 		w.AddDetailToLogger(consts.RetryKey, curRetry, consts.NetRetryKey, curNetRetry)
 		w.Finish(err)
 	}()
 
+	if err = validateParamsForUpdateCRIWithRetry(cachedClient, azDiskClient, originalObj); err != nil {
+		w.Logger().Error(err, "The parameters passed to the function UpdateCRIWithRetry are invalid.")
+		return nil, err
+	}
+
 	var updatedObj client.Object
+	objName := originalObj.GetName()
 
 	conditionFunc := func() error {
 		var err error
-		var originalObj client.Object
-		switch target := obj.(type) {
-		case *azdiskv1beta2.AzVolume:
-			if informerFactory != nil {
-				originalObj, err = informerFactory.Disk().V1beta2().AzVolumes().Lister().AzVolumes(target.Namespace).Get(objName)
-			} else if cachedClient != nil {
-				originalObj = &azdiskv1beta2.AzVolume{}
-				err = cachedClient.Get(ctx, types.NamespacedName{Namespace: target.Namespace, Name: objName}, originalObj)
-			} else {
-				originalObj, err = azDiskClient.DiskV1beta2().AzVolumes(target.Namespace).Get(ctx, objName, metav1.GetOptions{})
-			}
-		case *azdiskv1beta2.AzVolumeAttachment:
-			if informerFactory != nil {
-				originalObj, err = informerFactory.Disk().V1beta2().AzVolumeAttachments().Lister().AzVolumeAttachments(target.Namespace).Get(objName)
-			} else if cachedClient != nil {
-				originalObj = &azdiskv1beta2.AzVolumeAttachment{}
-				err = cachedClient.Get(ctx, types.NamespacedName{Namespace: target.Namespace, Name: objName}, originalObj)
-			} else {
-				originalObj, err = azDiskClient.DiskV1beta2().AzVolumeAttachments(target.Namespace).Get(ctx, objName, metav1.GetOptions{})
-			}
-		case *azdiskv1beta2.AzDriverNode:
-			if informerFactory != nil {
-				originalObj, err = informerFactory.Disk().V1beta2().AzDriverNodes().Lister().AzDriverNodes(target.Namespace).Get(objName)
-			} else if cachedClient != nil {
-				originalObj = &azdiskv1beta2.AzDriverNode{}
-				err = cachedClient.Get(ctx, types.NamespacedName{Namespace: target.Namespace, Name: objName}, originalObj)
-			} else {
-				originalObj, err = azDiskClient.DiskV1beta2().AzDriverNodes(target.Namespace).Get(ctx, objName, metav1.GetOptions{})
-			}
-		case *storagev1.VolumeAttachment:
-			if cachedClient != nil {
-				originalObj = &storagev1.VolumeAttachment{}
-				err = cachedClient.Get(ctx, types.NamespacedName{Namespace: target.Namespace, Name: objName}, originalObj)
-			} else {
-				return status.Errorf(codes.Internal, "cannot update VolumeAttachment object if controller runtime client is not provided.")
-			}
-		default:
-			return status.Errorf(codes.Internal, "object (%v) not supported.", reflect.TypeOf(target))
-		}
 
-		if err != nil {
-			if !k8serrors.IsNotFound(err) {
-				err = status.Errorf(codes.Internal, "failed to get object: %v", err)
+		if curRetry > 0 {
+			originalObj, err = getOriginalObjFromClientForUpdate(ctx, w, informerFactory, cachedClient, azDiskClient, originalObj)
+			if err != nil {
+				w.Logger().Errorf(err, "failed to get original object (%s)", objName)
+				return err
 			}
-			return err
 		}
 
 		copyForUpdate := originalObj.DeepCopyObject().(client.Object)
@@ -1277,6 +1244,84 @@ func UpdateCRIWithRetry(ctx context.Context, informerFactory azdiskinformers.Sha
 		ExitOnNetError(err, maxNetRetry > 0 && curNetRetry >= maxNetRetry)
 	}
 	return updatedObj, err
+}
+
+func validateParamsForUpdateCRIWithRetry(cachedClient client.Client, azDiskClient azdisk.Interface, originalObj client.Object) error {
+	if originalObj == nil {
+		return status.Errorf(codes.Internal, "originalObj is not provided.")
+	}
+
+	_, isAzVolume := originalObj.(*azdiskv1beta2.AzVolume)
+	_, isAzVolumeAttachment := originalObj.(*azdiskv1beta2.AzVolumeAttachment)
+	_, isAzDriverNode := originalObj.(*azdiskv1beta2.AzDriverNode)
+	_, isVolumeAttachment := originalObj.(*storagev1.VolumeAttachment)
+	if azDiskClient == nil && (isAzVolume || isAzVolumeAttachment || isAzDriverNode) {
+		return status.Errorf(codes.Internal, "azDiskClient is not provided.")
+	}
+	if cachedClient == nil && isVolumeAttachment {
+		return status.Errorf(codes.Internal, "controller runtime client is not provided.")
+	}
+
+	// All inputs are valid, so return nil
+	return nil
+}
+
+func getOriginalObjFromClientForUpdate(ctx context.Context, w workflow.Workflow, informerFactory azdiskinformers.SharedInformerFactory, cachedClient client.Client, azDiskClient azdisk.Interface, obj client.Object) (client.Object, error) {
+	var err error
+	var originalObj client.Object
+	objName := obj.GetName()
+
+	w.Logger().V(5).Infof("getting the original object (%s) from clients", objName)
+
+	switch target := obj.(type) {
+	case *azdiskv1beta2.AzVolume:
+		if informerFactory != nil {
+			originalObj, err = informerFactory.Disk().V1beta2().AzVolumes().Lister().AzVolumes(target.Namespace).Get(objName)
+		} else if cachedClient != nil {
+			originalObj = &azdiskv1beta2.AzVolume{}
+			err = cachedClient.Get(ctx, types.NamespacedName{Namespace: target.Namespace, Name: objName}, originalObj)
+		}
+
+		if err != nil || originalObj == nil {
+			originalObj, err = azDiskClient.DiskV1beta2().AzVolumes(target.Namespace).Get(ctx, objName, metav1.GetOptions{})
+		}
+	case *azdiskv1beta2.AzVolumeAttachment:
+		if informerFactory != nil {
+			originalObj, err = informerFactory.Disk().V1beta2().AzVolumeAttachments().Lister().AzVolumeAttachments(target.Namespace).Get(objName)
+		} else if cachedClient != nil {
+			originalObj = &azdiskv1beta2.AzVolumeAttachment{}
+			err = cachedClient.Get(ctx, types.NamespacedName{Namespace: target.Namespace, Name: objName}, originalObj)
+		}
+
+		if err != nil || originalObj == nil {
+			originalObj, err = azDiskClient.DiskV1beta2().AzVolumeAttachments(target.Namespace).Get(ctx, objName, metav1.GetOptions{})
+		}
+	case *azdiskv1beta2.AzDriverNode:
+		if informerFactory != nil {
+			originalObj, err = informerFactory.Disk().V1beta2().AzDriverNodes().Lister().AzDriverNodes(target.Namespace).Get(objName)
+		} else if cachedClient != nil {
+			originalObj = &azdiskv1beta2.AzDriverNode{}
+			err = cachedClient.Get(ctx, types.NamespacedName{Namespace: target.Namespace, Name: objName}, originalObj)
+		}
+
+		if err != nil || originalObj == nil {
+			originalObj, err = azDiskClient.DiskV1beta2().AzDriverNodes(target.Namespace).Get(ctx, objName, metav1.GetOptions{})
+		}
+	case *storagev1.VolumeAttachment:
+		originalObj = &storagev1.VolumeAttachment{}
+		err = cachedClient.Get(ctx, types.NamespacedName{Namespace: target.Namespace, Name: objName}, originalObj)
+	default:
+		return nil, status.Errorf(codes.Internal, "object (%v) not supported.", reflect.TypeOf(target))
+	}
+
+	if err != nil {
+		if !k8serrors.IsNotFound(err) {
+			err = status.Errorf(codes.Internal, "failed to get object: %v", err)
+		}
+		return nil, err
+	}
+
+	return originalObj, err
 }
 
 func AppendToUpdateCRIFunc(updateFunc, newFunc UpdateCRIFunc) UpdateCRIFunc {
