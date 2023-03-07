@@ -36,7 +36,7 @@ In addition to the existing StorageClass parameters described in [driver-paramet
 
 | Name | Meaning  | Available Value | Mandatory | Default value |
 |------|----------|-----------------|-----------|---------------|
-| `maxShares` | The total number of shared disk mounts allowed for the disk. Setting the value to 2 or more enables attachment replicas. | Supported values depend on the disk size. See [Share an Azure managed disk](https://docs.microsoft.com/en-us/azure/virtual-machines/disks-shared) for supported values. | No | 1 |
+| `maxShares` | The total number of shared disk mounts allowed for the disk. Setting the value to 2 or more enables attachment replicas. | This value must currently be in the range `[0..3]` and must be less than the [maxShares value of the disk itself](https://docs.microsoft.com/en-us/azure/virtual-machines/disks-shared).  | No | 1 |
 | `maxMountReplicaCount` | The number of replicas attachments to maintain. | This value must be in the range `[0..(maxShares - 1)]` | No | If `accessMode` is `ReadWriteMany`, the default is `0`. Otherwise, the default is `maxShares - 1` |
 
 ### Custom Resources and Controllers
