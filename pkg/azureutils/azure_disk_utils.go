@@ -83,6 +83,8 @@ const (
 	diskNameGenerateMaxLengthForLabel = 59
 	// maxLength = 80 - (4 for ".vhd") = 76
 	diskNameGenerateMaxLength = 76
+
+	maxValueOfMaxSharesForAllDisks = 3
 )
 
 var AttachmentRoles = map[AttachmentRoleMode]string{
@@ -281,14 +283,7 @@ func GetMaxShares(attributes map[string]string) (int, error) {
 	for k, v := range attributes {
 		switch strings.ToLower(k) {
 		case consts.MaxSharesField:
-			maxShares, err := strconv.Atoi(v)
-			if err != nil {
-				return 0, fmt.Errorf("parse %s failed with error: %v", v, err)
-			}
-			if maxShares < 1 {
-				return 0, fmt.Errorf("parse %s returned with invalid value: %d", v, maxShares)
-			}
-			return maxShares, nil
+			return ParseMaxShares(v)
 		}
 	}
 	return 1, nil // disk is not shared
@@ -522,6 +517,9 @@ func ParseMaxShares(maxSharesValue string) (int, error) {
 	}
 	if maxShares < 1 {
 		return 0, fmt.Errorf("parse %s returned with invalid value: %d", maxSharesValue, maxShares)
+	}
+	if maxShares > maxValueOfMaxSharesForAllDisks {
+		return 0, fmt.Errorf("parse %s returned with value exceeding %d (max value of max shares for all disks): %d", maxSharesValue, maxValueOfMaxSharesForAllDisks, maxShares)
 	}
 	return maxShares, nil
 }
