@@ -114,7 +114,8 @@ func (r *ReconcileReplica) Reconcile(ctx context.Context, request reconcile.Requ
 				}
 			} else if azVolumeAttachment.Status.State == azdiskv1beta2.AttachmentFailed {
 				// if the failed attachment isn't retriable, delete the CRI so that replacing replica AzVolumeAttachment can be created
-				if !azureutils.MapContains(azVolumeAttachment.Status.Annotations, consts.ReplicaVolumeAttachRetryAnnotation) {
+				// once the attachment has ever been retriable, it should be retried until it succeeds or gets detached
+				if !azureutils.MapContains(azVolumeAttachment.Status.Annotations, consts.ReplicaVolumeAttachRetryAnnotation) && !azureutils.MapContains(azVolumeAttachment.Status.Annotations, consts.ReplicaVolumeAttachRetryCount) {
 					if err := r.cachedClient.Delete(ctx, azVolumeAttachment); err != nil {
 						return reconcile.Result{Requeue: true}, err
 					}
