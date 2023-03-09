@@ -22,7 +22,6 @@ import (
 
 	"github.com/go-logr/logr"
 	corev1 "k8s.io/api/core/v1"
-	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
@@ -109,7 +108,7 @@ func (r *ReconcileNode) Recover(ctx context.Context, recoveryID string) error {
 	errCount := 0
 	for _, azNode := range azNodes.Items {
 		// if the corresponding node has been deleted, delete the azdrivernode object
-		var node *v1.Node
+		var node *corev1.Node
 		node, err = r.kubeClient.CoreV1().Nodes().Get(ctx, azNode.Spec.NodeName, metav1.GetOptions{})
 		if err != nil {
 			if errors.IsNotFound(err) {
@@ -188,8 +187,8 @@ func NewNodeController(mgr manager.Manager, controllerSharedState *SharedState) 
 				}
 
 				// update event when LabelInstanceTypeStable is added to node
-				_, oldLableOk := old.GetLabels()[v1.LabelInstanceTypeStable]
-				_, newLabelOk := new.GetLabels()[v1.LabelInstanceTypeStable]
+				_, oldLableOk := old.GetLabels()[corev1.LabelInstanceTypeStable]
+				_, newLabelOk := new.GetLabels()[corev1.LabelInstanceTypeStable]
 
 				return (wasUnschedulable && nowSchedulable) || (!oldLableOk && newLabelOk)
 			}

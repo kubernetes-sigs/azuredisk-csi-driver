@@ -23,7 +23,6 @@ import (
 	"github.com/go-logr/logr"
 	"github.com/pkg/errors"
 	corev1 "k8s.io/api/core/v1"
-	v1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
@@ -201,7 +200,7 @@ func (r *ReconcilePV) Recover(ctx context.Context) error {
 	ctx, w := workflow.New(ctx)
 	defer func() { w.Finish(err) }()
 
-	var pvs *v1.PersistentVolumeList
+	var pvs *corev1.PersistentVolumeList
 	pvs, err = r.kubeClient.CoreV1().PersistentVolumes().List(ctx, metav1.ListOptions{})
 	if err != nil {
 		return err
