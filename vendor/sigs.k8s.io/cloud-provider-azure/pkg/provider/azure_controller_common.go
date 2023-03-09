@@ -37,6 +37,7 @@ import (
 	cloudprovider "k8s.io/cloud-provider"
 	volerr "k8s.io/cloud-provider/volume/errors"
 	"k8s.io/klog/v2"
+	"k8s.io/utils/pointer"
 
 	"sigs.k8s.io/cloud-provider-azure/pkg/batch"
 	azcache "sigs.k8s.io/cloud-provider-azure/pkg/cache"
@@ -65,6 +66,9 @@ const (
 	updateVMRetryDuration = time.Duration(1) * time.Second
 	updateVMRetryFactor   = 3.0
 	updateVMRetrySteps    = 5
+
+	// default initial delay in milliseconds for batch disk attach/detach
+	defaultAttachDetachInitialDelayInMs = 1000
 
 	// WriteAcceleratorEnabled support for Azure Write Accelerator on Azure Disks
 	// https://docs.microsoft.com/azure/virtual-machines/windows/how-to-enable-write-accelerator
@@ -106,6 +110,10 @@ type controllerCommon struct {
 
 	// DisableUpdateCache whether disable update cache in disk attach/detach
 	DisableUpdateCache bool
+	// DisableDiskLunCheck whether disable disk lun check after disk attach/detach
+	DisableDiskLunCheck bool
+	// AttachDetachInitialDelayInMs determines initial delay in milliseconds for batch disk attach/detach
+	AttachDetachInitialDelayInMs int
 }
 
 type TempLunMapping struct {
@@ -370,6 +378,18 @@ func (c *controllerCommon) attachDiskBatchToNode(ctx context.Context, subscripti
 	// err will be handled by waitForUpdateResult below
 
 	attachFn := func() {
+		var attachErr error
+
+		// Since this function may execute asynchronously to its outer function, the error returned
+		// by waitForUpdateResult cannot be shared with the outer function. We must create a separate
+		// deferred function in the inner function's scope to handle error cases.
+		defer func() {
+			// invalidate the cache if there is error in disk attach
+			if attachErr != nil {
+				_ = vmset.DeleteCacheForNode(string(nodeName))
+			}
+		}()
+
 		klog.V(2).Infof("azuredisk - trying to attach disks to node %s: %s", nodeName, diskMap)
 
 		resultCtx := ctx
@@ -388,7 +408,7 @@ func (c *controllerCommon) attachDiskBatchToNode(ctx context.Context, subscripti
 			}
 		}
 
-		err = c.waitForUpdateResult(resultCtx, vmset, nodeName, future, err, "attach_disk")
+		attachErr = c.waitForUpdateResult(resultCtx, vmset, nodeName, future, err, "attach_disk")
 
 		var tempLuns *TempLunMapping
 		if entry, ok := c.tempLunMap.Load(string(nodeName)); ok {
@@ -398,7 +418,7 @@ func (c *controllerCommon) attachDiskBatchToNode(ctx context.Context, subscripti
 		}
 
 		for i, disk := range disksToAttach {
-			lunChans[i] <- attachDiskResult{lun: diskMap[disk.diskURI].lun, err: err}
+			lunChans[i] <- attachDiskResult{lun: diskMap[disk.diskURI].lun, err: attachErr}
 			if tempLuns != nil && tempLuns.lunMap != nil && tempLuns.lunMap[disk.diskURI] != nil {
 				tempLuns.lunMap[disk.diskURI].allocationCount--
 				if tempLuns.lunMap[disk.diskURI].allocationCount == 0 {
@@ -471,6 +491,14 @@ func (c *controllerCommon) DetachDisk(ctx context.Context, diskName, diskURI str
 	if _, err := c.detachDiskProcessor.Do(ctx, batchKey, diskToDetach); err != nil {
 		klog.Errorf("azureDisk - detach disk(%s, %s) failed, err: %v", diskName, diskURI, err)
 		return err
+	}
+
+	if !c.DisableDiskLunCheck {
+		// always check disk lun after disk detach complete
+		lun, vmState, errGetLun := c.GetDiskLun(diskName, diskURI, nodeName)
+		if errGetLun == nil || !strings.Contains(errGetLun.Error(), consts.CannotFindDiskLUN) {
+			return fmt.Errorf("disk(%s) is still attached to node(%s) on lun(%d), vmState: %s, error: %w", diskURI, nodeName, lun, pointer.StringDeref(vmState, ""), errGetLun)
+		}
 	}
 
 	klog.V(2).Infof("azureDisk - detach disk(%s, %s) succeeded", diskName, diskURI)

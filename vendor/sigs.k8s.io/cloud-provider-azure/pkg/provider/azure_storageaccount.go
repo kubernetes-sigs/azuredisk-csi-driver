@@ -21,8 +21,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2022-03-01/compute"
-	"github.com/Azure/azure-sdk-for-go/services/network/mgmt/2021-08-01/network"
+	"github.com/Azure/azure-sdk-for-go/services/network/mgmt/2022-07-01/network"
 	"github.com/Azure/azure-sdk-for-go/services/privatedns/mgmt/2018-09-01/privatedns"
 	"github.com/Azure/azure-sdk-for-go/services/storage/mgmt/2021-09-01/storage"
 
@@ -52,11 +51,11 @@ type AccountOptions struct {
 	EnableHTTPSTrafficOnly                    bool
 	// indicate whether create new account when Name is empty or when account does not exists
 	CreateAccount                           bool
-	EnableLargeFileShare                    bool
 	CreatePrivateEndpoint                   bool
 	StorageType                             StorageType
 	StorageEndpointSuffix                   string
-	DisableFileServiceDeleteRetentionPolicy bool
+	DisableFileServiceDeleteRetentionPolicy *bool
+	EnableLargeFileShare                    *bool
 	IsHnsEnabled                            *bool
 	EnableNfsV3                             *bool
 	AllowBlobPublicAccess                   *bool
@@ -73,6 +72,9 @@ type AccountOptions struct {
 	SubnetName                              string
 	AccessTier                              string
 	MatchTags                               bool
+	EnableBlobVersioning                    *bool
+	SoftDeleteBlobs                         int32
+	SoftDeleteContainers                    int32
 }
 
 type accountWithLocation struct {
@@ -101,9 +103,17 @@ func (az *Cloud) getStorageAccounts(ctx context.Context, accountOptions *Account
 				isTaggedWithSkip(acct) &&
 				isHnsPropertyEqual(acct, accountOptions) &&
 				isEnableNfsV3PropertyEqual(acct, accountOptions) &&
+				isAllowBlobPublicAccessEqual(acct, accountOptions) &&
+				isRequireInfrastructureEncryptionEqual(acct, accountOptions) &&
+				isAllowSharedKeyAccessEqual(acct, accountOptions) &&
+				isAccessTierEqual(acct, accountOptions) &&
+				az.isMultichannelEnabledEqual(ctx, acct, accountOptions) &&
+				az.isDisableFileServiceDeleteRetentionPolicyEqual(ctx, acct, accountOptions) &&
+				az.isEnableBlobDataProtectionEqual(ctx, acct, accountOptions) &&
 				isPrivateEndpointAsExpected(acct, accountOptions)) {
 				continue
 			}
+
 			accounts = append(accounts, accountWithLocation{Name: *acct.Name, StorageType: string((*acct.Sku).Name), Location: *acct.Location})
 		}
 	}
@@ -300,9 +310,13 @@ func (az *Cloud) EnsureStorageAccount(ctx context.Context, accountOptions *Accou
 			Tags:     tags,
 			Location: &location}
 
-		if accountOptions.EnableLargeFileShare {
-			klog.V(2).Infof("Enabling LargeFileShare for storage account(%s)", accountName)
-			cp.AccountPropertiesCreateParameters.LargeFileSharesState = storage.LargeFileSharesStateEnabled
+		if accountOptions.EnableLargeFileShare != nil {
+			state := storage.LargeFileSharesStateDisabled
+			if *accountOptions.EnableLargeFileShare {
+				state = storage.LargeFileSharesStateEnabled
+			}
+			klog.V(2).Infof("enable LargeFileShare(%s) for storage account(%s)", state, accountName)
+			cp.AccountPropertiesCreateParameters.LargeFileSharesState = state
 		}
 		if accountOptions.AllowBlobPublicAccess != nil {
 			klog.V(2).Infof("set AllowBlobPublicAccess(%v) for storage account(%s)", *accountOptions.AllowBlobPublicAccess, accountName)
@@ -346,7 +360,43 @@ func (az *Cloud) EnsureStorageAccount(ctx context.Context, accountOptions *Accou
 			return "", "", fmt.Errorf("failed to create storage account %s, error: %v", accountName, rerr)
 		}
 
-		if accountOptions.DisableFileServiceDeleteRetentionPolicy || pointer.BoolDeref(accountOptions.IsMultichannelEnabled, false) {
+		if pointer.BoolDeref(accountOptions.EnableBlobVersioning, false) ||
+			accountOptions.SoftDeleteBlobs > 0 ||
+			accountOptions.SoftDeleteContainers > 0 {
+			var blobPolicy, containerPolicy *storage.DeleteRetentionPolicy
+			var enableBlobVersioning *bool
+
+			if accountOptions.SoftDeleteContainers > 0 {
+				containerPolicy = &storage.DeleteRetentionPolicy{
+					Enabled: pointer.Bool(accountOptions.SoftDeleteContainers > 0),
+					Days:    pointer.Int32(accountOptions.SoftDeleteContainers),
+				}
+			}
+			if accountOptions.SoftDeleteBlobs > 0 {
+				blobPolicy = &storage.DeleteRetentionPolicy{
+					Enabled: pointer.Bool(accountOptions.SoftDeleteBlobs > 0),
+					Days:    pointer.Int32(accountOptions.SoftDeleteBlobs),
+				}
+			}
+
+			if accountOptions.EnableBlobVersioning != nil {
+				enableBlobVersioning = pointer.Bool(*accountOptions.EnableBlobVersioning)
+			}
+
+			property := storage.BlobServiceProperties{
+				BlobServicePropertiesProperties: &storage.BlobServicePropertiesProperties{
+					IsVersioningEnabled:            enableBlobVersioning,
+					ContainerDeleteRetentionPolicy: containerPolicy,
+					DeleteRetentionPolicy:          blobPolicy,
+				},
+			}
+
+			if _, err := az.BlobClient.SetServiceProperties(ctx, subsID, resourceGroup, accountName, property); err != nil {
+				return "", "", fmt.Errorf("failed to set blob service properties for storage account %s, error: %w", accountName, err)
+			}
+		}
+
+		if accountOptions.DisableFileServiceDeleteRetentionPolicy != nil || accountOptions.IsMultichannelEnabled != nil {
 			prop, err := az.FileClient.WithSubscriptionID(subsID).GetServiceProperties(ctx, resourceGroup, accountName)
 			if err != nil {
 				return "", "", err
@@ -356,13 +406,16 @@ func (az *Cloud) EnsureStorageAccount(ctx context.Context, accountOptions *Accou
 			}
 			prop.FileServicePropertiesProperties.ProtocolSettings = nil
 			prop.FileServicePropertiesProperties.Cors = nil
-			if accountOptions.DisableFileServiceDeleteRetentionPolicy {
-				klog.V(2).Infof("disable FileServiceDeleteRetentionPolicy on account(%s), subscription(%s), resource group(%s)", accountName, subsID, resourceGroup)
-				prop.FileServicePropertiesProperties.ShareDeleteRetentionPolicy = &storage.DeleteRetentionPolicy{Enabled: pointer.Bool(false)}
+			if accountOptions.DisableFileServiceDeleteRetentionPolicy != nil {
+				enable := !*accountOptions.DisableFileServiceDeleteRetentionPolicy
+				klog.V(2).Infof("set ShareDeleteRetentionPolicy(%v) on account(%s), subscription(%s), resource group(%s)",
+					enable, accountName, subsID, resourceGroup)
+				prop.FileServicePropertiesProperties.ShareDeleteRetentionPolicy = &storage.DeleteRetentionPolicy{Enabled: &enable}
 			}
-			if pointer.BoolDeref(accountOptions.IsMultichannelEnabled, false) {
+			if accountOptions.IsMultichannelEnabled != nil {
 				klog.V(2).Infof("enable SMB Multichannel setting on account(%s), subscription(%s), resource group(%s)", accountName, subsID, resourceGroup)
-				prop.FileServicePropertiesProperties.ProtocolSettings = &storage.ProtocolSettings{Smb: &storage.SmbSetting{Multichannel: &storage.Multichannel{Enabled: pointer.Bool(true)}}}
+				enabled := *accountOptions.IsMultichannelEnabled
+				prop.FileServicePropertiesProperties.ProtocolSettings = &storage.ProtocolSettings{Smb: &storage.SmbSetting{Multichannel: &storage.Multichannel{Enabled: &enabled}}}
 			}
 			if _, err := az.FileClient.WithSubscriptionID(subsID).SetServiceProperties(ctx, resourceGroup, accountName, prop); err != nil {
 				return "", "", err
@@ -584,10 +637,13 @@ func AreVNetRulesEqual(account storage.Account, accountOptions *AccountOptions) 
 }
 
 func isLargeFileSharesPropertyEqual(account storage.Account, accountOptions *AccountOptions) bool {
-	if account.Sku.Tier != storage.SkuTier(compute.StorageAccountTypesPremiumLRS) && accountOptions.EnableLargeFileShare && (len(account.LargeFileSharesState) == 0 || account.LargeFileSharesState == storage.LargeFileSharesStateDisabled) {
-		return false
+	if accountOptions.EnableLargeFileShare == nil {
+		return true
 	}
-	return true
+	if *accountOptions.EnableLargeFileShare {
+		return account.LargeFileSharesState == storage.LargeFileSharesStateEnabled
+	}
+	return account.LargeFileSharesState == "" || account.LargeFileSharesState == storage.LargeFileSharesStateDisabled
 }
 
 func isTaggedWithSkip(account storage.Account) bool {
@@ -627,11 +683,11 @@ func isTagsEqual(account storage.Account, accountOptions *AccountOptions) bool {
 }
 
 func isHnsPropertyEqual(account storage.Account, accountOptions *AccountOptions) bool {
-	return pointer.BoolDeref(account.IsHnsEnabled, false) == pointer.BoolDeref(accountOptions.IsHnsEnabled, false)
+	return pointer.BoolDeref(accountOptions.IsHnsEnabled, false) == pointer.BoolDeref(account.IsHnsEnabled, false)
 }
 
 func isEnableNfsV3PropertyEqual(account storage.Account, accountOptions *AccountOptions) bool {
-	return pointer.BoolDeref(account.EnableNfsV3, false) == pointer.BoolDeref(accountOptions.EnableNfsV3, false)
+	return pointer.BoolDeref(accountOptions.EnableNfsV3, false) == pointer.BoolDeref(account.EnableNfsV3, false)
 }
 
 func isPrivateEndpointAsExpected(account storage.Account, accountOptions *AccountOptions) bool {
@@ -642,4 +698,129 @@ func isPrivateEndpointAsExpected(account storage.Account, accountOptions *Accoun
 		return true
 	}
 	return false
+}
+
+func isAllowBlobPublicAccessEqual(account storage.Account, accountOptions *AccountOptions) bool {
+	return pointer.BoolDeref(accountOptions.AllowBlobPublicAccess, false) == pointer.BoolDeref(account.AllowBlobPublicAccess, false)
+}
+
+func isRequireInfrastructureEncryptionEqual(account storage.Account, accountOptions *AccountOptions) bool {
+	requireInfraEncryption := pointer.BoolDeref(accountOptions.RequireInfrastructureEncryption, false)
+	if account.Encryption == nil {
+		return !requireInfraEncryption
+	}
+	return requireInfraEncryption == pointer.BoolDeref(account.Encryption.RequireInfrastructureEncryption, false)
+}
+
+func isAllowSharedKeyAccessEqual(account storage.Account, accountOptions *AccountOptions) bool {
+	return pointer.BoolDeref(accountOptions.AllowSharedKeyAccess, false) == pointer.BoolDeref(account.AllowSharedKeyAccess, false)
+}
+
+func isAccessTierEqual(account storage.Account, accountOptions *AccountOptions) bool {
+	if accountOptions.AccessTier == "" {
+		return true
+	}
+	return accountOptions.AccessTier == string(account.AccessTier)
+}
+
+func (az *Cloud) isMultichannelEnabledEqual(ctx context.Context, account storage.Account, accountOptions *AccountOptions) bool {
+	if accountOptions.IsMultichannelEnabled == nil {
+		return true
+	}
+
+	if account.Name == nil {
+		klog.Warningf("account.Name under resource group(%s) is nil", accountOptions.ResourceGroup)
+		return false
+	}
+
+	prop, err := az.FileClient.WithSubscriptionID(accountOptions.SubscriptionID).GetServiceProperties(ctx, accountOptions.ResourceGroup, *account.Name)
+	if err != nil {
+		klog.Warningf("GetServiceProperties(%s) under resource group(%s) failed with %v", *account.Name, accountOptions.ResourceGroup, err)
+		return false
+	}
+
+	if prop.FileServicePropertiesProperties == nil ||
+		prop.FileServicePropertiesProperties.ProtocolSettings == nil ||
+		prop.FileServicePropertiesProperties.ProtocolSettings.Smb == nil ||
+		prop.FileServicePropertiesProperties.ProtocolSettings.Smb.Multichannel == nil {
+		return !*accountOptions.IsMultichannelEnabled
+	}
+
+	return *accountOptions.IsMultichannelEnabled == pointer.BoolDeref(prop.FileServicePropertiesProperties.ProtocolSettings.Smb.Multichannel.Enabled, false)
+}
+
+func (az *Cloud) isDisableFileServiceDeleteRetentionPolicyEqual(ctx context.Context, account storage.Account, accountOptions *AccountOptions) bool {
+	if accountOptions.DisableFileServiceDeleteRetentionPolicy == nil {
+		return true
+	}
+
+	if account.Name == nil {
+		klog.Warningf("account.Name under resource group(%s) is nil", accountOptions.ResourceGroup)
+		return false
+	}
+
+	prop, err := az.FileClient.WithSubscriptionID(accountOptions.SubscriptionID).GetServiceProperties(ctx, accountOptions.ResourceGroup, *account.Name)
+	if err != nil {
+		klog.Warningf("GetServiceProperties(%s) under resource group(%s) failed with %v", *account.Name, accountOptions.ResourceGroup, err)
+		return false
+	}
+
+	if prop.FileServicePropertiesProperties == nil ||
+		prop.FileServicePropertiesProperties.ShareDeleteRetentionPolicy == nil ||
+		prop.FileServicePropertiesProperties.ShareDeleteRetentionPolicy.Enabled == nil {
+		// by default, ShareDeleteRetentionPolicy.Enabled is true if it's nil
+		return !*accountOptions.DisableFileServiceDeleteRetentionPolicy
+	}
+
+	return *accountOptions.DisableFileServiceDeleteRetentionPolicy != *prop.FileServicePropertiesProperties.ShareDeleteRetentionPolicy.Enabled
+}
+
+func (az *Cloud) isEnableBlobDataProtectionEqual(ctx context.Context, account storage.Account, accountOptions *AccountOptions) bool {
+	if accountOptions.SoftDeleteBlobs == 0 &&
+		accountOptions.SoftDeleteContainers == 0 &&
+		accountOptions.EnableBlobVersioning == nil {
+		return true
+	}
+
+	property, err := az.BlobClient.GetServiceProperties(ctx, accountOptions.SubscriptionID, accountOptions.ResourceGroup, *account.Name)
+	if err != nil {
+		klog.Warningf("GetServiceProperties failed for account %s, err: %v", *account.Name, err)
+		return false
+	}
+
+	return isSoftDeleteBlobsEqual(property, accountOptions) &&
+		isSoftDeleteContainersEqual(property, accountOptions) &&
+		isEnableBlobVersioningEqual(property, accountOptions)
+}
+
+func isSoftDeleteBlobsEqual(property storage.BlobServiceProperties, accountOptions *AccountOptions) bool {
+	wantEnable := accountOptions.SoftDeleteBlobs > 0
+	actualEnable := property.DeleteRetentionPolicy != nil &&
+		pointer.BoolDeref(property.DeleteRetentionPolicy.Enabled, false)
+	if wantEnable != actualEnable {
+		return false
+	}
+	if !actualEnable {
+		return true
+	}
+
+	return accountOptions.SoftDeleteBlobs == pointer.Int32Deref(property.DeleteRetentionPolicy.Days, 0)
+}
+
+func isSoftDeleteContainersEqual(property storage.BlobServiceProperties, accountOptions *AccountOptions) bool {
+	wantEnable := accountOptions.SoftDeleteContainers > 0
+	actualEnable := property.ContainerDeleteRetentionPolicy != nil &&
+		pointer.BoolDeref(property.ContainerDeleteRetentionPolicy.Enabled, false)
+	if wantEnable != actualEnable {
+		return false
+	}
+	if !actualEnable {
+		return true
+	}
+
+	return accountOptions.SoftDeleteContainers == pointer.Int32Deref(property.ContainerDeleteRetentionPolicy.Days, 0)
+}
+
+func isEnableBlobVersioningEqual(property storage.BlobServiceProperties, accountOptions *AccountOptions) bool {
+	return pointer.BoolDeref(accountOptions.EnableBlobVersioning, false) == pointer.BoolDeref(property.IsVersioningEnabled, false)
 }
