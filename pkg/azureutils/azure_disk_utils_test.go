@@ -48,7 +48,6 @@ import (
 	azdisk "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned"
 	azdiskfakes "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned/fake"
 	azdiskinformers "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/informers/externalversions"
-	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils/mockclient"
 	"sigs.k8s.io/azuredisk-csi-driver/test/utils/testutil"
@@ -2583,7 +2582,7 @@ func TestUpdateCRIWithRetry(t *testing.T) {
 					},
 				}
 
-				originalObj.Status.AttachmentMetadata = map[string]string{azureconstants.LUN: "0"}
+				originalObj.Status.AttachmentMetadata = map[string]string{consts.LUN: "0"}
 				cachedClient := mockclient.NewMockClient(c)
 				azdiskClient := azdiskfakes.NewSimpleClientset()
 
@@ -2592,7 +2591,7 @@ func TestUpdateCRIWithRetry(t *testing.T) {
 			updateFunc: func(obj client.Object) error {
 				if objToUpdate, ok := obj.(*storagev1.VolumeAttachment); ok {
 					objToUpdate.Spec.Source.PersistentVolumeName = &objToUpdate.Name
-					objToUpdate.Status.AttachmentMetadata = map[string]string{azureconstants.LUN: "0"}
+					objToUpdate.Status.AttachmentMetadata = map[string]string{consts.LUN: "0"}
 					return nil
 				}
 
@@ -2603,7 +2602,7 @@ func TestUpdateCRIWithRetry(t *testing.T) {
 				updatedObj, ok := obj.(*storagev1.VolumeAttachment)
 				require.True(t, ok, "Unexpected object type: %s", reflect.TypeOf(obj).Name())
 				assert.Equal(t, "test-attachment", updatedObj.Name)
-				assert.Equal(t, map[string]string{azureconstants.LUN: "0"}, updatedObj.Status.AttachmentMetadata)
+				assert.Equal(t, map[string]string{consts.LUN: "0"}, updatedObj.Status.AttachmentMetadata)
 			},
 		},
 		{
@@ -2633,7 +2632,7 @@ func TestUpdateCRIWithRetry(t *testing.T) {
 			updateFunc: func(obj client.Object) error {
 				if objToUpdate, ok := obj.(*storagev1.VolumeAttachment); ok {
 					objToUpdate.Spec.Source.PersistentVolumeName = &objToUpdate.Name
-					objToUpdate.Status.AttachmentMetadata = map[string]string{azureconstants.LUN: "0"}
+					objToUpdate.Status.AttachmentMetadata = map[string]string{consts.LUN: "0"}
 					return nil
 				}
 
@@ -2709,7 +2708,7 @@ func TestUpdateCRIWithRetry(t *testing.T) {
 			},
 			updateFunc: func(obj client.Object) error {
 				if objToUpdate, ok := obj.(*storagev1.VolumeAttachment); ok {
-					objToUpdate.Status.AttachmentMetadata = map[string]string{azureconstants.LUN: "0"}
+					objToUpdate.Status.AttachmentMetadata = map[string]string{consts.LUN: "0"}
 					return nil
 				}
 
