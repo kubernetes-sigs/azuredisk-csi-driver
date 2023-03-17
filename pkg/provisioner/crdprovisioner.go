@@ -23,6 +23,7 @@ import (
 	"reflect"
 	"sort"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -545,85 +546,17 @@ func (c *CrdProvisioner) PublishVolume(
 		azureutils.AnnotateAPIVersion(attachmentObj)
 	}
 
-	filterVAToDetach := func(attachments []azdiskv1beta2.AzVolumeAttachment) (numAttachment int, unpublishOrder []*azdiskv1beta2.AzVolumeAttachment) {
-		for i := range attachments {
-			// only count if deletionTimestamp not set
-			if attachments[i].GetDeletionTimestamp().IsZero() && !azureutils.MapContains(attachments[i].Status.Annotations, consts.VolumeDetachRequestAnnotation) {
-				numAttachment++
-				if attachments[i].Spec.RequestedRole == azdiskv1beta2.ReplicaRole {
-					unpublishOrder = append(unpublishOrder, &attachments[i])
-				}
-			}
-		}
-		return
-	}
-
-	var unpublishOrder []*azdiskv1beta2.AzVolumeAttachment
-	var requiredUnpublishCount int
+	var replicasToDetach []*azdiskv1beta2.AzVolumeAttachment
 	// there can be a race between replica management and primary creation,
 	// so create primary first without triggering attach in case replicas need to be detached/
 	var isPreemptiveCreate bool
-	// check remaining node capacity to determine if replica detachment is necessary
-	var maxDiskCount int
-	if maxDiskCount, err = azureutils.GetNodeMaxDiskCount(ctx, c.azCachedReader, nodeID); err != nil {
-		// continue if k8s node object is not found, we have already verified the node's existence through azdrivernode.
-		if !apiErrors.IsNotFound(err) {
-			return publishContext, err
-		}
-	} else {
-		volumeLabel := azureutils.LabelPair{Key: consts.VolumeNameLabel, Operator: selection.NotEquals, Entry: volumeName}
-		nodeLabel := azureutils.LabelPair{Key: consts.NodeNameLabel, Operator: selection.Equals, Entry: nodeID}
-		var attachments []azdiskv1beta2.AzVolumeAttachment
-		if attachments, err = azureutils.GetAzVolumeAttachmentsWithLabel(ctx, c.azCachedReader, volumeLabel, nodeLabel); err != nil {
-			return publishContext, err
-		}
-
-		numVolumeAttachments, volumeUnpublishOrder := filterVAToDetach(attachments)
-
-		requiredVolumeUnpublishCount := numVolumeAttachments - maxDiskCount + 1
-
-		if requiredVolumeUnpublishCount > len(volumeUnpublishOrder) {
-			err = status.Errorf(codes.Internal, "Cannot free up %d node capacity: not enough replicas (%d) attached to the node", requiredVolumeUnpublishCount, len(volumeUnpublishOrder))
-		} else if requiredVolumeUnpublishCount > 0 {
-			isPreemptiveCreate = true
-			unpublishOrder = append(unpublishOrder, volumeUnpublishOrder[:requiredVolumeUnpublishCount]...)
-			// if volume needs to be detached prior to attach operation, remove the attach annotation from CRI
-			attachmentObj.Annotations = azureutils.RemoveFromMap(attachmentObj.Annotations, consts.VolumeAttachRequestAnnotation)
-			requiredUnpublishCount += requiredVolumeUnpublishCount
-		}
-	}
-
-	// detach replica volume if volume's maxShares have been fully saturated.
-	if azVolume.Spec.MaxMountReplicaCount > 0 {
-		// get undemoted AzVolumeAttachments for volume == volumeName and node != nodeID
-		volumeLabel := azureutils.LabelPair{Key: consts.VolumeNameLabel, Operator: selection.Equals, Entry: volumeName}
-		nodeLabel := azureutils.LabelPair{Key: consts.NodeNameLabel, Operator: selection.NotEquals, Entry: nodeID}
-
-		var attachments []azdiskv1beta2.AzVolumeAttachment
-		attachments, err = azureutils.GetAzVolumeAttachmentsWithLabel(ctx, c.azCachedReader, volumeLabel, nodeLabel)
-		if err != nil && !apiErrors.IsNotFound(err) {
-			err = status.Errorf(codes.Internal, "failed to list undemoted AzVolumeAttachments with volume (%s) not attached to node (%s): %v", volumeName, nodeID, err)
-			return nil, err
-		}
-
-		// TODO: come up with a logic to select replica for unpublishing)
-		sort.Slice(attachments, func(i, _ int) bool {
-			iRole, iExists := attachments[i].Labels[consts.RoleChangeLabel]
-			// if i is demoted, prioritize it. Otherwise, prioritize j
-			return iExists && iRole == consts.Demoted
-		})
-
-		nodeAttachmentCount, nodeUnpublishOrder := filterVAToDetach(attachments)
-
-		// if maxMountReplicaCount has been exceeded, unpublish demoted AzVolumeAttachment or if demoted AzVolumeAttachment does not exist, select one to unpublish
-		requiredNodeUnpublishCount := nodeAttachmentCount - azVolume.Spec.MaxMountReplicaCount
-		if requiredNodeUnpublishCount > 0 {
-			isPreemptiveCreate = true
-			unpublishOrder = append(unpublishOrder, nodeUnpublishOrder[:requiredNodeUnpublishCount]...)
-			// if volume needs to be detached prior to attach operation, remove the attach annotation from CRI
-			attachmentObj.Annotations = azureutils.RemoveFromMap(attachmentObj.Annotations, consts.VolumeAttachRequestAnnotation)
-			requiredUnpublishCount += requiredNodeUnpublishCount
-		}
+	if replicasToDetach, err = c.getReplicasToDetach(ctx, volumeName, nodeID); err != nil {
+		// log errors and continue
+		w.Logger().Errorf(err, "Failed to get replica attachments to detach.")
+	} else if len(replicasToDetach) > 0 {
+		isPreemptiveCreate = true
+		// if volume needs to be detached prior to attach operation, remove the attach annotation from CRI
+		attachmentObj.Annotations = azureutils.RemoveFromMap(attachmentObj.Annotations, consts.VolumeAttachRequestAnnotation)
 	}
 
 	// create AzVolumeAttachment object
@@ -641,20 +574,19 @@ func (c *CrdProvisioner) PublishVolume(
 		}
 	}
 
-	for i := 0; requiredUnpublishCount > 0 && i < len(unpublishOrder); i++ {
-		if err = c.detachVolume(ctx, unpublishOrder[i]); err != nil {
-			err = status.Errorf(codes.Internal, "failed to make request to unpublish volume (%s) from node (%s): %v", unpublishOrder[i].Spec.VolumeName, unpublishOrder[i].Spec.NodeName, err)
-			return nil, err
-		}
-		requiredUnpublishCount--
-	}
-
 	var updateFunc func(obj client.Object) error
 	updateMode := azureutils.UpdateCRIStatus
 	// if attachment is scheduled for deletion, new attachment should only be created after the deletion
 	if attachmentObj.DeletionTimestamp != nil || azureutils.MapContains(attachmentObj.Status.Annotations, consts.VolumeDetachRequestAnnotation) {
 		err = status.Error(codes.Aborted, "need to wait until attachment is fully deleted before attaching")
 		return nil, err
+	}
+
+	if len(replicasToDetach) > 0 {
+		w.Logger().V(5).Infof("Detaching %d replicas to make resource for primary attachment (%s)", len(replicasToDetach), attachmentName)
+		if err = c.detachReplicas(ctx, replicasToDetach); err != nil {
+			return publishContext, err
+		}
 	}
 
 	if attachmentObj.Spec.RequestedRole == azdiskv1beta2.PrimaryRole {
@@ -737,10 +669,57 @@ func (c *CrdProvisioner) waitForLun(ctx context.Context, volumeID, nodeID string
 	return azVolumeAttachment.Status.Detail.PublishContext, err
 }
 
+// WaitForAttachComplete waits for either AzVolumeAttachment to be complete attach or be deleted.
+func (c *CrdProvisioner) WaitForAttachComplete(ctx context.Context, volumeID, nodeID string) (*azdiskv1beta2.AzVolumeAttachment, error) {
+	var err error
+	ctx, w := workflow.New(ctx)
+	defer func() { w.Finish(err) }()
+
+	var volumeName string
+	volumeName, err = azureutils.GetDiskName(volumeID)
+	if err != nil {
+		return nil, err
+	}
+	attachmentName := azureutils.GetAzVolumeAttachmentName(volumeName, nodeID)
+
+	waiter := c.conditionWatcher.NewConditionWaiter(ctx, watcher.AzVolumeAttachmentType, attachmentName, waitForAttachVolumeCompleteFunc)
+	defer waiter.Close()
+
+	var obj runtime.Object
+	obj, err = waiter.Wait(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if obj == nil {
+		err = status.Errorf(codes.Aborted, "failed to wait for attachment for volume (%s) and node (%s) to complete: unknown error", volumeID, nodeID)
+		return nil, err
+	}
+	return obj.(*azdiskv1beta2.AzVolumeAttachment), nil
+}
+
 func (c *CrdProvisioner) WaitForAttach(ctx context.Context, volumeID, nodeID string) (*azdiskv1beta2.AzVolumeAttachment, error) {
 	var err error
 	ctx, w := workflow.New(ctx, workflow.WithCaller(1))
 	defer func() { w.Finish(err) }()
+
+	volumeName, err := azureutils.GetDiskName(volumeID)
+	if err != nil {
+		return nil, err
+	}
+	volumeName = strings.ToLower(volumeName)
+
+	var replicasToDetach []*azdiskv1beta2.AzVolumeAttachment
+	if replicasToDetach, err = c.getReplicasToDetach(ctx, volumeName, nodeID); err != nil {
+		// log errors and continue
+		w.Logger().Errorf(err, "Failed to get replica attachments to detach.")
+	}
+
+	if len(replicasToDetach) > 0 {
+		w.Logger().V(5).Infof("Detaching %d replicas to make resource for primary attachment (%s)", len(replicasToDetach), azureutils.GetAzVolumeAttachmentName(volumeName, nodeID))
+		if err = c.detachReplicas(ctx, replicasToDetach); err != nil {
+			return nil, err
+		}
+	}
 
 	var azVolumeAttachment *azdiskv1beta2.AzVolumeAttachment
 	azVolumeAttachment, err = c.waitForLunOrAttach(ctx, volumeID, nodeID, waitForAttachVolumeFunc)
@@ -898,7 +877,7 @@ func (c *CrdProvisioner) detachVolume(ctx context.Context, azVolumeAttachment *a
 		return err
 	}
 
-	ctx, w := workflow.GetWorkflowFromObj(ctx, azVolumeAttachment)
+	ctx, w := workflow.New(ctx, workflow.WithDetails(workflow.GetObjectDetails(azVolumeAttachment)...))
 
 	updateFunc := func(obj client.Object) error {
 		updateInstance := obj.(*azdiskv1beta2.AzVolumeAttachment)
@@ -909,7 +888,7 @@ func (c *CrdProvisioner) detachVolume(ctx context.Context, azVolumeAttachment *a
 		case azdiskv1beta2.Attaching:
 			// if attachment still in progress, wait for attach to complete
 			w.Logger().V(5).Info("Attachment is in process... Waiting for the attachment to complete.")
-			if azVolumeAttachment, err = c.WaitForAttach(ctx, volumeID, nodeName); err != nil {
+			if azVolumeAttachment, err = c.WaitForAttachComplete(ctx, volumeID, nodeName); err != nil {
 				return err
 			}
 		// if detachment failed, reset error and state to retrigger operation
@@ -1124,6 +1103,104 @@ func isAzVolumeSpecSameAsRequestParams(defaultAzVolume *azdiskv1beta2.AzVolume,
 		reflect.DeepEqual(defaultAccReq, accessibilityReq))
 }
 
+func (c *CrdProvisioner) detachReplicas(ctx context.Context, replicasToDetach []*azdiskv1beta2.AzVolumeAttachment) (err error) {
+	var errors []error
+	ctx, w := workflow.New(ctx)
+	defer func() { w.Finish(err) }()
+
+	var wg sync.WaitGroup
+	for _, replicaToDetach := range replicasToDetach {
+		wg.Add(1)
+		go func(replicaToDetach *azdiskv1beta2.AzVolumeAttachment) {
+			defer wg.Done()
+			if err = c.detachVolume(ctx, replicaToDetach); err != nil {
+				errors = append(errors, err)
+			}
+		}(replicaToDetach)
+	}
+	wg.Wait()
+
+	if len(errors) > 0 {
+		err = status.Errorf(codes.Internal, "failed to detach replicas: %#v", errors)
+	}
+	return err
+}
+
+func (c *CrdProvisioner) filterReplicasToDetach(volumeName, nodeID string, attachments []azdiskv1beta2.AzVolumeAttachment) (numAttachment int, unpublishOrder []*azdiskv1beta2.AzVolumeAttachment) {
+	for i := range attachments {
+		// only count if deletionTimestamp not set
+		if attachments[i].GetDeletionTimestamp().IsZero() && !azureutils.MapContains(attachments[i].Status.Annotations, consts.VolumeDetachRequestAnnotation) && (attachments[i].Spec.VolumeName != volumeName || attachments[i].Spec.NodeName != nodeID) {
+			numAttachment++
+			if attachments[i].Spec.RequestedRole == azdiskv1beta2.ReplicaRole {
+				unpublishOrder = append(unpublishOrder, &attachments[i])
+			}
+		}
+	}
+	return
+}
+
+func (c *CrdProvisioner) getReplicasToDetach(ctx context.Context, volumeName, nodeID string) (unpublishOrder []*azdiskv1beta2.AzVolumeAttachment, err error) {
+	azVolume := &azdiskv1beta2.AzVolume{}
+	if err = c.azCachedReader.Get(ctx, types.NamespacedName{Namespace: c.config.ObjectNamespace, Name: volumeName}, azVolume); err != nil {
+		return
+	}
+	// detach replica volume if volume's maxShares have been fully saturated.
+	if azVolume.Spec.MaxMountReplicaCount > 0 {
+		// get undemoted AzVolumeAttachments for volume == volumeName and node != nodeID
+		volumeLabel := azureutils.LabelPair{Key: consts.VolumeNameLabel, Operator: selection.Equals, Entry: volumeName}
+		nodeLabel := azureutils.LabelPair{Key: consts.NodeNameLabel, Operator: selection.NotEquals, Entry: nodeID}
+
+		var attachments []azdiskv1beta2.AzVolumeAttachment
+		attachments, err = azureutils.GetAzVolumeAttachmentsWithLabel(ctx, c.azCachedReader, volumeLabel, nodeLabel)
+		if err != nil && !apiErrors.IsNotFound(err) {
+			err = status.Errorf(codes.Internal, "failed to list undemoted AzVolumeAttachments with volume (%s) not attached to node (%s): %v", volumeName, nodeID, err)
+			return nil, err
+		}
+
+		// TODO: come up with a logic to select replica for unpublishing)
+		sort.Slice(attachments, func(i, _ int) bool {
+			iRole, iExists := attachments[i].Labels[consts.RoleChangeLabel]
+			// if i is demoted, prioritize it. Otherwise, prioritize j
+			return iExists && iRole == consts.Demoted
+		})
+
+		nodeAttachmentCount, nodeUnpublishOrder := c.filterReplicasToDetach(volumeName, nodeID, attachments)
+
+		// if maxMountReplicaCount has been exceeded, unpublish demoted AzVolumeAttachment or if demoted AzVolumeAttachment does not exist, select one to unpublish
+		requiredNodeUnpublishCount := nodeAttachmentCount - azVolume.Spec.MaxMountReplicaCount
+		if requiredNodeUnpublishCount > 0 {
+			unpublishOrder = append(unpublishOrder, nodeUnpublishOrder[:requiredNodeUnpublishCount]...)
+			// if volume needs to be detached prior to attach operation, remove the attach annotation from CRI
+		}
+	}
+
+	var maxDiskCount int
+	if maxDiskCount, err = azureutils.GetNodeMaxDiskCount(ctx, c.azCachedReader, nodeID); err != nil {
+		// continue if k8s node object is not found, we have already verified the node's existence through azdrivernode.
+		if !apiErrors.IsNotFound(err) {
+			return
+		}
+	} else {
+		volumeLabel := azureutils.LabelPair{Key: consts.VolumeNameLabel, Operator: selection.NotEquals, Entry: volumeName}
+		nodeLabel := azureutils.LabelPair{Key: consts.NodeNameLabel, Operator: selection.Equals, Entry: nodeID}
+		var attachments []azdiskv1beta2.AzVolumeAttachment
+		if attachments, err = azureutils.GetAzVolumeAttachmentsWithLabel(ctx, c.azCachedReader, volumeLabel, nodeLabel); err != nil {
+			return
+		}
+
+		numVolumeAttachments, volumeUnpublishOrder := c.filterReplicasToDetach(volumeName, nodeID, attachments)
+
+		requiredVolumeUnpublishCount := numVolumeAttachments - maxDiskCount + 1
+
+		if requiredVolumeUnpublishCount > len(volumeUnpublishOrder) {
+			err = status.Errorf(codes.Internal, "Cannot free up %d node capacity: not enough replicas (%d) attached to the node", requiredVolumeUnpublishCount, len(volumeUnpublishOrder))
+		} else if requiredVolumeUnpublishCount > 0 {
+			unpublishOrder = append(unpublishOrder, volumeUnpublishOrder[:requiredVolumeUnpublishCount]...)
+		}
+	}
+	return
+}
+
 func waitForCreateVolumeFunc(obj interface{}, objectDeleted bool) (bool, error) {
 	if obj == nil || objectDeleted {
 		return false, nil
@@ -1196,6 +1273,17 @@ func waitForAttachVolumeFunc(obj interface{}, objectDeleted bool) (bool, error) 
 	}
 	if azVolumeAttachmentInstance.Status.Error != nil {
 		return false, util.ErrorFromAzError(azVolumeAttachmentInstance.Status.Error)
+	}
+	return false, nil
+}
+
+func waitForAttachVolumeCompleteFunc(obj interface{}, objectDeleted bool) (bool, error) {
+	if obj == nil || objectDeleted {
+		return false, status.Errorf(codes.Aborted, "AzVolumeAttachment was deleted")
+	}
+	azVolumeAttachmentInstance := obj.(*azdiskv1beta2.AzVolumeAttachment)
+	if azVolumeAttachmentInstance.Status.Detail != nil && azVolumeAttachmentInstance.Status.Detail.PublishContext != nil && azVolumeAttachmentInstance.Status.Detail.Role == azdiskv1beta2.PrimaryRole && azVolumeAttachmentInstance.Status.State == azdiskv1beta2.Attached {
+		return true, nil
 	}
 	return false, nil
 }

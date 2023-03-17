@@ -138,7 +138,7 @@ func (c *SharedState) DeleteAPIVersion(ctx context.Context, deleteVersion string
 					storedVersions = append(storedVersions, version)
 				}
 				updated.Status.StoredVersions = storedVersions
-				crd, err = c.crdClient.ApiextensionsV1().CustomResourceDefinitions().UpdateStatus(ctx, updated, metav1.UpdateOptions{})
+				_, err = c.crdClient.ApiextensionsV1().CustomResourceDefinitions().UpdateStatus(ctx, updated, metav1.UpdateOptions{})
 				if err != nil {
 					// log the error and continue
 					return err
