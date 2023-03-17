@@ -24,6 +24,7 @@ import (
 	"os"
 	"reflect"
 	"runtime"
+	"strconv"
 	"strings"
 	"syscall"
 	"testing"
@@ -563,44 +564,64 @@ func TestGetFStype(t *testing.T) {
 	}
 }
 
+var maxShareTests = []struct {
+	options       string
+	expectedValue int
+	expectedError error
+}{
+	{
+		"",
+		0,
+		fmt.Errorf("parse  failed with error: strconv.Atoi: parsing \"\": invalid syntax"),
+	},
+	{
+		"-1",
+		0,
+		fmt.Errorf("parse -1 returned with invalid value: -1"),
+	},
+	{
+		"NAN",
+		0,
+		fmt.Errorf("parse NAN failed with error: strconv.Atoi: parsing \"NAN\": invalid syntax"),
+	},
+	{
+		"2",
+		2,
+		nil,
+	},
+	{
+		strconv.Itoa(maxValueOfMaxSharesForAllDisks),
+		maxValueOfMaxSharesForAllDisks,
+		nil,
+	},
+	{
+		strconv.Itoa(maxValueOfMaxSharesForAllDisks + 1),
+		0,
+		fmt.Errorf("parse %d returned with value exceeding %d (max value of max shares for all disks): %d", maxValueOfMaxSharesForAllDisks+1, maxValueOfMaxSharesForAllDisks, maxValueOfMaxSharesForAllDisks+1),
+	},
+}
+
 func TestGetMaxShares(t *testing.T) {
-	tests := []struct {
+	type TestElem struct {
 		options       map[string]string
 		expectedValue int
 		expectedError error
-	}{
-		{
-			nil,
-			1,
-			nil,
-		},
+	}
+	tests := []TestElem{
 		{
 			map[string]string{},
 			1,
 			nil,
 		},
 		{
-			map[string]string{consts.MaxSharesField: ""},
-			0,
-			fmt.Errorf("parse  failed with error: strconv.Atoi: parsing \"\": invalid syntax"),
-		},
-		{
-			map[string]string{consts.MaxSharesField: "-1"},
-			0,
-			fmt.Errorf("parse -1 returned with invalid value: -1"),
-		},
-		{
-			map[string]string{consts.MaxSharesField: "NAN"},
-			0,
-			fmt.Errorf("parse NAN failed with error: strconv.Atoi: parsing \"NAN\": invalid syntax"),
-		},
-		{
-			map[string]string{consts.MaxSharesField: "2"},
-			2,
+			map[string]string{consts.DiskNameField: "testdisk"},
+			1,
 			nil,
 		},
 	}
-
+	for _, test := range maxShareTests {
+		tests = append(tests, TestElem{map[string]string{consts.DiskNameField: "testdisk", consts.MaxSharesField: test.options}, test.expectedValue, test.expectedError})
+	}
 	for _, test := range tests {
 		result, err := GetMaxShares(test.options)
 		if result != test.expectedValue {
@@ -608,6 +629,18 @@ func TestGetMaxShares(t *testing.T) {
 		}
 		if !reflect.DeepEqual(err, test.expectedError) {
 			t.Errorf("input: %q, GetMaxShares error: %v, expected: %v", test.options, err, test.expectedError)
+		}
+	}
+}
+
+func TestParseMaxShares(t *testing.T) {
+	for _, test := range maxShareTests {
+		result, err := ParseMaxShares(test.options)
+		if result != test.expectedValue {
+			t.Errorf("input: %q, ParseMaxShares result: %v, expected: %v", test.options, result, test.expectedValue)
+		}
+		if !reflect.DeepEqual(err, test.expectedError) {
+			t.Errorf("input: %q, ParseMaxShares error: %v, expected: %v", test.options, err, test.expectedError)
 		}
 	}
 }
