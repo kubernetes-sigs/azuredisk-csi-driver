@@ -18,6 +18,7 @@ package controller
 
 import (
 	"context"
+	"strconv"
 	"sync/atomic"
 	"testing"
 
@@ -1268,10 +1269,8 @@ func TestAddNodeToAvailableAttachmentsMap(t *testing.T) {
 					testNamespace,
 					&testNode0,
 				)
-				testSharedState.cachedClient.(*mockclient.MockClient).EXPECT().
-					Get(gomock.Any(), gomock.Any(), gomock.Any()).
-					Return(testNode1NotFoundError).AnyTimes()
 
+				mockClients(testSharedState.cachedClient.(*mockclient.MockClient), testSharedState.azClient, testSharedState.kubeClient)
 				return testSharedState
 			},
 			verifyFunc: func(t *testing.T, remainingCapacity any, nodeExists bool) {
@@ -1286,21 +1285,42 @@ func TestAddNodeToAvailableAttachmentsMap(t *testing.T) {
 			setupFunc: func(t *testing.T, mockCtl *gomock.Controller) *SharedState {
 				testSharedState := NewTestSharedState(mockCtl,
 					testNamespace,
-					&testNode0,
 				)
 
-				testSharedState.cachedClient.(*mockclient.MockClient).EXPECT().
-					Get(gomock.Any(), gomock.Any(), gomock.Any()).
-					Return(nil).AnyTimes()
-				testSharedState.cachedClient.(*mockclient.MockClient).EXPECT().
-					List(gomock.Any(), gomock.Any(), gomock.Any()).
-					Return(nil).AnyTimes()
-
+				mockClients(testSharedState.cachedClient.(*mockclient.MockClient), testSharedState.azClient, testSharedState.kubeClient)
 				return testSharedState
 			},
 			verifyFunc: func(t *testing.T, remainingCapacity any, nodeExists bool) {
 				require.True(t, nodeExists)
 				require.NotNil(t, remainingCapacity)
+			},
+		},
+		{
+			description: "[Success] Should only consider attached AzVolumeAttachment when calculating remaining capacity",
+			nodeName:    testNode0.Name,
+			nodeLables:  testNode0.GetLabels(),
+			setupFunc: func(t *testing.T, mockCtl *gomock.Controller) *SharedState {
+				testPrimaryAzVolumeAttachment0 := testPrimaryAzVolumeAttachment0
+				testPrimaryAzVolumeAttachment1 := testPrimaryAzVolumeAttachment1
+				testPrimaryAzVolumeAttachment0.Status.State = azdiskv1beta2.Attached
+				testPrimaryAzVolumeAttachment1.Status.State = azdiskv1beta2.Attaching
+
+				testSharedState := NewTestSharedState(mockCtl,
+					testNamespace,
+					&testNode0,
+					&testPrimaryAzVolumeAttachment0,
+					&testPrimaryAzVolumeAttachment1,
+				)
+
+				mockClients(testSharedState.cachedClient.(*mockclient.MockClient), testSharedState.azClient, testSharedState.kubeClient)
+				return testSharedState
+			},
+			verifyFunc: func(t *testing.T, remainingCapacity any, nodeExists bool) {
+				require.True(t, nodeExists)
+				require.NotNil(t, remainingCapacity)
+				n, err := strconv.ParseInt(testAttachableVolumesValue, 10, 32)
+				require.Nil(t, err)
+				require.Equal(t, int32(n)-1, remainingCapacity.(*atomic.Int32).Load())
 			},
 		},
 	}

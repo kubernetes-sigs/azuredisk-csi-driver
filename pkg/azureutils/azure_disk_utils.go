@@ -240,15 +240,36 @@ func GetNodeMaxDiskCount(ctx context.Context, cachedReader client.Reader, nodeNa
 	return GetNodeMaxDiskCountWithLabels(nodeObj.Labels)
 }
 
-func GetNodeRemainingDiskCount(ctx context.Context, cachedReader client.Reader, nodeName string) (int, error) {
-	nodeObj := &v1.Node{}
-	if err := cachedReader.Get(ctx, types.NamespacedName{Name: nodeName}, nodeObj); err != nil {
+// GetNodeRemainingDiskCountApprox returns an approximate capacity to the node
+func GetNodeRemainingDiskCountApprox(ctx context.Context, cachedReader client.Reader, nodeName string) (int, error) {
+	attachments, err := GetAzVolumeAttachmentsForNode(ctx, cachedReader, nodeName, AllRoles)
+	if err != nil {
 		return -1, err
 	}
 
-	// get all replica azvolumeattachments on the node
+	return calculateNodeCapacity(ctx, cachedReader, nodeName, len(attachments))
+}
+
+// GetNodeRemainingDiskCountActual returns the actual capacity to the node
+func GetNodeRemainingDiskCountActual(ctx context.Context, cachedReader client.Reader, nodeName string) (int, error) {
 	attachments, err := GetAzVolumeAttachmentsForNode(ctx, cachedReader, nodeName, AllRoles)
 	if err != nil {
+		return -1, err
+	}
+
+	numberOfAttachedAtts := 0
+	for _, attachment := range attachments {
+		if attachment.Status.State == azdiskv1beta2.Attached {
+			numberOfAttachedAtts++
+		}
+	}
+
+	return calculateNodeCapacity(ctx, cachedReader, nodeName, numberOfAttachedAtts)
+}
+
+func calculateNodeCapacity(ctx context.Context, cachedReader client.Reader, nodeName string, numOfAttachments int) (int, error) {
+	nodeObj := &v1.Node{}
+	if err := cachedReader.Get(ctx, types.NamespacedName{Name: nodeName}, nodeObj); err != nil {
 		return -1, err
 	}
 
@@ -276,7 +297,7 @@ func GetNodeRemainingDiskCount(ctx context.Context, cachedReader client.Reader, 
 		capacity = int(maxAttachables.Value())
 	}
 
-	return capacity - len(attachments), nil
+	return capacity - numOfAttachments, nil
 }
 
 func GetMaxShares(attributes map[string]string) (int, error) {
