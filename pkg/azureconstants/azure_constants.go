@@ -70,8 +70,8 @@ const (
 	PvNameKey                      = "csi.storage.k8s.io/pv/name"
 	PvNameTag                      = "kubernetes.io-created-for-pv-name"
 	PvNameLabel                    = "disk.csi.azure.com/pv"
-	VolumeAttachmentKey            = "disk.csi.azure.com/volumeattachment"
-	APIVersion                     = "disk.csi.azure.com/apiversion"
+	VolumeAttachmentKey            = "disk.csi.azure.com/volumeattachment" // used in AzVolumeAttachment.Status.Annotations
+	APIVersion                     = "disk.csi.azure.com/apiversion"       // used in ObjectMeta.Annotations
 	RateLimited                    = "rate limited"
 	RequestedSizeGib               = "requestedsizegib"
 	ResizeRequired                 = "resizeRequired"
@@ -112,7 +112,7 @@ const (
 	// ControllerFinalizer is a finalizer added to the pod running Azuredisk driver controller
 	// to prevent the pod deletion until clean up is completed
 	ControllerFinalizer                = "disk.csi.azure.com/azuredisk-finalizer"
-	CleanUpAnnotation                  = "disk.csi.azure.com/clean-up"
+	CleanUpAnnotation                  = "disk.csi.azure.com/clean-up" // used in AzVolumeAttachment.Status.Annotations.
 	NodeNameLabel                      = "disk.csi.azure.com/node-name"
 	NamespaceLabel                     = "disk.csi.azure.com/namespace"
 	PartitionLabel                     = "azdrivernodes.disk.csi.azure.com/partition"
@@ -120,23 +120,23 @@ const (
 	RoleChangeLabel                    = "disk.csi.azure.com/role-change"
 	Demoted                            = "demoted"
 	Promoted                           = "promoted"
-	VolumeAttachRequestAnnotation      = "disk.csi.azure.com/volume-attach-request"
-	VolumeDeleteRequestAnnotation      = "disk.csi.azure.com/volume-delete-request"
+	VolumeAttachRequestAnnotation      = "disk.csi.azure.com/volume-attach-request" // used in AzVolumeAttachment.ObjectMeta.Annotations. Don't attach disk if there is no VolumeAttachRequestAnnotation
+	VolumeDeleteRequestAnnotation      = "disk.csi.azure.com/volume-delete-request" // used in AzVolume.Status.Annotations.
 	CloudDeleteVolume                  = "cloud-delete-volume"
-	VolumeDetachRequestAnnotation      = "disk.csi.azure.com/volume-detach-request"
-	RecoverAnnotation                  = "disk.csi.azure.com/recovery" // used to ensure reconciliation is triggered for recovering CRIs
+	VolumeDetachRequestAnnotation      = "disk.csi.azure.com/volume-detach-request" // used in AzVolumeAttachment.Status.Annotations.
+	RecoverAnnotation                  = "disk.csi.azure.com/recovery"              // used in Status.Annotations. used to ensure reconciliation is triggered for recovering CRIs.
 	VolumeNameLabel                    = "disk.csi.azure.com/volume-name"
 	VolumeIDLabel                      = "disk.csi.azure.com/volume-id"
 	InlineVolumeAnnotation             = "disk.csi.azure.com/inline-volume"
 	PodNameKey                         = "disk.csi/azure.com/pod-name"
 	PreProvisionedVolumeAnnotation     = "disk.csi.azure.com/pre-provisioned"
-	RequestIDKey                       = "disk.csi.azure.com/request-id"
-	RequestStartimeKey                 = "disk.csi.azure.com/request-starttime"
+	RequestIDKey                       = "disk.csi.azure.com/request-id"        // used in ObjectMeta.Annotations.
+	RequestStartimeKey                 = "disk.csi.azure.com/request-starttime" // used in ObjectMeta.Annotations.
 	RequestTimeFormat                  = time.RFC3339Nano
-	RequesterKey                       = "disk.csi.azure.com/requester-name"
+	RequesterKey                       = "disk.csi.azure.com/requester-name" // used in ObjectMeta.Annotations.
 	WorkflowKey                        = "disk.csi.azure.com/requester-name"
-	ReplicaVolumeAttachRetryAnnotation = "disk.csi.azure.com/replica-volume-attach-retry"
-	ReplicaVolumeAttachRetryCount      = "disk.csi.azure.com/replica-volume-attach-retry-count"
+	ReplicaVolumeAttachRetryAnnotation = "disk.csi.azure.com/replica-volume-attach-retry"       // used in AzVolumeAttachment.Status.Annotations
+	ReplicaVolumeAttachRetryCount      = "disk.csi.azure.com/replica-volume-attach-retry-count" // used in AzVolumeAttachment.Status.Annotations
 
 	ControllerClusterRoleName         = "azuredisk-external-provisioner-role"
 	ControllerClusterRoleBindingName  = "azuredisk-csi-provisioner-binding"
