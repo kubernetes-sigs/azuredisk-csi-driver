@@ -164,8 +164,11 @@ func (r *ReconcilePod) Recover(ctx context.Context) error {
 			w.Logger().V(5).Infof("failed to add necessary components for pod (%s)", podKey)
 			continue
 		}
-		if err := r.createReplicas(ctx, podKey); err != nil {
-			w.Logger().V(5).Infof("failed to create replica AzVolumeAttachments for pod (%s)", podKey)
+
+		if pod.Status.Phase == corev1.PodRunning {
+			if err := r.createReplicas(ctx, podKey); err != nil {
+				w.Logger().V(5).Infof("failed to create replica AzVolumeAttachments for pod (%s)", podKey)
+			}
 		}
 	}
 
