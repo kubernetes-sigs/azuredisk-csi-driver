@@ -108,7 +108,7 @@ func main() {
 		}
 	} else {
 		downtime := calculateDowntime(podfailurecrd.Status.HeartBeat)
-		reportDowntime(ctx, clientset, downtime, podfailurecrd.Status.FailureType)
+		go reportDowntime(ctx, clientset, downtime, podfailurecrd.Status.FailureType)
 	}
 
 	if *storageProvisioner != "" {
