@@ -744,3 +744,18 @@ func SleepIfThrottled(err error, sleepSec int) {
 		time.Sleep(time.Duration(sleepSec) * time.Second)
 	}
 }
+
+// SetKeyValueInMap set key/value pair in map
+// key in the map is case insensitive, if key already exists, overwrite existing value
+func SetKeyValueInMap(m map[string]string, key, value string) {
+	if m == nil {
+		return
+	}
+	for k := range m {
+		if strings.EqualFold(k, key) {
+			m[k] = value
+			return
+		}
+	}
+	m[key] = value
+}
