@@ -86,6 +86,7 @@ spec:
             - "-leader-election"
             - "--leader-election-namespace=kube-system"
             - "--v=2"
+            - "--timeout=600s"
           env:
             - name: ADDRESS
               value: /csi/csi.sock
