@@ -26,6 +26,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2022-03-01/compute"
 	"github.com/container-storage-interface/spec/lib/go/csi"
@@ -966,4 +967,29 @@ func (d *DriverV2) getSnapshotInfo(snapshotID string) (snapshotName, resourceGro
 		return "", "", "", fmt.Errorf("cannot get SubscriptionID from %s", snapshotID)
 	}
 	return snapshotName, resourceGroup, subsID, err
+}
+
+// waitForSnapshotCopy wait for copy incremental snapshot to a new region until completionPercent is 100.0
+func (d *DriverV2) waitForSnapshotCopy(ctx context.Context, subsID, resourceGroup, copySnapshotName string, intervel, timeout time.Duration) error {
+	timeAfter := time.After(timeout)
+	timeTick := time.Tick(intervel)
+
+	for {
+		select {
+		case <-timeTick:
+			copySnapshot, rerr := d.cloud.SnapshotsClient.Get(ctx, subsID, resourceGroup, copySnapshotName)
+			if rerr != nil {
+				return status.Error(codes.Internal, fmt.Sprintf("get snapshot error: %v", rerr.Error()))
+			}
+
+			completionPercent := *copySnapshot.SnapshotProperties.CompletionPercent
+			klog.V(2).Infof("copy snapshot(%s) under rg(%s) region(%s) completionPercent: %f", copySnapshotName, resourceGroup, *copySnapshot.Location, completionPercent)
+			if completionPercent == float64(100.0) {
+				klog.V(2).Infof("copy snapshot(%s) under rg(%s) region(%s) complete", copySnapshotName, resourceGroup, *copySnapshot.Location)
+				return nil
+			}
+		case <-timeAfter:
+			return fmt.Errorf("timeout waiting for copy snapshot(%s) under rg(%s)", copySnapshotName, resourceGroup)
+		}
+	}
 }
