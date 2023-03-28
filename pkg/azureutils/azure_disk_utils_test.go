@@ -1421,6 +1421,56 @@ func TestParseDiskParameters(t *testing.T) {
 			expectedError: fmt.Errorf("parse invalidValue failed with error: strconv.Atoi: parsing \"invalidValue\": invalid syntax"),
 		},
 		{
+			name:        "disk parameters with PremiumV2_LRS",
+			inputParams: map[string]string{consts.SkuNameField: "PremiumV2_LRS"},
+			expectedOutput: ManagedDiskParameters{
+				AccountType:    "PremiumV2_LRS",
+				Incremental:    true,
+				Tags:           make(map[string]string),
+				VolumeContext:  map[string]string{consts.SkuNameField: "PremiumV2_LRS"},
+				DeviceSettings: make(map[string]string),
+			},
+			expectedError: nil,
+		},
+		{
+			name: "disk parameters with PremiumV2_LRS (valid cachingMode)",
+			inputParams: map[string]string{
+				consts.SkuNameField:     "PremiumV2_LRS",
+				consts.CachingModeField: "none",
+			},
+			expectedOutput: ManagedDiskParameters{
+				AccountType: "PremiumV2_LRS",
+				CachingMode: "none",
+				Incremental: true,
+				Tags:        make(map[string]string),
+				VolumeContext: map[string]string{
+					consts.SkuNameField:     "PremiumV2_LRS",
+					consts.CachingModeField: "none",
+				},
+				DeviceSettings: make(map[string]string),
+			},
+			expectedError: nil,
+		},
+		{
+			name: "disk parameters with PremiumV2_LRS (invalid cachingMode)",
+			inputParams: map[string]string{
+				consts.SkuNameField:     "PremiumV2_LRS",
+				consts.CachingModeField: "ReadOnly",
+			},
+			expectedOutput: ManagedDiskParameters{
+				AccountType: "PremiumV2_LRS",
+				CachingMode: "ReadOnly",
+				Incremental: true,
+				Tags:        make(map[string]string),
+				VolumeContext: map[string]string{
+					consts.SkuNameField:     "PremiumV2_LRS",
+					consts.CachingModeField: "ReadOnly",
+				},
+				DeviceSettings: make(map[string]string),
+			},
+			expectedError: fmt.Errorf("cachingMode ReadOnly is not supported for PremiumV2_LRS"),
+		},
+		{
 			name: "valid parameters input",
 			inputParams: map[string]string{
 				consts.SkuNameField:             "skuName",
