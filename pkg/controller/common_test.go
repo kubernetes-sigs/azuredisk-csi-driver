@@ -51,8 +51,9 @@ import (
 )
 
 const (
-	verifyCRITimeout  = time.Duration(5) * time.Minute
-	verifyCRIInterval = time.Duration(1) * time.Second
+	verifyCRITimeout           = time.Duration(5) * time.Minute
+	verifyCRIInterval          = time.Duration(1) * time.Second
+	testAttachableVolumesValue = "8"
 )
 
 var (
@@ -82,7 +83,7 @@ var (
 		},
 		Status: v1.NodeStatus{
 			Allocatable: v1.ResourceList(map[v1.ResourceName]resource.Quantity{
-				consts.AttachableVolumesField: resource.MustParse("8"),
+				consts.AttachableVolumesField: resource.MustParse(testAttachableVolumesValue),
 			}),
 		},
 	}
@@ -94,7 +95,7 @@ var (
 		},
 		Status: v1.NodeStatus{
 			Allocatable: v1.ResourceList(map[v1.ResourceName]resource.Quantity{
-				consts.AttachableVolumesField: resource.MustParse("8"),
+				consts.AttachableVolumesField: resource.MustParse(testAttachableVolumesValue),
 			}),
 		},
 	}
@@ -106,7 +107,7 @@ var (
 		},
 		Status: v1.NodeStatus{
 			Allocatable: v1.ResourceList(map[v1.ResourceName]resource.Quantity{
-				consts.AttachableVolumesField: resource.MustParse("8"),
+				consts.AttachableVolumesField: resource.MustParse(testAttachableVolumesValue),
 			}),
 		},
 	}
@@ -118,7 +119,7 @@ var (
 		},
 		Status: v1.NodeStatus{
 			Allocatable: v1.ResourceList(map[v1.ResourceName]resource.Quantity{
-				consts.AttachableVolumesField: resource.MustParse("8"),
+				consts.AttachableVolumesField: resource.MustParse(testAttachableVolumesValue),
 			}),
 		},
 		Spec: v1.NodeSpec{

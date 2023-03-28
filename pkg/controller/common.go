@@ -655,7 +655,7 @@ func (s *scoreByNodeCapacity) score(ctx context.Context, nodeScores map[string]i
 			delete(nodeScores, node.Name)
 			continue
 		}
-		remainingCapacity, err := azureutils.GetNodeRemainingDiskCount(ctx, s.state.cachedClient, node.Name)
+		remainingCapacity, err := azureutils.GetNodeRemainingDiskCountApprox(ctx, s.state.cachedClient, node.Name)
 		if err != nil {
 			// if failed to get node's remaining capacity, remove the node from the candidate list and proceed
 			w.Logger().Errorf(err, "failed to get remaining capacity of node (%s)", node.Name)

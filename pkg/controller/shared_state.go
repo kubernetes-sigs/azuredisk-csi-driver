@@ -1765,7 +1765,7 @@ func (c *SharedState) getNodesTopologySelector(ctx context.Context, nodes []v1.N
 // addNodeToAvailableAttachmentsMap returns true if the node is added to or already in the availableAttachmentsMap, and false otherwise.
 func (c *SharedState) addNodeToAvailableAttachmentsMap(ctx context.Context, nodeName string, nodeLables map[string]string) bool {
 	if _, ok := c.availableAttachmentsMap.Load(nodeName); !ok {
-		capacity, err := azureutils.GetNodeRemainingDiskCount(ctx, c.cachedClient, nodeName)
+		capacity, err := azureutils.GetNodeRemainingDiskCountActual(ctx, c.cachedClient, nodeName)
 		if err != nil {
 			klog.Errorf("Failed to get node(%s) remaining disk count with error: %v", nodeName, err)
 			// store the maximum capacity if an entry for the node doesn't exist.

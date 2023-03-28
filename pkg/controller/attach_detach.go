@@ -119,8 +119,6 @@ func (r *ReconcileAttachDetach) Reconcile(ctx context.Context, request reconcile
 		if err := r.removeFinalizer(ctx, azVolumeAttachment); err != nil {
 			return reconcileReturnOnError(ctx, azVolumeAttachment, "delete", err, r.retryInfo)
 		}
-		// deletion of azVolumeAttachment is succeeded, the node's remaining capacity of disk attachment should be increased by 1
-		r.incrementAttachmentCount(ctx, azVolumeAttachment.Spec.NodeName)
 		// detachment request
 	} else if volumeDetachRequested(azVolumeAttachment) {
 		if err := r.triggerDetach(ctx, azVolumeAttachment); err != nil {
@@ -372,6 +370,9 @@ func (r *ReconcileAttachDetach) triggerDetach(ctx context.Context, azVolumeAttac
 				w.Logger().Errorf(uerr, "failed to update final status of AzVolumeAttachement")
 			}
 		} else {
+			// detach of azVolumeAttachment is succeeded, the node's remaining capacity of disk attachment should be increased by 1
+			r.incrementAttachmentCount(ctx, azVolumeAttachment.Spec.NodeName)
+
 			//nolint:contextcheck // delete of the CRI must occur even when the current context's deadline passes.
 			if derr := r.cachedClient.Delete(goCtx, azVolumeAttachment); derr != nil {
 				w.Logger().Error(derr, "failed to delete AzVolumeAttachment")
