@@ -25,6 +25,8 @@ azure-cluster-up.sh: Creates a Kubernetes cluster in the Azure cloud.
 Options:
   -l, --location     [Required] : The region.
   -s, --subscription [Required] : The subscription identifier.
+  -a, --node-resource-group     : The nodepool resource group name. Defaults
+                                  to <name>-nodepool-rg
   -b, --enable-bastion          : If present, enable Azure Bastion for access
                                   to the cluster nodes.
   -c, --client-id string        : The service principal identifier. Default to
@@ -41,8 +43,7 @@ Options:
                                   <name>-rg
   -t, --template string         : The cluster template name or URL. Defaults
                                   to single-az.
-  -v, --k8s-version string      : The Kubernetes version. Defaults to 1.17 for
-                                  Linux and 1.18 for Windows.
+  -v, --k8s-version string      : The Kubernetes version. Defaults to latest.
 EOF
 }
 
@@ -129,7 +130,8 @@ unset AZURE_CLUSTER_DNS_NAME
 unset AZURE_CLUSTER_TEMPLATE
 unset AZURE_K8S_VERSION
 unset AZURE_LOCATION
-unset AZURE_RESOURCE_GROUP
+unset AZURE_CLUSTER_RESOURCE_GROUP
+unset AZURE_NODEPOOL_RESOURCE_GROUP
 unset AZURE_SUBSCRIPTION_ID
 unset AZURE_TENANT_ID
 unset ENABLE_AZURE_BASTION
@@ -140,6 +142,11 @@ while [[ $# -gt 0 ]]
 do
   ARG="$1"
   case $ARG in
+    -a|--node-resource-group)
+      AZURE_NODEPOOL_RESOURCE_GROUP="$2"
+      shift 2 # skip the option arguments
+      ;;
+      
     -b|--enable-bastion)
       ENABLE_AZURE_BASTION="true"
       shift
@@ -181,7 +188,7 @@ do
       ;;
 
     -r|--resource-group)
-      AZURE_RESOURCE_GROUP="$2"
+      AZURE_CLUSTER_RESOURCE_GROUP="$2"
       shift 2 # skip the option arguments
       ;;
 
@@ -252,11 +259,7 @@ if [[ -z ${AZURE_CLUSTER_TEMPLATE:-} ]]; then
 fi
 
 IS_AZURE_CLUSTER_TEMPLATE_URI=$([[ "$AZURE_CLUSTER_TEMPLATE" =~ (https://|http://) ]]; echo $(( $? == 0 )))
-IS_WINDOWS_CLUSTER=$([[ "$AZURE_CLUSTER_TEMPLATE" =~ .*-windows|.*/windows-testing/.* ]]; echo $(( $? == 0 )))
-
-if [[ -z ${AZURE_K8S_VERSION:-} ]]; then
-  AZURE_K8S_VERSION="1.21"
-fi
+IS_WINDOWS_CLUSTER=$([[ "$AZURE_CLUSTER_TEMPLATE" =~ windows|.*-windows|.*/windows-testing/.* ]]; echo $(( $? == 0 )))
 
 GIT_ROOT=$(git rev-parse --show-toplevel)
 GIT_COMMIT=$(git rev-parse --short HEAD)
@@ -287,8 +290,12 @@ if [[ -z ${AZURE_CLUSTER_DNS_NAME:-} ]]; then
   AZURE_CLUSTER_DNS_NAME=$(basename "$(mktemp -t "${CLUSTER_PREFIX}-${AZURE_CLUSTER_TEMPLATE}-${GIT_COMMIT}-XXX")" | sed "s/windows/win/g")
 fi
 
-if [[ -z ${AZURE_RESOURCE_GROUP:-} ]]; then
-  AZURE_RESOURCE_GROUP=${AZURE_CLUSTER_DNS_NAME}-rg
+if [[ -z "${AZURE_CLUSTER_RESOURCE_GROUP:-}" ]]; then
+  AZURE_CLUSTER_RESOURCE_GROUP="$AZURE_CLUSTER_DNS_NAME-rg"
+fi
+
+if [[ -z "${AZURE_NODEPOOL_RESOURCE_GROUP:-}" ]]; then
+  AZURE_NODEPOOL_RESOURCE_GROUP="$AZURE_CLUSTER_DNS_NAME-nodepool-rg"
 fi
 
 AZURE_SUBSCRIPTION_URI="/subscriptions/${AZURE_SUBSCRIPTION_ID}"
@@ -308,9 +315,16 @@ if [[ -z "$(command -v az)" ]]; then
   curl -sSfL https://aka.ms/InstallAzureCLIDeb | sudo bash
 fi
 
-if [[ -z "$(command -v aks-engine)" ]]; then
-  echo "Installing aks-engine..."
-  curl -sSfL https://raw.githubusercontent.com/Azure/aks-engine/master/scripts/get-akse.sh | sudo bash -s -- --version v0.67.0
+AZURE_CLI_AKS_PREVIEW_EXTENSION_VERSION="$(az extension show --name aks-preview --query version --output tsv || true)"
+if [[ -z "$AZURE_CLI_AKS_PREVIEW_EXTENSION_VERSION" ]]; then
+  echo "Installing AKS Preview extension..."
+  az extension add --name aks-preview > /dev/null
+else
+  AZURE_CLI_AKS_PREVIEW_CURRENT_VERSION="$(az extension list-available --query "[?name=='aks-preview'].version | [0]" --output tsv || true)"
+  if [[ "$AZURE_CLI_AKS_PREVIEW_EXTENSION_VERSION" != "$AZURE_CLI_AKS_PREVIEW_CURRENT_VERSION" ]]; then
+    echo "Upgrading AKS Preview extension..."
+    az extension upgrade --name aks-preview > /dev/null
+  fi
 fi
 
 #
@@ -327,9 +341,9 @@ if [[ "$AZURE_SUBSCRIPTION_ID" != "$AZURE_ACTIVE_SUBSCRIPTION_ID" ]]; then
   az account set --subscription "${AZURE_SUBSCRIPTION_ID}" 1> /dev/null
 fi
 
-if [[ "$(az group exists --resource-group "$AZURE_RESOURCE_GROUP")" != "true" ]]; then
-  echo "Creating resource group $AZURE_RESOURCE_GROUP..."
-  az group create --name "$AZURE_RESOURCE_GROUP" --location "$AZURE_LOCATION" 1> /dev/null
+if [[ "$(az group exists --resource-group "$AZURE_CLUSTER_RESOURCE_GROUP")" != "true" ]]; then
+  echo "Creating cluster resource group $AZURE_CLUSTER_RESOURCE_GROUP..."
+  az group create --name "$AZURE_CLUSTER_RESOURCE_GROUP" --location "$AZURE_LOCATION" 1> /dev/null
 fi
 
 CLEANUP_FILE="$OUTPUT_DIR/cluster-down.sh"
@@ -341,31 +355,52 @@ if [[ -z \$AZURE_ACTIVE_SUBSCRIPTION_ID ]]; then
   az login 1> /dev/null
 fi
 set -x
-az group delete --subscription="$AZURE_SUBSCRIPTION_ID" --resource-group="$AZURE_RESOURCE_GROUP" --yes
+az group delete --subscription="$AZURE_SUBSCRIPTION_ID" --resource-group="$AZURE_CLUSTER_RESOURCE_GROUP" --yes
 EOF
 chmod +x "$CLEANUP_FILE"
 
 trap_push "print_cleanup_command \"${CLEANUP_FILE}\"" exit
 
+#
+# Create an Azure Key Vault to hold the cluster service principal credentails
+#
+AZURE_KEYVAULT_NAME="$AZURE_CLUSTER_DNS_NAME-kv"
+if [[ -z "$( (az keyvault show --name "$AZURE_KEYVAULT_NAME" --resource-group "$AZURE_CLUSTER_RESOURCE_GROUP" --output tsv --query name || true) 2> /dev/null)" ]]; then
+  echo "Creating KeyVault $AZURE_KEYVAULT_NAME..."
+  az keyvault create --name "$AZURE_KEYVAULT_NAME" --resource-group "$AZURE_CLUSTER_RESOURCE_GROUP" --location "$AZURE_LOCATION" 1> /dev/null
+fi
+
+#
+# Create a user-assigned managed identity for the AKS cluster.
+#
+AZURE_MANAGED_IDENTITY_NAME="$AZURE_CLUSTER_DNS_NAME"
+AZURE_MANAGED_IDENTITY_ID="$( (az identity show --name "$AZURE_MANAGED_IDENTITY_NAME" --resource-group "$AZURE_CLUSTER_RESOURCE_GROUP" --output tsv --query id || true) 2> /dev/null)"
+if [[ -z "$AZURE_MANAGED_IDENTITY_ID" ]]; then
+  AZURE_MANAGED_IDENTITY_ID="$(az identity create --name "$AZURE_MANAGED_IDENTITY_NAME" --resource-group "$AZURE_CLUSTER_RESOURCE_GROUP" --location "$AZURE_LOCATION" --output tsv --query id)"
+fi
+
+#
 # If no service principal was specified, create a new one or use the one from a previous
 # run of this script.
+#
 if [[ -z ${AZURE_CLIENT_ID:-} ]]; then
   AZURE_CLIENT_NAME=${AZURE_CLUSTER_DNS_NAME}-sp
-  AZURE_CLIENT_ID_FILE="$OUTPUT_DIR/$AZURE_CLIENT_NAME.id"
-  AZURE_CLIENT_TENANT_FILE="$OUTPUT_DIR/$AZURE_CLIENT_NAME.tenant"
-  AZURE_CLIENT_SECRET_FILE="$OUTPUT_DIR/$AZURE_CLIENT_NAME"
+  AZURE_CLIENT_TENANT_NAME="${AZURE_CLIENT_NAME}-tenant-id"
+  AZURE_CLIENT_ID_NAME="${AZURE_CLIENT_NAME}-client-id"
+  AZURE_CLIENT_SECRET_NAME="${AZURE_CLIENT_NAME}-secret"
 
-  if [[ -e "$AZURE_CLIENT_ID_FILE" ]] && [[ -e "$AZURE_CLIENT_SECRET_FILE" ]]; then
+  AZURE_CLIENT_ID="$( (az keyvault secret show --vault-name "$AZURE_KEYVAULT_NAME" --name "$AZURE_CLIENT_ID_NAME" --output tsv --query value || true) 2> /dev/null)"
+  AZURE_CLIENT_SECRET="$( (az keyvault secret show --vault-name "$AZURE_KEYVAULT_NAME" --name "$AZURE_CLIENT_SECRET_NAME" --output tsv --query value || true) 2> /dev/null)"
+  AZURE_TENANT_ID="$( (az keyvault secret show --vault-name "$AZURE_KEYVAULT_NAME" --name "$AZURE_CLIENT_TENANT_NAME" --output tsv --query value || true) 2> /dev/null)"
+
+  if [[ -n "$AZURE_CLIENT_ID" ]] && [[ -n "$AZURE_CLIENT_SECRET" ]] &&  [[ -n "$AZURE_TENANT_ID" ]]; then
     echo "Using existing service principal $AZURE_CLIENT_NAME..."
-    AZURE_TENANT_ID=$(cat "$AZURE_CLIENT_TENANT_FILE")
-    AZURE_CLIENT_ID=$(cat "$AZURE_CLIENT_ID_FILE")
-    AZURE_CLIENT_SECRET=$(cat "$AZURE_CLIENT_SECRET_FILE")
 
-    echo "Assigning $AZURE_CLIENT_ID to \"Owner\" role of $AZURE_RESOURCE_GROUP..."
+    echo "Assigning $AZURE_CLIENT_ID to \"Owner\" role of $AZURE_CLUSTER_RESOURCE_GROUP..."
     az role assignment create \
         --assignee="$AZURE_CLIENT_ID" \
-        --role=Owner \
-        --resource-group="$AZURE_RESOURCE_GROUP" 1> /dev/null
+        --role=Contributor \
+        --scope="$AZURE_SUBSCRIPTION_URI" 1> /dev/null
   else
     echo "Creating service principal $AZURE_CLIENT_NAME..."
     mapfile -t AZURE_CLIENT_INFO < <(az ad sp create-for-rbac \
@@ -379,81 +414,162 @@ if [[ -z ${AZURE_CLIENT_ID:-} ]]; then
     AZURE_CLIENT_SECRET=${AZURE_CLIENT_INFO[2]}
     unset AZURE_CLIENT_INFO
 
-    echo "$AZURE_TENANT_ID" > "$AZURE_CLIENT_TENANT_FILE"
-    echo "$AZURE_CLIENT_ID" > "$AZURE_CLIENT_ID_FILE"
-    echo "$AZURE_CLIENT_SECRET" > "$AZURE_CLIENT_SECRET_FILE"
+    echo "Storing service principal credentials in KeyVault $AZURE_KEYVAULT_NAME..."
+    az keyvault secret set --vault-name "$AZURE_KEYVAULT_NAME" --name "$AZURE_CLIENT_TENANT_NAME" --value "$AZURE_TENANT_ID" 1> /dev/null
+    az keyvault secret set --vault-name "$AZURE_KEYVAULT_NAME" --name "$AZURE_CLIENT_ID_NAME" --value "$AZURE_CLIENT_ID" 1> /dev/null
+    az keyvault secret set --vault-name "$AZURE_KEYVAULT_NAME" --name "$AZURE_CLIENT_SECRET_NAME" --value "$AZURE_CLIENT_SECRET" 1> /dev/null
   fi
 
   # Add removal of the service principal to the cleanup script.
-  echo "az ad sp delete --id=$AZURE_CLIENT_ID" >> "$CLEANUP_FILE"
-
-  echo "Waiting for service principal to become available in directory..."
-  trap_push 'az logout &> /dev/null' exit
-  retry 5 60 az login \
-      --service-principal \
-      --tenant="$AZURE_TENANT_ID" \
-      --username="$AZURE_CLIENT_ID" \
-      --password="$AZURE_CLIENT_SECRET" \
-      --allow-no-subscriptions 1> /dev/null
+  >>"$CLEANUP_FILE" cat <<EOF
+az role assignment delete --assignee "$AZURE_CLIENT_ID" --role Contributor --scope "$AZURE_SUBSCRIPTION_URI" --yes
+az ad sp delete --id="$AZURE_CLIENT_ID"
+EOF
 fi
-
-AZURE_ADMIN_PASSWORD_FILE="$OUTPUT_DIR/id_azureuser.pwd"
-AZURE_ADMIN_PRIVATE_KEY_FILE="$OUTPUT_DIR/id_azureuser"
-AZURE_ADMIN_PUBLIC_KEY_FILE="$AZURE_ADMIN_PRIVATE_KEY_FILE.pub"
-
-if [[ $IS_WINDOWS_CLUSTER -ne 0 ]] && [[ ! -e "$AZURE_ADMIN_PASSWORD_FILE" ]]; then
-  echo "Creating Windows administrator password..."
-  genpwd 16 > "$AZURE_ADMIN_PASSWORD_FILE" || true
-fi
-
-if [[ ! -e "$AZURE_ADMIN_PUBLIC_KEY_FILE" ]]; then
-  echo "Creating administrator SSH key pair..."
-  ssh-keygen -q -t rsa -b 4096 -f "$AZURE_ADMIN_PRIVATE_KEY_FILE" -N ""
-fi
-
-AZURE_ADMIN_PUBLIC_KEY=$(cat "$AZURE_ADMIN_PUBLIC_KEY_FILE")
-
-echo "Creating Kubernetes cluster $AZURE_CLUSTER_DNS_NAME..."
-API_MODEL="$OUTPUT_DIR/$AZURE_CLUSTER_DNS_NAME-model.json"
-
-< "$AZURE_CLUSTER_TEMPLATE_FILE" sed "s/\"location\": \".*\"/\"location\": \"$AZURE_LOCATION\"/" > "$API_MODEL"
-
-AKS_ENGINE_OVERRIDES=(\
-  --set orchestratorProfile.orchestratorRelease="$AZURE_K8S_VERSION" \
-  --set orchestratorProfile.kubernetesConfig.useManagedIdentity=false \
-  --set masterProfile.dnsPrefix="$AZURE_CLUSTER_DNS_NAME" \
-  --set linuxProfile.ssh.publicKeys[0].keyData="$AZURE_ADMIN_PUBLIC_KEY" \
-  --set servicePrincipalProfile.clientID="$AZURE_CLIENT_ID" \
-  --set servicePrincipalProfile.secret="$AZURE_CLIENT_SECRET")
 
 if [[ $IS_WINDOWS_CLUSTER -ne 0 ]]; then
-  AZURE_ADMIN_PASSWORD=$(cat "$AZURE_ADMIN_PASSWORD_FILE")
-  AKS_ENGINE_OVERRIDES+=(--set windowsProfile.adminPassword="$AZURE_ADMIN_PASSWORD")
+  AZURE_WIN_ADMIN_SECRET_NAME="$AZURE_CLUSTER_DNS_NAME-winadm"
+  AZURE_WIN_ADMIN_SECRET=$(az keyvault secret show --vault-name "$AZURE_KEYVAULT_NAME" --name "$AZURE_WIN_ADMIN_SECRET_NAME" || true)
+
+  if [[ -n "$AZURE_WIN_ADMIN_SECRET" ]]; then
+    echo "Using existing Windows administrator password..."
+  else
+    echo "Creating Windows administrator password..."
+    AZURE_WIN_ADMIN_SECRET="$(genpwd 16)"
+    az keyvault secret set --vault-name "$AZURE_KEYVAULT_NAME" --name "$AZURE_WIN_ADMIN_SECRET_NAME" --value "$AZURE_WIN_ADMIN_SECRET" 1> /dev/null
+  fi
 fi
 
-aks-engine deploy \
-  --subscription-id="$AZURE_SUBSCRIPTION_ID" \
-  --resource-group="$AZURE_RESOURCE_GROUP" \
-  --location="$AZURE_LOCATION" \
-  --client-id="$AZURE_CLIENT_ID" \
-  --client-secret="$AZURE_CLIENT_SECRET" \
-  --api-model="$API_MODEL" \
-  --output-directory="$OUTPUT_DIR" \
-  --force-overwrite \
-  "${AKS_ENGINE_OVERRIDES[@]}"
+#
+# Create the Azure Kubernetes Service cluster from the aks-engine template.
+#
+echo "Creating cluster $AZURE_CLUSTER_DNS_NAME and system nodepool..."
+MASTER_NAME=$(cat "$AZURE_CLUSTER_TEMPLATE_FILE" | jq --raw-output '.properties.masterProfile.name // "systempool"')
+MASTER_NODE_COUNT=$(cat "$AZURE_CLUSTER_TEMPLATE_FILE" | jq --raw-output '.properties.masterProfile.count // 1')
+MASTER_NODE_SKU=$(cat "$AZURE_CLUSTER_TEMPLATE_FILE" | jq --raw-output '.properties.masterProfile.vmSize // "Standard_D2s_v3"')
+AGENTPOOL_NAME=$(cat "$AZURE_CLUSTER_TEMPLATE_FILE" | jq --raw-output '.properties.agentPoolProfiles[0].name // "agentpool"')
+AGENTPOOL_NODE_COUNT=$(cat "$AZURE_CLUSTER_TEMPLATE_FILE" | jq --raw-output '.properties.agentPoolProfiles[0].count // 3')
+AGENTPOOL_NODE_SKU=$(cat "$AZURE_CLUSTER_TEMPLATE_FILE" | jq --raw-output '.properties.agentPoolProfiles[0].vmSize // "Standard_D2s_v3"')
+AGENTPOOL_OS_TYPE=$(cat "$AZURE_CLUSTER_TEMPLATE_FILE" | jq --raw-output '.properties.agentPoolProfiles[0].osType // "Linux"')
+mapfile -t AGENTPOOL_ZONES < <(cat "$AZURE_CLUSTER_TEMPLATE_FILE" | jq --raw-output '.properties.agentPoolProfiles[0].availabilityZones // [] | .[]')
+WINDOWS_PROFILE_ADMIN_USER=$(cat "$AZURE_CLUSTER_TEMPLATE_FILE" | jq --raw-output '.properties.windowsProfile.adminUsername // "azureuser"')
+
+AKS_CREATE_OPTIONS=(
+  --name "$AZURE_CLUSTER_DNS_NAME" \
+  --location "$AZURE_LOCATION" \
+  --resource-group "$AZURE_CLUSTER_RESOURCE_GROUP" \
+  --dns-name-prefix "$AZURE_CLUSTER_DNS_NAME" \
+  --generate-ssh-keys \
+  --enable-managed-identity \
+  --assign-identity "$AZURE_MANAGED_IDENTITY_ID" \
+  --assign-kubelet-identity "$AZURE_MANAGED_IDENTITY_ID" \
+  --node-resource-group "$AZURE_NODEPOOL_RESOURCE_GROUP" \
+  --nodepool-name "$MASTER_NAME" \
+  --node-count "$MASTER_NODE_COUNT" \
+  --node-vm-size "$MASTER_NODE_SKU" \
+  --disable-disk-driver \
+  --disable-file-driver \
+  --disable-snapshot-controller \
+  --network-plugin azure \
+  --yes
+  )
+
+if [[ $IS_WINDOWS_CLUSTER -ne 0 ]]; then
+  AKS_CREATE_OPTIONS+=(
+    --windows-admin-username "$WINDOWS_PROFILE_ADMIN_USER" \
+    --windows-admin-password "$AZURE_WIN_ADMIN_SECRET"
+  )
+fi
+
+if [[ -n "${AZURE_K8S_VERSION:-}" ]]; then
+  AKS_CREATE_OPTIONS+=(--kubernetes-version "$AZURE_K8S_VERSION")
+fi
+
+az aks create "${AKS_CREATE_OPTIONS[@]}" > /dev/null
+
+echo "Creating agent nodepool..."
+AGENTPOOL_ADD_OPTIONS=(
+  --cluster-name "$AZURE_CLUSTER_DNS_NAME" \
+  --resource-group "$AZURE_CLUSTER_RESOURCE_GROUP" \
+  --nodepool-name "$AGENTPOOL_NAME" \
+  --node-count "$AGENTPOOL_NODE_COUNT" \
+  --node-vm-size "$AGENTPOOL_NODE_SKU" \
+  --mode "User" \
+  --os-type "$AGENTPOOL_OS_TYPE"
+  )
+
+if [[ -n "${AZURE_K8S_VERSION:-}" ]]; then
+  AGENTPOOL_ADD_OPTIONS+=(--kubernetes-version "$AZURE_K8S_VERSION")
+fi
+
+if [[ ${#AGENTPOOL_ZONES[@]} -ne 0 ]]; then
+  AGENTPOOL_ADD_OPTIONS+=(--zones "${AGENTPOOL_ZONES[@]}")
+fi
+
+az aks nodepool add "${AGENTPOOL_ADD_OPTIONS[@]}" > /dev/null
+
+echo "Getting the cluster credentials..."
+az aks get-credentials \
+  --name "$AZURE_CLUSTER_DNS_NAME" \
+  --resource-group "$AZURE_CLUSTER_RESOURCE_GROUP" \
+  --overwrite-existing  > /dev/null
+>>"$CLEANUP_FILE" cat <<EOF
+kubectl config delete-context "$AZURE_CLUSTER_DNS_NAME"
+EOF
+
+echo "Tainting the system nodes..."
+kubectl taint nodes --selector "kubernetes.azure.com/mode=system" "CriticalAddonsOnly=true:NoSchedule"
 
 # Set up Bastion access if requested
 if [[ ${ENABLE_AZURE_BASTION:-false} == "true" ]]; then
   "${GIT_ROOT}/hack/enable-azure-bastion.sh" \
     --subscription "$AZURE_SUBSCRIPTION_ID" \
-    --resource-group "$AZURE_RESOURCE_GROUP" \
+    --resource-group "$AZURE_NODEPOOL_RESOURCE_GROUP" \
     --location "$AZURE_LOCATION" \
     --name "$AZURE_CLUSTER_DNS_NAME"
 fi
 
-AZURE_CLUSTER_KUBECONFIG_FILE="$OUTPUT_DIR/kubeconfig/kubeconfig.$AZURE_LOCATION.json"
-echo "Waiting for cluster to become available"
-retry 30 10 kubectl --kubeconfig="$AZURE_CLUSTER_KUBECONFIG_FILE" get nodes 1> /dev/null
+#
+# Create Helm chart overrides file.
+#
+HELM_VALUES_FILE="$OUTPUT_DIR/csi-azuredisk-overrides.yaml"
+>"$HELM_VALUES_FILE" cat <<EOF
+controller:
+  replicas: 1
+  affinity:
+    nodeAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+        nodeSelectorTerms:
+        - matchExpressions:
+          - key: kubernetes.azure.com/mode
+            operator: In
+            values:
+            - system
+  tolerations:
+    - key: "CriticalAddonsOnly"
+      operator: "Exists"
+      effect: "NoSchedule"
+snapshot:
+  snapshotController:
+    replicas: 1
+schedulerExtender:
+  replicas: 1
+  affinity:
+    nodeAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+        nodeSelectorTerms:
+        - matchExpressions:
+          - key: kubernetes.azure.com/mode
+            operator: In
+            values:
+            - system
+  tolerations:
+    - key: "CriticalAddonsOnly"
+      operator: "Exists"
+      effect: "NoSchedule"
+linux:
+  tolerations: []
+EOF
 
 #
 # Create setup and clean-up shell scripts.
@@ -465,9 +581,14 @@ export AZURE_TENANT_ID="$AZURE_TENANT_ID"
 export AZURE_SUBSCRIPTION_ID="$AZURE_SUBSCRIPTION_ID"
 export AZURE_CLIENT_ID="$AZURE_CLIENT_ID"
 export AZURE_CLIENT_SECRET="$AZURE_CLIENT_SECRET"
-export AZURE_RESOURCE_GROUP="$AZURE_RESOURCE_GROUP"
+export AZURE_RESOURCE_GROUP="$AZURE_NODEPOOL_RESOURCE_GROUP"
 export AZURE_LOCATION="$AZURE_LOCATION"
-export KUBECONFIG="$AZURE_CLUSTER_KUBECONFIG_FILE"
+export EXTRA_HELM_OPTIONS="--values $HELM_VALUES_FILE"
+
+az aks get-credentials \
+  --name "$AZURE_CLUSTER_DNS_NAME" \
+  --resource-group "$AZURE_CLUSTER_RESOURCE_GROUP" \
+  --overwrite-existing
 EOF
 
 if [[ ${IS_WINDOWS_CLUSTER} -ne 0 ]]; then
@@ -478,12 +599,16 @@ chmod +x "$SETUP_FILE"
 
 mkdir -p "$OUTPUT_DIR/artifacts"
 
-echo
-echo "To use the $AZURE_CLUSTER_DNS_NAME cluster, set KUBECONFIG to the following:"
-echo
-echo "$ export KUBECONFIG=\"$AZURE_CLUSTER_KUBECONFIG_FILE\""
-echo
-echo "To setup for e2e tests, run the following command:"
-echo
-echo "$ source \"$SETUP_FILE\""
-echo
+cat <<EOF
+To use the $AZURE_CLUSTER_DNS_NAME cluster, run the following command:
+
+$ az aks get-credentials \
+  --name "$AZURE_CLUSTER_DNS_NAME" \
+  --resource-group "$AZURE_CLUSTER_RESOURCE_GROUP" \
+  --overwrite-existing
+
+To setup for e2e tests, run the following command:
+
+$ source "$SETUP_FILE"
+
+EOF
