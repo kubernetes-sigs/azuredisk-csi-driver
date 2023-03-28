@@ -657,6 +657,13 @@ func ParseDiskParameters(parameters map[string]string) (ManagedDiskParameters, e
 			}
 		}
 	}
+
+	if strings.EqualFold(diskParams.AccountType, string(azureconstants.PremiumV2LRS)) {
+		if diskParams.CachingMode != "" && !strings.EqualFold(string(diskParams.CachingMode), string(v1.AzureDataDiskCachingNone)) {
+			return diskParams, fmt.Errorf("cachingMode %s is not supported for %s", diskParams.CachingMode, azureconstants.PremiumV2LRS)
+		}
+	}
+
 	return diskParams, nil
 }
 
