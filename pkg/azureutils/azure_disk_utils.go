@@ -657,6 +657,13 @@ func ParseDiskParameters(parameters map[string]string) (ManagedDiskParameters, e
 			}
 		}
 	}
+
+	if strings.EqualFold(diskParams.AccountType, string(azureconstants.PremiumV2LRS)) {
+		if diskParams.CachingMode != "" && !strings.EqualFold(string(diskParams.CachingMode), string(v1.AzureDataDiskCachingNone)) {
+			return diskParams, fmt.Errorf("cachingMode %s is not supported for %s", diskParams.CachingMode, azureconstants.PremiumV2LRS)
+		}
+	}
+
 	return diskParams, nil
 }
 
@@ -743,4 +750,19 @@ func SleepIfThrottled(err error, sleepSec int) {
 		klog.Warningf("sleep %d more seconds, waiting for throttling complete", sleepSec)
 		time.Sleep(time.Duration(sleepSec) * time.Second)
 	}
+}
+
+// SetKeyValueInMap set key/value pair in map
+// key in the map is case insensitive, if key already exists, overwrite existing value
+func SetKeyValueInMap(m map[string]string, key, value string) {
+	if m == nil {
+		return
+	}
+	for k := range m {
+		if strings.EqualFold(k, key) {
+			m[k] = value
+			return
+		}
+	}
+	m[key] = value
 }
