@@ -323,7 +323,7 @@ else
   AZURE_CLI_AKS_PREVIEW_CURRENT_VERSION="$(az extension list-available --query "[?name=='aks-preview'].version | [0]" --output tsv || true)"
   if [[ "$AZURE_CLI_AKS_PREVIEW_EXTENSION_VERSION" != "$AZURE_CLI_AKS_PREVIEW_CURRENT_VERSION" ]]; then
     echo "Upgrading AKS Preview extension..."
-    az extension upgrade --name aks-preview > /dev/null
+    az extension update --name aks-preview > /dev/null
   fi
 fi
 
