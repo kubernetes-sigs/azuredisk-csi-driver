@@ -1374,7 +1374,7 @@ func TestDeleteNodeToAvailableAttachmentsMap(t *testing.T) {
 	}
 }
 
-func TestDecrementAttachmentCount(t *testing.T) {
+func TestDecrementNodeCapacity(t *testing.T) {
 	tests := []struct {
 		description string
 		nodeName    string
@@ -1445,14 +1445,14 @@ func TestDecrementAttachmentCount(t *testing.T) {
 			mockCtl := gomock.NewController(t)
 			defer mockCtl.Finish()
 			sharedState := tt.setupFunc(t, mockCtl)
-			isDerementSucceeded := sharedState.decrementAttachmentCount(context.TODO(), tt.nodeName)
+			isDerementSucceeded := sharedState.decrementNodeCapacity(context.TODO(), tt.nodeName)
 			remainingCapacity, nodeExists := sharedState.availableAttachmentsMap.Load(tt.nodeName)
 			tt.verifyFunc(t, remainingCapacity, nodeExists, isDerementSucceeded)
 		})
 	}
 }
 
-func TestIncrementAttachmentCount(t *testing.T) {
+func TestIncrementNodeCapacity(t *testing.T) {
 	tests := []struct {
 		description string
 		nodeName    string
@@ -1503,7 +1503,7 @@ func TestIncrementAttachmentCount(t *testing.T) {
 			mockCtl := gomock.NewController(t)
 			defer mockCtl.Finish()
 			sharedState := tt.setupFunc(t, mockCtl)
-			isIncrementSucceeded := sharedState.incrementAttachmentCount(context.TODO(), tt.nodeName)
+			isIncrementSucceeded := sharedState.incrementNodeCapacity(context.TODO(), tt.nodeName)
 			remainingCapacity, nodeExists := sharedState.availableAttachmentsMap.Load(tt.nodeName)
 			tt.verifyFunc(t, remainingCapacity, nodeExists, isIncrementSucceeded)
 		})

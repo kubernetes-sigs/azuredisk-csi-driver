@@ -1788,35 +1788,32 @@ func (c *SharedState) deleteNodeFromAvailableAttachmentsMap(ctx context.Context,
 	c.availableAttachmentsMap.Delete(node)
 }
 
-func (c *SharedState) decrementAttachmentCount(ctx context.Context, node string) bool {
+func (c *SharedState) decrementNodeCapacity(ctx context.Context, node string) bool {
 	remainingCapacity, nodeExists := c.availableAttachmentsMap.Load(node)
 	if nodeExists && remainingCapacity != nil {
-		currentCapacity := int32(0)
 		for {
-			currentCapacity = remainingCapacity.(*atomic.Int32).Load()
-			if currentCapacity == int32(0) || remainingCapacity.(*atomic.Int32).CompareAndSwap(currentCapacity, currentCapacity-1) {
-				if currentCapacity == int32(0) {
-					klog.Errorf("Failed to decrement attachment count for node(%s), because no available attachment", node)
-					return false
-				}
+			currentCapacity := remainingCapacity.(*atomic.Int32).Load()
+			if currentCapacity == int32(0) {
+				klog.Errorf("Failed to decrement disk capacity for node(%s) because no remaining capacity", node)
+				return false
+			}
+			if remainingCapacity.(*atomic.Int32).CompareAndSwap(currentCapacity, currentCapacity-1) {
 				return true
 			}
 		}
 	}
 
-	klog.Errorf("Failed to decrement attachment count, because node(%s) not found", node)
-
+	klog.Errorf("Failed to decrement disk capacity because node(%s) not found", node)
 	return false
 }
 
-func (c *SharedState) incrementAttachmentCount(ctx context.Context, node string) bool {
+func (c *SharedState) incrementNodeCapacity(ctx context.Context, node string) bool {
 	remainingCapacity, nodeExists := c.availableAttachmentsMap.Load(node)
 	if nodeExists && remainingCapacity != nil {
 		remainingCapacity.(*atomic.Int32).Add(1)
 		return true
 	}
 
-	klog.Errorf("Failed to increment attachment count, because node(%s) not found", node)
-
+	klog.Errorf("Failed to increment disk capacity because node(%s) not found", node)
 	return false
 }

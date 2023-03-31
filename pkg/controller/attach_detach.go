@@ -294,7 +294,7 @@ func (r *ReconcileAttachDetach) triggerAttach(ctx context.Context, azVolumeAttac
 					}
 				}
 				// the node's remaining capacity of disk attachment should be decreased by 1, since the disk attachment is succeeded.
-				r.decrementAttachmentCount(ctx, azVolumeAttachment.Spec.NodeName)
+				r.decrementNodeCapacity(ctx, azVolumeAttachment.Spec.NodeName)
 			}
 
 			updateFunc := func(obj client.Object) error {
@@ -371,7 +371,7 @@ func (r *ReconcileAttachDetach) triggerDetach(ctx context.Context, azVolumeAttac
 			}
 		} else {
 			// detach of azVolumeAttachment is succeeded, the node's remaining capacity of disk attachment should be increased by 1
-			r.incrementAttachmentCount(ctx, azVolumeAttachment.Spec.NodeName)
+			r.incrementNodeCapacity(ctx, azVolumeAttachment.Spec.NodeName)
 
 			//nolint:contextcheck // delete of the CRI must occur even when the current context's deadline passes.
 			if derr := r.cachedClient.Delete(goCtx, azVolumeAttachment); derr != nil {
