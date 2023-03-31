@@ -1421,6 +1421,56 @@ func TestParseDiskParameters(t *testing.T) {
 			expectedError: fmt.Errorf("parse invalidValue failed with error: strconv.Atoi: parsing \"invalidValue\": invalid syntax"),
 		},
 		{
+			name:        "disk parameters with PremiumV2_LRS",
+			inputParams: map[string]string{consts.SkuNameField: "PremiumV2_LRS"},
+			expectedOutput: ManagedDiskParameters{
+				AccountType:    "PremiumV2_LRS",
+				Incremental:    true,
+				Tags:           make(map[string]string),
+				VolumeContext:  map[string]string{consts.SkuNameField: "PremiumV2_LRS"},
+				DeviceSettings: make(map[string]string),
+			},
+			expectedError: nil,
+		},
+		{
+			name: "disk parameters with PremiumV2_LRS (valid cachingMode)",
+			inputParams: map[string]string{
+				consts.SkuNameField:     "PremiumV2_LRS",
+				consts.CachingModeField: "none",
+			},
+			expectedOutput: ManagedDiskParameters{
+				AccountType: "PremiumV2_LRS",
+				CachingMode: "none",
+				Incremental: true,
+				Tags:        make(map[string]string),
+				VolumeContext: map[string]string{
+					consts.SkuNameField:     "PremiumV2_LRS",
+					consts.CachingModeField: "none",
+				},
+				DeviceSettings: make(map[string]string),
+			},
+			expectedError: nil,
+		},
+		{
+			name: "disk parameters with PremiumV2_LRS (invalid cachingMode)",
+			inputParams: map[string]string{
+				consts.SkuNameField:     "PremiumV2_LRS",
+				consts.CachingModeField: "ReadOnly",
+			},
+			expectedOutput: ManagedDiskParameters{
+				AccountType: "PremiumV2_LRS",
+				CachingMode: "ReadOnly",
+				Incremental: true,
+				Tags:        make(map[string]string),
+				VolumeContext: map[string]string{
+					consts.SkuNameField:     "PremiumV2_LRS",
+					consts.CachingModeField: "ReadOnly",
+				},
+				DeviceSettings: make(map[string]string),
+			},
+			expectedError: fmt.Errorf("cachingMode ReadOnly is not supported for PremiumV2_LRS"),
+		},
+		{
 			name: "valid parameters input",
 			inputParams: map[string]string{
 				consts.SkuNameField:             "skuName",
@@ -1751,5 +1801,59 @@ func TestSleepIfThrottled(t *testing.T) {
 				assert.GreaterOrEqual(t, actualSleepDuration, test.expectedSleepDuration)
 			}
 		})
+	}
+}
+
+func TestSetKeyValueInMap(t *testing.T) {
+	tests := []struct {
+		desc     string
+		m        map[string]string
+		key      string
+		value    string
+		expected map[string]string
+	}{
+		{
+			desc:  "nil map",
+			key:   "key",
+			value: "value",
+		},
+		{
+			desc:     "empty map",
+			m:        map[string]string{},
+			key:      "key",
+			value:    "value",
+			expected: map[string]string{"key": "value"},
+		},
+		{
+			desc:  "non-empty map",
+			m:     map[string]string{"k": "v"},
+			key:   "key",
+			value: "value",
+			expected: map[string]string{
+				"k":   "v",
+				"key": "value",
+			},
+		},
+		{
+			desc:     "same key already exists",
+			m:        map[string]string{"subDir": "value2"},
+			key:      "subDir",
+			value:    "value",
+			expected: map[string]string{"subDir": "value"},
+		},
+		{
+			desc:     "case insensitive key already exists",
+			m:        map[string]string{"subDir": "value2"},
+			key:      "subdir",
+			value:    "value",
+			expected: map[string]string{"subDir": "value"},
+		},
+	}
+
+	for _, test := range tests {
+		SetKeyValueInMap(test.m, test.key, test.value)
+		if !reflect.DeepEqual(test.m, test.expected) {
+			t.Errorf("test[%s]: unexpected output: %v, expected result: %v", test.desc, test.m, test.expected)
+		}
 	}
 }
