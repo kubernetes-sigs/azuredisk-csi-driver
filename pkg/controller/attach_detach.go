@@ -274,7 +274,7 @@ func (r *ReconcileAttachDetach) triggerAttach(ctx context.Context, azVolumeAttac
 			updateFunc := func(obj client.Object) error {
 				azva := obj.(*azdiskv1beta2.AzVolumeAttachment)
 				// add retriable annotation if the replica attach error is PartialUpdateError or timeout
-				if azva.Status.Detail.Role == azdiskv1beta2.ReplicaRole {
+				if azva.Spec.RequestedRole == azdiskv1beta2.ReplicaRole {
 					if _, ok := attachErr.(*retry.PartialUpdateError); ok || errors.Is(err, context.DeadlineExceeded) {
 						azva.Status.Annotations = azureutils.AddToMap(azva.Status.Annotations, consts.ReplicaVolumeAttachRetryAnnotation, "true")
 					}
@@ -285,6 +285,7 @@ func (r *ReconcileAttachDetach) triggerAttach(ctx context.Context, azVolumeAttac
 			//nolint:contextcheck // final status update of the CRI must occur even when the current context's deadline passes.
 			_, _ = azureutils.UpdateCRIWithRetry(goCtx, nil, r.cachedClient, r.azClient, azVolumeAttachment, updateFunc, consts.ForcedUpdateMaxNetRetry, azureutils.UpdateCRIStatus)
 		}
+
 		handleSuccess = func(asyncComplete bool) {
 			// Publish event to indicate attachment success
 			if asyncComplete {
