@@ -51,6 +51,8 @@ spec:
       priorityClassName: system-node-critical
       {{- include "azuredisk.pullSecrets" . | indent 6 }}
       securityContext:
+        seccompProfile:
+          type: RuntimeDefault
         windowsOptions:
           hostProcess: true
           runAsUserName: "NT AUTHORITY\\SYSTEM"

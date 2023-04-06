@@ -49,6 +49,9 @@ spec:
         nodeAffinity:
 {{ toYaml .Values.windows.nodeAffinity | indent 10 }}
       priorityClassName: system-node-critical
+      securityContext:
+        seccompProfile:
+          type: RuntimeDefault
       {{- include "azuredisk.pullSecrets" . | indent 6 }}
       containers:
         - name: liveness-probe

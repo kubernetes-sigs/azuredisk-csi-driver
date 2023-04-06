@@ -35,6 +35,8 @@ spec:
                       - virtual-kubelet
       priorityClassName: system-node-critical
       securityContext:
+        seccompProfile:
+          type: RuntimeDefault
         windowsOptions:
           hostProcess: true
           runAsUserName: "NT AUTHORITY\\SYSTEM"
