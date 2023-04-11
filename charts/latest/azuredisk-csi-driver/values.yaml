@@ -175,6 +175,7 @@ linux:
   kubelet: /var/lib/kubelet
   distro: debian # available values: debian, fedora
   enablePerfOptimization: true
+  enableRegistrationProbe: true
   tolerations:
     - operator: "Exists"
   hostNetwork: true # this setting could be disabled if perfProfile is `none`
@@ -218,6 +219,7 @@ windows:
   dsName: csi-azuredisk-node-win # daemonset name
   kubelet: 'C:\var\lib\kubelet'
   getNodeInfoFromLabels: false # get node info from node labels instead of IMDS
+  enableRegistrationProbe: true
   tolerations:
     - key: "node.kubernetes.io/os"
       operator: "Exists"

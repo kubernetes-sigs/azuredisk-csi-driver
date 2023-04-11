@@ -217,6 +217,7 @@ The following table lists the configurable parameters of the latest Azure Disk C
 | `linux.dsName`                                    | name of driver daemonset on linux                          |`csi-azuredisk-node`                                                         |
 | `linux.kubelet`                                   | configure kubelet directory path on Linux agent node       | `/var/lib/kubelet`                                                |
 | `linux.getNodeInfoFromLabels`                     | get node info from node labels instead of IMDS on Linux agent node       | `false`                                                |
+| `linux.enableRegistrationProbe`                   | enable [kubelet-registration-probe](https://github.com/kubernetes-csi/node-driver-registrar#health-check-with-an-exec-probe) on Linux driver config     | `true`
 | `linux.distro`                                    | configure ssl certificates for different Linux distribution(available values: `debian`, `fedora`)                  | `debian`                                                |
 | `linux.tolerations`                               | linux node driver tolerations                              |                                                              |
 | `linux.affinity`                                  | linux node pod affinity                                     | `{}`                                                             |
@@ -239,6 +240,7 @@ The following table lists the configurable parameters of the latest Azure Disk C
 | `windows.dsName`                                  | name of driver daemonset on windows                        |`csi-azuredisk-node-win`                                                         |
 | `windows.kubelet`                                 | configure kubelet directory path on Windows agent node     | `'C:\var\lib\kubelet'`                                            |
 | `windows.getNodeInfoFromLabels`                   | get node info from node labels instead of IMDS on windows agent node       | `false`                                                |
+| `windows.enableRegistrationProbe`                 | enable [kubelet-registration-probe](https://github.com/kubernetes-csi/node-driver-registrar#health-check-with-an-exec-probe) on windows driver config     | `true`
 | `windows.tolerations`                             | windows node driver tolerations                            |                                                              |
 | `windows.affinity`                                | windows node pod affinity                                     | `{}`                                                             |
 | `windows.nodeSelector`                            | windows node pod node selector                                | `{}`                                                             |

@@ -83,6 +83,7 @@ spec:
             - "--v=2"
             - "--csi-address=$(CSI_ENDPOINT)"
             - "--kubelet-registration-path=$(DRIVER_REG_SOCK_PATH)"
+{{- if .Values.windows.enableRegistrationProbe }}
           livenessProbe:
             exec:
               command:
@@ -91,6 +92,7 @@ spec:
                 - --mode=kubelet-registration-probe
             initialDelaySeconds: 60
             timeoutSeconds: 30
+{{- end }}
           env:
             - name: CSI_ENDPOINT
               value: unix://C:\\csi\\csi.sock
