@@ -47,9 +47,8 @@ spec:
   volumeClaimTemplates:
     - metadata:
         name: persistent-storage
-        annotations:
-          volume.beta.kubernetes.io/storage-class: managed-csi
       spec:
+        storageClassName: managed-csi
         accessModes: ["ReadWriteOnce"]
         resources:
           requests:
