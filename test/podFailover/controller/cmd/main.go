@@ -27,6 +27,7 @@ import (
 	"time"
 
 	v1 "k8s.io/api/core/v1"
+	errors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/util/wait"
@@ -127,6 +128,12 @@ func deleteAndRestartPods(ctx context.Context, clientset *kubernetes.Clientset, 
 		klog.Errorf("Error occurred while deleting the pod %s: %v", pod.Name, err)
 	}
 
+	klog.Infof("Waiting for pod %s to be created.", pod.Name)
+	err = waitForPodCreated(ctx, clientset, pod, pod.Namespace)
+	if err != nil {
+		klog.Errorf("Error occurred while waiting for the pod to be created %s: %v", pod.Name, err)
+	}
+
 	// wait for the pod to come back up
 	klog.Infof("Waiting for pod %s to be ready.", pod.Name)
 	err = waitForPodReady(ctx, clientset, pod, pod.Namespace)
@@ -202,6 +209,22 @@ func deletePod(ctx context.Context, podName string, namespace string, clientset 
 		return err
 	}
 	return waitForPodToBeDeleted(ctx, podName, namespace, clientset)
+}
+
+func waitForPodCreated(ctx context.Context, clientset *kubernetes.Clientset, pod v1.Pod, namespace string) error {
+	backoff := wait.Backoff{Duration: 1 * time.Second, Factor: 2.0, Steps: 5}
+	return retry.OnError(
+		backoff,
+		func(err error) bool {
+			return errors.IsNotFound(err)
+		},
+		func() error {
+			_, err := clientset.CoreV1().Pods(namespace).Get(context.TODO(), pod.Name, metav1.GetOptions{})
+			if err != nil {
+				return err
+			}
+			return nil
+		})
 }
 
 func waitForPodToBeDeleted(ctx context.Context, podName string, namespace string, clientset *kubernetes.Clientset) error {
