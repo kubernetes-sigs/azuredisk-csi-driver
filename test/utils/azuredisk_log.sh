@@ -49,14 +49,12 @@ kubectl get pods -n${NS} -l${LABEL} \
 #    | awk 'NR>1 {print $1}' \
 #    | xargs -I {} bash -c "echo 'dumping logs for ${NS}/{}' && kubectl logs {} -n${NS}"
 
-echo "print out csi-$DRIVER-node logs ..."
-echo "======================================================================================"
 LABEL="app=csi-$DRIVER-node"
-kubectl get pods -n${NS} -l${LABEL} \
-    | awk 'NR>1 {print $1}' \
-    | xargs -I {} bash -c "echo 'dumping logs for ${NS}/{}/${DRIVER}' && kubectl logs {} -c${CONTAINER} -n${NS}"
+if [ -n "$TEST_WINDOWS" ]; then
+    LABEL="app=csi-$DRIVER-node-win"
+fi
 
-echo "print out csi-$DRIVER-node-win logs ..."
+echo "print out $LABEL logs ..."
 echo "======================================================================================"
 LABEL="app=csi-$DRIVER-node-win"
 kubectl get pods -n${NS} -l${LABEL} \
