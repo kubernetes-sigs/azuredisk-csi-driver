@@ -1231,6 +1231,31 @@ func (c *SharedState) removeGarbageCollection(volumeName string) {
 	c.dequeueGarbageCollection(volumeName)
 }
 
+func (c *SharedState) handleReplicaDelete(ctx context.Context, azVolumeAttachment *azdiskv1beta2.AzVolumeAttachment) {
+	// wait for replica AzVolumeAttachment deletion
+	waiter := c.conditionWatcher.NewConditionWaiter(ctx, watcher.AzVolumeAttachmentType, azVolumeAttachment.Name, verifyObjectDeleted)
+	defer waiter.Close()
+	_, _ = waiter.Wait(ctx)
+
+	// add replica management operation to the queue
+	c.triggerManageReplica(azVolumeAttachment.Spec.VolumeName)
+}
+
+//nolint:contextcheck // context is not inherited by design
+func (c *SharedState) triggerManageReplica(volumeName string) {
+	manageReplicaCtx, w := workflow.New(context.Background(), workflow.WithDetails(consts.VolumeNameLabel, volumeName))
+	defer w.Finish(nil)
+	c.addToOperationQueue(
+		manageReplicaCtx,
+		volumeName,
+		replica,
+		func(ctx context.Context) error {
+			return c.manageReplicas(ctx, volumeName)
+		},
+		false,
+	)
+}
+
 func (c *SharedState) manageReplicas(ctx context.Context, volumeName string) error {
 	var err error
 	ctx, w := workflow.New(ctx)

@@ -378,6 +378,9 @@ func (r *ReconcileAttachDetach) triggerDetach(ctx context.Context, azVolumeAttac
 			if derr := r.cachedClient.Delete(goCtx, azVolumeAttachment); derr != nil {
 				w.Logger().Error(derr, "failed to delete AzVolumeAttachment")
 			}
+			if azVolumeAttachment.Spec.RequestedRole == azdiskv1beta2.ReplicaRole && !isCleanupRequested(azVolumeAttachment) {
+				go r.handleReplicaDelete(context.Background(), azVolumeAttachment)
+			}
 		}
 	}()
 	<-waitCh

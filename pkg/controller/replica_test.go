@@ -24,7 +24,6 @@ import (
 	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/require"
 
-	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -65,61 +64,7 @@ func TestReplicaReconcile(t *testing.T) {
 		verifyFunc  func(*testing.T, *ReconcileReplica, reconcile.Result, error)
 	}{
 		{
-			description: "[Success] Should create a replacement replica attachment upon replica detachment.",
-			request:     testReplicaAzVolumeAttachmentRequest,
-			setupFunc: func(t *testing.T, mockCtl *gomock.Controller) *ReconcileReplica {
-				replicaAttachment := testReplicaAzVolumeAttachment
-				replicaAttachment.Status.Annotations = azureutils.AddToMap(replicaAttachment.Status.Annotations, consts.VolumeDetachRequestAnnotation, string(azdrivernode))
-
-				newVolume := testAzVolume0.DeepCopy()
-				newVolume.Status.Detail = &azdiskv1beta2.AzVolumeStatusDetail{
-					VolumeID: testManagedDiskURI0,
-				}
-
-				controller := NewTestReplicaController(
-					mockCtl,
-					testNamespace,
-					newVolume,
-					&testPersistentVolume0,
-					&testNode0,
-					&testNode1,
-					&testPod0,
-					&replicaAttachment)
-
-				addTestNodeInAvailableAttachmentsMap(controller.SharedState, testNode0.Name, testNodeAvailableAttachmentCount)
-				addTestNodeInAvailableAttachmentsMap(controller.SharedState, testNode1.Name, testNodeAvailableAttachmentCount)
-
-				mockClients(controller.cachedClient.(*mockclient.MockClient), controller.azClient, controller.kubeClient)
-				return controller
-			},
-			verifyFunc: func(t *testing.T, controller *ReconcileReplica, result reconcile.Result, err error) {
-				require.NoError(t, err)
-				require.False(t, result.Requeue)
-
-				// delete the original replica attachment so that manageReplica can kick in
-				err = controller.azClient.DiskV1beta2().AzVolumeAttachments(testNamespace).Delete(context.TODO(), testReplicaAzVolumeAttachmentName, metav1.DeleteOptions{})
-				require.NoError(t, err)
-				_, err = controller.azClient.DiskV1beta2().AzVolumeAttachments(testNamespace).Get(context.TODO(), testReplicaAzVolumeAttachmentName, metav1.GetOptions{})
-				require.True(t, errors.IsNotFound(err))
-
-				result, err = controller.Reconcile(context.TODO(), testReplicaAzVolumeAttachmentRequest)
-				require.NoError(t, err)
-				require.False(t, result.Requeue)
-
-				conditionFunc := func() (bool, error) {
-					roleReq, _ := azureutils.CreateLabelRequirements(consts.RoleLabel, selection.Equals, string(azdiskv1beta2.ReplicaRole))
-					labelSelector := labels.NewSelector().Add(*roleReq)
-					replicas, localError := controller.azClient.DiskV1beta2().AzVolumeAttachments(testNamespace).List(context.TODO(), metav1.ListOptions{LabelSelector: labelSelector.String()})
-					require.NoError(t, localError)
-					require.NotNil(t, replicas)
-					return len(replicas.Items) == 1, nil
-				}
-				err = wait.PollImmediate(verifyCRIInterval, verifyCRITimeout, conditionFunc)
-				require.NoError(t, err)
-			},
-		},
-		{
-			description: "[Success] Should update state if replicas in DetachmentFailed upon replica deletion.",
+			description: "[Success] Should update state if replicas in DetachmentFailed state.",
 			request:     testReplicaAzVolumeAttachmentRequest,
 			setupFunc: func(t *testing.T, mockCtl *gomock.Controller) *ReconcileReplica {
 				replicaAttachment := testReplicaAzVolumeAttachment
@@ -207,7 +152,7 @@ func TestReplicaReconcile(t *testing.T) {
 			},
 		},
 		{
-			description: "[Success] Should delete a failed-attachment replica and create a replacement replica.",
+			description: "[Success] Should delete failedAttachment replica with non-retriable error and create a replacement replica.",
 			request:     testReplicaAzVolumeAttachmentRequest,
 			setupFunc: func(t *testing.T, mockCtl *gomock.Controller) *ReconcileReplica {
 				replicaAttachment := testReplicaAzVolumeAttachment.DeepCopy()

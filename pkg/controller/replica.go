@@ -90,27 +90,21 @@ func (r *ReconcileReplica) Reconcile(ctx context.Context, request reconcile.Requ
 
 		if deleteRequested, _ := objectDeletionRequested(azVolumeAttachment); !deleteRequested {
 			// create a replica attachment was requested for a detach, create a replacement replica if the attachment is not being cleaned up
-			if volumeDetachRequested(azVolumeAttachment) {
-				if azVolumeAttachment.Status.State == azdiskv1beta2.DetachmentFailed {
-					// if detachment failed and the driver is uninstalling, delete azvolumeattachment CRI to let uninstallation proceed
-					if r.driverLifecycle.IsDriverUninstall() {
-						r.logger.Info("Deleting AzVolumeAttachment in DetachmentFailed state without detaching disk", workflow.GetObjectDetails(azVolumeAttachment)...)
-						if err := r.cachedClient.Delete(ctx, azVolumeAttachment); err != nil {
-							return reconcile.Result{Requeue: true}, err
-						}
-					} else {
-						if _, err := azureutils.UpdateCRIWithRetry(ctx, nil, r.cachedClient, r.azClient, azVolumeAttachment, func(obj client.Object) error {
-							azVolumeAttachment := obj.(*azdiskv1beta2.AzVolumeAttachment)
-							_, err = updateState(azVolumeAttachment, azdiskv1beta2.ForceDetachPending, normalUpdate)
-							return err
-						}, consts.NormalUpdateMaxNetRetry, azureutils.UpdateCRIStatus); err != nil {
-							return reconcile.Result{Requeue: true}, err
-						}
+			if volumeDetachRequested(azVolumeAttachment) && azVolumeAttachment.Status.State == azdiskv1beta2.DetachmentFailed {
+				// if detachment failed and the driver is uninstalling, delete azvolumeattachment CRI to let uninstallation proceed
+				if r.driverLifecycle.IsDriverUninstall() {
+					r.logger.Info("Deleting AzVolumeAttachment in DetachmentFailed state without detaching disk", workflow.GetObjectDetails(azVolumeAttachment)...)
+					if err := r.cachedClient.Delete(ctx, azVolumeAttachment); err != nil {
+						return reconcile.Result{Requeue: true}, err
 					}
-				}
-
-				if !isCleanupRequested(azVolumeAttachment) {
-					go r.handleReplicaDelete(context.Background(), azVolumeAttachment)
+				} else {
+					if _, err := azureutils.UpdateCRIWithRetry(ctx, nil, r.cachedClient, r.azClient, azVolumeAttachment, func(obj client.Object) error {
+						azVolumeAttachment := obj.(*azdiskv1beta2.AzVolumeAttachment)
+						_, err = updateState(azVolumeAttachment, azdiskv1beta2.ForceDetachPending, normalUpdate)
+						return err
+					}, consts.NormalUpdateMaxNetRetry, azureutils.UpdateCRIStatus); err != nil {
+						return reconcile.Result{Requeue: true}, err
+					}
 				}
 			} else if azVolumeAttachment.Status.State == azdiskv1beta2.AttachmentFailed {
 				// if the failed attachment isn't retriable, delete the CRI so that replacing replica AzVolumeAttachment can be created
@@ -159,31 +153,6 @@ func (r *ReconcileReplica) Reconcile(ctx context.Context, request reconcile.Requ
 		}
 	}
 	return reconcile.Result{}, nil
-}
-
-func (r *ReconcileReplica) handleReplicaDelete(ctx context.Context, azVolumeAttachment *azdiskv1beta2.AzVolumeAttachment) {
-	// wait for replica AzVolumeAttachment deletion
-	waiter := r.conditionWatcher.NewConditionWaiter(ctx, watcher.AzVolumeAttachmentType, azVolumeAttachment.Name, verifyObjectDeleted)
-	defer waiter.Close()
-	_, _ = waiter.Wait(ctx)
-
-	// add replica management operation to the queue
-	r.triggerManageReplica(azVolumeAttachment.Spec.VolumeName)
-}
-
-//nolint:contextcheck // context is not inherited by design
-func (r *ReconcileReplica) triggerManageReplica(volumeName string) {
-	manageReplicaCtx, w := workflow.New(context.Background(), workflow.WithDetails(consts.VolumeNameLabel, volumeName))
-	defer w.Finish(nil)
-	r.addToOperationQueue(
-		manageReplicaCtx,
-		volumeName,
-		replica,
-		func(ctx context.Context) error {
-			return r.manageReplicas(ctx, volumeName)
-		},
-		false,
-	)
 }
 
 //nolint:contextcheck // Garbage collection is asynchronous; context is not inherited by design
