@@ -29,7 +29,7 @@ func TestNewFakeIOHandlerReadDir(t *testing.T) {
 
 	tests := []struct {
 		dirname          string
-		expectedFileInfo []os.FileInfo
+		expectedDirEntry []os.DirEntry
 		expectedErr      error
 	}{
 		{
@@ -39,20 +39,20 @@ func TestNewFakeIOHandlerReadDir(t *testing.T) {
 		},
 		{
 			"/sys/bus/scsi/devices",
-			[]os.FileInfo{
-				&fakeFileInfo{
+			[]os.DirEntry{
+				&fakeDirEntry{
 					name: "3:0:0:1",
 				},
-				&fakeFileInfo{
+				&fakeDirEntry{
 					name: "4:0:0:0",
 				},
-				&fakeFileInfo{
+				&fakeDirEntry{
 					name: "4:0:0:1",
 				},
-				&fakeFileInfo{
+				&fakeDirEntry{
 					name: "host1",
 				},
-				&fakeFileInfo{
+				&fakeDirEntry{
 					name: "target2:0:0",
 				},
 			},
@@ -60,8 +60,8 @@ func TestNewFakeIOHandlerReadDir(t *testing.T) {
 		},
 		{
 			"/sys/bus/scsi/devices/4:0:0:1/block",
-			[]os.FileInfo{
-				&fakeFileInfo{
+			[]os.DirEntry{
+				&fakeDirEntry{
 					name: "sdd",
 				},
 			},
@@ -69,8 +69,8 @@ func TestNewFakeIOHandlerReadDir(t *testing.T) {
 		},
 		{
 			"/sys/bus/scsi/devices/3:0:0:2/block",
-			[]os.FileInfo{
-				&fakeFileInfo{
+			[]os.DirEntry{
+				&fakeDirEntry{
 					name: "sde",
 				},
 			},
@@ -78,8 +78,8 @@ func TestNewFakeIOHandlerReadDir(t *testing.T) {
 		},
 		{
 			"/sys/class/scsi_host/",
-			[]os.FileInfo{
-				&fakeFileInfo{
+			[]os.DirEntry{
+				&fakeDirEntry{
 					name: "host0",
 				},
 			},
@@ -88,20 +88,21 @@ func TestNewFakeIOHandlerReadDir(t *testing.T) {
 	}
 
 	for _, test := range tests {
-		resultFileInfo, resultErr := iohandler.ReadDir(test.dirname)
-		if !reflect.DeepEqual(resultFileInfo, test.expectedFileInfo) || (!reflect.DeepEqual(resultErr, test.expectedErr)) {
-			t.Errorf("dirname: %v, resultFileInfo: %v, expectedFileInfo: %v, resultErr: %v, expectedErr: %v", test.dirname, resultFileInfo, test.expectedFileInfo, resultErr, test.expectedErr)
+		resultDirEntry, resultErr := iohandler.ReadDir(test.dirname)
+		if !reflect.DeepEqual(resultDirEntry, test.expectedDirEntry) || (!reflect.DeepEqual(resultErr, test.expectedErr)) {
+			t.Errorf("dirname: %v, resultDirEntry: %v, expectedDirEntry: %v, resultErr: %v, expectedErr: %v", test.dirname, resultDirEntry, test.expectedDirEntry, resultErr, test.expectedErr)
 		}
-		if resultErr == nil && reflect.DeepEqual(resultFileInfo, test.expectedFileInfo) {
-			for num := 0; num < len(resultFileInfo); num++ {
-				resultName := resultFileInfo[num].Name()
-				resultSize := resultFileInfo[num].Size()
-				resultMode := resultFileInfo[num].Mode()
-				resultModTime := resultFileInfo[num].ModTime()
-				resultIsDir := resultFileInfo[num].IsDir()
-				resultSys := resultFileInfo[num].Sys()
-				if resultName != test.expectedFileInfo[num].Name() || resultSize != 0 || resultMode != 777 || resultModTime.After(time.Now()) || resultIsDir != false || resultSys != nil {
-					t.Errorf("Name: %v, expectedName: %v, Size: %v, Mode: %v, ModTime: %v, IsDir: %v, Sys: %v", resultName, test.expectedFileInfo[num].Name(), resultSize, resultMode, resultModTime, resultIsDir, resultSys)
+		if resultErr == nil && reflect.DeepEqual(resultDirEntry, test.expectedDirEntry) {
+			for num := 0; num < len(resultDirEntry); num++ {
+				resultFileInfo, _ := resultDirEntry[num].Info()
+				resultName := resultDirEntry[num].Name()
+				resultSize := resultFileInfo.Size()
+				resultMode := resultFileInfo.Mode()
+				resultModTime := resultFileInfo.ModTime()
+				resultIsDir := resultFileInfo.IsDir()
+				resultSys := resultFileInfo.Sys()
+				if resultName != test.expectedDirEntry[num].Name() || resultSize != 0 || resultMode != 777 || resultModTime.After(time.Now()) || resultIsDir != false || resultSys != nil {
+					t.Errorf("Name: %v, expectedName: %v, Size: %v, Mode: %v, ModTime: %v, IsDir: %v, Sys: %v", resultName, test.expectedDirEntry[num].Name(), resultSize, resultMode, resultModTime, resultIsDir, resultSys)
 				}
 			}
 		}

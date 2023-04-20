@@ -17,12 +17,11 @@ limitations under the License.
 package azureutils
 
 import (
-	"io/ioutil"
 	"os"
 )
 
 type IOHandler interface {
-	ReadDir(dirname string) ([]os.FileInfo, error)
+	ReadDir(dirname string) ([]os.DirEntry, error)
 	WriteFile(filename string, data []byte, perm os.FileMode) error
 	Readlink(name string) (string, error)
 	ReadFile(filename string) ([]byte, error)
@@ -34,12 +33,12 @@ func NewOSIOHandler() IOHandler {
 	return &osIOHandler{}
 }
 
-func (handler *osIOHandler) ReadDir(dirname string) ([]os.FileInfo, error) {
-	return ioutil.ReadDir(dirname)
+func (handler *osIOHandler) ReadDir(dirname string) ([]os.DirEntry, error) {
+	return os.ReadDir(dirname)
 }
 
 func (handler *osIOHandler) WriteFile(filename string, data []byte, perm os.FileMode) error {
-	return ioutil.WriteFile(filename, data, perm)
+	return os.WriteFile(filename, data, perm)
 }
 
 func (handler *osIOHandler) Readlink(name string) (string, error) {
@@ -47,5 +46,5 @@ func (handler *osIOHandler) Readlink(name string) (string, error) {
 }
 
 func (handler *osIOHandler) ReadFile(filename string) ([]byte, error) {
-	return ioutil.ReadFile(filename)
+	return os.ReadFile(filename)
 }

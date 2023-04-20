@@ -19,7 +19,6 @@ package azuredisk
 import (
 	"context"
 	"fmt"
-	"io/ioutil"
 	"os"
 	"reflect"
 	"testing"
@@ -83,7 +82,7 @@ func TestRun(t *testing.T) {
 		{
 			name: "Successful run",
 			testFunc: func(t *testing.T) {
-				if err := ioutil.WriteFile(fakeCredFile, []byte(fakeCredContent), 0666); err != nil {
+				if err := os.WriteFile(fakeCredFile, []byte(fakeCredContent), 0666); err != nil {
 					t.Error(err)
 				}
 
@@ -109,7 +108,7 @@ func TestRun(t *testing.T) {
 		{
 			name: "Successful run with node ID missing",
 			testFunc: func(t *testing.T) {
-				if err := ioutil.WriteFile(fakeCredFile, []byte(fakeCredContent), 0666); err != nil {
+				if err := os.WriteFile(fakeCredFile, []byte(fakeCredContent), 0666); err != nil {
 					t.Error(err)
 				}
 
@@ -130,7 +129,7 @@ func TestRun(t *testing.T) {
 		{
 			name: "Successful run with vmss VMType",
 			testFunc: func(t *testing.T) {
-				if err := ioutil.WriteFile(fakeCredFile, []byte(fakeCredContent), 0666); err != nil {
+				if err := os.WriteFile(fakeCredFile, []byte(fakeCredContent), 0666); err != nil {
 					t.Error(err)
 				}
 
