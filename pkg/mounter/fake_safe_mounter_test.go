@@ -18,7 +18,6 @@ package mounter
 
 import (
 	"fmt"
-	"io/ioutil"
 	"log"
 	"os"
 	"reflect"
@@ -35,14 +34,14 @@ var (
 
 func TestMain(m *testing.M) {
 	var err error
-	sourceTest, err = ioutil.TempDir(os.TempDir(), "source_test")
+	sourceTest, err = os.MkdirTemp(os.TempDir(), "source_test")
 	if err != nil {
 		log.Printf("failed to get source test path: %v\n", err)
 		os.Exit(1)
 	}
 	defer os.RemoveAll(sourceTest)
 
-	targetTest, err = ioutil.TempDir(os.TempDir(), "target_test")
+	targetTest, err = os.MkdirTemp(os.TempDir(), "target_test")
 	if err != nil {
 		log.Printf("failed to get target test path: %v\n", err)
 		os.Exit(1)

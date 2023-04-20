@@ -18,36 +18,59 @@ package azureutils
 
 import (
 	"fmt"
+	"io/fs"
 	"os"
 	"strings"
 	"time"
 )
 
+type fakeDirEntry struct {
+	name string
+}
+
 type fakeFileInfo struct {
 	name string
 }
 
-func (fi *fakeFileInfo) Name() string {
-	return fi.name
+func (f fakeFileInfo) Name() string {
+	return f.name
 }
 
-func (fi *fakeFileInfo) Size() int64 {
+func (f fakeFileInfo) Size() int64 {
 	return 0
 }
 
-func (fi *fakeFileInfo) Mode() os.FileMode {
+func (f fakeFileInfo) Mode() os.FileMode {
 	return 777
 }
 
-func (fi *fakeFileInfo) ModTime() time.Time {
+func (f fakeFileInfo) ModTime() time.Time {
 	return time.Now()
 }
-func (fi *fakeFileInfo) IsDir() bool {
+func (f fakeFileInfo) IsDir() bool {
 	return false
 }
 
-func (fi *fakeFileInfo) Sys() interface{} {
+func (f fakeFileInfo) Sys() interface{} {
 	return nil
+}
+
+func (fd *fakeDirEntry) Type() fs.FileMode {
+	return 777
+}
+
+func (fd *fakeDirEntry) Info() (fs.FileInfo, error) {
+	return fakeFileInfo{
+		name: fd.name,
+	}, nil
+}
+
+func (fd *fakeDirEntry) Name() string {
+	return fd.name
+}
+
+func (fd *fakeDirEntry) IsDir() bool {
+	return false
 }
 
 var (
@@ -65,40 +88,40 @@ func NewFakeIOHandler() IOHandler {
 	return &fakeIOHandler{}
 }
 
-func (handler *fakeIOHandler) ReadDir(dirname string) ([]os.FileInfo, error) {
+func (handler *fakeIOHandler) ReadDir(dirname string) ([]os.DirEntry, error) {
 	switch dirname {
 	case "/sys/bus/scsi/devices":
-		f1 := &fakeFileInfo{
+		f1 := &fakeDirEntry{
 			name: "3:0:0:1",
 		}
-		f2 := &fakeFileInfo{
+		f2 := &fakeDirEntry{
 			name: "4:0:0:0",
 		}
-		f3 := &fakeFileInfo{
+		f3 := &fakeDirEntry{
 			name: diskPath,
 		}
-		f4 := &fakeFileInfo{
+		f4 := &fakeDirEntry{
 			name: "host1",
 		}
-		f5 := &fakeFileInfo{
+		f5 := &fakeDirEntry{
 			name: "target2:0:0",
 		}
-		return []os.FileInfo{f1, f2, f3, f4, f5}, nil
+		return []os.DirEntry{f1, f2, f3, f4, f5}, nil
 	case "/sys/bus/scsi/devices/" + diskPath + "/block":
-		n := &fakeFileInfo{
+		n := &fakeDirEntry{
 			name: devName,
 		}
-		return []os.FileInfo{n}, nil
+		return []os.DirEntry{n}, nil
 	case "/sys/bus/scsi/devices/" + diskPath1 + "/block":
-		n := &fakeFileInfo{
+		n := &fakeDirEntry{
 			name: devName1,
 		}
-		return []os.FileInfo{n}, nil
+		return []os.DirEntry{n}, nil
 	case "/sys/class/scsi_host/":
-		n := &fakeFileInfo{
+		n := &fakeDirEntry{
 			name: "host0",
 		}
-		return []os.FileInfo{n}, nil
+		return []os.DirEntry{n}, nil
 	}
 
 	return nil, fmt.Errorf("bad dir")
