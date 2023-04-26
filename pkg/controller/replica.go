@@ -162,13 +162,15 @@ func (r *ReconcileReplica) Reconcile(ctx context.Context, request reconcile.Requ
 }
 
 func (r *ReconcileReplica) handleReplicaDelete(ctx context.Context, azVolumeAttachment *azdiskv1beta2.AzVolumeAttachment) {
-	// wait for replica AzVolumeAttachment deletion
-	waiter := r.conditionWatcher.NewConditionWaiter(ctx, watcher.AzVolumeAttachmentType, azVolumeAttachment.Name, verifyObjectDeleted)
+	// wait for replica AzVolumeAttachment deletion or failure of detahcment
+	waiter := r.conditionWatcher.NewConditionWaiter(ctx, watcher.AzVolumeAttachmentType, azVolumeAttachment.Name, verifyObjectFailedOrDeleted)
 	defer waiter.Close()
-	_, _ = waiter.Wait(ctx)
+	_, err := waiter.Wait(ctx)
 
-	// add replica management operation to the queue
-	r.triggerManageReplica(azVolumeAttachment.Spec.VolumeName)
+	// add replica management operation to the queue if the replica AzVolumeAttachment is deleted
+	if err == nil {
+		r.triggerManageReplica(azVolumeAttachment.Spec.VolumeName)
+	}
 }
 
 //nolint:contextcheck // context is not inherited by design
