@@ -87,6 +87,8 @@ const (
 	pv       operationRequester = "pv-controller"
 	replica  operationRequester = "replica-controller"
 	pod      operationRequester = "pod-controller"
+	detach   operationRequester = "detach-opeation"
+	attach   operationRequester = "attach-opeation"
 )
 
 type attachmentCleanUpMode int
@@ -980,6 +982,10 @@ func isDemotionRequested(attachment *azdiskv1beta2.AzVolumeAttachment) bool {
 	return attachment != nil && attachment.Status.Detail != nil && attachment.Status.Detail.Role == azdiskv1beta2.PrimaryRole && attachment.Spec.RequestedRole == azdiskv1beta2.ReplicaRole
 }
 
+func isPromotionRequested(attachment *azdiskv1beta2.AzVolumeAttachment) bool {
+	return attachment != nil && attachment.Status.Detail != nil && attachment.Status.Detail.Role == azdiskv1beta2.ReplicaRole && attachment.Spec.RequestedRole == azdiskv1beta2.PrimaryRole
+}
+
 func isPreProvisioned(volume *azdiskv1beta2.AzVolume) bool {
 	return volume != nil && azureutils.MapContains(volume.Status.Annotations, consts.PreProvisionedVolumeAnnotation)
 }
@@ -1128,6 +1134,25 @@ func verifyObjectFailedOrDeleted(obj interface{}, objectDeleted bool) (bool, err
 		}
 	}
 
+	return false, nil
+}
+
+func verifyObjectPromotedOrDemoted(obj interface{}, objectDeleted bool) (bool, error) {
+	if obj == nil || objectDeleted {
+		return false, fmt.Errorf("obj is nil or has been deleted")
+	}
+
+	azVolumeAttachmentInstance := obj.(*azdiskv1beta2.AzVolumeAttachment)
+	if azVolumeAttachmentInstance.Labels != nil {
+		if label, ok := azVolumeAttachmentInstance.Labels[consts.RoleChangeLabel]; ok {
+			isPromoteUpdated := label == consts.Promoted && azVolumeAttachmentInstance.Status.Detail.PreviousRole == azdiskv1beta2.ReplicaRole && azVolumeAttachmentInstance.Status.Detail.Role == azdiskv1beta2.PrimaryRole
+			isDemoteUpdated := label == consts.Demoted && azVolumeAttachmentInstance.Status.Detail.PreviousRole == azdiskv1beta2.PrimaryRole && azVolumeAttachmentInstance.Status.Detail.Role == azdiskv1beta2.ReplicaRole
+
+			if isPromoteUpdated || isDemoteUpdated {
+				return true, nil
+			}
+		}
+	}
 	return false, nil
 }
 
