@@ -68,7 +68,7 @@ import (
 	v113 "k8s.io/client-go/kubernetes/typed/rbac/v1"
 	v1alpha15 "k8s.io/client-go/kubernetes/typed/rbac/v1alpha1"
 	v1beta113 "k8s.io/client-go/kubernetes/typed/rbac/v1beta1"
-	v1alpha16 "k8s.io/client-go/kubernetes/typed/resource/v1alpha1"
+	v1alpha26 "k8s.io/client-go/kubernetes/typed/resource/v1alpha2"
 	v114 "k8s.io/client-go/kubernetes/typed/scheduling/v1"
 	v1alpha17 "k8s.io/client-go/kubernetes/typed/scheduling/v1alpha1"
 	v1beta114 "k8s.io/client-go/kubernetes/typed/scheduling/v1beta1"
@@ -717,10 +717,10 @@ func (mr *MockInterfaceMockRecorder) RbacV1beta1() *gomock.Call {
 }
 
 // ResourceV1alpha1 mocks base method.
-func (m *MockInterface) ResourceV1alpha1() v1alpha16.ResourceV1alpha1Interface {
+func (m *MockInterface) ResourceV1alpha1() v1alpha26.ResourceV1alpha2Interface {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "ResourceV1alpha1")
-	ret0, _ := ret[0].(v1alpha16.ResourceV1alpha1Interface)
+	ret := m.ctrl.Call(m, "ResourceV1alpha2")
+	ret0, _ := ret[0].(v1alpha26.ResourceV1alpha2Interface)
 	return ret0
 }
 
