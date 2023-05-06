@@ -166,7 +166,7 @@ func (t *TestVolumeSnapshotClass) CreateSnapshot(pvc *v1.PersistentVolumeClaim) 
 
 func (t *TestVolumeSnapshotClass) ReadyToUse(snapshot *snapshotv1.VolumeSnapshot) {
 	ginkgo.By("waiting for VolumeSnapshot to be ready to use - " + snapshot.Name)
-	err := wait.Poll(15*time.Second, 5*time.Minute, func() (bool, error) {
+	err := wait.Poll(15*time.Second, 30*time.Minute, func() (bool, error) {
 		vs, err := snapshotclientset.New(t.client).SnapshotV1().VolumeSnapshots(t.namespace.Name).Get(context.TODO(), snapshot.Name, metav1.GetOptions{})
 		if err != nil {
 			return false, fmt.Errorf("did not see ReadyToUse: %v", err)
