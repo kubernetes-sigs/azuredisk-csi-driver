@@ -793,9 +793,6 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 		if isAzureStackCloud {
 			test.StorageClassParameters = map[string]string{"skuName": "Standard_LRS"}
 		}
-		if !isUsingInTreeVolumePlugin && supportsZRS {
-			test.StorageClassParameters = map[string]string{"skuName": "StandardSSD_ZRS"}
-		}
 		test.Run(cs, snapshotrcs, ns)
 	})
 
@@ -839,9 +836,6 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 		if isAzureStackCloud {
 			test.StorageClassParameters = map[string]string{"skuName": "Standard_LRS"}
 		}
-		if !isUsingInTreeVolumePlugin && supportsZRS {
-			test.StorageClassParameters = map[string]string{"skuName": "StandardSSD_ZRS"}
-		}
 		test.Run(cs, snapshotrcs, ns)
 	})
 
@@ -884,9 +878,6 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 		}
 		if isAzureStackCloud {
 			test.StorageClassParameters = map[string]string{"skuName": "Standard_LRS"}
-		}
-		if !isUsingInTreeVolumePlugin && supportsZRS {
-			test.StorageClassParameters = map[string]string{"skuName": "StandardSSD_ZRS"}
 		}
 		test.Run(cs, snapshotrcs, ns)
 	})
