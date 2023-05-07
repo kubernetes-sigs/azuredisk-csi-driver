@@ -1098,31 +1098,6 @@ func (d *Driver) getSnapshotInfo(snapshotID string) (snapshotName, resourceGroup
 	return snapshotName, resourceGroup, subsID, err
 }
 
-// waitForSnapshotCopy wait for copy incremental snapshot to a new region until completionPercent is 100.0
-func (d *Driver) waitForSnapshotCopy(ctx context.Context, subsID, resourceGroup, copySnapshotName string, intervel, timeout time.Duration) error {
-	timeAfter := time.After(timeout)
-	timeTick := time.Tick(intervel)
-
-	for {
-		select {
-		case <-timeTick:
-			copySnapshot, rerr := d.cloud.SnapshotsClient.Get(ctx, subsID, resourceGroup, copySnapshotName)
-			if rerr != nil {
-				return rerr.Error()
-			}
-
-			completionPercent := *copySnapshot.SnapshotProperties.CompletionPercent
-			klog.V(2).Infof("copy snapshot(%s) under rg(%s) region(%s) completionPercent: %f", copySnapshotName, resourceGroup, *copySnapshot.Location, completionPercent)
-			if completionPercent >= float64(100.0) {
-				klog.V(2).Infof("copy snapshot(%s) under rg(%s) region(%s) complete", copySnapshotName, resourceGroup, *copySnapshot.Location)
-				return nil
-			}
-		case <-timeAfter:
-			return fmt.Errorf("timeout waiting for copy snapshot(%s) under rg(%s)", copySnapshotName, resourceGroup)
-		}
-	}
-}
-
 func isAsyncAttachEnabled(defaultValue bool, volumeContext map[string]string) bool {
 	for k, v := range volumeContext {
 		switch strings.ToLower(k) {
