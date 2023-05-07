@@ -305,7 +305,7 @@ func (t *TestPersistentVolumeClaim) WaitForBound() v1.PersistentVolumeClaim {
 	var err error
 
 	ginkgo.By(fmt.Sprintf("waiting for PVC to be in phase %q", v1.ClaimBound))
-	err = e2epv.WaitForPersistentVolumeClaimPhase(v1.ClaimBound, t.client, t.namespace.Name, t.persistentVolumeClaim.Name, framework.Poll, framework.ClaimProvisionTimeout)
+	err = e2epv.WaitForPersistentVolumeClaimPhase(context.TODO(), v1.ClaimBound, t.client, t.namespace.Name, t.persistentVolumeClaim.Name, framework.Poll, framework.ClaimProvisionTimeout)
 	framework.ExpectNoError(err)
 
 	ginkgo.By("checking the PVC")
@@ -358,7 +358,7 @@ func (t *TestPersistentVolumeClaim) Cleanup() {
 		t.ValidateProvisionedPersistentVolume()
 	}
 	framework.Logf("deleting PVC %q/%q", t.namespace.Name, t.persistentVolumeClaim.Name)
-	err := e2epv.DeletePersistentVolumeClaim(t.client, t.persistentVolumeClaim.Name, t.namespace.Name)
+	err := e2epv.DeletePersistentVolumeClaim(context.TODO(), t.client, t.persistentVolumeClaim.Name, t.namespace.Name)
 	framework.ExpectNoError(err)
 	// Wait for the PV to get deleted if reclaim policy is Delete. (If it's
 	// Retain, there's no use waiting because the PV won't be auto-deleted and
@@ -368,7 +368,7 @@ func (t *TestPersistentVolumeClaim) Cleanup() {
 	// in a couple of minutes.
 	if t.persistentVolume.Spec.PersistentVolumeReclaimPolicy == v1.PersistentVolumeReclaimDelete {
 		ginkgo.By(fmt.Sprintf("waiting for claim's PV %q to be deleted", t.persistentVolume.Name))
-		err := e2epv.WaitForPersistentVolumeDeleted(t.client, t.persistentVolume.Name, 5*time.Second, 10*time.Minute)
+		err := e2epv.WaitForPersistentVolumeDeleted(context.TODO(), t.client, t.persistentVolume.Name, 5*time.Second, 10*time.Minute)
 		framework.ExpectNoError(err)
 	}
 	// Wait for the PVC to be deleted
@@ -381,16 +381,16 @@ func (t *TestPersistentVolumeClaim) ReclaimPolicy() v1.PersistentVolumeReclaimPo
 }
 
 func (t *TestPersistentVolumeClaim) WaitForPersistentVolumePhase(phase v1.PersistentVolumePhase) {
-	err := e2epv.WaitForPersistentVolumePhase(phase, t.client, t.persistentVolume.Name, 5*time.Second, 10*time.Minute)
+	err := e2epv.WaitForPersistentVolumePhase(context.TODO(), phase, t.client, t.persistentVolume.Name, 5*time.Second, 10*time.Minute)
 	framework.ExpectNoError(err)
 }
 
 func (t *TestPersistentVolumeClaim) DeleteBoundPersistentVolume() {
 	ginkgo.By(fmt.Sprintf("deleting PV %q", t.persistentVolume.Name))
-	err := e2epv.DeletePersistentVolume(t.client, t.persistentVolume.Name)
+	err := e2epv.DeletePersistentVolume(context.TODO(), t.client, t.persistentVolume.Name)
 	framework.ExpectNoError(err)
 	ginkgo.By(fmt.Sprintf("waiting for claim's PV %q to be deleted", t.persistentVolume.Name))
-	err = e2epv.WaitForPersistentVolumeDeleted(t.client, t.persistentVolume.Name, 5*time.Second, 10*time.Minute)
+	err = e2epv.WaitForPersistentVolumeDeleted(context.TODO(), t.client, t.persistentVolume.Name, 5*time.Second, 10*time.Minute)
 	framework.ExpectNoError(err)
 }
 
@@ -521,7 +521,7 @@ func (t *TestDeployment) Create() {
 	framework.ExpectNoError(err)
 	err = testutil.WaitForDeploymentComplete(t.client, t.deployment, framework.Logf, poll, pollLongTimeout)
 	framework.ExpectNoError(err)
-	pods, err := deployment.GetPodsForDeployment(t.client, t.deployment)
+	pods, err := deployment.GetPodsForDeployment(context.TODO(), t.client, t.deployment)
 	framework.ExpectNoError(err)
 	for _, pod := range pods.Items {
 		t.podNames = append(t.podNames, pod.Name)
@@ -529,7 +529,7 @@ func (t *TestDeployment) Create() {
 }
 
 func (t *TestDeployment) WaitForPodReady() {
-	pods, err := deployment.GetPodsForDeployment(t.client, t.deployment)
+	pods, err := deployment.GetPodsForDeployment(context.TODO(), t.client, t.deployment)
 	framework.ExpectNoError(err)
 	t.podNames = []string{}
 	for _, pod := range pods.Items {
@@ -539,7 +539,7 @@ func (t *TestDeployment) WaitForPodReady() {
 	defer close(ch)
 	for _, pod := range pods.Items {
 		go func(client clientset.Interface, pod v1.Pod) {
-			err = e2epod.WaitForPodRunningInNamespace(client, &pod)
+			err = e2epod.WaitForPodRunningInNamespace(context.TODO(), client, &pod)
 			ch <- err
 		}(t.client, pod)
 	}
@@ -582,7 +582,7 @@ func (t *TestDeployment) DeletePodAndWait() {
 	for _, podName := range t.podNames {
 		framework.Logf("Waiting for pod %q in namespace %q to be fully deleted", podName, t.namespace.Name)
 		go func(client clientset.Interface, ns, podName string) {
-			err := e2epod.WaitForPodNotFoundInNamespace(client, podName, ns, e2epod.DefaultPodDeletionTimeout)
+			err := e2epod.WaitForPodNotFoundInNamespace(context.TODO(), client, podName, ns, e2epod.DefaultPodDeletionTimeout)
 			ch <- err
 		}(t.client, t.namespace.Name, podName)
 	}
@@ -716,7 +716,7 @@ func (t *TestStatefulset) WaitForPodReady() {
 	// always get first pod as there should only be one
 	pod := statefulSetPods.Items[0]
 	t.podName = pod.Name
-	err = e2epod.WaitForPodRunningInNamespace(t.client, &pod)
+	err = e2epod.WaitForPodRunningInNamespace(context.TODO(), t.client, &pod)
 	framework.ExpectNoError(err)
 }
 
@@ -819,22 +819,23 @@ func (t *TestPod) Create() {
 }
 
 func (t *TestPod) WaitForSuccess() {
-	err := e2epod.WaitForPodSuccessInNamespaceSlow(t.client, t.pod.Name, t.namespace.Name)
+	err := e2epod.WaitForPodSuccessInNamespaceSlow(context.TODO(), t.client, t.pod.Name, t.namespace.Name)
 	framework.ExpectNoError(err)
 }
 
 func (t *TestPod) WaitForRunning() {
-	err := e2epod.WaitForPodRunningInNamespace(t.client, t.pod)
+	err := e2epod.WaitForPodRunningInNamespace(context.TODO(), t.client, t.pod)
 	framework.ExpectNoError(err)
 }
 
 func (t *TestPod) WaitForRunningLong() {
-	err := e2epod.WaitForPodRunningInNamespaceSlow(t.client, t.pod.Name, t.namespace.Name)
+	err := e2epod.WaitForPodRunningInNamespaceSlow(context.TODO(), t.client, t.pod.Name, t.namespace.Name)
 	framework.ExpectNoError(err)
 }
 
 func (t *TestPod) WaitForFailedMountError() {
 	err := e2eevents.WaitTimeoutForEvent(
+		context.TODO(),
 		t.client,
 		t.namespace.Name,
 		fields.Set{"reason": events.FailedMountVolume}.AsSelector().String(),
@@ -858,7 +859,7 @@ var podFailedCondition = func(pod *v1.Pod) (bool, error) {
 }
 
 func (t *TestPod) WaitForFailure() {
-	err := e2epod.WaitForPodCondition(t.client, t.namespace.Name, t.pod.Name, failedConditionDescription, slowPodStartTimeout, podFailedCondition)
+	err := e2epod.WaitForPodCondition(context.TODO(), t.client, t.namespace.Name, t.pod.Name, failedConditionDescription, slowPodStartTimeout, podFailedCondition)
 	framework.ExpectNoError(err)
 }
 
@@ -1012,7 +1013,7 @@ func cleanupPodOrFail(client clientset.Interface, name, namespace string) {
 	} else {
 		framework.Logf("Pod %s has the following logs: %s", name, body)
 	}
-	e2epod.DeletePodOrFail(client, namespace, name)
+	e2epod.DeletePodOrFail(context.TODO(), client, namespace, name)
 }
 
 func podLogs(client clientset.Interface, name, namespace string) ([]byte, error) {
