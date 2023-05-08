@@ -44,6 +44,7 @@ const (
 	MaxSharesField                = "maxshares"
 	MinimumDiskSizeGiB            = 1
 	NetworkAccessPolicyField      = "networkaccesspolicy"
+	PublicNetworkAccessField      = "publicnetworkaccess"
 	NotFound                      = "NotFound"
 	PerfProfileBasic              = "basic"
 	PerfProfileAdvanced           = "advanced"

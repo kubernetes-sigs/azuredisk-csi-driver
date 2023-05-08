@@ -173,6 +173,7 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 		scParameters := map[string]string{
 			"skuName":             "Standard_LRS",
 			"networkAccessPolicy": "DenyAll",
+			"PublicNetworkAccess": "Enabled",
 			"userAgent":           "azuredisk-e2e-test",
 			"enableAsyncAttach":   "false",
 		}
@@ -607,6 +608,7 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 				"skuName":             "StandardSSD_ZRS",
 				"fsType":              "xfs",
 				"networkAccessPolicy": "DenyAll",
+				"PublicNetworkAccess": "Disabled",
 			}
 		}
 		test.Run(cs, ns)

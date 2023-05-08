@@ -25,6 +25,7 @@ diskEncryptionType | encryption type of the disk encryption set | `EncryptionAtR
 writeAcceleratorEnabled | [Write Accelerator on Azure Disks](https://docs.microsoft.com/azure/virtual-machines/windows/how-to-enable-write-accelerator) | `true`, `false` | No | ""
 perfProfile | [Block device performance tuning using perfProfiles](./perf-profiles.md) | `none`, `basic`, `advanced` | No | `none`
 networkAccessPolicy | NetworkAccessPolicy property to prevent anybody from generating the SAS URI for a disk or a snapshot | `AllowAll`, `DenyAll`, `AllowPrivate` | No | `AllowAll`
+publicNetworkAccess | Enabling or disabling public access to the underlying data of a disk on the internet, even when the NetworkAccessPolicy is set to `AllowAll` | `Enabled`, `Disabled` | No | `Enabled`
 diskAccessID | ARM id of the [DiskAccess](https://aka.ms/disksprivatelinksdoc) resource for using private endpoints on disks | | No  | ``
 enableBursting | [enable on-demand bursting](https://docs.microsoft.com/en-us/azure/virtual-machines/disk-bursting) beyond the provisioned performance target of the disk. On-demand bursting only be applied to Premium disk, disk size > 512GB, Ultra & shared disk is not supported. Bursting is disabled by default. | `true`, `false` | No | `false`
 useragent | User agent used for [customer usage attribution](https://docs.microsoft.com/en-us/azure/marketplace/azure-partner-customer-usage-attribution)| | No  | Generated Useragent formatted `driverName/driverVersion compiler/version (OS-ARCH)`

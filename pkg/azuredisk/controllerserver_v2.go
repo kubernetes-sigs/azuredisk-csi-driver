@@ -137,6 +137,11 @@ func (d *DriverV2) CreateVolume(ctx context.Context, req *csi.CreateVolumeReques
 		return nil, status.Error(codes.InvalidArgument, err.Error())
 	}
 
+	publicNetworkAccess, err := azureutils.NormalizePublicNetworkAccess(diskParams.PublicNetworkAccess)
+	if err != nil {
+		return nil, status.Error(codes.InvalidArgument, err.Error())
+	}
+
 	selectedAvailabilityZone := azureutils.PickAvailabilityZone(req.GetAccessibilityRequirements(), d.cloud.Location, topologyKey)
 
 	if d.enableDiskCapacityCheck {
@@ -204,9 +209,10 @@ func (d *DriverV2) CreateVolume(ctx context.Context, req *csi.CreateVolumeReques
 		Tags:                diskParams.Tags,
 		Location:            diskParams.Location,
 	}
-	// Azure Stack Cloud does not support NetworkAccessPolicy
+	// Azure Stack Cloud does not support NetworkAccessPolicy, PublicNetworkAccess
 	if !azureutils.IsAzureStackCloud(d.cloud.Config.Cloud, d.cloud.Config.DisableAzureStackCloud) {
 		volumeOptions.NetworkAccessPolicy = networkAccessPolicy
+		volumeOptions.PublicNetworkAccess = publicNetworkAccess
 		if diskParams.DiskAccessID != "" {
 			volumeOptions.DiskAccessID = &diskParams.DiskAccessID
 		}
