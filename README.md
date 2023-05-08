@@ -1,6 +1,7 @@
 # Azure Disk CSI driver for Kubernetes
 
-[![Travis](https://travis-ci.org/kubernetes-sigs/azuredisk-csi-driver.svg)](https://travis-ci.org/kubernetes-sigs/azuredisk-csi-driver)
+![linux build status](https://github.com/kubernetes-sigs/azuredisk-csi-driver/actions/workflows/linux.yml/badge.svg)
+![windows build status](https://github.com/kubernetes-sigs/azuredisk-csi-driver/actions/workflows/windows.yml/badge.svg)
 [![Coverage Status](https://coveralls.io/repos/github/kubernetes-sigs/azuredisk-csi-driver/badge.svg?branch=master)](https://coveralls.io/github/kubernetes-sigs/azuredisk-csi-driver?branch=master)
 [![FOSSA Status](https://app.fossa.io/api/projects/git%2Bgithub.com%2Fkubernetes-sigs%2Fazuredisk-csi-driver.svg?type=shield)](https://app.fossa.io/projects/git%2Bgithub.com%2Fkubernetes-sigs%2Fazuredisk-csi-driver?ref=badge_shield)
 
