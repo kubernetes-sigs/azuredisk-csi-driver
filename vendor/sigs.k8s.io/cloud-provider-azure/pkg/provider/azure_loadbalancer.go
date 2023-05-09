@@ -869,7 +869,11 @@ func (az *Cloud) determinePublicIPName(clusterName string, service *v1.Service, 
 
 	pipResourceGroup := az.getPublicIPAddressResourceGroup(service)
 	if id := getServicePIPPrefixID(service, isIPv6); id != "" {
+<<<<<<< HEAD
 		pipName, err := az.getPublicIPName(clusterName, service, isIPv6)
+=======
+		pipName, err := az.getPublicIPName(clusterName, service, pipResourceGroup, isIPv6)
+>>>>>>> bump cloud provider azure
 		return pipName, false, err
 	}
 
@@ -878,7 +882,11 @@ func (az *Cloud) determinePublicIPName(clusterName string, service *v1.Service, 
 	// Assume that the service without loadBalancerIP set is a primary service.
 	// If a secondary service doesn't set the loadBalancerIP, it is not allowed to share the IP.
 	if len(loadBalancerIP) == 0 {
+<<<<<<< HEAD
 		pipName, err := az.getPublicIPName(clusterName, service, isIPv6)
+=======
+		pipName, err := az.getPublicIPName(clusterName, service, pipResourceGroup, isIPv6)
+>>>>>>> bump cloud provider azure
 		return pipName, false, err
 	}
 
@@ -896,11 +904,37 @@ func (az *Cloud) determinePublicIPName(clusterName string, service *v1.Service, 
 	return "", false, fmt.Errorf("user supplied IP Address %s was not found in resource group %s", loadBalancerIP, pipResourceGroup)
 }
 
+<<<<<<< HEAD
 func (az *Cloud) findMatchedPIPByLoadBalancerIP(service *v1.Service, loadBalancerIP, pipResourceGroup string) (*network.PublicIPAddress, error) {
 	pips, err := az.listPIP(pipResourceGroup)
 	if err != nil {
 		return nil, fmt.Errorf("findMatchedPIPByLoadBalancerIP: failed to listPIP: %w", err)
 	}
+=======
+// findMatchedPIPByIPFamilyAndServiceName is for IPv6. It tries to find a matching PIP whose name doesn't have IPv6 suffix.
+// Such PIP comes from old CCM without dual-stack support.
+func (az *Cloud) findMatchedPIPByIPFamilyAndServiceName(clusterName string, service *v1.Service, pipResourceGroup string) (*network.PublicIPAddress, error) {
+	pips, err := az.listPIP(pipResourceGroup)
+	if err != nil {
+		return nil, fmt.Errorf("findMatchedPIPByIPFamilyAndServiceName: failed to listPIP: %w", err)
+	}
+	baseName := az.GetLoadBalancerName(context.TODO(), clusterName, service)
+	for _, pip := range pips {
+		pip := pip
+		if pointer.StringDeref(pip.Name, "") == baseName && pip.PublicIPAddressPropertiesFormat != nil &&
+			pip.PublicIPAddressPropertiesFormat.PublicIPAddressVersion == network.IPv6 {
+			return &pip, nil
+		}
+	}
+	return nil, nil
+}
+
+func (az *Cloud) findMatchedPIPByLoadBalancerIP(service *v1.Service, loadBalancerIP, pipResourceGroup string) (*network.PublicIPAddress, error) {
+	pips, err := az.listPIP(pipResourceGroup)
+	if err != nil {
+		return nil, fmt.Errorf("findMatchedPIPByLoadBalancerIP: failed to listPIP: %w", err)
+	}
+>>>>>>> bump cloud provider azure
 	for _, pip := range pips {
 		pip := pip
 		if pip.PublicIPAddressPropertiesFormat.IPAddress != nil &&

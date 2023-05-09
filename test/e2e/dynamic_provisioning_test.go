@@ -17,7 +17,6 @@ limitations under the License.
 package e2e
 
 import (
-	"context"
 	"fmt"
 	"os"
 
@@ -65,7 +64,7 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 		testDriver  driver.PVTestDriver
 	)
 
-	ginkgo.BeforeEach(func() {
+	ginkgo.BeforeEach(func(ctx ginkgo.SpecContext) {
 		checkPodsRestart := testCmd{
 			command:  "bash",
 			args:     []string{"test/utils/check_driver_pods_restart.sh"},
@@ -85,7 +84,7 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 
 		// Populate allowedTopologyValues from node labels fior the first time
 		if isMultiZone && len(t.allowedTopologyValues) == 0 {
-			nodes, err := cs.CoreV1().Nodes().List(context.TODO(), metav1.ListOptions{})
+			nodes, err := cs.CoreV1().Nodes().List(ctx, metav1.ListOptions{})
 			framework.ExpectNoError(err)
 			allowedTopologyValuesMap := make(map[string]bool)
 			for _, node := range nodes.Items {
@@ -100,7 +99,7 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 	})
 
 	testDriver = driver.InitAzureDiskDriver()
-	ginkgo.It("should create a volume on demand with mount options [kubernetes.io/azure-disk] [disk.csi.azure.com] [Windows]", func() {
+	ginkgo.It("should create a volume on demand with mount options [kubernetes.io/azure-disk] [disk.csi.azure.com] [Windows]", func(ctx ginkgo.SpecContext) {
 		pvcSize := "10Gi"
 		if isMultiZone {
 			pvcSize = "512Gi"
@@ -146,10 +145,10 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 			// cover case: https://github.com/kubernetes/kubernetes/issues/103433
 			test.StorageClassParameters["Kind"] = "managed"
 		}
-		test.Run(cs, ns)
+		test.Run(ctx, cs, ns)
 	})
 
-	ginkgo.It("should create a pod with volume mount subpath [disk.csi.azure.com] [Windows]", func() {
+	ginkgo.It("should create a pod with volume mount subpath [disk.csi.azure.com] [Windows]", func(ctx ginkgo.SpecContext) {
 		skipIfUsingInTreeVolumePlugin()
 
 		pods := []testsuites.PodDetails{
@@ -181,10 +180,10 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 			Pods:                   pods,
 			StorageClassParameters: scParameters,
 		}
-		test.Run(cs, ns)
+		test.Run(ctx, cs, ns)
 	})
 
-	ginkgo.It("Should create and attach a volume with basic perfProfile [enableBursting][disk.csi.azure.com] [Windows]", func() {
+	ginkgo.It("Should create and attach a volume with basic perfProfile [enableBursting][disk.csi.azure.com] [Windows]", func(ctx ginkgo.SpecContext) {
 		skipIfOnAzureStackCloud()
 		skipIfUsingInTreeVolumePlugin()
 		pods := []testsuites.PodDetails{
@@ -217,10 +216,10 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 				"enableAsyncAttach": "false",
 			},
 		}
-		test.Run(cs, ns)
+		test.Run(ctx, cs, ns)
 	})
 
-	ginkgo.It("should receive FailedMount event with invalid mount options [kubernetes.io/azure-disk] [disk.csi.azure.com]", func() {
+	ginkgo.It("should receive FailedMount event with invalid mount options [kubernetes.io/azure-disk] [disk.csi.azure.com]", func(ctx ginkgo.SpecContext) {
 		skipIfTestingInWindowsCluster()
 
 		pods := []testsuites.PodDetails{
@@ -254,10 +253,10 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 		if isAzureStackCloud {
 			test.StorageClassParameters = map[string]string{"skuName": "Standard_LRS"}
 		}
-		test.Run(cs, ns)
+		test.Run(ctx, cs, ns)
 	})
 
-	ginkgo.It("should create a raw block volume on demand [kubernetes.io/azure-disk] [disk.csi.azure.com]", func() {
+	ginkgo.It("should create a raw block volume on demand [kubernetes.io/azure-disk] [disk.csi.azure.com]", func(ctx ginkgo.SpecContext) {
 		skipIfTestingInWindowsCluster()
 
 		pods := []testsuites.PodDetails{
@@ -285,10 +284,10 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 			test.StorageClassParameters = map[string]string{"skuName": "StandardSSD_ZRS"}
 		}
 
-		test.Run(cs, ns)
+		test.Run(ctx, cs, ns)
 	})
 
-	ginkgo.It("should create a volume in separate resource group and bind it to a pod [kubernetes.io/azure-disk] [disk.csi.azure.com]", func() {
+	ginkgo.It("should create a volume in separate resource group and bind it to a pod [kubernetes.io/azure-disk] [disk.csi.azure.com]", func(ctx ginkgo.SpecContext) {
 		skipIfTestingInWindowsCluster()
 		skipIfUsingInTreeVolumePlugin()
 
@@ -317,10 +316,10 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 			test.StorageClassParameters = map[string]string{"skuName": "StandardSSD_ZRS"}
 		}
 
-		test.Run(cs, ns)
+		test.Run(ctx, cs, ns)
 	})
 
-	ginkgo.It("should create multiple volumes, each in separate resource groups and attach them to a single pod [kubernetes.io/azure-disk] [disk.csi.azure.com]", func() {
+	ginkgo.It("should create multiple volumes, each in separate resource groups and attach them to a single pod [kubernetes.io/azure-disk] [disk.csi.azure.com]", func(ctx ginkgo.SpecContext) {
 		skipIfTestingInWindowsCluster()
 		skipIfUsingInTreeVolumePlugin()
 
@@ -358,11 +357,11 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 			test.StorageClassParameters = map[string]string{"skuName": "StandardSSD_ZRS"}
 		}
 
-		test.Run(cs, ns)
+		test.Run(ctx, cs, ns)
 	})
 
 	// Track issue https://github.com/kubernetes/kubernetes/issues/70505
-	ginkgo.It("should create a volume on demand and mount it as readOnly in a pod [kubernetes.io/azure-disk] [disk.csi.azure.com] [Windows]", func() {
+	ginkgo.It("should create a volume on demand and mount it as readOnly in a pod [kubernetes.io/azure-disk] [disk.csi.azure.com] [Windows]", func(ctx ginkgo.SpecContext) {
 		pods := []testsuites.PodDetails{
 			{
 				Cmd: convertToPowershellorCmdCommandIfNecessary("touch /mnt/test-1/data"),
@@ -393,10 +392,10 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 		if isAzureStackCloud {
 			test.StorageClassParameters = map[string]string{"skuName": "Standard_LRS"}
 		}
-		test.Run(cs, ns)
+		test.Run(ctx, cs, ns)
 	})
 
-	ginkgo.It("should create multiple PV objects, bind to PVCs and attach all to different pods on the same node [kubernetes.io/azure-disk] [disk.csi.azure.com] [Windows]", func() {
+	ginkgo.It("should create multiple PV objects, bind to PVCs and attach all to different pods on the same node [kubernetes.io/azure-disk] [disk.csi.azure.com] [Windows]", func(ctx ginkgo.SpecContext) {
 		pods := []testsuites.PodDetails{
 			{
 				Cmd: convertToPowershellorCmdCommandIfNecessary("while true; do echo $(date -u) >> /mnt/test-1/data; sleep 3600; done"),
@@ -457,10 +456,10 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 			test.StorageClassParameters = map[string]string{"skuName": "StandardSSD_ZRS"}
 		}
 
-		test.Run(cs, ns)
+		test.Run(ctx, cs, ns)
 	})
 
-	ginkgo.It("should create a deployment object, write and read to it, delete the pod and write and read to it again [kubernetes.io/azure-disk] [disk.csi.azure.com] [Windows]", func() {
+	ginkgo.It("should create a deployment object, write and read to it, delete the pod and write and read to it again [kubernetes.io/azure-disk] [disk.csi.azure.com] [Windows]", func(ctx ginkgo.SpecContext) {
 		pod := testsuites.PodDetails{
 			Cmd: convertToPowershellorCmdCommandIfNecessary("echo 'hello world' >> /mnt/test-1/data && while true; do sleep 3600; done"),
 			Volumes: t.normalizeVolumes([]testsuites.VolumeDetails{
@@ -493,10 +492,10 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 				ExpectedString: expectedString, // pod will be restarted so expect to see 2 instances of string
 			},
 		}
-		test.Run(cs, ns)
+		test.Run(ctx, cs, ns)
 	})
 
-	ginkgo.It(fmt.Sprintf("should delete PV with reclaimPolicy %q [kubernetes.io/azure-disk] [disk.csi.azure.com] [Windows]", v1.PersistentVolumeReclaimDelete), func() {
+	ginkgo.It(fmt.Sprintf("should delete PV with reclaimPolicy %q [kubernetes.io/azure-disk] [disk.csi.azure.com] [Windows]", v1.PersistentVolumeReclaimDelete), func(ctx ginkgo.SpecContext) {
 		reclaimPolicy := v1.PersistentVolumeReclaimDelete
 		volumes := t.normalizeVolumes([]testsuites.VolumeDetails{
 			{
@@ -510,10 +509,10 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 			CSIDriver: testDriver,
 			Volumes:   volumes,
 		}
-		test.Run(cs, ns)
+		test.Run(ctx, cs, ns)
 	})
 
-	ginkgo.It(fmt.Sprintf("should retain PV with reclaimPolicy %q [disk.csi.azure.com]", v1.PersistentVolumeReclaimRetain), func() {
+	ginkgo.It(fmt.Sprintf("should retain PV with reclaimPolicy %q [disk.csi.azure.com]", v1.PersistentVolumeReclaimRetain), func(ctx ginkgo.SpecContext) {
 		// This tests uses the CSI driver to delete the PV.
 		// TODO: Go via the k8s interfaces and also make it more reliable for in-tree and then
 		//       test can be enabled.
@@ -533,10 +532,10 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 			Volumes:   volumes,
 			Azuredisk: azurediskDriver,
 		}
-		test.Run(cs, ns)
+		test.Run(ctx, cs, ns)
 	})
 
-	ginkgo.It("should clone a volume from an existing volume and read from it [disk.csi.azure.com]", func() {
+	ginkgo.It("should clone a volume from an existing volume and read from it [disk.csi.azure.com]", func(ctx ginkgo.SpecContext) {
 		skipIfTestingInWindowsCluster()
 		skipIfUsingInTreeVolumePlugin()
 
@@ -566,10 +565,10 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 				"fsType":  "xfs",
 			},
 		}
-		test.Run(cs, ns)
+		test.Run(ctx, cs, ns)
 	})
 
-	ginkgo.It("should clone a volume of larger size than the source volume and make sure the filesystem is appropriately adjusted [disk.csi.azure.com]", func() {
+	ginkgo.It("should clone a volume of larger size than the source volume and make sure the filesystem is appropriately adjusted [disk.csi.azure.com]", func(ctx ginkgo.SpecContext) {
 		skipIfTestingInWindowsCluster()
 		skipIfUsingInTreeVolumePlugin()
 
@@ -609,10 +608,10 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 				"networkAccessPolicy": "DenyAll",
 			}
 		}
-		test.Run(cs, ns)
+		test.Run(ctx, cs, ns)
 	})
 
-	ginkgo.It("should create multiple PV objects, bind to PVCs and attach all to a single pod [kubernetes.io/azure-disk] [disk.csi.azure.com] [Windows]", func() {
+	ginkgo.It("should create multiple PV objects, bind to PVCs and attach all to a single pod [kubernetes.io/azure-disk] [disk.csi.azure.com] [Windows]", func(ctx ginkgo.SpecContext) {
 		pods := []testsuites.PodDetails{
 			{
 				Cmd: convertToPowershellorCmdCommandIfNecessary("echo 'hello world' > /mnt/test-1/data && echo 'hello world' > /mnt/test-2/data && echo 'hello world' > /mnt/test-3/data && grep 'hello world' /mnt/test-1/data && grep 'hello world' /mnt/test-2/data && grep 'hello world' /mnt/test-3/data"),
@@ -660,10 +659,10 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 		if !isUsingInTreeVolumePlugin && supportsZRS {
 			test.StorageClassParameters = map[string]string{"skuName": "StandardSSD_ZRS"}
 		}
-		test.Run(cs, ns)
+		test.Run(ctx, cs, ns)
 	})
 
-	ginkgo.It("should create a raw block volume and a filesystem volume on demand and bind to the same pod [kubernetes.io/azure-disk] [disk.csi.azure.com]", func() {
+	ginkgo.It("should create a raw block volume and a filesystem volume on demand and bind to the same pod [kubernetes.io/azure-disk] [disk.csi.azure.com]", func(ctx ginkgo.SpecContext) {
 		skipIfTestingInWindowsCluster()
 
 		pods := []testsuites.PodDetails{
@@ -701,10 +700,10 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 		if !isUsingInTreeVolumePlugin && supportsZRS {
 			test.StorageClassParameters = map[string]string{"skuName": "StandardSSD_ZRS"}
 		}
-		test.Run(cs, ns)
+		test.Run(ctx, cs, ns)
 	})
 
-	ginkgo.It("should create a pod, write and read to it, take a volume snapshot, and create another pod from the snapshot [disk.csi.azure.com]", func() {
+	ginkgo.It("should create a pod, write and read to it, take a volume snapshot, and create another pod from the snapshot [disk.csi.azure.com]", func(ctx ginkgo.SpecContext) {
 		skipIfUsingInTreeVolumePlugin()
 
 		pod := testsuites.PodDetails{
@@ -744,10 +743,10 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 		if !isUsingInTreeVolumePlugin && supportsZRS {
 			test.StorageClassParameters = map[string]string{"skuName": "StandardSSD_ZRS"}
 		}
-		test.Run(cs, snapshotrcs, ns)
+		test.Run(ctx, cs, snapshotrcs, ns)
 	})
 
-	ginkgo.It("should create a pod, write to its pv, take a volume snapshot, overwrite data in original pv, create another pod from the snapshot, and read unaltered original data from original pv[disk.csi.azure.com]", func() {
+	ginkgo.It("should create a pod, write to its pv, take a volume snapshot, overwrite data in original pv, create another pod from the snapshot, and read unaltered original data from original pv[disk.csi.azure.com]", func(ctx ginkgo.SpecContext) {
 		skipIfUsingInTreeVolumePlugin()
 
 		pod := testsuites.PodDetails{
@@ -879,10 +878,10 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 		if isAzureStackCloud {
 			test.StorageClassParameters = map[string]string{"skuName": "Standard_LRS"}
 		}
-		test.Run(cs, snapshotrcs, ns)
+		test.Run(ctx, cs, snapshotrcs, ns)
 	})
 
-	ginkgo.It("should create a pod with multiple volumes [kubernetes.io/azure-disk] [disk.csi.azure.com] [Windows]", func() {
+	ginkgo.It("should create a pod with multiple volumes [kubernetes.io/azure-disk] [disk.csi.azure.com] [Windows]", func(ctx ginkgo.SpecContext) {
 		volumes := []testsuites.VolumeDetails{}
 		for i := 1; i <= 3; i++ {
 			volume := testsuites.VolumeDetails{
@@ -908,10 +907,10 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 			CSIDriver: testDriver,
 			Pods:      pods,
 		}
-		test.Run(cs, ns)
+		test.Run(ctx, cs, ns)
 	})
 
-	ginkgo.It("should create a volume on demand and resize it [disk.csi.azure.com] [Windows]", func() {
+	ginkgo.It("should create a volume on demand and resize it [disk.csi.azure.com] [Windows]", func(ctx ginkgo.SpecContext) {
 		skipIfUsingInTreeVolumePlugin()
 		volume := testsuites.VolumeDetails{
 			ClaimSize: "10Gi",
@@ -952,10 +951,10 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 				"fsType":  "btrfs",
 			}
 		}
-		test.Run(cs, ns)
+		test.Run(ctx, cs, ns)
 	})
 
-	ginkgo.It("should create a volume on demand and dynamically resize it without detaching [disk.csi.azure.com] ", func() {
+	ginkgo.It("should create a volume on demand and dynamically resize it without detaching [disk.csi.azure.com] ", func(ctx ginkgo.SpecContext) {
 		skipIfUsingInTreeVolumePlugin()
 		skipIfNotDynamicallyResizeSuported()
 		//Subscription must be registered for LiveResize
@@ -992,10 +991,10 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 			ResizeOffline:          false,
 			StorageClassParameters: map[string]string{"skuName": "Standard_LRS"},
 		}
-		test.Run(cs, ns)
+		test.Run(ctx, cs, ns)
 	})
 
-	ginkgo.It("should create a block volume on demand and dynamically resize it without detaching [disk.csi.azure.com] ", func() {
+	ginkgo.It("should create a block volume on demand and dynamically resize it without detaching [disk.csi.azure.com] ", func(ctx ginkgo.SpecContext) {
 		skipIfUsingInTreeVolumePlugin()
 		skipIfNotDynamicallyResizeSuported()
 		//Subscription must be registered for LiveResize
@@ -1033,10 +1032,10 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 			ResizeOffline:          false,
 			StorageClassParameters: map[string]string{"skuName": "Standard_LRS"},
 		}
-		test.Run(cs, ns)
+		test.Run(ctx, cs, ns)
 	})
 
-	ginkgo.It("should create a volume azuredisk with tag [disk.csi.azure.com] [Windows]", func() {
+	ginkgo.It("should create a volume azuredisk with tag [disk.csi.azure.com] [Windows]", func(ctx ginkgo.SpecContext) {
 		skipIfUsingInTreeVolumePlugin()
 		pods := []testsuites.PodDetails{
 			{
@@ -1069,10 +1068,10 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 		if !isUsingInTreeVolumePlugin && supportsZRS {
 			test.StorageClassParameters = map[string]string{"skuName": "StandardSSD_ZRS", "tags": tags}
 		}
-		test.Run(cs, ns)
+		test.Run(ctx, cs, ns)
 	})
 
-	ginkgo.It("should detach disk after pod deleted [disk.csi.azure.com] [Windows]", func() {
+	ginkgo.It("should detach disk after pod deleted [disk.csi.azure.com] [Windows]", func(ctx ginkgo.SpecContext) {
 		pods := []testsuites.PodDetails{
 			{
 				Cmd: convertToPowershellorCmdCommandIfNecessary("while true; do echo $(date -u) >> /mnt/test-1/data; sleep 3600; done"),
@@ -1102,10 +1101,10 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 		if !isUsingInTreeVolumePlugin && supportsZRS {
 			test.StorageClassParameters = map[string]string{"skuName": "StandardSSD_ZRS"}
 		}
-		test.Run(cs, ns)
+		test.Run(ctx, cs, ns)
 	})
 
-	ginkgo.It("should create a statefulset object, write and read to it, delete the pod and write and read to it again [kubernetes.io/azure-disk] [disk.csi.azure.com] [Windows]", func() {
+	ginkgo.It("should create a statefulset object, write and read to it, delete the pod and write and read to it again [kubernetes.io/azure-disk] [disk.csi.azure.com] [Windows]", func(ctx ginkgo.SpecContext) {
 		pod := testsuites.PodDetails{
 			Cmd: convertToPowershellorCmdCommandIfNecessary("echo 'hello world' >> /mnt/test-1/data && while true; do sleep 3600; done"),
 			Volumes: t.normalizeVolumes([]testsuites.VolumeDetails{
@@ -1138,10 +1137,10 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 				ExpectedString: expectedString, // pod will be restarted so expect to see 2 instances of string
 			},
 		}
-		test.Run(cs, ns)
+		test.Run(ctx, cs, ns)
 	})
 
-	ginkgo.It("Should test pod failover with cordoning a node", func() {
+	ginkgo.It("Should test pod failover with cordoning a node", func(ctx ginkgo.SpecContext) {
 		skipIfUsingInTreeVolumePlugin()
 		skipIfTestingInWindowsCluster()
 		if isMultiZone {
@@ -1192,10 +1191,10 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 			},
 			StorageClassParameters: storageClassParameters,
 		}
-		test.Run(cs, ns)
+		test.Run(ctx, cs, ns)
 	})
 
-	ginkgo.It("Should test pod failover with cordoning a node using ZRS", func() {
+	ginkgo.It("Should test pod failover with cordoning a node using ZRS", func(ctx ginkgo.SpecContext) {
 		skipIfUsingInTreeVolumePlugin()
 		skipIfNotZRSSupported()
 		skipIfTestingInWindowsCluster()
@@ -1244,10 +1243,10 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 			},
 			StorageClassParameters: storageClassParameters,
 		}
-		test.Run(cs, ns)
+		test.Run(ctx, cs, ns)
 	})
 
-	ginkgo.It("should succeed when attaching a shared block volume to multiple pods [disk.csi.azure.com][shared disk]", func() {
+	ginkgo.It("should succeed when attaching a shared block volume to multiple pods [disk.csi.azure.com][shared disk]", func(ctx ginkgo.SpecContext) {
 		skipIfUsingInTreeVolumePlugin()
 		skipIfOnAzureStackCloud()
 		skipIfTestingInWindowsCluster()
@@ -1308,10 +1307,10 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 			PodCheck:               podCheck,
 			StorageClassParameters: storageClassParameters,
 		}
-		test.Run(cs, ns)
+		test.Run(ctx, cs, ns)
 	})
 
-	ginkgo.It("should succeed with advanced perfProfile [disk.csi.azure.com] [Windows]", func() {
+	ginkgo.It("should succeed with advanced perfProfile [disk.csi.azure.com] [Windows]", func(ctx ginkgo.SpecContext) {
 		skipIfUsingInTreeVolumePlugin()
 		skipIfOnAzureStackCloud()
 		skipIfTestingInWindowsCluster()
@@ -1352,7 +1351,7 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 			},
 		}
 
-		test.Run(cs, ns)
+		test.Run(ctx, cs, ns)
 	})
 }
 

@@ -171,6 +171,7 @@ func (f Formatter) KVListFormat(b *bytes.Buffer, keysAndValues ...interface{}) {
 func KVListFormat(b *bytes.Buffer, keysAndValues ...interface{}) {
 	Formatter{}.KVListFormat(b, keysAndValues...)
 }
+<<<<<<< HEAD
 
 // KVFormat serializes one key/value pair into the provided buffer.
 // A space gets inserted before the pair.
@@ -188,6 +189,25 @@ func (f Formatter) KVFormat(b *bytes.Buffer, k, v interface{}) {
 		b.WriteString(fmt.Sprintf("%s", k))
 	}
 
+=======
+
+// KVFormat serializes one key/value pair into the provided buffer.
+// A space gets inserted before the pair.
+func (f Formatter) KVFormat(b *bytes.Buffer, k, v interface{}) {
+	b.WriteByte(' ')
+	// Keys are assumed to be well-formed according to
+	// https://github.com/kubernetes/community/blob/master/contributors/devel/sig-instrumentation/migration-to-structured-logging.md#name-arguments
+	// for the sake of performance. Keys with spaces,
+	// special characters, etc. will break parsing.
+	if sK, ok := k.(string); ok {
+		// Avoid one allocation when the key is a string, which
+		// normally it should be.
+		b.WriteString(sK)
+	} else {
+		b.WriteString(fmt.Sprintf("%s", k))
+	}
+
+>>>>>>> bump cloud provider azure
 	// The type checks are sorted so that more frequently used ones
 	// come first because that is then faster in the common
 	// cases. In Kubernetes, ObjectRef (a Stringer) is more common
@@ -197,11 +217,19 @@ func (f Formatter) KVFormat(b *bytes.Buffer, k, v interface{}) {
 	case textWriter:
 		writeTextWriterValue(b, v)
 	case fmt.Stringer:
+<<<<<<< HEAD
 		writeStringValue(b, StringerToString(v))
 	case string:
 		writeStringValue(b, v)
 	case error:
 		writeStringValue(b, ErrorToString(v))
+=======
+		writeStringValue(b, true, StringerToString(v))
+	case string:
+		writeStringValue(b, true, v)
+	case error:
+		writeStringValue(b, true, ErrorToString(v))
+>>>>>>> bump cloud provider azure
 	case logr.Marshaler:
 		value := MarshalerToValue(v)
 		// A marshaler that returns a string is useful for
@@ -216,9 +244,15 @@ func (f Formatter) KVFormat(b *bytes.Buffer, k, v interface{}) {
 		// value directly.
 		switch value := value.(type) {
 		case string:
+<<<<<<< HEAD
 			writeStringValue(b, value)
 		default:
 			f.formatAny(b, value)
+=======
+			writeStringValue(b, true, value)
+		default:
+			writeStringValue(b, false, f.AnyToString(value))
+>>>>>>> bump cloud provider azure
 		}
 	case []byte:
 		// In https://github.com/kubernetes/klog/pull/237 it was decided
@@ -235,6 +269,7 @@ func (f Formatter) KVFormat(b *bytes.Buffer, k, v interface{}) {
 		b.WriteByte('=')
 		b.WriteString(fmt.Sprintf("%+q", v))
 	default:
+<<<<<<< HEAD
 		f.formatAny(b, v)
 	}
 }
@@ -259,9 +294,24 @@ func (f Formatter) formatAny(b *bytes.Buffer, v interface{}) {
 		b.Truncate(l)
 		b.WriteString(fmt.Sprintf(`"<internal error: %v>"`, err))
 		return
+=======
+		writeStringValue(b, false, f.AnyToString(v))
+>>>>>>> bump cloud provider azure
 	}
 	// Remove trailing newline.
 	b.Truncate(b.Len() - 1)
+}
+
+func KVFormat(b *bytes.Buffer, k, v interface{}) {
+	Formatter{}.KVFormat(b, k, v)
+}
+
+// AnyToString is the historic fallback formatter.
+func (f Formatter) AnyToString(v interface{}) string {
+	if f.AnyToStringHook != nil {
+		return f.AnyToStringHook(v)
+	}
+	return fmt.Sprintf("%+v", v)
 }
 
 // StringerToString converts a Stringer to a string,
@@ -301,7 +351,11 @@ func ErrorToString(err error) (ret string) {
 }
 
 func writeTextWriterValue(b *bytes.Buffer, v textWriter) {
+<<<<<<< HEAD
 	b.WriteByte('=')
+=======
+	b.WriteRune('=')
+>>>>>>> bump cloud provider azure
 	defer func() {
 		if err := recover(); err != nil {
 			fmt.Fprintf(b, `"<panic: %s>"`, err)
@@ -310,7 +364,11 @@ func writeTextWriterValue(b *bytes.Buffer, v textWriter) {
 	v.WriteText(b)
 }
 
+<<<<<<< HEAD
 func writeStringValue(b *bytes.Buffer, v string) {
+=======
+func writeStringValue(b *bytes.Buffer, quote bool, v string) {
+>>>>>>> bump cloud provider azure
 	data := []byte(v)
 	index := bytes.IndexByte(data, '\n')
 	if index == -1 {

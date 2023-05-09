@@ -77,8 +77,11 @@ type AccountOptions struct {
 	EnableBlobVersioning                    *bool
 	SoftDeleteBlobs                         int32
 	SoftDeleteContainers                    int32
+<<<<<<< HEAD
 	// indicate whether to get a random matching account, if false, will get the first matching account
 	PickRandomMatchingAccount bool
+=======
+>>>>>>> bump cloud provider azure
 }
 
 type accountWithLocation struct {

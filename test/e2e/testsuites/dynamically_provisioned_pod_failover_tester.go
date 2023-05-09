@@ -17,6 +17,8 @@ limitations under the License.
 package testsuites
 
 import (
+	"context"
+
 	"github.com/onsi/ginkgo/v2"
 	v1 "k8s.io/api/core/v1"
 	clientset "k8s.io/client-go/kubernetes"
@@ -34,25 +36,25 @@ type PodFailover struct {
 	StorageClassParameters map[string]string
 }
 
-func (t *PodFailover) Run(client clientset.Interface, namespace *v1.Namespace) {
-	tDeployment, cleanup := t.Pod.SetupDeployment(client, namespace, t.CSIDriver, t.StorageClassParameters)
+func (t *PodFailover) Run(ctx context.Context, client clientset.Interface, namespace *v1.Namespace) {
+	tDeployment, cleanup := t.Pod.SetupDeployment(ctx, client, namespace, t.CSIDriver, t.StorageClassParameters)
 
 	// defer must be called here so resources don't get removed before using them
 	for i := range cleanup {
-		defer cleanup[i]()
+		defer cleanup[i](ctx)
 	}
 
 	// Get the list of available nodes for scheduling the pod
-	nodes := ListNodeNames(client)
+	nodes := ListNodeNames(ctx, client)
 	if len(nodes) < 2 {
 		ginkgo.Skip("need at least 2 nodes to verify the test case. Current node count is %d", len(nodes))
 	}
 
 	ginkgo.By("deploying the deployment")
-	tDeployment.Create()
+	tDeployment.Create(ctx)
 
 	ginkgo.By("checking that the pod is running")
-	tDeployment.WaitForPodReady()
+	tDeployment.WaitForPodReady(ctx)
 
 	if t.PodCheck != nil {
 		ginkgo.By("check pod exec")
@@ -66,14 +68,14 @@ func (t *PodFailover) Run(client clientset.Interface, namespace *v1.Namespace) {
 	}
 
 	// Make node#0 unschedulable to ensure that pods are scheduled on a different node
-	testPod.SetNodeUnschedulable(nodes[0], true)        // kubeclt cordon node
-	defer testPod.SetNodeUnschedulable(nodes[0], false) // defer kubeclt uncordon node
+	testPod.SetNodeUnschedulable(ctx, nodes[0], true)        // kubeclt cordon node
+	defer testPod.SetNodeUnschedulable(ctx, nodes[0], false) // defer kubeclt uncordon node
 
 	ginkgo.By("deleting the pod for deployment")
-	tDeployment.DeletePodAndWait()
+	tDeployment.DeletePodAndWait(ctx)
 
 	ginkgo.By("checking again that the pod is running")
-	tDeployment.WaitForPodReady()
+	tDeployment.WaitForPodReady(ctx)
 
 	if t.PodCheck != nil {
 		ginkgo.By("check pod exec")

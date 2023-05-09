@@ -2232,7 +2232,10 @@ const (
 	JobObjectExtendedLimitInformation           = 9
 	JobObjectGroupInformation                   = 11
 	JobObjectGroupInformationEx                 = 14
+<<<<<<< HEAD
 	JobObjectLimitViolationInformation          = 13
+=======
+>>>>>>> bump cloud provider azure
 	JobObjectLimitViolationInformation2         = 34
 	JobObjectNetRateControlInformation          = 32
 	JobObjectNotificationLimitInformation       = 12

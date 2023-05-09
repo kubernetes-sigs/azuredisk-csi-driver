@@ -50,19 +50,19 @@ type DynamicallyProvisionedVolumeSnapshotTest struct {
 	SnapshotStorageClassParameters map[string]string
 }
 
-func (t *DynamicallyProvisionedVolumeSnapshotTest) Run(client clientset.Interface, restclient restclientset.Interface, namespace *v1.Namespace) {
+func (t *DynamicallyProvisionedVolumeSnapshotTest) Run(ctx context.Context, client clientset.Interface, restclient restclientset.Interface, namespace *v1.Namespace) {
 	tpod := NewTestPod(client, namespace, t.Pod.Cmd, t.Pod.IsWindows, t.Pod.WinServerVer)
 	volume := t.Pod.Volumes[0]
-	tpvc, pvcCleanup := volume.SetupDynamicPersistentVolumeClaim(client, namespace, t.CSIDriver, t.StorageClassParameters)
+	tpvc, pvcCleanup := volume.SetupDynamicPersistentVolumeClaim(ctx, client, namespace, t.CSIDriver, t.StorageClassParameters)
 	for i := range pvcCleanup {
-		defer pvcCleanup[i]()
+		defer pvcCleanup[i](ctx)
 	}
 	tpod.SetupVolume(tpvc.persistentVolumeClaim, volume.VolumeMount.NameGenerate+"1", volume.VolumeMount.MountPathGenerate+"1", volume.VolumeMount.ReadOnly)
 	ginkgo.By("deploying the pod")
-	tpod.Create()
-	defer tpod.Cleanup()
+	tpod.Create(ctx)
+	defer tpod.Cleanup(ctx)
 	ginkgo.By("checking that the pod's command exits with no error")
-	tpod.WaitForSuccess()
+	tpod.WaitForSuccess(ctx)
 
 	ginkgo.By("Checking Prow test resource group")
 	creds, err := credentials.CreateAzureCredentialFile()
@@ -80,7 +80,6 @@ func (t *DynamicallyProvisionedVolumeSnapshotTest) Run(client clientset.Interfac
 	//create external resource group
 	externalRG := credentials.ResourceGroupPrefix + uuid.NewUUID().String()
 	ginkgo.By("Creating external resource group: " + externalRG)
-	ctx := context.Background()
 	_, err = azureClient.EnsureResourceGroup(ctx, externalRG, creds.Location, nil)
 	framework.ExpectNoError(err)
 	defer func() {
@@ -98,11 +97,11 @@ func (t *DynamicallyProvisionedVolumeSnapshotTest) Run(client clientset.Interfac
 		tvsc.volumeSnapshotClass.Parameters = map[string]string{}
 	}
 	tvsc.volumeSnapshotClass.Parameters["resourceGroup"] = externalRG
-	tvsc.Create()
+	tvsc.Create(ctx)
 	defer cleanup()
 
 	ginkgo.By("taking snapshots")
-	snapshot := tvsc.CreateSnapshot(tpvc.persistentVolumeClaim)
+	snapshot := tvsc.CreateSnapshot(ctx, tpvc.persistentVolumeClaim)
 
 	if t.ShouldOverwrite {
 		tpod = NewTestPod(client, namespace, t.PodOverwrite.Cmd, t.PodOverwrite.IsWindows, t.Pod.WinServerVer)
@@ -110,14 +109,14 @@ func (t *DynamicallyProvisionedVolumeSnapshotTest) Run(client clientset.Interfac
 		tpod.SetupVolume(tpvc.persistentVolumeClaim, volume.VolumeMount.NameGenerate+"1", volume.VolumeMount.MountPathGenerate+"1", volume.VolumeMount.ReadOnly)
 		tpod.SetLabel(TestLabel)
 		ginkgo.By("deploying a new pod to overwrite pv data")
-		tpod.Create()
-		defer tpod.Cleanup()
+		tpod.Create(ctx)
+		defer tpod.Cleanup(ctx)
 		ginkgo.By("checking that the pod is running")
-		tpod.WaitForRunning()
+		tpod.WaitForRunning(ctx)
 	}
 
-	defer tvsc.DeleteSnapshot(snapshot)
-	tvsc.ReadyToUse(snapshot)
+	defer tvsc.DeleteSnapshot(ctx, snapshot)
+	tvsc.ReadyToUse(ctx, snapshot)
 
 	snapshotVolume := volume
 	snapshotVolume.DataSource = &DataSource{
@@ -125,9 +124,9 @@ func (t *DynamicallyProvisionedVolumeSnapshotTest) Run(client clientset.Interfac
 		Name: snapshot.Name,
 	}
 	t.PodWithSnapshot.Volumes = []VolumeDetails{snapshotVolume}
-	tPodWithSnapshot, tPodWithSnapshotCleanup := t.PodWithSnapshot.SetupWithDynamicVolumes(client, namespace, t.CSIDriver, t.StorageClassParameters)
+	tPodWithSnapshot, tPodWithSnapshotCleanup := t.PodWithSnapshot.SetupWithDynamicVolumes(ctx, client, namespace, t.CSIDriver, t.StorageClassParameters)
 	for i := range tPodWithSnapshotCleanup {
-		defer tPodWithSnapshotCleanup[i]()
+		defer tPodWithSnapshotCleanup[i](ctx)
 	}
 
 	if t.ShouldOverwrite {
@@ -137,9 +136,9 @@ func (t *DynamicallyProvisionedVolumeSnapshotTest) Run(client clientset.Interfac
 	}
 
 	ginkgo.By("deploying a pod with a volume restored from the snapshot")
-	tPodWithSnapshot.Create()
-	defer tPodWithSnapshot.Cleanup()
+	tPodWithSnapshot.Create(ctx)
+	defer tPodWithSnapshot.Cleanup(ctx)
 	ginkgo.By("checking that the pod's command exits with no error")
-	tPodWithSnapshot.WaitForSuccess()
+	tPodWithSnapshot.WaitForSuccess(ctx)
 
 }

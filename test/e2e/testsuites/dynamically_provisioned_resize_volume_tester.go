@@ -51,24 +51,24 @@ type DynamicallyProvisionedResizeVolumeTest struct {
 	ResizeOffline          bool
 }
 
-func (t *DynamicallyProvisionedResizeVolumeTest) Run(client clientset.Interface, namespace *v1.Namespace) {
-	tStatefulSet, cleanup := t.Pod.SetupStatefulset(client, namespace, t.CSIDriver, driver.GetParameters())
+func (t *DynamicallyProvisionedResizeVolumeTest) Run(ctx context.Context, client clientset.Interface, namespace *v1.Namespace) {
+	tStatefulSet, cleanup := t.Pod.SetupStatefulset(ctx, client, namespace, t.CSIDriver, driver.GetParameters())
 	// Defer must be called here for resources not get removed before using them
 	for i := range cleanup {
 		i := i
-		defer cleanup[i]()
+		defer cleanup[i](ctx)
 	}
 
 	ginkgo.By("deploying the statefulset")
-	tStatefulSet.Create()
+	tStatefulSet.Create(ctx)
 
 	ginkgo.By("checking that the pod for statefulset is running")
-	tStatefulSet.WaitForPodReady()
+	tStatefulSet.WaitForPodReady(ctx)
 
 	//Get diskURI from statefulset information
 	pvcName := fmt.Sprintf("pvc-%s-%d", tStatefulSet.statefulset.ObjectMeta.Name, 0)
 
-	pvc, err := client.CoreV1().PersistentVolumeClaims(namespace.Name).Get(context.TODO(), pvcName, metav1.GetOptions{})
+	pvc, err := client.CoreV1().PersistentVolumeClaims(namespace.Name).Get(ctx, pvcName, metav1.GetOptions{})
 	if err != nil {
 		framework.ExpectNoError(err, fmt.Sprintf("fail to get original pvc(%s): %v", pvcName, err))
 	}
@@ -84,7 +84,7 @@ func (t *DynamicallyProvisionedResizeVolumeTest) Run(client clientset.Interface,
 
 	if t.ResizeOffline {
 		// Scale statefulset to 0
-		_, err = client.AppsV1().StatefulSets(tStatefulSet.namespace.Name).UpdateScale(context.TODO(), tStatefulSet.statefulset.Name, newScale, metav1.UpdateOptions{})
+		_, err = client.AppsV1().StatefulSets(tStatefulSet.namespace.Name).UpdateScale(ctx, tStatefulSet.statefulset.Name, newScale, metav1.UpdateOptions{})
 		framework.ExpectNoError(err)
 
 		ginkgo.By("sleep 120s waiting for disk to detach from node")
@@ -99,7 +99,7 @@ func (t *DynamicallyProvisionedResizeVolumeTest) Run(client clientset.Interface,
 	pvc.Spec.Resources.Requests["storage"] = originalSize
 
 	ginkgo.By("resizing the pvc")
-	updatedPvc, err := client.CoreV1().PersistentVolumeClaims(namespace.Name).Update(context.TODO(), pvc, metav1.UpdateOptions{})
+	updatedPvc, err := client.CoreV1().PersistentVolumeClaims(namespace.Name).Update(ctx, pvc, metav1.UpdateOptions{})
 	if err != nil {
 		framework.ExpectNoError(err, fmt.Sprintf("fail to resize pvc(%s): %v", pvcName, err))
 	}
@@ -109,7 +109,7 @@ func (t *DynamicallyProvisionedResizeVolumeTest) Run(client clientset.Interface,
 	time.Sleep(30 * time.Second)
 
 	ginkgo.By("checking the resizing result")
-	newPvc, err := client.CoreV1().PersistentVolumeClaims(namespace.Name).Get(context.TODO(), pvcName, metav1.GetOptions{})
+	newPvc, err := client.CoreV1().PersistentVolumeClaims(namespace.Name).Get(ctx, pvcName, metav1.GetOptions{})
 	if err != nil {
 		framework.ExpectNoError(err, fmt.Sprintf("fail to get new pvc(%s): %v", pvcName, err))
 	}
@@ -123,7 +123,7 @@ func (t *DynamicallyProvisionedResizeVolumeTest) Run(client clientset.Interface,
 	err = wait.PollImmediate(30*time.Second, 10*time.Minute, func() (bool, error) {
 		//takes 3-6 minutes on average for dynamic resize
 		ginkgo.By("checking the resizing PV result")
-		newPv, _ = client.CoreV1().PersistentVolumes().Get(context.Background(), newPvc.Spec.VolumeName, metav1.GetOptions{})
+		newPv, _ = client.CoreV1().PersistentVolumes().Get(ctx, newPvc.Spec.VolumeName, metav1.GetOptions{})
 		newPvSize = newPv.Spec.Capacity["storage"]
 		if !newSize.Equal(newPvSize) {
 			return false, nil
@@ -155,7 +155,7 @@ func (t *DynamicallyProvisionedResizeVolumeTest) Run(client clientset.Interface,
 	// Get disk information
 	disksClient, err := azureClient.GetAzureDisksClient()
 	framework.ExpectNoError(err, fmt.Sprintf("Error getting client for azuredisk %v", err))
-	disktest, err := disksClient.Get(context.Background(), resourceGroup, diskName)
+	disktest, err := disksClient.Get(ctx, resourceGroup, diskName)
 	framework.ExpectNoError(err, fmt.Sprintf("Error getting disk for azuredisk %v", err))
 	newdiskSize := strconv.Itoa(int(*disktest.DiskSizeGB)) + "Gi"
 	if !(newSize.String() == newdiskSize) {
@@ -166,12 +166,12 @@ func (t *DynamicallyProvisionedResizeVolumeTest) Run(client clientset.Interface,
 		// Scale the stateful set back to 1 pod
 		newScale.Spec.Replicas = int32(1)
 
-		_, err = client.AppsV1().StatefulSets(tStatefulSet.namespace.Name).UpdateScale(context.TODO(), tStatefulSet.statefulset.Name, newScale, metav1.UpdateOptions{})
+		_, err = client.AppsV1().StatefulSets(tStatefulSet.namespace.Name).UpdateScale(ctx, tStatefulSet.statefulset.Name, newScale, metav1.UpdateOptions{})
 		framework.ExpectNoError(err)
 
 		ginkgo.By("sleep 30s waiting for statefulset update complete")
 		time.Sleep(30 * time.Second)
 		ginkgo.By("checking that the pod for statefulset is running")
-		tStatefulSet.WaitForPodReady()
+		tStatefulSet.WaitForPodReady(ctx)
 	}
 }

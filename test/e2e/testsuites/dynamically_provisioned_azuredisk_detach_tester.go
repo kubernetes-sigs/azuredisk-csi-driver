@@ -47,24 +47,24 @@ type DynamicallyProvisionedAzureDiskDetach struct {
 	StorageClassParameters map[string]string
 }
 
-func (t *DynamicallyProvisionedAzureDiskDetach) Run(client clientset.Interface, namespace *v1.Namespace) {
+func (t *DynamicallyProvisionedAzureDiskDetach) Run(ctx context.Context, client clientset.Interface, namespace *v1.Namespace) {
 	for _, pod := range t.Pods {
-		tpod, cleanup := pod.SetupWithDynamicVolumes(client, namespace, t.CSIDriver, t.StorageClassParameters)
+		tpod, cleanup := pod.SetupWithDynamicVolumes(ctx, client, namespace, t.CSIDriver, t.StorageClassParameters)
 
 		ginkgo.By("deploying the pod")
-		tpod.Create()
+		tpod.Create(ctx)
 
 		ginkgo.By("checking that the pod is running")
-		tpod.WaitForRunning()
+		tpod.WaitForRunning(ctx)
 
 		ginkgo.By("getting azuredisk information")
 		//Get diskURI from pv information
 		pvcname := tpod.pod.Spec.Volumes[0].VolumeSource.PersistentVolumeClaim.ClaimName
-		pvc, err := client.CoreV1().PersistentVolumeClaims(namespace.Name).Get(context.Background(), pvcname, metav1.GetOptions{})
+		pvc, err := client.CoreV1().PersistentVolumeClaims(namespace.Name).Get(ctx, pvcname, metav1.GetOptions{})
 		framework.ExpectNoError(err, fmt.Sprintf("Error getting pvc for azuredisk %v", err))
 
 		pvname := pvc.Spec.VolumeName
-		pv, _ := client.CoreV1().PersistentVolumes().Get(context.Background(), pvname, metav1.GetOptions{})
+		pv, _ := client.CoreV1().PersistentVolumes().Get(ctx, pvname, metav1.GetOptions{})
 		var diskURI string
 		if pv.Spec.PersistentVolumeSource.CSI != nil {
 			diskURI = pv.Spec.PersistentVolumeSource.CSI.VolumeHandle
@@ -84,15 +84,15 @@ func (t *DynamicallyProvisionedAzureDiskDetach) Run(client clientset.Interface, 
 		//get disk information
 		disksClient, err := azureClient.GetAzureDisksClient()
 		framework.ExpectNoError(err, fmt.Sprintf("Error getting client for azuredisk %v", err))
-		disktest, err := disksClient.Get(context.Background(), resourceGroup, diskName)
+		disktest, err := disksClient.Get(ctx, resourceGroup, diskName)
 		framework.ExpectNoError(err, fmt.Sprintf("Error getting disk for azuredisk %v", err))
 		framework.ExpectEqual(compute.Attached, disktest.DiskState)
 
 		ginkgo.By("begin to delete the pod")
-		tpod.Cleanup()
+		tpod.Cleanup(ctx)
 
 		err = wait.Poll(15*time.Second, 10*time.Minute, func() (bool, error) {
-			disktest, err := disksClient.Get(context.Background(), resourceGroup, diskName)
+			disktest, err := disksClient.Get(ctx, resourceGroup, diskName)
 			if err != nil {
 				return false, fmt.Errorf("Error getting disk for azuredisk %v", err)
 			}
@@ -104,7 +104,7 @@ func (t *DynamicallyProvisionedAzureDiskDetach) Run(client clientset.Interface, 
 		})
 		framework.ExpectNoError(err, fmt.Sprintf("waiting for disk detach complete returned with error: %v", err))
 		for i := range cleanup {
-			cleanup[i]()
+			cleanup[i](ctx)
 		}
 	}
 }
