@@ -225,12 +225,9 @@ github.com/google/go-cmp/cmp/internal/value
 ## explicit; go 1.12
 github.com/google/gofuzz
 github.com/google/gofuzz/bytesource
-<<<<<<< HEAD
 # github.com/google/pprof v0.0.0-20210720184732-4bb14d4b1be1
 ## explicit; go 1.14
 github.com/google/pprof/profile
-=======
->>>>>>> bump cloud provider azure
 # github.com/google/uuid v1.3.0
 ## explicit
 github.com/google/uuid
@@ -315,11 +312,7 @@ github.com/modern-go/reflect2
 # github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822
 ## explicit
 github.com/munnerz/goautoneg
-<<<<<<< HEAD
 # github.com/onsi/ginkgo/v2 v2.9.2
-=======
-# github.com/onsi/ginkgo/v2 v2.9.2 => github.com/onsi/ginkgo/v2 v2.4.0
->>>>>>> bump cloud provider azure
 ## explicit; go 1.18
 github.com/onsi/ginkgo/v2
 github.com/onsi/ginkgo/v2/config
@@ -548,11 +541,7 @@ golang.org/x/oauth2/internal
 # golang.org/x/sync v0.1.0
 ## explicit
 golang.org/x/sync/singleflight
-<<<<<<< HEAD
 # golang.org/x/sys v0.8.0
-=======
-# golang.org/x/sys v0.7.0
->>>>>>> bump cloud provider azure
 ## explicit; go 1.17
 golang.org/x/sys/cpu
 golang.org/x/sys/internal/unsafeheader
@@ -563,11 +552,7 @@ golang.org/x/sys/windows/registry
 # golang.org/x/term v0.7.0
 ## explicit; go 1.17
 golang.org/x/term
-<<<<<<< HEAD
 # golang.org/x/text v0.9.0
-=======
-# golang.org/x/text v0.9.0 => golang.org/x/text v0.3.8
->>>>>>> bump cloud provider azure
 ## explicit; go 1.17
 golang.org/x/text/encoding
 golang.org/x/text/encoding/charmap
@@ -979,11 +964,7 @@ k8s.io/apiserver/plugin/pkg/audit/truncate
 k8s.io/apiserver/plugin/pkg/audit/webhook
 k8s.io/apiserver/plugin/pkg/authenticator/token/webhook
 k8s.io/apiserver/plugin/pkg/authorizer/webhook
-<<<<<<< HEAD
 # k8s.io/client-go v0.27.1
-=======
-# k8s.io/client-go v0.27.1 => k8s.io/client-go v0.27.1
->>>>>>> bump cloud provider azure
 ## explicit; go 1.20
 k8s.io/client-go/applyconfigurations/admissionregistration/v1
 k8s.io/client-go/applyconfigurations/admissionregistration/v1alpha1
@@ -1309,11 +1290,7 @@ k8s.io/controller-manager/pkg/features
 k8s.io/controller-manager/pkg/features/register
 k8s.io/controller-manager/pkg/leadermigration/config
 k8s.io/controller-manager/pkg/leadermigration/options
-<<<<<<< HEAD
 # k8s.io/klog/v2 v2.100.1
-=======
-# k8s.io/klog/v2 v2.90.1
->>>>>>> bump cloud provider azure
 ## explicit; go 1.13
 k8s.io/klog/v2
 k8s.io/klog/v2/internal/buffer
@@ -1422,8 +1399,8 @@ k8s.io/kubernetes/test/utils
 k8s.io/kubernetes/test/utils/format
 k8s.io/kubernetes/test/utils/image
 k8s.io/kubernetes/test/utils/kubeconfig
-# k8s.io/mount-utils v0.27.1 => k8s.io/mount-utils v0.27.1
-## explicit; go 1.20
+# k8s.io/mount-utils v0.0.0 => k8s.io/mount-utils v0.0.0-20221216112627-49433b159e95
+## explicit; go 1.19
 k8s.io/mount-utils
 # k8s.io/pod-security-admission v0.27.1 => k8s.io/pod-security-admission v0.27.1
 ## explicit; go 1.20
@@ -1455,11 +1432,7 @@ sigs.k8s.io/apiserver-network-proxy/konnectivity-client/pkg/client
 sigs.k8s.io/apiserver-network-proxy/konnectivity-client/pkg/client/metrics
 sigs.k8s.io/apiserver-network-proxy/konnectivity-client/pkg/common/metrics
 sigs.k8s.io/apiserver-network-proxy/konnectivity-client/proto/client
-<<<<<<< HEAD
 # sigs.k8s.io/cloud-provider-azure v1.27.1-0.20230506015515-8a50201756d1
-=======
-# sigs.k8s.io/cloud-provider-azure v1.27.1-0.20230423180712-b979bea29b6a
->>>>>>> bump cloud provider azure
 ## explicit; go 1.20
 sigs.k8s.io/cloud-provider-azure/pkg/azureclients
 sigs.k8s.io/cloud-provider-azure/pkg/azureclients/armclient
@@ -1527,19 +1500,11 @@ sigs.k8s.io/structured-merge-diff/v4/value
 sigs.k8s.io/yaml
 # github.com/niemeyer/pretty => github.com/niemeyer/pretty v0.0.0-20200227124842-a10e7caefd8e
 # go.etcd.io/etcd => go.etcd.io/etcd v0.0.0-20200410171415-59f5fb25a533
-<<<<<<< HEAD
-=======
-# golang.org/x/text => golang.org/x/text v0.3.8
->>>>>>> bump cloud provider azure
 # k8s.io/api => k8s.io/api v0.27.1
 # k8s.io/apiextensions-apiserver => k8s.io/apiextensions-apiserver v0.27.1
 # k8s.io/apimachinery => k8s.io/apimachinery v0.27.1
 # k8s.io/apiserver => k8s.io/apiserver v0.27.1
 # k8s.io/cli-runtime => k8s.io/cli-runtime v0.27.1
-<<<<<<< HEAD
-=======
-# k8s.io/client-go => k8s.io/client-go v0.27.1
->>>>>>> bump cloud provider azure
 # k8s.io/cloud-provider => k8s.io/cloud-provider v0.27.1
 # k8s.io/cluster-bootstrap => k8s.io/cluster-bootstrap v0.27.1
 # k8s.io/code-generator => k8s.io/code-generator v0.27.1
@@ -1548,10 +1513,7 @@ sigs.k8s.io/yaml
 # k8s.io/controller-manager => k8s.io/controller-manager v0.27.1
 # k8s.io/cri-api => k8s.io/cri-api v0.27.1
 # k8s.io/csi-translation-lib => k8s.io/csi-translation-lib v0.27.1
-<<<<<<< HEAD
 # k8s.io/dynamic-resource-allocation => k8s.io/dynamic-resource-allocation v0.27.1
-=======
->>>>>>> bump cloud provider azure
 # k8s.io/kube-aggregator => k8s.io/kube-aggregator v0.27.1
 # k8s.io/kube-controller-manager => k8s.io/kube-controller-manager v0.27.1
 # k8s.io/kube-proxy => k8s.io/kube-proxy v0.27.1
@@ -1560,11 +1522,7 @@ sigs.k8s.io/yaml
 # k8s.io/kubelet => k8s.io/kubelet v0.27.1
 # k8s.io/legacy-cloud-providers => k8s.io/legacy-cloud-providers v0.27.1
 # k8s.io/metrics => k8s.io/metrics v0.27.1
-<<<<<<< HEAD
 # k8s.io/mount-utils => k8s.io/mount-utils v0.0.0-20221216112627-49433b159e95
-=======
-# k8s.io/mount-utils => k8s.io/mount-utils v0.27.1
->>>>>>> bump cloud provider azure
 # k8s.io/pod-security-admission => k8s.io/pod-security-admission v0.27.1
 # k8s.io/sample-apiserver => k8s.io/sample-apiserver v0.27.1
 # k8s.io/sample-cli-plugin => k8s.io/sample-cli-plugin v0.27.1

@@ -178,23 +178,14 @@ func (ks kobjSlice) process() (objs []interface{}, err string) {
 	return objectRefs, ""
 }
 
-<<<<<<< HEAD
 var nilToken = []byte("null")
-=======
-var nilToken = []byte("<nil>")
->>>>>>> bump cloud provider azure
 
 func (ks kobjSlice) WriteText(out *bytes.Buffer) {
 	s := reflect.ValueOf(ks.arg)
 	switch s.Kind() {
 	case reflect.Invalid:
-<<<<<<< HEAD
 		// nil parameter, print as null.
 		out.Write(nilToken)
-=======
-		// nil parameter, print as empty slice.
-		out.WriteString("[]")
->>>>>>> bump cloud provider azure
 		return
 	case reflect.Slice:
 		// Okay, handle below.
@@ -206,25 +197,15 @@ func (ks kobjSlice) WriteText(out *bytes.Buffer) {
 	defer out.Write([]byte{']'})
 	for i := 0; i < s.Len(); i++ {
 		if i > 0 {
-<<<<<<< HEAD
 			out.Write([]byte{','})
-=======
-			out.Write([]byte{' '})
->>>>>>> bump cloud provider azure
 		}
 		item := s.Index(i).Interface()
 		if item == nil {
 			out.Write(nilToken)
 		} else if v, ok := item.(KMetadata); ok {
-<<<<<<< HEAD
 			KObj(v).WriteText(out)
 		} else {
 			fmt.Fprintf(out, `"<KObjSlice needs a slice of values implementing KMetadata, got type %T>"`, item)
-=======
-			KObj(v).writeUnquoted(out)
-		} else {
-			fmt.Fprintf(out, "<KObjSlice needs a slice of values implementing KMetadata, got type %T>", item)
->>>>>>> bump cloud provider azure
 			return
 		}
 	}
