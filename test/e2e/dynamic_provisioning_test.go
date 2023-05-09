@@ -792,10 +792,10 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 		if isAzureStackCloud {
 			test.StorageClassParameters = map[string]string{"skuName": "Standard_LRS"}
 		}
-		test.Run(cs, snapshotrcs, ns)
+		test.Run(ctx, cs, snapshotrcs, ns)
 	})
 
-	ginkgo.It("should create a pod with small storage size, take a volume snapshot cross region, and restore disk in another region [disk.csi.azure.com]", func() {
+	ginkgo.It("should create a pod with small storage size, take a volume snapshot cross region, and restore disk in another region [disk.csi.azure.com]", func(ctx ginkgo.SpecContext) {
 		skipIfUsingInTreeVolumePlugin()
 		skipIfTestingInWindowsCluster()
 
@@ -835,10 +835,10 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 		if isAzureStackCloud {
 			test.StorageClassParameters = map[string]string{"skuName": "Standard_LRS"}
 		}
-		test.Run(cs, snapshotrcs, ns)
+		test.Run(ctx, cs, snapshotrcs, ns)
 	})
 
-	ginkgo.It("should create a pod with large storage size, take a volume snapshot cross region, and restore disk in another region [disk.csi.azure.com]", func() {
+	ginkgo.It("should create a pod with large storage size, take a volume snapshot cross region, and restore disk in another region [disk.csi.azure.com]", func(ctx ginkgo.SpecContext) {
 		skipIfUsingInTreeVolumePlugin()
 		skipIfTestingInWindowsCluster()
 

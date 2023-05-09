@@ -50,19 +50,19 @@ type DynamicallyProvisionedVolumeSnapshotCrossRegionTest struct {
 	SnapshotStorageClassParameters map[string]string
 }
 
-func (t *DynamicallyProvisionedVolumeSnapshotCrossRegionTest) Run(client clientset.Interface, restclient restclientset.Interface, namespace *v1.Namespace) {
+func (t *DynamicallyProvisionedVolumeSnapshotCrossRegionTest) Run(ctx context.Context, client clientset.Interface, restclient restclientset.Interface, namespace *v1.Namespace) {
 	tpod := NewTestPod(client, namespace, t.Pod.Cmd, t.Pod.IsWindows, t.Pod.WinServerVer)
 	volume := t.Pod.Volumes[0]
-	tpvc, pvcCleanup := volume.SetupDynamicPersistentVolumeClaim(client, namespace, t.CSIDriver, t.StorageClassParameters)
+	tpvc, pvcCleanup := volume.SetupDynamicPersistentVolumeClaim(ctx, client, namespace, t.CSIDriver, t.StorageClassParameters)
 	for i := range pvcCleanup {
-		defer pvcCleanup[i]()
+		defer pvcCleanup[i](ctx)
 	}
 	tpod.SetupVolume(tpvc.persistentVolumeClaim, volume.VolumeMount.NameGenerate+"1", volume.VolumeMount.MountPathGenerate+"1", volume.VolumeMount.ReadOnly)
 	ginkgo.By("deploying the pod")
-	tpod.Create()
-	defer tpod.Cleanup()
+	tpod.Create(ctx)
+	defer tpod.Cleanup(ctx)
 	ginkgo.By("checking that the pod's command exits with no error")
-	tpod.WaitForSuccess()
+	tpod.WaitForSuccess(ctx)
 
 	ginkgo.By("Checking Prow test resource group")
 	creds, err := credentials.CreateAzureCredentialFile()
@@ -80,7 +80,6 @@ func (t *DynamicallyProvisionedVolumeSnapshotCrossRegionTest) Run(client clients
 	//create external resource group
 	externalRG := credentials.ResourceGroupPrefix + uuid.NewUUID().String()
 	ginkgo.By("Creating external resource group: " + externalRG)
-	ctx := context.Background()
 	_, err = azureClient.EnsureResourceGroup(ctx, externalRG, creds.Location, nil)
 	framework.ExpectNoError(err)
 	defer func() {
@@ -98,14 +97,14 @@ func (t *DynamicallyProvisionedVolumeSnapshotCrossRegionTest) Run(client clients
 		tvsc.volumeSnapshotClass.Parameters = map[string]string{}
 	}
 	tvsc.volumeSnapshotClass.Parameters["resourceGroup"] = externalRG
-	tvsc.Create()
+	tvsc.Create(ctx)
 	defer cleanup()
 
 	ginkgo.By("taking snapshots")
-	snapshot := tvsc.CreateSnapshot(tpvc.persistentVolumeClaim)
+	snapshot := tvsc.CreateSnapshot(ctx, tpvc.persistentVolumeClaim)
 
-	defer tvsc.DeleteSnapshot(snapshot)
-	tvsc.ReadyToUse(snapshot)
+	defer tvsc.DeleteSnapshot(ctx, snapshot)
+	tvsc.ReadyToUse(ctx, snapshot)
 
 	snapshotVolume := volume
 	snapshotVolume.DataSource = &DataSource{
@@ -119,17 +118,17 @@ func (t *DynamicallyProvisionedVolumeSnapshotCrossRegionTest) Run(client clients
 	restoredStorageClassParameters["location"] = t.SnapshotStorageClassParameters["location"]
 	volumeBindingMode := storagev1.VolumeBindingWaitForFirstConsumer
 	snapshotVolume.VolumeBindingMode = &volumeBindingMode
-	trpvc, rpvcCleanup := snapshotVolume.SetupDynamicPersistentVolumeClaim(client, namespace, t.CSIDriver, restoredStorageClassParameters)
+	trpvc, rpvcCleanup := snapshotVolume.SetupDynamicPersistentVolumeClaim(ctx, client, namespace, t.CSIDriver, restoredStorageClassParameters)
 	for i := range rpvcCleanup {
-		defer rpvcCleanup[i]()
+		defer rpvcCleanup[i](ctx)
 	}
 
 	tPodWithSnapshotCrossRegion := NewTestPod(client, namespace, t.Pod.Cmd, t.Pod.IsWindows, t.Pod.WinServerVer)
 	tPodWithSnapshotCrossRegion.SetupVolume(trpvc.persistentVolumeClaim, snapshotVolume.VolumeMount.NameGenerate+"2", snapshotVolume.VolumeMount.MountPathGenerate+"2", snapshotVolume.VolumeMount.ReadOnly)
 	ginkgo.By("deploying a pod with a volume restored from the snapshot cross region")
-	tPodWithSnapshotCrossRegion.Create()
-	defer tPodWithSnapshotCrossRegion.Cleanup()
+	tPodWithSnapshotCrossRegion.Create(ctx)
+	defer tPodWithSnapshotCrossRegion.Cleanup(ctx)
 	ginkgo.By("checking that different region disk is restored")
-	trpvc.WaitForBound()
+	trpvc.WaitForBound(ctx)
 
 }
