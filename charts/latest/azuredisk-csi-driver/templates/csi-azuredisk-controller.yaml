@@ -20,6 +20,9 @@ spec:
     metadata:
 {{ include "azuredisk.labels" . | indent 6 }}
         app: {{ .Values.controller.name }}
+        {{- if .Values.workloadIdentity.clientID }}
+        azure.workload.identity/use: "true"
+        {{- end }}
 {{- with .Values.controller.podLabels }}
 {{ toYaml . | indent 8 }}
 {{- end }}

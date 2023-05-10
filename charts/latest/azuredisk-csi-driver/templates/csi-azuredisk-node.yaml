@@ -24,6 +24,9 @@ spec:
     metadata:
 {{ include "azuredisk.labels" . | indent 6 }}
         app: {{ .Values.linux.dsName }}
+        {{- if .Values.workloadIdentity.clientID }}
+        azure.workload.identity/use: "true"
+        {{- end }}
 {{- with .Values.linux.podLabels }}
 {{ toYaml . | indent 8 }}
 {{- end }}
