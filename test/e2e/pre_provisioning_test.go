@@ -67,7 +67,7 @@ var _ = ginkgo.Describe("Pre-Provisioned", func() {
 		}
 	})
 
-	ginkgo.Context("[single-az]", func(ctx ginkgo.SpecContext) {
+	ginkgo.Context("[single-az]", func() {
 		ginkgo.It("should use a pre-provisioned volume and mount it as readOnly in a pod [disk.csi.azure.com][windows]", func(ctx ginkgo.SpecContext) {
 			// Az tests need to be changed to pass the right parameters for in-tree driver.
 			// Skip these tests until above is fixed.
