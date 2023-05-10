@@ -1262,7 +1262,7 @@ func TestNormalizeNetworkAccessPolicy(t *testing.T) {
 	}{
 		{
 			networkAccessPolicy:         "",
-			expectedNetworkAccessPolicy: compute.AllowAll,
+			expectedNetworkAccessPolicy: compute.NetworkAccessPolicy(""),
 			expectError:                 false,
 		},
 		{
@@ -1295,6 +1295,46 @@ func TestNormalizeNetworkAccessPolicy(t *testing.T) {
 	for _, test := range tests {
 		result, err := NormalizeNetworkAccessPolicy(test.networkAccessPolicy)
 		assert.Equal(t, result, test.expectedNetworkAccessPolicy)
+		assert.Equal(t, err != nil, test.expectError, fmt.Sprintf("error msg: %v", err))
+	}
+}
+
+func TestNormalizePublicNetworkAccess(t *testing.T) {
+	tests := []struct {
+		publicNetworkAccess         string
+		expectedPublicNetworkAccess compute.PublicNetworkAccess
+		expectError                 bool
+	}{
+		{
+			publicNetworkAccess:         "",
+			expectedPublicNetworkAccess: compute.PublicNetworkAccess(""),
+			expectError:                 false,
+		},
+		{
+			publicNetworkAccess:         "Enabled",
+			expectedPublicNetworkAccess: compute.Enabled,
+			expectError:                 false,
+		},
+		{
+			publicNetworkAccess:         "Disabled",
+			expectedPublicNetworkAccess: compute.Disabled,
+			expectError:                 false,
+		},
+		{
+			publicNetworkAccess:         "enabled",
+			expectedPublicNetworkAccess: compute.PublicNetworkAccess(""),
+			expectError:                 true,
+		},
+		{
+			publicNetworkAccess:         "disabled",
+			expectedPublicNetworkAccess: compute.PublicNetworkAccess(""),
+			expectError:                 true,
+		},
+	}
+
+	for _, test := range tests {
+		result, err := NormalizePublicNetworkAccess(test.publicNetworkAccess)
+		assert.Equal(t, result, test.expectedPublicNetworkAccess)
 		assert.Equal(t, err != nil, test.expectError, fmt.Sprintf("error msg: %v", err))
 	}
 }

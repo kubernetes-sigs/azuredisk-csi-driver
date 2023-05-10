@@ -119,6 +119,7 @@ type ManagedDiskParameters struct {
 	LogicalSectorSize       int
 	MaxShares               int
 	NetworkAccessPolicy     string
+	PublicNetworkAccess     string
 	PerfProfile             string
 	SubscriptionID          string
 	ResourceGroup           string
@@ -494,7 +495,7 @@ func NormalizeCachingMode(cachingMode v1.AzureDataDiskCachingMode) (v1.AzureData
 
 func NormalizeNetworkAccessPolicy(networkAccessPolicy string) (compute.NetworkAccessPolicy, error) {
 	if networkAccessPolicy == "" {
-		return compute.AllowAll, nil
+		return compute.NetworkAccessPolicy(networkAccessPolicy), nil
 	}
 	policy := compute.NetworkAccessPolicy(networkAccessPolicy)
 	for _, s := range compute.PossibleNetworkAccessPolicyValues() {
@@ -503,6 +504,19 @@ func NormalizeNetworkAccessPolicy(networkAccessPolicy string) (compute.NetworkAc
 		}
 	}
 	return "", fmt.Errorf("azureDisk - %s is not supported NetworkAccessPolicy. Supported values are %s", networkAccessPolicy, compute.PossibleNetworkAccessPolicyValues())
+}
+
+func NormalizePublicNetworkAccess(publicNetworkAccess string) (compute.PublicNetworkAccess, error) {
+	if publicNetworkAccess == "" {
+		return compute.PublicNetworkAccess(publicNetworkAccess), nil
+	}
+	access := compute.PublicNetworkAccess(publicNetworkAccess)
+	for _, s := range compute.PossiblePublicNetworkAccessValues() {
+		if access == s {
+			return access, nil
+		}
+	}
+	return "", fmt.Errorf("azureDisk - %s is not supported PublicNetworkAccess. Supported values are %s", publicNetworkAccess, compute.PossiblePublicNetworkAccessValues())
 }
 
 func NormalizeStorageAccountType(storageAccountType, cloud string, disableAzureStackCloud bool) (compute.DiskStorageAccountTypes, error) {
@@ -631,6 +645,8 @@ func ParseDiskParameters(parameters map[string]string) (ManagedDiskParameters, e
 			diskParams.PerfProfile = v
 		case consts.NetworkAccessPolicyField:
 			diskParams.NetworkAccessPolicy = v
+		case consts.PublicNetworkAccessField:
+			diskParams.PublicNetworkAccess = v
 		case consts.DiskAccessIDField:
 			diskParams.DiskAccessID = v
 		case consts.EnableBurstingField:
