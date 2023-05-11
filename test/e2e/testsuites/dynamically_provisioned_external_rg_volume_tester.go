@@ -44,7 +44,7 @@ type DynamicallyProvisionedExternalRgVolumeTest struct {
 	SeparateResourceGroups bool
 }
 
-func (t *DynamicallyProvisionedExternalRgVolumeTest) Run(client clientset.Interface, namespace *v1.Namespace) {
+func (t *DynamicallyProvisionedExternalRgVolumeTest) Run(ctx context.Context, client clientset.Interface, namespace *v1.Namespace) {
 	tpod := NewTestPod(client, namespace, t.Pod.Cmd, false, "")
 	ginkgo.By("Checking Prow test resource group")
 	creds, err := credentials.CreateAzureCredentialFile()
@@ -59,7 +59,6 @@ func (t *DynamicallyProvisionedExternalRgVolumeTest) Run(client clientset.Interf
 	framework.ExpectNoError(err)
 	var externalRG string
 	var externalRGList []string
-	ctx := context.Background()
 	defer func() {
 		for _, rgName := range externalRGList {
 			// Only delete resource group the test created
@@ -89,16 +88,16 @@ func (t *DynamicallyProvisionedExternalRgVolumeTest) Run(client clientset.Interf
 		}
 
 		ginkgo.By("creating volume in external rg " + externalRG)
-		tpvc, pvcCleanup := volume.SetupDynamicPersistentVolumeClaim(client, namespace, t.CSIDriver, storageClassParams)
+		tpvc, pvcCleanup := volume.SetupDynamicPersistentVolumeClaim(ctx, client, namespace, t.CSIDriver, storageClassParams)
 		for i := range pvcCleanup {
-			defer pvcCleanup[i]()
+			defer pvcCleanup[i](ctx)
 		}
 		tpod.SetupVolume(tpvc.persistentVolumeClaim, volume.VolumeMount.NameGenerate+strconv.Itoa(i+1), volume.VolumeMount.MountPathGenerate+strconv.Itoa(i+1), volume.VolumeMount.ReadOnly)
 	}
 
 	ginkgo.By("deploying the pod")
-	tpod.Create()
-	defer tpod.Cleanup()
+	tpod.Create(ctx)
+	defer tpod.Cleanup(ctx)
 	ginkgo.By("checking that the pod's command exits with no error")
-	tpod.WaitForSuccess()
+	tpod.WaitForSuccess(ctx)
 }

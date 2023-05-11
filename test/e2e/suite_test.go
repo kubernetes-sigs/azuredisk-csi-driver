@@ -17,7 +17,6 @@ limitations under the License.
 package e2e
 
 import (
-	"context"
 	"flag"
 	"fmt"
 	"log"
@@ -71,7 +70,7 @@ type testCmd struct {
 	endLog   string
 }
 
-var _ = ginkgo.BeforeSuite(func() {
+var _ = ginkgo.BeforeSuite(func(ctx ginkgo.SpecContext) {
 	log.Println(driver.AzureDriverNameVar, os.Getenv(driver.AzureDriverNameVar), fmt.Sprintf("%v", isUsingInTreeVolumePlugin))
 	log.Println(testMigrationEnvVar, os.Getenv(testMigrationEnvVar), fmt.Sprintf("%v", isTestingMigration))
 	log.Println(testWindowsEnvVar, os.Getenv(testWindowsEnvVar), fmt.Sprintf("%v", isWindowsCluster))
@@ -93,7 +92,7 @@ var _ = ginkgo.BeforeSuite(func() {
 		gomega.Expect(err).NotTo(gomega.HaveOccurred())
 		azureClient, err := azure.GetAzureClient(creds.Cloud, creds.SubscriptionID, creds.AADClientID, creds.TenantID, creds.AADClientSecret)
 		gomega.Expect(err).NotTo(gomega.HaveOccurred())
-		_, err = azureClient.EnsureResourceGroup(context.Background(), creds.ResourceGroup, creds.Location, nil)
+		_, err = azureClient.EnsureResourceGroup(ctx, creds.ResourceGroup, creds.Location, nil)
 		gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
 		location = creds.Location
@@ -162,7 +161,7 @@ var _ = ginkgo.BeforeSuite(func() {
 	}
 })
 
-var _ = ginkgo.AfterSuite(func() {
+var _ = ginkgo.AfterSuite(func(ctx ginkgo.SpecContext) {
 	// Default storage driver configuration is CSI. Freshly built
 	// CSI driver is installed for that case.
 	if isTestingMigration || isUsingInTreeVolumePlugin {

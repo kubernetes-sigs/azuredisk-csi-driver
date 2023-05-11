@@ -17,6 +17,8 @@ limitations under the License.
 package testsuites
 
 import (
+	"context"
+
 	"sigs.k8s.io/azuredisk-csi-driver/test/e2e/driver"
 
 	"github.com/onsi/ginkgo/v2"
@@ -34,18 +36,18 @@ type PreProvisionedInlineVolumeTest struct {
 	ReadOnly  bool
 }
 
-func (t *PreProvisionedInlineVolumeTest) Run(client clientset.Interface, namespace *v1.Namespace) {
+func (t *PreProvisionedInlineVolumeTest) Run(ctx context.Context, client clientset.Interface, namespace *v1.Namespace) {
 	for _, pod := range t.Pods {
 		tpod, cleanup := pod.SetupWithInlineVolumes(client, namespace, t.CSIDriver, t.DiskURI, t.ReadOnly)
 		// defer must be called here for resources not get removed before using them
 		for i := range cleanup {
-			defer cleanup[i]()
+			defer cleanup[i](ctx)
 		}
 
 		ginkgo.By("deploying the pod")
-		tpod.Create()
-		defer tpod.Cleanup()
+		tpod.Create(ctx)
+		defer tpod.Cleanup(ctx)
 		ginkgo.By("checking that the pod's command exits with no error")
-		tpod.WaitForSuccess()
+		tpod.WaitForSuccess(ctx)
 	}
 }

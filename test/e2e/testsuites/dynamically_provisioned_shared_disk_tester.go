@@ -39,10 +39,10 @@ type DynamicallyProvisionedSharedDiskTester struct {
 	StorageClassParameters map[string]string
 }
 
-func (t *DynamicallyProvisionedSharedDiskTester) Run(client clientset.Interface, namespace *v1.Namespace) {
-	tDeployment, cleanup := t.Pod.SetupDeployment(client, namespace, t.CSIDriver, t.StorageClassParameters)
+func (t *DynamicallyProvisionedSharedDiskTester) Run(ctx context.Context, client clientset.Interface, namespace *v1.Namespace) {
+	tDeployment, cleanup := t.Pod.SetupDeployment(ctx, client, namespace, t.CSIDriver, t.StorageClassParameters)
 	for i := range cleanup {
-		defer cleanup[i]()
+		defer cleanup[i](ctx)
 	}
 
 	maxSharesStr, ok := t.StorageClassParameters[consts.MaxSharesField]
@@ -58,10 +58,10 @@ func (t *DynamicallyProvisionedSharedDiskTester) Run(client clientset.Interface,
 	gomega.Expect(expectedAttachmentCount).To(gomega.BeNumerically("<=", int32(maxShares)), "test case must specify a number of replica <= maxshares")
 
 	ginkgo.By("deploying the deployment")
-	tDeployment.Create()
+	tDeployment.Create(ctx)
 
 	ginkgo.By("checking that the pod is running")
-	tDeployment.WaitForPodReady()
+	tDeployment.WaitForPodReady(ctx)
 
 	if t.PodCheck != nil {
 		ginkgo.By("check pod exec")
@@ -73,12 +73,12 @@ func (t *DynamicallyProvisionedSharedDiskTester) Run(client clientset.Interface,
 	for _, volSpec := range tDeployment.deployment.Spec.Template.Spec.Volumes {
 		attachedToNodes := make(map[string]struct{})
 
-		volumeAttachments, err := client.StorageV1().VolumeAttachments().List(context.TODO(), metav1.ListOptions{})
+		volumeAttachments, err := client.StorageV1().VolumeAttachments().List(ctx, metav1.ListOptions{})
 		framework.ExpectNoError(err)
 
 		for _, volumeAttachment := range volumeAttachments.Items {
 			if volumeAttachment.Spec.Source.PersistentVolumeName != nil {
-				pvc, err := client.CoreV1().PersistentVolumeClaims(namespace.Name).Get(context.TODO(), volSpec.PersistentVolumeClaim.ClaimName, metav1.GetOptions{})
+				pvc, err := client.CoreV1().PersistentVolumeClaims(namespace.Name).Get(ctx, volSpec.PersistentVolumeClaim.ClaimName, metav1.GetOptions{})
 				framework.ExpectNoError(err)
 
 				if strings.EqualFold(pvc.Spec.VolumeName, *volumeAttachment.Spec.Source.PersistentVolumeName) {

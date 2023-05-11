@@ -45,29 +45,29 @@ type DynamicallyProvisionedAzureDiskWithTag struct {
 	Tags                   string
 }
 
-func (t *DynamicallyProvisionedAzureDiskWithTag) Run(client clientset.Interface, namespace *v1.Namespace) {
+func (t *DynamicallyProvisionedAzureDiskWithTag) Run(ctx context.Context, client clientset.Interface, namespace *v1.Namespace) {
 	for _, pod := range t.Pods {
-		tpod, cleanup := pod.SetupWithDynamicVolumes(client, namespace, t.CSIDriver, t.StorageClassParameters)
+		tpod, cleanup := pod.SetupWithDynamicVolumes(ctx, client, namespace, t.CSIDriver, t.StorageClassParameters)
 		//defer must be called here for resources not get removed before using them
 		for i := range cleanup {
-			defer cleanup[i]()
+			defer cleanup[i](ctx)
 		}
 		ginkgo.By("deploying the pod")
-		tpod.Create()
-		defer tpod.Cleanup()
+		tpod.Create(ctx)
+		defer tpod.Cleanup(ctx)
 
 		ginkgo.By("checking that the pod is running")
-		tpod.WaitForRunning()
+		tpod.WaitForRunning(ctx)
 
 		ginkgo.By("checking whether azuredisk contains tag")
 
 		//Get diskURI from pv information
 		pvcname := tpod.pod.Spec.Volumes[0].VolumeSource.PersistentVolumeClaim.ClaimName
-		pvc, err := client.CoreV1().PersistentVolumeClaims(namespace.Name).Get(context.Background(), pvcname, metav1.GetOptions{})
+		pvc, err := client.CoreV1().PersistentVolumeClaims(namespace.Name).Get(ctx, pvcname, metav1.GetOptions{})
 		framework.ExpectNoError(err, fmt.Sprintf("Error getting pvc for azuredisk %v", err))
 
 		pvname := pvc.Spec.VolumeName
-		pv, _ := client.CoreV1().PersistentVolumes().Get(context.Background(), pvname, metav1.GetOptions{})
+		pv, _ := client.CoreV1().PersistentVolumes().Get(ctx, pvname, metav1.GetOptions{})
 		diskURI := pv.Spec.PersistentVolumeSource.CSI.VolumeHandle
 		diskName, err := azureutils.GetDiskName(diskURI)
 		framework.ExpectNoError(err, fmt.Sprintf("Error getting diskName for azuredisk %v", err))
@@ -82,7 +82,7 @@ func (t *DynamicallyProvisionedAzureDiskWithTag) Run(client clientset.Interface,
 		//get disk information
 		disksClient, err := azureClient.GetAzureDisksClient()
 		framework.ExpectNoError(err, fmt.Sprintf("Error getting client for azuredisk %v", err))
-		disktest, err := disksClient.Get(context.Background(), resourceGroup, diskName)
+		disktest, err := disksClient.Get(ctx, resourceGroup, diskName)
 		framework.ExpectNoError(err, fmt.Sprintf("Error getting disk for azuredisk %v", err))
 		test, err := util.ConvertTagsToMap(t.Tags)
 		framework.ExpectNoError(err, fmt.Sprintf("Error getting tag %v", err))

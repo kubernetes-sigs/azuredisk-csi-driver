@@ -17,6 +17,7 @@ limitations under the License.
 package testsuites
 
 import (
+	"context"
 	"time"
 
 	"sigs.k8s.io/azuredisk-csi-driver/test/e2e/driver"
@@ -36,23 +37,23 @@ type DynamicallyProvisionedVolumeCloningTest struct {
 	StorageClassParameters map[string]string
 }
 
-func (t *DynamicallyProvisionedVolumeCloningTest) Run(client clientset.Interface, namespace *v1.Namespace) {
+func (t *DynamicallyProvisionedVolumeCloningTest) Run(ctx context.Context, client clientset.Interface, namespace *v1.Namespace) {
 	// create the storageClass
-	tsc, tscCleanup := t.Pod.Volumes[0].CreateStorageClass(client, namespace, t.CSIDriver, t.StorageClassParameters)
-	defer tscCleanup()
+	tsc, tscCleanup := t.Pod.Volumes[0].CreateStorageClass(ctx, client, namespace, t.CSIDriver, t.StorageClassParameters)
+	defer tscCleanup(ctx)
 
 	// create the pod
 	t.Pod.Volumes[0].StorageClass = tsc.storageClass
-	tpod, cleanups := t.Pod.SetupWithDynamicVolumes(client, namespace, t.CSIDriver, t.StorageClassParameters)
+	tpod, cleanups := t.Pod.SetupWithDynamicVolumes(ctx, client, namespace, t.CSIDriver, t.StorageClassParameters)
 	for i := range cleanups {
-		defer cleanups[i]()
+		defer cleanups[i](ctx)
 	}
 
 	ginkgo.By("deploying the pod")
-	tpod.Create()
-	defer tpod.Cleanup()
+	tpod.Create(ctx)
+	defer tpod.Cleanup(ctx)
 	ginkgo.By("checking that the pod's command exits with no error")
-	tpod.WaitForSuccess()
+	tpod.WaitForSuccess(ctx)
 	ginkgo.By("sleep 5s and then clone volume")
 	time.Sleep(5 * time.Second)
 
@@ -68,12 +69,12 @@ func (t *DynamicallyProvisionedVolumeCloningTest) Run(client clientset.Interface
 		clonedVolume.ClaimSize = t.ClonedVolumeSize
 	}
 
-	zone := tpod.GetZoneForVolume(0)
+	zone := tpod.GetZoneForVolume(ctx, 0)
 
 	t.PodWithClonedVolume.Volumes = []VolumeDetails{clonedVolume}
-	tpod, cleanups = t.PodWithClonedVolume.SetupWithDynamicVolumes(client, namespace, t.CSIDriver, t.StorageClassParameters)
+	tpod, cleanups = t.PodWithClonedVolume.SetupWithDynamicVolumes(ctx, client, namespace, t.CSIDriver, t.StorageClassParameters)
 	for i := range cleanups {
-		defer cleanups[i]()
+		defer cleanups[i](ctx)
 	}
 
 	// Since an LRS disk cannot be cloned to a different zone, add a selector to the pod so
@@ -83,8 +84,8 @@ func (t *DynamicallyProvisionedVolumeCloningTest) Run(client clientset.Interface
 	}
 
 	ginkgo.By("deploying a second pod with cloned volume")
-	tpod.Create()
-	defer tpod.Cleanup()
+	tpod.Create(ctx)
+	defer tpod.Cleanup(ctx)
 	ginkgo.By("checking that the pod's command exits with no error")
-	tpod.WaitForSuccess()
+	tpod.WaitForSuccess(ctx)
 }

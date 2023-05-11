@@ -39,16 +39,16 @@ type PreProvisionedDanglingAttachVolumeTest struct {
 	VolumeContext   map[string]string
 }
 
-func (t *PreProvisionedDanglingAttachVolumeTest) Run(client clientset.Interface, namespace *v1.Namespace) {
+func (t *PreProvisionedDanglingAttachVolumeTest) Run(ctx context.Context, client clientset.Interface, namespace *v1.Namespace) {
 	// Setup required PV(s) and PVC(s) corresponding to PodDetails that will be shared among two pods
-	tpod, cleanup := t.Pod.SetupWithPreProvisionedVolumes(client, namespace, t.CSIDriver, t.VolumeContext)
+	tpod, cleanup := t.Pod.SetupWithPreProvisionedVolumes(ctx, client, namespace, t.CSIDriver, t.VolumeContext)
 	// Defer must be called here for PV(s) and PVC(s) to be removed after the test completion and not earlier
 	for i := range cleanup {
-		defer cleanup[i]()
+		defer cleanup[i](ctx)
 	}
 
 	// Get the list of available nodes for scheduling the pod
-	nodes := tpod.ListNodes()
+	nodes := tpod.ListNodes(ctx)
 	if len(nodes) < 2 {
 		ginkgo.Skip("need at least 2 nodes to verify the test case. Current node count is %d", len(nodes))
 	}
@@ -76,18 +76,18 @@ func (t *PreProvisionedDanglingAttachVolumeTest) Run(client clientset.Interface,
 			},
 		},
 	}
-	_, err := t.AzureDiskDriver.ControllerPublishVolume(context.Background(), req)
+	_, err := t.AzureDiskDriver.ControllerPublishVolume(ctx, req)
 	framework.ExpectNoError(err)
 
 	// Make node#0 unschedulable to ensure that pods are scheduled on a different node
-	tpod.SetNodeUnschedulable(node, true)        // kubeclt cordon node
-	defer tpod.SetNodeUnschedulable(node, false) // defer kubeclt uncordon node
+	tpod.SetNodeUnschedulable(ctx, node, true)        // kubeclt cordon node
+	defer tpod.SetNodeUnschedulable(ctx, node, false) // defer kubeclt uncordon node
 
 	// Create a pod with the pvc mount for the disk currently attached to node#0 and wait for success
 	ginkgo.By("deploying the pod")
-	tpod.Create()
-	defer tpod.Cleanup()
+	tpod.Create(ctx)
+	defer tpod.Cleanup(ctx)
 	ginkgo.By("checking that the pod's command exits with no error")
 	// DanglingAttachError would have caused a pod failure. Success means detach/attach happened as expected
-	tpod.WaitForSuccess()
+	tpod.WaitForSuccess(ctx)
 }
