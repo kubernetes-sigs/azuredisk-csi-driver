@@ -23,6 +23,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2022-03-01/compute"
 	"github.com/container-storage-interface/spec/lib/go/csi"
@@ -44,6 +45,11 @@ import (
 	azureconstants "sigs.k8s.io/cloud-provider-azure/pkg/consts"
 	"sigs.k8s.io/cloud-provider-azure/pkg/metrics"
 	azure "sigs.k8s.io/cloud-provider-azure/pkg/provider"
+)
+
+const (
+	waitForSnapshotCopyInterval = 5 * time.Second
+	waitForSnapshotCopyTimeout  = 10 * time.Minute
 )
 
 // listVolumeStatus explains the return status of `listVolumesByResourceGroup`
@@ -871,7 +877,7 @@ func (d *Driver) CreateSnapshot(ctx context.Context, req *csi.CreateSnapshotRequ
 			},
 			Incremental: &incremental,
 		},
-		Location: &location,
+		Location: &d.cloud.Location,
 		Tags:     tags,
 	}
 
@@ -882,13 +888,28 @@ func (d *Driver) CreateSnapshot(ctx context.Context, req *csi.CreateSnapshotRequ
 		snapshot.SnapshotProperties.DataAccessAuthMode = compute.DataAccessAuthMode(dataAccessAuthMode)
 	}
 
+	if acquired := d.volumeLocks.TryAcquire(snapshotName); !acquired {
+		return nil, status.Errorf(codes.Aborted, volumeOperationAlreadyExistsFmt, snapshotName)
+	}
+	defer d.volumeLocks.Release(snapshotName)
+
+	var crossRegionSnapshotName string
+	if location != "" && location != d.cloud.Location {
+		if incremental {
+			crossRegionSnapshotName = snapshotName
+			snapshotName = azureutils.CreateValidDiskName("local_" + snapshotName)
+		} else {
+			return nil, status.Errorf(codes.InvalidArgument, "could not create snapshot cross region with incremental is false")
+		}
+	}
+
 	mc := metrics.NewMetricContext(consts.AzureDiskCSIDriverName, "controller_create_snapshot", d.cloud.ResourceGroup, d.cloud.SubscriptionID, d.Name)
 	isOperationSucceeded := false
 	defer func() {
 		mc.ObserveOperationWithResult(isOperationSucceeded, consts.SourceResourceID, sourceVolumeID, consts.SnapshotName, snapshotName)
 	}()
 
-	klog.V(2).Infof("begin to create snapshot(%s, incremental: %v) under rg(%s)", snapshotName, incremental, resourceGroup)
+	klog.V(2).Infof("begin to create snapshot(%s, incremental: %v) under rg(%s) region(%s)", snapshotName, incremental, resourceGroup, d.cloud.Location)
 	if rerr := d.cloud.SnapshotsClient.CreateOrUpdate(ctx, subsID, resourceGroup, snapshotName, snapshot); rerr != nil {
 		if strings.Contains(rerr.Error().Error(), "existing disk") {
 			return nil, status.Error(codes.AlreadyExists, fmt.Sprintf("request snapshot(%s) under rg(%s) already exists, but the SourceVolumeId is different, error details: %v", snapshotName, resourceGroup, rerr.Error()))
@@ -897,11 +918,52 @@ func (d *Driver) CreateSnapshot(ctx context.Context, req *csi.CreateSnapshotRequ
 		azureutils.SleepIfThrottled(rerr.Error(), consts.SnapshotOpThrottlingSleepSec)
 		return nil, status.Error(codes.Internal, fmt.Sprintf("create snapshot error: %v", rerr.Error()))
 	}
-	klog.V(2).Infof("create snapshot(%s) under rg(%s) successfully", snapshotName, resourceGroup)
+	klog.V(2).Infof("create snapshot(%s) under rg(%s) region(%s) successfully", snapshotName, resourceGroup, d.cloud.Location)
 
 	csiSnapshot, err := d.getSnapshotByID(ctx, subsID, resourceGroup, snapshotName, sourceVolumeID)
 	if err != nil {
 		return nil, err
+	}
+
+	if crossRegionSnapshotName != "" {
+		copySnapshot := snapshot
+		if copySnapshot.SnapshotProperties == nil {
+			copySnapshot.SnapshotProperties = &compute.SnapshotProperties{}
+		}
+		if copySnapshot.SnapshotProperties.CreationData == nil {
+			copySnapshot.SnapshotProperties.CreationData = &compute.CreationData{}
+		}
+		copySnapshot.SnapshotProperties.CreationData.SourceResourceID = &csiSnapshot.SnapshotId
+		copySnapshot.SnapshotProperties.CreationData.CreateOption = compute.CopyStart
+		copySnapshot.Location = &location
+
+		klog.V(2).Infof("begin to create snapshot(%s, incremental: %v) under rg(%s) region(%s)", crossRegionSnapshotName, incremental, resourceGroup, location)
+		if rerr := d.cloud.SnapshotsClient.CreateOrUpdate(ctx, subsID, resourceGroup, crossRegionSnapshotName, copySnapshot); rerr != nil {
+			if strings.Contains(rerr.Error().Error(), "existing disk") {
+				return nil, status.Error(codes.AlreadyExists, fmt.Sprintf("request snapshot(%s) under rg(%s) already exists, but the SourceVolumeId is different, error details: %v", crossRegionSnapshotName, resourceGroup, rerr.Error()))
+			}
+
+			azureutils.SleepIfThrottled(rerr.Error(), consts.SnapshotOpThrottlingSleepSec)
+			return nil, status.Error(codes.Internal, fmt.Sprintf("create snapshot error: %v", rerr.Error()))
+		}
+		klog.V(2).Infof("create snapshot(%s) under rg(%s) region(%s) successfully", crossRegionSnapshotName, resourceGroup, location)
+
+		if err := d.waitForSnapshotCopy(ctx, subsID, resourceGroup, crossRegionSnapshotName, waitForSnapshotCopyInterval, waitForSnapshotCopyTimeout); err != nil {
+			return nil, status.Error(codes.Internal, fmt.Sprintf("failed to wait for snapshot copy cross region: %v", err.Error()))
+		}
+
+		klog.V(2).Infof("begin to delete snapshot(%s) under rg(%s) region(%s)", snapshotName, resourceGroup, d.cloud.Location)
+		if rerr := d.cloud.SnapshotsClient.Delete(ctx, subsID, resourceGroup, snapshotName); rerr != nil {
+			azureutils.SleepIfThrottled(rerr.Error(), consts.SnapshotOpThrottlingSleepSec)
+			klog.Errorf("delete snapshot error: %v", rerr.Error())
+		} else {
+			klog.V(2).Infof("delete snapshot(%s) under rg(%s) region(%s) successfully", snapshotName, resourceGroup, d.cloud.Location)
+		}
+
+		csiSnapshot, err = d.getSnapshotByID(ctx, subsID, resourceGroup, crossRegionSnapshotName, sourceVolumeID)
+		if err != nil {
+			return nil, status.Error(codes.Internal, err.Error())
+		}
 	}
 
 	createResp := &csi.CreateSnapshotResponse{
@@ -1034,6 +1096,31 @@ func (d *Driver) getSnapshotInfo(snapshotID string) (snapshotName, resourceGroup
 		return "", "", "", fmt.Errorf("cannot get SubscriptionID from %s", snapshotID)
 	}
 	return snapshotName, resourceGroup, subsID, err
+}
+
+// waitForSnapshotCopy wait for copy incremental snapshot to a new region until completionPercent is 100.0
+func (d *Driver) waitForSnapshotCopy(ctx context.Context, subsID, resourceGroup, copySnapshotName string, intervel, timeout time.Duration) error {
+	timeAfter := time.After(timeout)
+	timeTick := time.Tick(intervel)
+
+	for {
+		select {
+		case <-timeTick:
+			copySnapshot, rerr := d.cloud.SnapshotsClient.Get(ctx, subsID, resourceGroup, copySnapshotName)
+			if rerr != nil {
+				return rerr.Error()
+			}
+
+			completionPercent := *copySnapshot.SnapshotProperties.CompletionPercent
+			klog.V(2).Infof("copy snapshot(%s) under rg(%s) region(%s) completionPercent: %f", copySnapshotName, resourceGroup, *copySnapshot.Location, completionPercent)
+			if completionPercent >= float64(100.0) {
+				klog.V(2).Infof("copy snapshot(%s) under rg(%s) region(%s) complete", copySnapshotName, resourceGroup, *copySnapshot.Location)
+				return nil
+			}
+		case <-timeAfter:
+			return fmt.Errorf("timeout waiting for copy snapshot(%s) under rg(%s)", copySnapshotName, resourceGroup)
+		}
+	}
 }
 
 func isAsyncAttachEnabled(defaultValue bool, volumeContext map[string]string) bool {
