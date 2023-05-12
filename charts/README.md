@@ -356,7 +356,8 @@ In addition to the parameters supported by the V1 driver, Azure Disk CSI driver 
 | `storageClasses.storageClassNames.premiumLRS` | The `StorageClass` name for `Premium_LRS` disks | `azuredisk-premium-sdd-lrs` |
 | `storageClasses.storageClassNames.premiumZRS` | The `StorageClass` name for `Premium_ZRS` disks | `azuredisk-premium-sdd-zrs` |
 | `storageClasses.storageClassNames.ultraSSDLRS` | The `StorageClass` name for `UltraSSD_LRS` disks | `azuredisk-ultra-sdd-lrs` |
-
+| `workloadIdentity.clientID` | client ID of workload identity | ''
+| `workloadIdentity.tenantID` | [optional] If the AAD application or user-assigned managed identity is not in the same tenant as the cluster then set tenantID with the AAD application or user-assigned managed identity tenant ID | ''
 
 ## Troubleshooting
 
