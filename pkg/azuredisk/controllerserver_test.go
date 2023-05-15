@@ -22,7 +22,7 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2022-03-01/compute"
+	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2022-08-01/compute"
 	"github.com/Azure/go-autorest/autorest/date"
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	"github.com/golang/mock/gomock"
@@ -235,7 +235,7 @@ func TestCreateVolume(t *testing.T) {
 					Parameters:         mp,
 				}
 				_, err := d.CreateVolume(context.Background(), req)
-				expectedErr := status.Error(codes.InvalidArgument, "azureDisk - NOT_EXISTING is not supported sku/storageaccounttype. Supported values are [Premium_LRS Premium_ZRS Standard_LRS StandardSSD_LRS StandardSSD_ZRS UltraSSD_LRS PremiumV2_LRS]")
+				expectedErr := status.Error(codes.InvalidArgument, "azureDisk - NOT_EXISTING is not supported sku/storageaccounttype. Supported values are [Premium_LRS PremiumV2_LRS Premium_ZRS Standard_LRS StandardSSD_LRS StandardSSD_ZRS UltraSSD_LRS]")
 				if !reflect.DeepEqual(err, expectedErr) {
 					t.Errorf("actualErr: (%v), expectedErr: (%v)", err, expectedErr)
 				}
@@ -365,7 +365,7 @@ func TestCreateVolume(t *testing.T) {
 				}
 				size := int32(volumehelper.BytesToGiB(req.CapacityRange.RequiredBytes))
 				id := fmt.Sprintf(consts.ManagedDiskPath, "subs", "rg", testVolumeName)
-				state := string(compute.ProvisioningStateSucceeded)
+				state := "Succeeded"
 				disk := compute.Disk{
 					ID:   &id,
 					Name: &testVolumeName,
@@ -398,7 +398,7 @@ func TestCreateVolume(t *testing.T) {
 				}
 				size := int32(volumehelper.BytesToGiB(req.CapacityRange.RequiredBytes))
 				id := fmt.Sprintf(consts.ManagedDiskPath, "subs", "rg", testVolumeName)
-				state := string(compute.ProvisioningStateSucceeded)
+				state := "Succeeded"
 				disk := compute.Disk{
 					ID:   &id,
 					Name: &testVolumeName,
@@ -712,7 +712,7 @@ func TestControllerPublishVolume(t *testing.T) {
 					},
 				}
 				vm.VirtualMachineProperties = &compute.VirtualMachineProperties{
-					ProvisioningState: pointer.String(string(compute.ProvisioningStateFailed)),
+					ProvisioningState: pointer.String("Failed"),
 					HardwareProfile: &compute.HardwareProfile{
 						VMSize: compute.StandardA0,
 					},
@@ -770,7 +770,7 @@ func TestControllerPublishVolume(t *testing.T) {
 					},
 				}
 				vm.VirtualMachineProperties = &compute.VirtualMachineProperties{
-					ProvisioningState: pointer.String(string(compute.ProvisioningStateSucceeded)),
+					ProvisioningState: pointer.String("Succeeded"),
 					HardwareProfile: &compute.HardwareProfile{
 						VMSize: compute.StandardA0,
 					},
@@ -828,7 +828,7 @@ func TestControllerPublishVolume(t *testing.T) {
 					},
 				}
 				vm.VirtualMachineProperties = &compute.VirtualMachineProperties{
-					ProvisioningState: pointer.String(string(compute.ProvisioningStateSucceeded)),
+					ProvisioningState: pointer.String("Succeeded"),
 					HardwareProfile: &compute.HardwareProfile{
 						VMSize: compute.StandardA0,
 					},
