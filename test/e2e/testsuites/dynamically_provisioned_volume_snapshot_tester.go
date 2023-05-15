@@ -20,6 +20,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	"sigs.k8s.io/azuredisk-csi-driver/test/e2e/driver"
 	"sigs.k8s.io/azuredisk-csi-driver/test/utils/azure"
@@ -63,6 +64,8 @@ func (t *DynamicallyProvisionedVolumeSnapshotTest) Run(client clientset.Interfac
 	defer tpod.Cleanup()
 	ginkgo.By("checking that the pod's command exits with no error")
 	tpod.WaitForSuccess()
+	ginkgo.By("sleep 10s to make sure the data is written to the disk")
+	time.Sleep(time.Millisecond * 10000)
 
 	ginkgo.By("Checking Prow test resource group")
 	creds, err := credentials.CreateAzureCredentialFile()
