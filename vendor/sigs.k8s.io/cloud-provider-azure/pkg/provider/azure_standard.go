@@ -30,7 +30,7 @@ import (
 
 	"sigs.k8s.io/cloud-provider-azure/pkg/consts"
 
-	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2022-03-01/compute"
+	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2022-08-01/compute"
 	"github.com/Azure/azure-sdk-for-go/services/network/mgmt/2022-07-01/network"
 
 	v1 "k8s.io/api/core/v1"
@@ -69,7 +69,11 @@ func (az *Cloud) getAvailabilitySetID(resourceGroup, availabilitySetName string)
 }
 
 // returns the full identifier of a loadbalancer frontendipconfiguration.
-func (az *Cloud) getFrontendIPConfigID(lbName, rgName, fipConfigName string) string {
+func (az *Cloud) getFrontendIPConfigID(lbName, fipConfigName string) string {
+	return az.getFrontendIPConfigIDWithRG(lbName, az.getLoadBalancerResourceGroup(), fipConfigName)
+}
+
+func (az *Cloud) getFrontendIPConfigIDWithRG(lbName, rgName, fipConfigName string) string {
 	return fmt.Sprintf(
 		consts.FrontendIPConfigIDTemplate,
 		az.getNetworkResourceSubscriptionID(),
@@ -79,7 +83,11 @@ func (az *Cloud) getFrontendIPConfigID(lbName, rgName, fipConfigName string) str
 }
 
 // returns the full identifier of a loadbalancer backendpool.
-func (az *Cloud) getBackendPoolID(lbName, rgName, backendPoolName string) string {
+func (az *Cloud) getBackendPoolID(lbName, backendPoolName string) string {
+	return az.getBackendPoolIDWithRG(lbName, az.getLoadBalancerResourceGroup(), backendPoolName)
+}
+
+func (az *Cloud) getBackendPoolIDWithRG(lbName, rgName, backendPoolName string) string {
 	return fmt.Sprintf(
 		consts.BackendPoolIDTemplate,
 		az.getNetworkResourceSubscriptionID(),
@@ -88,8 +96,19 @@ func (az *Cloud) getBackendPoolID(lbName, rgName, backendPoolName string) string
 		backendPoolName)
 }
 
+func (az *Cloud) getBackendPoolIDs(clusterName, lbName string) map[bool]string {
+	return map[bool]string{
+		false: az.getBackendPoolID(lbName, getBackendPoolName(clusterName, false)),
+		true:  az.getBackendPoolID(lbName, getBackendPoolName(clusterName, true)),
+	}
+}
+
 // returns the full identifier of a loadbalancer probe.
-func (az *Cloud) getLoadBalancerProbeID(lbName, rgName, lbRuleName string) string {
+func (az *Cloud) getLoadBalancerProbeID(lbName, lbRuleName string) string {
+	return az.getLoadBalancerProbeIDWithRG(lbName, az.getLoadBalancerResourceGroup(), lbRuleName)
+}
+
+func (az *Cloud) getLoadBalancerProbeIDWithRG(lbName, rgName, lbRuleName string) string {
 	return fmt.Sprintf(
 		consts.LoadBalancerProbeIDTemplate,
 		az.getNetworkResourceSubscriptionID(),
@@ -274,6 +293,14 @@ func getBackendPoolName(clusterName string, isIPv6 bool) string {
 	return clusterName
 }
 
+// getBackendPoolNames returns the IPv4 and IPv6 backend pool names.
+func getBackendPoolNames(clusterName string) map[bool]string {
+	return map[bool]string{
+		false: getBackendPoolName(clusterName, false),
+		true:  getBackendPoolName(clusterName, true),
+	}
+}
+
 // ifBackendPoolIPv6 checks if a backend pool is of IPv6 according to name/ID.
 func isBackendPoolIPv6(name string) bool {
 	return strings.HasSuffix(name, fmt.Sprintf("-%s", v6Suffix))
@@ -282,10 +309,10 @@ func isBackendPoolIPv6(name string) bool {
 func (az *Cloud) getLoadBalancerRuleName(service *v1.Service, protocol v1.Protocol, port int32, isIPv6 bool) string {
 	prefix := az.getRulePrefix(service)
 	ruleName := fmt.Sprintf("%s-%s-%d", prefix, protocol, port)
-	subnet := subnet(service)
+	subnet := getInternalSubnet(service)
+	isDualStack := isServiceDualStack(service)
 	if subnet == nil {
-		// TODO: Use getResourceByIPFamily()
-		return ruleName
+		return getResourceByIPFamily(ruleName, isDualStack, isIPv6)
 	}
 
 	// Load balancer rule name must be less or equal to 80 characters, so excluding the hyphen two segments cannot exceed 79
@@ -295,8 +322,7 @@ func (az *Cloud) getLoadBalancerRuleName(service *v1.Service, protocol v1.Protoc
 		subnetSegment = subnetSegment[:maxLength-len(ruleName)-1]
 	}
 
-	// TODO: Use getResourceByIPFamily()
-	return fmt.Sprintf("%s-%s-%s-%d", prefix, subnetSegment, protocol, port)
+	return getResourceByIPFamily(fmt.Sprintf("%s-%s-%s-%d", prefix, subnetSegment, protocol, port), isDualStack, isIPv6)
 }
 
 func (az *Cloud) getloadbalancerHAmodeRuleName(service *v1.Service, isIPv6 bool) string {
@@ -381,11 +407,11 @@ func (az *Cloud) serviceOwnsFrontendIP(fip network.FrontendIPConfiguration, serv
 				fip.FrontendIPConfigurationPropertiesFormat != nil &&
 				fip.FrontendIPConfigurationPropertiesFormat.PublicIPAddress != nil {
 				if strings.EqualFold(pointer.StringDeref(pip.ID, ""), pointer.StringDeref(fip.PublicIPAddress.ID, "")) {
-					klog.Infof("serviceOwnsFrontendIP: found secondary service %s of the frontend IP config %s", service.Name, *fip.Name)
+					klog.V(6).Infof("serviceOwnsFrontendIP:found secondary service %s of the frontend IP config %s", service.Name, *fip.Name)
 					return true, isPrimaryService, nil
 				}
 			}
-			klog.Infof("serviceOwnsFrontendIP: the public IP with ID %s is being referenced by other service with public IP address %s "+
+			klog.V(6).Infof("serviceOwnsFrontendIP: the public IP with ID %s is being referenced by other service with public IP address %s "+
 				"OR it is of incorrect IP version", *pip.ID, *pip.IPAddress)
 		}
 
@@ -407,9 +433,18 @@ func (az *Cloud) serviceOwnsFrontendIP(fip network.FrontendIPConfiguration, serv
 	return privateIPEquals, isPrimaryService, nil
 }
 
+func (az *Cloud) getFrontendIPConfigNames(service *v1.Service) map[bool]string {
+	isDualStack := isServiceDualStack(service)
+	defaultLBFrontendIPConfigName := az.getDefaultFrontendIPConfigName(service)
+	return map[bool]string{
+		false: getResourceByIPFamily(defaultLBFrontendIPConfigName, isDualStack, false),
+		true:  getResourceByIPFamily(defaultLBFrontendIPConfigName, isDualStack, true),
+	}
+}
+
 func (az *Cloud) getDefaultFrontendIPConfigName(service *v1.Service) string {
 	baseName := az.GetLoadBalancerName(context.TODO(), "", service)
-	subnetName := subnet(service)
+	subnetName := getInternalSubnet(service)
 	if subnetName != nil {
 		ipcName := fmt.Sprintf("%s-%s", baseName, *subnetName)
 
