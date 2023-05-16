@@ -312,7 +312,7 @@ github.com/modern-go/reflect2
 # github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822
 ## explicit
 github.com/munnerz/goautoneg
-# github.com/onsi/ginkgo/v2 v2.9.4
+# github.com/onsi/ginkgo/v2 v2.9.5
 ## explicit; go 1.18
 github.com/onsi/ginkgo/v2
 github.com/onsi/ginkgo/v2/config
@@ -578,7 +578,7 @@ golang.org/x/text/width
 # golang.org/x/time v0.0.0-20220210224613-90d013bbcef8
 ## explicit
 golang.org/x/time/rate
-# golang.org/x/tools v0.8.0
+# golang.org/x/tools v0.9.1
 ## explicit; go 1.18
 golang.org/x/tools/go/ast/inspector
 golang.org/x/tools/internal/typeparams
@@ -1432,7 +1432,7 @@ sigs.k8s.io/apiserver-network-proxy/konnectivity-client/pkg/client
 sigs.k8s.io/apiserver-network-proxy/konnectivity-client/pkg/client/metrics
 sigs.k8s.io/apiserver-network-proxy/konnectivity-client/pkg/common/metrics
 sigs.k8s.io/apiserver-network-proxy/konnectivity-client/proto/client
-# sigs.k8s.io/cloud-provider-azure v1.27.1-0.20230513090726-ba7dfc9c04b3
+# sigs.k8s.io/cloud-provider-azure v1.27.1-0.20230516073337-2f0c4c289f73
 ## explicit; go 1.20
 sigs.k8s.io/cloud-provider-azure/pkg/azureclients
 sigs.k8s.io/cloud-provider-azure/pkg/azureclients/armclient

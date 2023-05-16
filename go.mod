@@ -30,7 +30,7 @@ require (
 	k8s.io/kubernetes v1.27.1
 	k8s.io/mount-utils v0.0.0
 	k8s.io/utils v0.0.0-20230209194617-a36077c30491
-	sigs.k8s.io/cloud-provider-azure v1.27.1-0.20230513090726-ba7dfc9c04b3
+	sigs.k8s.io/cloud-provider-azure v1.27.1-0.20230516073337-2f0c4c289f73
 	sigs.k8s.io/yaml v1.3.0
 )
 
@@ -38,7 +38,7 @@ require (
 	github.com/Azure/azure-sdk-for-go/sdk/azcore v1.2.0
 	github.com/Azure/azure-sdk-for-go/sdk/azidentity v1.2.0
 	github.com/jongio/azidext/go/azidext v0.4.0
-	github.com/onsi/ginkgo/v2 v2.9.4
+	github.com/onsi/ginkgo/v2 v2.9.5
 	k8s.io/client-go v0.27.1
 	k8s.io/pod-security-admission v0.27.1
 )
@@ -131,7 +131,7 @@ require (
 	golang.org/x/term v0.8.0 // indirect
 	golang.org/x/text v0.9.0 // indirect
 	golang.org/x/time v0.0.0-20220210224613-90d013bbcef8 // indirect
-	golang.org/x/tools v0.8.0 // indirect
+	golang.org/x/tools v0.9.1 // indirect
 	google.golang.org/appengine v1.6.7 // indirect
 	google.golang.org/genproto v0.0.0-20220502173005-c8bf987b8c21 // indirect
 	gopkg.in/inf.v0 v0.9.1 // indirect
