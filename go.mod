@@ -16,7 +16,7 @@ require (
 	github.com/kubernetes-csi/csi-proxy/client v1.0.1
 	github.com/kubernetes-csi/external-snapshotter/client/v4 v4.1.0
 	github.com/onsi/gomega v1.27.6
-	github.com/pborman/uuid v1.2.0
+	github.com/pborman/uuid v1.2.1
 	github.com/pelletier/go-toml v1.9.4
 	github.com/stretchr/testify v1.8.2
 	golang.org/x/net v0.10.0
