@@ -208,6 +208,7 @@ func (d *DriverV2) CreateVolume(ctx context.Context, req *csi.CreateVolumeReques
 		SourceType:          sourceType,
 		Tags:                diskParams.Tags,
 		Location:            diskParams.Location,
+		PerformancePlus:     diskParams.PerformancePlus,
 	}
 	// Azure Stack Cloud does not support NetworkAccessPolicy, PublicNetworkAccess
 	if !azureutils.IsAzureStackCloud(d.cloud.Config.Cloud, d.cloud.Config.DisableAzureStackCloud) {

@@ -113,6 +113,7 @@ type ManagedDiskParameters struct {
 	DiskName                string
 	EnableAsyncAttach       *bool
 	EnableBursting          *bool
+	PerformancePlus         *bool
 	FsType                  string
 	Incremental             bool
 	Location                string
@@ -662,6 +663,12 @@ func ParseDiskParameters(parameters map[string]string) (ManagedDiskParameters, e
 			}
 		case consts.ZonedField:
 			// no op, only for backward compatibility with in-tree driver
+		case consts.PerformancePlusField:
+			value, err := strconv.ParseBool(v)
+			if err != nil {
+				return diskParams, fmt.Errorf("invalid %s: %s in storage class", consts.PerformancePlusField, v)
+			}
+			diskParams.PerformancePlus = &value
 		default:
 			// accept all device settings params
 			// device settings need to start with azureconstants.DeviceSettingsKeyPrefix
