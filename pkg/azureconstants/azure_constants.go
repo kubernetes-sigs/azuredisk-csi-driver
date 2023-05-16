@@ -81,6 +81,7 @@ const (
 	WriteAcceleratorEnabled       = "writeacceleratorenabled"
 	ZonedField                    = "zoned"
 	EnableAsyncAttachField        = "enableasyncattach"
+	PerformancePlusField          = "enableperformanceplus"
 	TooManyRequests               = "TooManyRequests"
 	ClientThrottled               = "client throttled"
 	VolumeID                      = "volumeid"
