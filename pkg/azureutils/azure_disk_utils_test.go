@@ -1430,7 +1430,6 @@ func TestParseDiskParameters(t *testing.T) {
 			name:        "nil disk parameters",
 			inputParams: nil,
 			expectedOutput: ManagedDiskParameters{
-				Incremental:    true,
 				Tags:           make(map[string]string),
 				VolumeContext:  make(map[string]string),
 				DeviceSettings: make(map[string]string),
@@ -1441,7 +1440,6 @@ func TestParseDiskParameters(t *testing.T) {
 			name:        "invalid field in parameters",
 			inputParams: map[string]string{"invalidField": "someValue"},
 			expectedOutput: ManagedDiskParameters{
-				Incremental:    true,
 				Tags:           make(map[string]string),
 				VolumeContext:  map[string]string{"invalidField": "someValue"},
 				DeviceSettings: make(map[string]string),
@@ -1452,7 +1450,6 @@ func TestParseDiskParameters(t *testing.T) {
 			name:        "invalid value in parameters",
 			inputParams: map[string]string{consts.LogicalSectorSizeField: "invalidValue"},
 			expectedOutput: ManagedDiskParameters{
-				Incremental:    true,
 				Tags:           make(map[string]string),
 				VolumeContext:  map[string]string{consts.LogicalSectorSizeField: "invalidValue"},
 				DeviceSettings: make(map[string]string),
@@ -1464,7 +1461,6 @@ func TestParseDiskParameters(t *testing.T) {
 			inputParams: map[string]string{consts.SkuNameField: "PremiumV2_LRS"},
 			expectedOutput: ManagedDiskParameters{
 				AccountType:    "PremiumV2_LRS",
-				Incremental:    true,
 				Tags:           make(map[string]string),
 				VolumeContext:  map[string]string{consts.SkuNameField: "PremiumV2_LRS"},
 				DeviceSettings: make(map[string]string),
@@ -1480,7 +1476,6 @@ func TestParseDiskParameters(t *testing.T) {
 			expectedOutput: ManagedDiskParameters{
 				AccountType: "PremiumV2_LRS",
 				CachingMode: "none",
-				Incremental: true,
 				Tags:        make(map[string]string),
 				VolumeContext: map[string]string{
 					consts.SkuNameField:     "PremiumV2_LRS",
@@ -1499,7 +1494,6 @@ func TestParseDiskParameters(t *testing.T) {
 			expectedOutput: ManagedDiskParameters{
 				AccountType: "PremiumV2_LRS",
 				CachingMode: "ReadOnly",
-				Incremental: true,
 				Tags:        make(map[string]string),
 				VolumeContext: map[string]string{
 					consts.SkuNameField:     "PremiumV2_LRS",
@@ -1535,7 +1529,6 @@ func TestParseDiskParameters(t *testing.T) {
 				consts.EnableBurstingField:      "true",
 				consts.UserAgentField:           "userAgent",
 				consts.EnableAsyncAttachField:   "enableAsyncAttach",
-				consts.IncrementalField:         "false",
 				consts.ZonedField:               "ignored",
 			},
 			expectedOutput: ManagedDiskParameters{
@@ -1547,7 +1540,6 @@ func TestParseDiskParameters(t *testing.T) {
 				DiskMBPSReadWrite:   "diskMBPSReadWrite",
 				DiskName:            "diskName",
 				DiskEncryptionSetID: "diskEncyptionSetID",
-				Incremental:         false,
 				Tags: map[string]string{
 					consts.PvcNameTag:      "pvcName",
 					consts.PvcNamespaceTag: "pvcNamespace",
@@ -1586,7 +1578,6 @@ func TestParseDiskParameters(t *testing.T) {
 					consts.EnableBurstingField:      "true",
 					consts.UserAgentField:           "userAgent",
 					consts.EnableAsyncAttachField:   "enableAsyncAttach",
-					consts.IncrementalField:         "false",
 					consts.ZonedField:               "ignored",
 				},
 				DeviceSettings:    make(map[string]string),

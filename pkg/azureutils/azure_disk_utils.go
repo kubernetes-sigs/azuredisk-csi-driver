@@ -46,7 +46,6 @@ import (
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/optimization"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/util"
 	azclients "sigs.k8s.io/cloud-provider-azure/pkg/azureclients"
-	azureconstants "sigs.k8s.io/cloud-provider-azure/pkg/consts"
 	azure "sigs.k8s.io/cloud-provider-azure/pkg/provider"
 )
 
@@ -115,7 +114,6 @@ type ManagedDiskParameters struct {
 	EnableBursting          *bool
 	PerformancePlus         *bool
 	FsType                  string
-	Incremental             bool
 	Location                string
 	LogicalSectorSize       int
 	MaxShares               int
@@ -576,7 +574,6 @@ func ParseDiskParameters(parameters map[string]string) (ManagedDiskParameters, e
 
 	diskParams := ManagedDiskParameters{
 		DeviceSettings: make(map[string]string),
-		Incremental:    true, //true by default
 		Tags:           make(map[string]string),
 		VolumeContext:  parameters,
 	}
@@ -657,10 +654,6 @@ func ParseDiskParameters(parameters map[string]string) (ManagedDiskParameters, e
 			diskParams.UserAgent = v
 		case consts.EnableAsyncAttachField:
 			diskParams.VolumeContext[consts.EnableAsyncAttachField] = v
-		case consts.IncrementalField:
-			if v == "false" {
-				diskParams.Incremental = false
-			}
 		case consts.ZonedField:
 			// no op, only for backward compatibility with in-tree driver
 		case consts.PerformancePlusField:
@@ -680,9 +673,9 @@ func ParseDiskParameters(parameters map[string]string) (ManagedDiskParameters, e
 		}
 	}
 
-	if strings.EqualFold(diskParams.AccountType, string(azureconstants.PremiumV2LRS)) {
+	if strings.EqualFold(diskParams.AccountType, string(compute.PremiumV2LRS)) {
 		if diskParams.CachingMode != "" && !strings.EqualFold(string(diskParams.CachingMode), string(v1.AzureDataDiskCachingNone)) {
-			return diskParams, fmt.Errorf("cachingMode %s is not supported for %s", diskParams.CachingMode, azureconstants.PremiumV2LRS)
+			return diskParams, fmt.Errorf("cachingMode %s is not supported for %s", diskParams.CachingMode, compute.PremiumV2LRS)
 		}
 	}
 
