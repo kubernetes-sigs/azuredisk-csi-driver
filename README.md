@@ -80,6 +80,7 @@ Please refer to [`disk.csi.azure.com` driver parameters](./docs/driver-parameter
 - [Shared Disk](./deploy/example/sharedisk)
 - [Volume Limits](./deploy/example/volumelimits)
 - [fsGroupPolicy](./deploy/example/fsgroup)
+- [Workload identity](./docs/workload-identity.md)
 - [Advanced disk performance tuning (Preview)](./docs/perf-profiles.md)
 
 #### New in V2
