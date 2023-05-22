@@ -118,7 +118,7 @@ func newFakeDriverV1(t *testing.T) (*fakeDriverV1, error) {
 	defer ctrl.Finish()
 
 	driver.cloud = azure.GetTestCloud(ctrl)
-	mounter, err := mounter.NewSafeMounter(driver.useCSIProxyGAInterface)
+	mounter, err := mounter.NewSafeMounter(driver.enableWindowsHostProcess, driver.useCSIProxyGAInterface)
 	if err != nil {
 		return nil, err
 	}

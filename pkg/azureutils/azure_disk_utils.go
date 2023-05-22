@@ -21,6 +21,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strconv"
@@ -60,6 +61,7 @@ const (
 	diskNameMinLength         = 1
 	diskNameMaxLength         = 80
 	diskNameGenerateMaxLength = 76 // maxLength = 80 - (4 for ".vhd") = 76
+	MaxPathLengthWindows      = 260
 )
 
 var (
@@ -780,4 +782,12 @@ func SetKeyValueInMap(m map[string]string, key, value string) {
 		}
 	}
 	m[key] = value
+}
+
+func RunPowershellCmd(command string, envs ...string) ([]byte, error) {
+	cmd := exec.Command("powershell", "-Mta", "-NoProfile", "-Command", command)
+	cmd.Env = append(os.Environ(), envs...)
+	klog.V(8).Infof("Executing command: %q", cmd.String())
+	out, err := cmd.CombinedOutput()
+	return out, err
 }

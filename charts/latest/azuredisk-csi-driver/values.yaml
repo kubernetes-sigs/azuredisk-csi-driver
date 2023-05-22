@@ -216,6 +216,7 @@ linux:
 
 windows:
   enabled: true
+  useHostProcessContainers: false
   dsName: csi-azuredisk-node-win # daemonset name
   kubelet: 'C:\var\lib\kubelet'
   getNodeInfoFromLabels: false # get node info from node labels instead of IMDS
@@ -257,7 +258,6 @@ windows:
       requests:
         cpu: 10m
         memory: 40Mi
-  useHostProcessContainers: false
 
 cloud: AzurePublicCloud
 

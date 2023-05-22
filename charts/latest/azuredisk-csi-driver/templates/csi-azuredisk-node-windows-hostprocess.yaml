@@ -60,38 +60,16 @@ spec:
       initContainers:
         - name: init
 {{- if hasPrefix "/" .Values.image.azuredisk.repository }}
-          image: "{{ .Values.image.baseRepo }}{{ .Values.image.azuredisk.repository }}:{{ .Values.image.azuredisk.tag }}"
+          image: "{{ .Values.image.baseRepo }}{{ .Values.image.azuredisk.repository }}:{{ .Values.image.azuredisk.tag }}-windows-hp"
 {{- else }}
-          image: "{{ .Values.image.azuredisk.repository }}:{{ .Values.image.azuredisk.tag }}"
+          image: "{{ .Values.image.azuredisk.repository }}:{{ .Values.image.azuredisk.tag }}-windows-hp"
 {{- end }}
           imagePullPolicy: {{ .Values.image.azuredisk.pullPolicy }}
           command:
             - "powershell.exe"
             - "-c"
-            - "New-Item"
-            - "-ItemType"
-            - "Directory"
-            - "-Path"
-            - "C:\\var\\lib\\kubelet\\plugins\\{{ .Values.driver.name }}\\"
-            - "-Force"
+            - "New-Item -ItemType Directory -Path C:\\var\\lib\\kubelet\\plugins\\{{ .Values.driver.name }}\\ -Force"
       containers:
-        - name: liveness-probe
-{{- if hasPrefix "/" .Values.image.livenessProbe.repository }}
-          image: "{{ .Values.image.baseRepo }}{{ .Values.image.livenessProbe.repository }}:{{ .Values.image.livenessProbe.tag }}"
-{{- else }}
-          image: "{{ .Values.image.livenessProbe.repository }}:{{ .Values.image.livenessProbe.tag }}"
-{{- end }}
-          command:
-            - "livenessprobe.exe"
-          args:
-            - "--csi-address=$(CSI_ENDPOINT)"
-            - "--probe-timeout=3s"
-            - "--health-port={{ .Values.node.livenessProbe.healthPort }}"
-            - "--v=2"
-          env:
-            - name: CSI_ENDPOINT
-              value: unix://C:\\var\\lib\\kubelet\\plugins\\{{ .Values.driver.name }}\\csi.sock
-          imagePullPolicy: {{ .Values.image.livenessProbe.pullPolicy }}
         - name: node-driver-registrar
 {{- if hasPrefix "/" .Values.image.nodeDriverRegistrar.repository }}
           image: "{{ .Values.image.baseRepo }}{{ .Values.image.nodeDriverRegistrar.repository }}:{{ .Values.image.nodeDriverRegistrar.tag }}"
@@ -101,23 +79,13 @@ spec:
           command:
             - "csi-node-driver-registrar.exe"
           args:
-            - "--v=2"
             - "--csi-address=$(CSI_ENDPOINT)"
             - "--kubelet-registration-path=$(DRIVER_REG_SOCK_PATH)"
             - "--plugin-registration-path=$(PLUGIN_REG_DIR)"
-{{- if .Values.windows.enableRegistrationProbe }}
-          livenessProbe:
-            exec:
-              command:
-                - csi-node-driver-registrar.exe
-                - --kubelet-registration-path=$(DRIVER_REG_SOCK_PATH)
-                - --mode=kubelet-registration-probe
-            initialDelaySeconds: 60
-            timeoutSeconds: 30
-{{- end }}
+            - "--v=2"
           env:
             - name: CSI_ENDPOINT
-              value: unix://C:\\var\\lib\\kubelet\\plugins\\{{ .Values.driver.name }}\\csi.sock
+              value: unix://{{ .Values.windows.kubelet }}\plugins\{{ .Values.driver.name }}\csi.sock
             - name: DRIVER_REG_SOCK_PATH
               value: C:\\var\\lib\\kubelet\\plugins\\{{ .Values.driver.name }}\\csi.sock
             - name: PLUGIN_REG_DIR
@@ -127,11 +95,12 @@ spec:
                 fieldRef:
                   fieldPath: spec.nodeName
           imagePullPolicy: {{ .Values.image.nodeDriverRegistrar.pullPolicy }}
+          resources: {{- toYaml .Values.windows.resources.nodeDriverRegistrar | nindent 12 }}
         - name: azuredisk
 {{- if hasPrefix "/" .Values.image.azuredisk.repository }}
-          image: "{{ .Values.image.baseRepo }}{{ .Values.image.azuredisk.repository }}:{{ .Values.image.azuredisk.tag }}"
+          image: "{{ .Values.image.baseRepo }}{{ .Values.image.azuredisk.repository }}:{{ .Values.image.azuredisk.tag }}-windows-hp"
 {{- else }}
-          image: "{{ .Values.image.azuredisk.repository }}:{{ .Values.image.azuredisk.tag }}"
+          image: "{{ .Values.image.azuredisk.repository }}:{{ .Values.image.azuredisk.tag }}-windows-hp"
 {{- end }}
           command:
             - "azurediskplugin.exe"
@@ -147,18 +116,7 @@ spec:
             - "--user-agent-suffix={{ .Values.driver.userAgentSuffix }}"
             - "--allow-empty-cloud-config={{ .Values.node.allowEmptyCloudConfig }}"
             - "--support-zone={{ .Values.node.supportZone }}"
-          ports:
-            - containerPort: {{ .Values.node.livenessProbe.healthPort }}
-              name: healthz
-              protocol: TCP
-          livenessProbe:
-            failureThreshold: 5
-            httpGet:
-              path: /healthz
-              port: healthz
-            initialDelaySeconds: 30
-            timeoutSeconds: 10
-            periodSeconds: 30
+            - "--enable-windows-host-process=true"
           env:
             - name: AZURE_CREDENTIAL_FILE
               valueFrom:
