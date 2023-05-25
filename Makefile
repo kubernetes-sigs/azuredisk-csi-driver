@@ -205,8 +205,11 @@ container-windows:
 		--build-arg OSVERSION=$(OSVERSION) \
 		--provenance=false \
 		--sbom=false
+# workaround: only build hostprocess image once
 ifdef WINDOWS_USE_HOST_PROCESS_CONTAINERS
+ifeq ($(OSVERSION),ltsc2022)
 	$(MAKE) container-windows-hostprocess
+endif
 endif
 
 # Set --provenance=false to not generate the provenance (which is what causes the multi-platform index to be generated, even for a single platform).
