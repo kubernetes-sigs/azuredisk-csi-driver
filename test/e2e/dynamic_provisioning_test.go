@@ -708,6 +708,7 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 
 	ginkgo.It("should create a pod, write and read to it, take a volume snapshot, and create another pod from the snapshot [disk.csi.azure.com]", func(ctx ginkgo.SpecContext) {
 		skipIfUsingInTreeVolumePlugin()
+		skipIfTestingInWindowsCluster()
 
 		pod := testsuites.PodDetails{
 			IsWindows:    isWindowsCluster,
