@@ -1156,7 +1156,7 @@ func (c *SharedState) cleanUpAzVolumeAttachments(ctx context.Context, attachment
 			}
 
 			// append cleanup annotation to prevent replica recreations except for when the clean up was triggered by node controller due to node failure.
-			if caller != azdrivernode && !metav1.HasAnnotation(patched.ObjectMeta, consts.CleanUpAnnotation) {
+			if caller != node && !metav1.HasAnnotation(patched.ObjectMeta, consts.CleanUpAnnotation) {
 				markCleanUp(patched, caller)
 			}
 		}

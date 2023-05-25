@@ -71,7 +71,7 @@ func (r *ReconcileNode) Reconcile(ctx context.Context, request reconcile.Request
 		r.deleteNodeFromAvailableAttachmentsMap(ctx, request.Name)
 
 		// Delete all volumeAttachments attached to this node, if failed, requeue
-		if _, err = r.cleanUpAzVolumeAttachmentByNode(ctx, request.Name, azdrivernode, azureutils.AllRoles, cleanUpAttachment, deleteOnly); err != nil {
+		if _, err = r.cleanUpAzVolumeAttachmentByNode(ctx, request.Name, node, azureutils.AllRoles, cleanUpAttachment, deleteOnly); err != nil {
 			return reconcile.Result{Requeue: true}, err
 		}
 		return reconcile.Result{}, nil
@@ -87,7 +87,7 @@ func (r *ReconcileNode) Reconcile(ctx context.Context, request reconcile.Request
 		if ok := r.addNodeToAvailableAttachmentsMap(ctx, n.Name, n.GetLabels()); ok && !n.Spec.Unschedulable {
 			// Node is schedulable, proceed to attempt creation of replica attachment
 			logger.Info("Node is now available. Will requeue failed replica creation requests.")
-			r.tryCreateFailedReplicas(ctx, nodeavailability)
+			r.tryCreateFailedReplicas(ctx, node)
 		}
 	}
 
