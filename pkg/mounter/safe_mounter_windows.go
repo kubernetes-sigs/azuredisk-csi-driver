@@ -280,7 +280,7 @@ func (mounter *csiProxyMounter) FindDiskByLun(lun string) (diskNum string, err e
 }
 
 // FormatAndMount - accepts the source disk number, target path to mount, the fstype to format with and options to be used.
-func (mounter *csiProxyMounter) FormatAndMount(source string, target string, fstype string, options []string) error {
+func (mounter *csiProxyMounter) FormatAndMount(source, target, fstype string, options []string) error {
 	diskNum, err := strconv.Atoi(source)
 	if err != nil {
 		return fmt.Errorf("parse %s failed with error: %v", source, err)
@@ -411,17 +411,25 @@ func newCSIProxyMounter() (*csiProxyMounter, error) {
 	}, nil
 }
 
-func NewSafeMounter(useCSIProxyGAInterface bool) (*mount.SafeFormatAndMount, error) {
-	if useCSIProxyGAInterface {
-		csiProxyMounter, err := newCSIProxyMounter()
-		if err == nil {
-			klog.V(2).Infof("using CSIProxyMounterV1, %s", csiProxyMounter.GetAPIVersions())
-			return &mount.SafeFormatAndMount{
-				Interface: csiProxyMounter,
-				Exec:      utilexec.New(),
-			}, nil
+func NewSafeMounter(enableWindowsHostProcess, useCSIProxyGAInterface bool) (*mount.SafeFormatAndMount, error) {
+	if enableWindowsHostProcess {
+		klog.V(2).Infof("using windows host process mounter")
+		return &mount.SafeFormatAndMount{
+			Interface: NewWinMounter(),
+			Exec:      utilexec.New(),
+		}, nil
+	} else {
+		if useCSIProxyGAInterface {
+			csiProxyMounter, err := newCSIProxyMounter()
+			if err == nil {
+				klog.V(2).Infof("using CSIProxyMounterV1, %s", csiProxyMounter.GetAPIVersions())
+				return &mount.SafeFormatAndMount{
+					Interface: csiProxyMounter,
+					Exec:      utilexec.New(),
+				}, nil
+			}
+			klog.V(2).Infof("failed to connect to csi-proxy v1 with error: %v, will try with v1Beta", err)
 		}
-		klog.V(2).Infof("failed to connect to csi-proxy v1 with error: %v, will try with v1Beta", err)
 	}
 
 	csiProxyMounterV1Beta, err := newCSIProxyMounterV1Beta()

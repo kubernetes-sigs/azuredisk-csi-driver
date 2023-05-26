@@ -73,6 +73,7 @@ type DriverOptions struct {
 	AttachDetachInitialDelayInMs int64
 	VMSSCacheTTLInSeconds        int64
 	VMType                       string
+	EnableWindowsHostProcess     bool
 }
 
 // CSIDriver defines the interface for a CSI driver.
@@ -118,6 +119,7 @@ type DriverCore struct {
 	vmssCacheTTLInSeconds        int64
 	attachDetachInitialDelayInMs int64
 	vmType                       string
+	enableWindowsHostProcess     bool
 }
 
 // Driver is the v1 implementation of the Azure Disk CSI Driver.
@@ -156,6 +158,7 @@ func newDriverV1(options *DriverOptions) *Driver {
 	driver.trafficManagerPort = options.TrafficManagerPort
 	driver.vmssCacheTTLInSeconds = options.VMSSCacheTTLInSeconds
 	driver.vmType = options.VMType
+	driver.enableWindowsHostProcess = options.EnableWindowsHostProcess
 	driver.volumeLocks = volumehelper.NewVolumeLocks()
 	driver.ioHandler = azureutils.NewOSIOHandler()
 	driver.hostUtil = hostutil.NewHostUtil()
@@ -236,7 +239,7 @@ func (d *Driver) Run(endpoint, kubeconfig string, disableAVSetNodes, testingMock
 		}
 	}
 
-	d.mounter, err = mounter.NewSafeMounter(d.useCSIProxyGAInterface)
+	d.mounter, err = mounter.NewSafeMounter(d.enableWindowsHostProcess, d.useCSIProxyGAInterface)
 	if err != nil {
 		klog.Fatalf("Failed to get safe mounter. Error: %v", err)
 	}

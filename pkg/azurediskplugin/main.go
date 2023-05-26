@@ -65,6 +65,7 @@ var (
 	attachDetachInitialDelayInMs = flag.Int64("attach-detach-initial-delay-ms", 1000, "initial delay in milliseconds for batch disk attach/detach")
 	enableTrafficManager         = flag.Bool("enable-traffic-manager", false, "boolean flag to enable traffic manager")
 	trafficManagerPort           = flag.Int64("traffic-manager-port", 7788, "default traffic manager port")
+	enableWindowsHostProcess     = flag.Bool("enable-windows-host-process", false, "enable windows host process")
 )
 
 func main() {
@@ -113,6 +114,7 @@ func handle() {
 		AttachDetachInitialDelayInMs: *attachDetachInitialDelayInMs,
 		VMSSCacheTTLInSeconds:        *vmssCacheTTLInSeconds,
 		VMType:                       *vmType,
+		EnableWindowsHostProcess:     *enableWindowsHostProcess,
 	}
 	driver := azuredisk.NewDriver(&driverOptions)
 	if driver == nil {

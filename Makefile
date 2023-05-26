@@ -82,6 +82,8 @@ ARCH ?= amd64
 OSVERSION ?= 1809
 # Output type of docker buildx build
 OUTPUT_TYPE ?= registry
+# enable host process containers for Windows
+USE_HOST_PROCESS_CONTAINERS ?= false
 
 .PHONY: all
 all: azuredisk
@@ -121,7 +123,12 @@ integration-test-v2: azuredisk-v2
 
 .PHONY: e2e-bootstrap
 e2e-bootstrap: install-helm
+ifdef WINDOWS_USE_HOST_PROCESS_CONTAINERS
+	(docker pull $(CSI_IMAGE_TAG) && docker pull $(CSI_IMAGE_TAG)-windows-hp)  || make container-all push-manifest
+	USE_HOST_PROCESS_CONTAINERS=${WINDOWS_USE_HOST_PROCESS_CONTAINERS}
+else
 	docker pull $(CSI_IMAGE_TAG) || make container-all push-manifest
+endif
 ifdef TEST_WINDOWS
 	helm install azuredisk-csi-driver charts/${CHART_VERSION}/azuredisk-csi-driver --namespace kube-system --wait --timeout=15m -v=5 --debug \
 		${E2E_HELM_OPTIONS} \
@@ -198,6 +205,23 @@ container-windows:
 		--build-arg OSVERSION=$(OSVERSION) \
 		--provenance=false \
 		--sbom=false
+# workaround: only build hostprocess image once
+ifdef WINDOWS_USE_HOST_PROCESS_CONTAINERS
+ifeq ($(OSVERSION),ltsc2022)
+	$(MAKE) container-windows-hostprocess
+endif
+endif
+
+# Set --provenance=false to not generate the provenance (which is what causes the multi-platform index to be generated, even for a single platform).
+.PHONY: container-windows-hostprocess
+container-windows-hostprocess:
+	docker buildx build --pull --output=type=$(OUTPUT_TYPE) --platform="windows/$(ARCH)" --provenance=false --sbom=false \
+		-t $(CSI_IMAGE_TAG)-windows-hp -f ./pkg/azurediskplugin/WindowsHostProcess.Dockerfile .
+
+.PHONY: container-windows-hostprocess-latest
+container-windows-hostprocess-latest:
+	docker buildx build --pull --output=type=$(OUTPUT_TYPE) --platform="windows/$(ARCH)" --provenance=false --sbom=false \
+		-t $(CSI_IMAGE_TAG_LATEST)-windows-hp -f ./pkg/azurediskplugin/WindowsHostProcess.Dockerfile .
 
 .PHONY: container-all
 container-all: azuredisk-windows
