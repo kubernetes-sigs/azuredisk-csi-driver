@@ -34,3 +34,6 @@ The 8 min recover time is composed of:
  - 1 min: disk volume detached from `NotReady` node and attached to `Ready` node
 
 There is a [KEP](https://github.com/kubernetes/enhancements/pull/1116) to address this issue, hopefully `ReconcilerMaxWaitForUnmountDuration` timeout is removed, and target recover time would be around 2min.
+
+**long term solution**
+ - [implement Non Graceful node shutdown feature in CCM](https://github.com/kubernetes-sigs/cloud-provider-azure/issues/3269)
