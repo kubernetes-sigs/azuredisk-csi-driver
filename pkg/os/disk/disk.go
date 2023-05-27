@@ -268,8 +268,7 @@ func ListDiskIDs() (map[uint32]IDs, error) {
 	//     "Path":  "\\\\?\\scsi#disk\u0026ven_msft\u0026prod_virtual_disk#2\u00261f4adffe\u00260\u0026000001#{53f56307-b6bf-11d0-94f2-00a0c91efb8b}",
 	//     "SerialNumber":  null
 	// }, ]
-	cmd := "ConvertTo-Json @(Get-Disk | Select Path, SerialNumber)"
-	out, err := azureutils.RunPowershellCmd(cmd)
+	out, err := azureutils.RunPowershellCmd("ConvertTo-Json @(Get-Disk | Select Path, SerialNumber)")
 	if err != nil {
 		return nil, fmt.Errorf("Could not query disk paths")
 	}
@@ -347,7 +346,7 @@ func GetDiskState(diskNumber uint32) (bool, error) {
 }
 
 func PartitionDisk(diskNumber uint32) error {
-	klog.V(2).Infof("Request: PartitionDisk with diskNumber=%d", diskNumber)
+	klog.V(6).Infof("Request: PartitionDisk with diskNumber=%d", diskNumber)
 
 	initialized, err := IsDiskInitialized(diskNumber)
 	if err != nil {
@@ -365,7 +364,7 @@ func PartitionDisk(diskNumber uint32) error {
 		klog.V(4).Infof("Disk %d already initialized", diskNumber)
 	}
 
-	klog.V(4).Infof("Checking if disk %d has basic partitions", diskNumber)
+	klog.V(6).Infof("Checking if disk %d has basic partitions", diskNumber)
 	partitioned, err := BasicPartitionsExist(diskNumber)
 	if err != nil {
 		klog.Errorf("failed check BasicPartitionsExist %v", err)

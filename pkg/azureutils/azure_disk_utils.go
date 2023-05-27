@@ -26,6 +26,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 	"unicode"
 
@@ -100,6 +101,9 @@ var (
 			Mode: csi.VolumeCapability_AccessMode_MULTI_NODE_MULTI_WRITER,
 		},
 	}
+
+	// lock mutex for RunPowerShellCommand
+	mutex = &sync.Mutex{}
 )
 
 type ManagedDiskParameters struct {
@@ -785,9 +789,12 @@ func SetKeyValueInMap(m map[string]string, key, value string) {
 }
 
 func RunPowershellCmd(command string, envs ...string) ([]byte, error) {
+	// only one powershell command can be executed at a time to avoid OOM
+	mutex.Lock()
+	defer mutex.Unlock()
+
 	cmd := exec.Command("powershell", "-Mta", "-NoProfile", "-Command", command)
 	cmd.Env = append(os.Environ(), envs...)
 	klog.V(8).Infof("Executing command: %q", cmd.String())
-	out, err := cmd.CombinedOutput()
-	return out, err
+	return cmd.CombinedOutput()
 }

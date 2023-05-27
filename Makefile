@@ -82,8 +82,6 @@ ARCH ?= amd64
 OSVERSION ?= 1809
 # Output type of docker buildx build
 OUTPUT_TYPE ?= registry
-# enable host process containers for Windows
-USE_HOST_PROCESS_CONTAINERS ?= false
 
 .PHONY: all
 all: azuredisk
@@ -125,7 +123,6 @@ integration-test-v2: azuredisk-v2
 e2e-bootstrap: install-helm
 ifdef WINDOWS_USE_HOST_PROCESS_CONTAINERS
 	(docker pull $(CSI_IMAGE_TAG) && docker pull $(CSI_IMAGE_TAG)-windows-hp)  || make container-all push-manifest
-	USE_HOST_PROCESS_CONTAINERS=${WINDOWS_USE_HOST_PROCESS_CONTAINERS}
 else
 	docker pull $(CSI_IMAGE_TAG) || make container-all push-manifest
 endif
