@@ -92,7 +92,7 @@ controller:
         memory: 20Mi
     csiSnapshotter:
       limits:
-        memory: 100Mi
+        memory: 200Mi
       requests:
         cpu: 10m
         memory: 20Mi
@@ -140,7 +140,7 @@ snapshot:
     podAnnotations: {}
     resources:
       limits:
-        memory: 100Mi
+        memory: 300Mi
       requests:
         cpu: 10m
         memory: 20Mi
