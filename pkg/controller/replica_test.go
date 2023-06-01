@@ -69,7 +69,7 @@ func TestReplicaReconcile(t *testing.T) {
 			request:     testReplicaAzVolumeAttachmentRequest,
 			setupFunc: func(t *testing.T, mockCtl *gomock.Controller) *ReconcileReplica {
 				replicaAttachment := testReplicaAzVolumeAttachment
-				replicaAttachment.Status.Annotations = azureutils.AddToMap(replicaAttachment.Status.Annotations, consts.VolumeDetachRequestAnnotation, string(azdrivernode))
+				replicaAttachment.Status.Annotations = azureutils.AddToMap(replicaAttachment.Status.Annotations, consts.VolumeDetachRequestAnnotation, string(node))
 
 				newVolume := testAzVolume0.DeepCopy()
 				newVolume.Status.Detail = &azdiskv1beta2.AzVolumeStatusDetail{
@@ -123,7 +123,7 @@ func TestReplicaReconcile(t *testing.T) {
 			request:     testReplicaAzVolumeAttachmentRequest,
 			setupFunc: func(t *testing.T, mockCtl *gomock.Controller) *ReconcileReplica {
 				replicaAttachment := testReplicaAzVolumeAttachment
-				replicaAttachment.Status.Annotations = azureutils.AddToMap(replicaAttachment.Status.Annotations, consts.VolumeDetachRequestAnnotation, string(azdrivernode))
+				replicaAttachment.Status.Annotations = azureutils.AddToMap(replicaAttachment.Status.Annotations, consts.VolumeDetachRequestAnnotation, string(node))
 				replicaAttachment.Status.State = azdiskv1beta2.DetachmentFailed
 
 				newVolume := testAzVolume0.DeepCopy()

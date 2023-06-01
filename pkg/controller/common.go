@@ -82,12 +82,11 @@ func (n *noOpReconciler) Reconcile(_ context.Context, _ reconcile.Request) (reco
 type operationRequester string
 
 const (
-	azdrivernode     operationRequester = "azdrivernode-controller"
-	azvolume         operationRequester = "azvolume-controller"
-	pv               operationRequester = "pv-controller"
-	replica          operationRequester = "replica-controller"
-	nodeavailability operationRequester = "nodeavailability-controller"
-	pod              operationRequester = "pod-controller"
+	node     operationRequester = "node-controller"
+	azvolume operationRequester = "azvolume-controller"
+	pv       operationRequester = "pv-controller"
+	replica  operationRequester = "replica-controller"
+	pod      operationRequester = "pod-controller"
 )
 
 type attachmentCleanUpMode int
