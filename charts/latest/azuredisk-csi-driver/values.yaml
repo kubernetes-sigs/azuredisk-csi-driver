@@ -92,7 +92,7 @@ controller:
         memory: 20Mi
     csiSnapshotter:
       limits:
-        memory: 100Mi
+        memory: 200Mi
       requests:
         cpu: 10m
         memory: 20Mi
@@ -125,11 +125,11 @@ snapshot:
   image:
     csiSnapshotter:
       repository: /oss/kubernetes-csi/csi-snapshotter
-      tag: v6.2.1
+      tag: v6.2.2
       pullPolicy: IfNotPresent
     csiSnapshotController:
       repository: /oss/kubernetes-csi/snapshot-controller
-      tag: v6.2.1
+      tag: v6.2.2
       pullPolicy: IfNotPresent
   snapshotController:
     name: csi-snapshot-controller
@@ -140,7 +140,7 @@ snapshot:
     podAnnotations: {}
     resources:
       limits:
-        memory: 100Mi
+        memory: 300Mi
       requests:
         cpu: 10m
         memory: 20Mi
