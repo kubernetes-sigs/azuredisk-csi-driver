@@ -65,11 +65,14 @@ func TestReplicaReconcile(t *testing.T) {
 		verifyFunc  func(*testing.T, *ReconcileReplica, reconcile.Result, error)
 	}{
 		{
-			description: "[Success] Should create a replacement replica attachment upon replica detachment.",
+			description: "[Success] Should create a replacement replica attachment upon a replica deletion.",
 			request:     testReplicaAzVolumeAttachmentRequest,
 			setupFunc: func(t *testing.T, mockCtl *gomock.Controller) *ReconcileReplica {
 				replicaAttachment := testReplicaAzVolumeAttachment
 				replicaAttachment.Status.Annotations = azureutils.AddToMap(replicaAttachment.Status.Annotations, consts.VolumeDetachRequestAnnotation, string(node))
+				replicaAttachment.Status.State = azdiskv1beta2.Detaching
+				now := metav1.Now()
+				replicaAttachment.DeletionTimestamp = &now
 
 				newVolume := testAzVolume0.DeepCopy()
 				newVolume.Status.Detail = &azdiskv1beta2.AzVolumeStatusDetail{
@@ -191,6 +194,15 @@ func TestReplicaReconcile(t *testing.T) {
 				require.NoError(t, err)
 				require.False(t, result.Requeue)
 
+				// update role for demotion request
+				azVolumeAttachment, err := controller.azClient.DiskV1beta2().AzVolumeAttachments(testNamespace).Get(context.TODO(), testPrimaryAzVolumeAttachment0Name, metav1.GetOptions{})
+				require.NoError(t, err)
+				require.NotNil(t, azVolumeAttachment)
+
+				azVolumeAttachment = updateRole(azVolumeAttachment.DeepCopy(), azdiskv1beta2.ReplicaRole)
+				err = controller.cachedClient.Update(context.TODO(), azVolumeAttachment)
+				require.NoError(t, err)
+
 				// wait for the garbage collection to queue
 				time.Sleep(controller.timeUntilGarbageCollection + time.Minute)
 				roleReq, _ := azureutils.CreateLabelRequirements(consts.RoleLabel, selection.Equals, string(azdiskv1beta2.ReplicaRole))
@@ -271,8 +283,7 @@ func TestReplicaReconcile(t *testing.T) {
 				}
 
 				replicaAttachment.Spec.RequestedRole = azdiskv1beta2.PrimaryRole
-				replicaAttachment.Labels = map[string]string{consts.RoleLabel: string(azdiskv1beta2.PrimaryRole)}
-				replicaAttachment = updateRole(replicaAttachment, azdiskv1beta2.PrimaryRole)
+				replicaAttachment.Labels = azureutils.AddToMap(replicaAttachment.Labels, consts.RoleLabel, string(azdiskv1beta2.PrimaryRole), consts.RoleChangeLabel, consts.Promoted)
 
 				newVolume := testAzVolume0.DeepCopy()
 				newVolume.Status.Detail = &azdiskv1beta2.AzVolumeStatusDetail{
@@ -298,6 +309,16 @@ func TestReplicaReconcile(t *testing.T) {
 			verifyFunc: func(t *testing.T, controller *ReconcileReplica, result reconcile.Result, err error) {
 				require.NoError(t, err)
 				require.False(t, result.Requeue)
+
+				// update role for promotion request
+				azVolumeAttachment, err := controller.azClient.DiskV1beta2().AzVolumeAttachments(testNamespace).Get(context.TODO(), testReplicaAzVolumeAttachmentName, metav1.GetOptions{})
+				require.NoError(t, err)
+				require.NotNil(t, azVolumeAttachment)
+
+				azVolumeAttachment = updateRole(azVolumeAttachment.DeepCopy(), azdiskv1beta2.PrimaryRole)
+				err = controller.cachedClient.Update(context.TODO(), azVolumeAttachment)
+				require.NoError(t, err)
+
 				conditionFunc := func() (bool, error) {
 					roleReq, _ := azureutils.CreateLabelRequirements(consts.RoleLabel, selection.Equals, string(azdiskv1beta2.ReplicaRole))
 					labelSelector := labels.NewSelector().Add(*roleReq)
@@ -409,8 +430,7 @@ func TestReplicaReconcile(t *testing.T) {
 
 				// promote replica to primary
 				replicaAttachment.Spec.RequestedRole = azdiskv1beta2.PrimaryRole
-				replicaAttachment.Labels = map[string]string{consts.RoleLabel: string(azdiskv1beta2.PrimaryRole)}
-				replicaAttachment = updateRole(replicaAttachment.DeepCopy(), azdiskv1beta2.PrimaryRole)
+				replicaAttachment.Labels = azureutils.AddToMap(replicaAttachment.Labels, consts.RoleLabel, string(azdiskv1beta2.PrimaryRole), consts.RoleChangeLabel, consts.Promoted)
 
 				err = controller.cachedClient.Update(context.TODO(), replicaAttachment)
 				require.NoError(t, err)
@@ -420,6 +440,15 @@ func TestReplicaReconcile(t *testing.T) {
 			verifyFunc: func(t *testing.T, controller *ReconcileReplica, result reconcile.Result, err error) {
 				require.NoError(t, err)
 				require.False(t, result.Requeue)
+
+				// update role for promotion request
+				replicaAttachment, err := controller.azClient.DiskV1beta2().AzVolumeAttachments(testNamespace).Get(context.TODO(), testReplicaAzVolumeAttachmentName, metav1.GetOptions{})
+				require.NoError(t, err)
+				require.NotNil(t, replicaAttachment)
+
+				replicaAttachment = updateRole(replicaAttachment.DeepCopy(), azdiskv1beta2.PrimaryRole)
+				err = controller.cachedClient.Update(context.TODO(), replicaAttachment)
+				require.NoError(t, err)
 
 				time.Sleep(controller.timeUntilGarbageCollection + time.Minute)
 				roleReq, _ := azureutils.CreateLabelRequirements(consts.RoleLabel, selection.Equals, string(azdiskv1beta2.ReplicaRole))
