@@ -27,6 +27,10 @@ import (
 	"sigs.k8s.io/yaml"
 )
 
+func init() {
+	topologyKey = fmt.Sprintf("topology.%s/zone", consts.DefaultDriverName)
+}
+
 func TestGetVersion(t *testing.T) {
 	version := GetVersion(consts.DefaultDriverName)
 

@@ -43,7 +43,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/net"
 	"k8s.io/apimachinery/pkg/util/wait"
-	clientset "k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/client-go/util/retry"
@@ -580,12 +580,14 @@ func CreateValidDiskName(volumeName string, usedForLabel bool) string {
 // GetCloudProviderFromClient get Azure Cloud Provider
 func GetCloudProviderFromClient(
 	ctx context.Context,
-	kubeClient *clientset.Clientset,
-	cloudConfig azdiskv1beta2.CloudConfiguration,
+	kubeClient kubernetes.Interface,
+	azdiskConfig *azdiskv1beta2.AzDiskDriverConfiguration,
 	userAgent string) (*azure.Cloud, error) {
 	var config *azure.Config
 	var fromSecret bool
 	var err error
+
+	cloudConfig := &azdiskConfig.CloudConfig
 	az := &azure.Cloud{
 		InitSecretConfig: azure.InitSecretConfig{
 			SecretName:      cloudConfig.SecretName,
@@ -677,6 +679,43 @@ func GetCloudProviderFromClient(
 		az.KubeClient = kubeClient
 	}
 
+	if azdiskConfig.ControllerConfig.VMType != "" {
+		klog.V(2).Infof("override VMType(%s) in cloud config as %s", az.VMType, azdiskConfig.ControllerConfig.VMType)
+		az.VMType = azdiskConfig.ControllerConfig.VMType
+	}
+
+	if azdiskConfig.NodeConfig.NodeID == "" {
+		// Disable UseInstanceMetadata for controller to mitigate a timeout issue using IMDS
+		// https://github.com/kubernetes-sigs/azuredisk-csi-driver/issues/168
+		klog.V(2).Infof("disable UseInstanceMetadata for controller")
+		az.Config.UseInstanceMetadata = false
+
+		if az.VMType == cloudproviderconsts.VMTypeStandard && az.DisableAvailabilitySetNodes {
+			klog.V(2).Infof("set DisableAvailabilitySetNodes as false since VMType is %s", az.VMType)
+			az.DisableAvailabilitySetNodes = false
+		}
+
+		if az.VMType == cloudproviderconsts.VMTypeVMSS && !az.DisableAvailabilitySetNodes && azdiskConfig.ControllerConfig.DisableAVSetNodes {
+			if azdiskConfig.ControllerConfig.DisableAVSetNodes {
+				klog.V(2).Infof("DisableAvailabilitySetNodes for controller since current VMType is vmss")
+				az.DisableAvailabilitySetNodes = true
+			} else {
+				klog.Warningf("DisableAvailabilitySetNodes for controller is set as false while current VMType is vmss")
+			}
+		}
+		klog.V(2).Infof("cloud: %s, location: %s, rg: %s, VMType: %s, PrimaryScaleSetName: %s, PrimaryAvailabilitySetName: %s, DisableAvailabilitySetNodes: %v", az.Cloud, az.Location, az.ResourceGroup, az.VMType, az.PrimaryScaleSetName, az.PrimaryAvailabilitySetName, az.DisableAvailabilitySetNodes)
+	}
+
+	if cloudConfig.VMSSCacheTTLInSeconds > 0 {
+		klog.V(2).Infof("reset vmssCacheTTLInSeconds as %d", cloudConfig.VMSSCacheTTLInSeconds)
+		az.VMCacheTTLInSeconds = int(cloudConfig.VMSSCacheTTLInSeconds)
+		az.VmssCacheTTLInSeconds = int(cloudConfig.VMSSCacheTTLInSeconds)
+	}
+
+	if az.ManagedDiskController != nil {
+		az.DisableUpdateCache = cloudConfig.DisableUpdateCache
+	}
+
 	return az, nil
 }
 
@@ -684,6 +723,9 @@ func GetCloudProviderFromClient(
 func GetCloudProvider(
 	ctx context.Context,
 	kubeConfig,
+	vmType string,
+	disableAVSetNodes bool,
+	nodeID string,
 	secretName,
 	secretNamespace,
 	userAgent string,
@@ -692,7 +734,10 @@ func GetCloudProvider(
 	azureClientAttachDetachRateLimiterQPS float32,
 	azureClientAttachDetachRateLimiterBucket int,
 	enableTrafficManager bool,
-	trafficManagerPort int64) (*azure.Cloud, error) {
+	trafficManagerPort int64,
+	disableUpdateCache bool,
+	vmssCacheTTLInSeconds int64,
+) (*azure.Cloud, error) {
 	kubeClient, err := GetKubeClient(kubeConfig)
 	if err != nil {
 		klog.Warningf("get kubeconfig(%s) failed with error: %v", kubeConfig, err)
@@ -700,22 +745,29 @@ func GetCloudProvider(
 			return nil, fmt.Errorf("failed to get KubeClient: %v", err)
 		}
 	}
-	cloudConfig := azdiskv1beta2.CloudConfiguration{
-		SecretName:                               secretName,
-		SecretNamespace:                          secretNamespace,
-		AllowEmptyCloudConfig:                    allowEmptyCloudConfig,
-		EnableAzureClientAttachDetachRateLimiter: enableAzureClientAttachDetachRateLimiter,
-		AzureClientAttachDetachRateLimiterQPS:    azureClientAttachDetachRateLimiterQPS,
-		AzureClientAttachDetachRateLimiterBucket: azureClientAttachDetachRateLimiterBucket,
-		EnableTrafficManager:                     enableTrafficManager,
-		TrafficManagerPort:                       trafficManagerPort,
+	azdiskConfig := &azdiskv1beta2.AzDiskDriverConfiguration{
+		ControllerConfig: azdiskv1beta2.ControllerConfiguration{
+			VMType:            vmType,
+			DisableAVSetNodes: disableAVSetNodes,
+		},
+		NodeConfig: azdiskv1beta2.NodeConfiguration{
+			NodeID: nodeID,
+		},
+		CloudConfig: azdiskv1beta2.CloudConfiguration{
+			SecretName:                               secretName,
+			SecretNamespace:                          secretNamespace,
+			AllowEmptyCloudConfig:                    allowEmptyCloudConfig,
+			EnableAzureClientAttachDetachRateLimiter: enableAzureClientAttachDetachRateLimiter,
+			AzureClientAttachDetachRateLimiterQPS:    azureClientAttachDetachRateLimiterQPS,
+			AzureClientAttachDetachRateLimiterBucket: azureClientAttachDetachRateLimiterBucket,
+			EnableTrafficManager:                     enableTrafficManager,
+			TrafficManagerPort:                       trafficManagerPort,
+			DisableUpdateCache:                       disableUpdateCache,
+			VMSSCacheTTLInSeconds:                    vmssCacheTTLInSeconds,
+		},
 	}
-	return GetCloudProviderFromClient(
-		ctx,
-		kubeClient,
-		cloudConfig,
-		userAgent,
-	)
+
+	return GetCloudProviderFromClient(ctx, kubeClient, azdiskConfig, userAgent)
 }
 
 // GetKubeConfig gets config object from config file
@@ -732,13 +784,13 @@ func GetKubeConfig(kubeconfig string) (config *rest.Config, err error) {
 	return config, err
 }
 
-func GetKubeClient(kubeconfig string) (*clientset.Clientset, error) {
+func GetKubeClient(kubeconfig string) (kubernetes.Interface, error) {
 	config, err := GetKubeConfig(kubeconfig)
 	if err != nil {
 		return nil, err
 	}
 
-	return clientset.NewForConfig(config)
+	return kubernetes.NewForConfig(config)
 }
 
 func IsValidDiskURI(diskURI string) error {

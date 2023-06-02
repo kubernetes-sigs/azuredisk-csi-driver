@@ -21,11 +21,18 @@ package azuredisk
 
 import (
 	"testing"
+
+	azdiskv1beta2 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1beta2"
 )
 
 // NewFakeDriver returns a driver implementation suitable for use in unit tests.
 func NewFakeDriver(t *testing.T) (FakeDriver, error) {
-	return newFakeDriverV1(t)
+	return newFakeDriverV1(t, newFakeDriverConfig())
+}
+
+// NewFakeDriverWithConfig returns a driver implementation with custom configuration suitable for use in unit tests.
+func NewFakeDriverWithConfig(t *testing.T, config *azdiskv1beta2.AzDiskDriverConfiguration) (FakeDriver, error) {
+	return newFakeDriverV1(t, config)
 }
 
 func skipIfTestingDriverV2(t *testing.T) {

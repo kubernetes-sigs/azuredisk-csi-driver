@@ -33,7 +33,6 @@ import (
 	testingexec "k8s.io/utils/exec/testing"
 	azdiskv1beta2 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1beta2"
 	azdiskfakes "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned/fake"
-	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
 	csicommon "sigs.k8s.io/azuredisk-csi-driver/pkg/csi-common"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/optimization/mockoptimization"
@@ -43,41 +42,40 @@ import (
 	"sigs.k8s.io/cloud-provider-azure/pkg/provider"
 )
 
-const (
-	fakeObjNamespace = consts.DefaultAzureDiskCrdNamespace
-)
-
 type fakeDriverV2 struct {
 	DriverV2
 }
 
 // NewFakeDriver returns a driver implementation suitable for use in unit tests.
 func NewFakeDriver(t *testing.T) (FakeDriver, error) {
-	return newFakeDriverV2(t)
+	return newFakeDriverV2(t, newFakeDriverConfig())
 }
 
-func newFakeDriverV2(t *testing.T) (*fakeDriverV2, error) {
+// NewFakeDriverWithConfig returns a driver implementation with custom configuration suitable for use in unit tests.
+func NewFakeDriverWithConfig(t *testing.T, config *azdiskv1beta2.AzDiskDriverConfiguration) (FakeDriver, error) {
+	return newFakeDriverV2(t, config)
+}
+
+func newFakeDriverV2(t *testing.T, config *azdiskv1beta2.AzDiskDriverConfiguration) (*fakeDriverV2, error) {
 	klog.Warning("Using DriverV2")
+
 	driver := fakeDriverV2{}
-	driver.config = &azdiskv1beta2.AzDiskDriverConfiguration{}
+	driver.CSIDriver = *csicommon.NewFakeCSIDriver()
+
+	driver.config = config
 	driver.Name = fakeDriverName
 	driver.Version = fakeDriverVersion
-	driver.NodeID = fakeNodeID
-	driver.CSIDriver = *csicommon.NewFakeCSIDriver()
+	driver.NodeID = config.NodeConfig.NodeID
+	driver.VolumeAttachLimit = config.NodeConfig.VolumeAttachLimit
+
 	driver.ready = make(chan struct{})
 	driver.volumeLocks = volumehelper.NewVolumeLocks()
-	driver.config.ObjectNamespace = fakeObjNamespace
-
-	driver.VolumeAttachLimit = -1
-	driver.config.NodeConfig.SupportZone = true
 	driver.ioHandler = azureutils.NewFakeIOHandler()
-	driver.config.NodeConfig.UseCSIProxyGAInterface = true
-	driver.config.CloudConfig.AllowEmptyCloudConfig = true
 
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
-	cloudProvisioner, err := provisioner.NewFakeCloudProvisioner(ctrl)
+	cloudProvisioner, err := provisioner.NewFakeCloudProvisioner(ctrl, driver.config)
 	if err != nil {
 		return nil, err
 	}
@@ -192,12 +190,8 @@ func isTestingDriverV2() bool {
 }
 
 func (d *fakeDriverV2) setPerfOptimizationEnabled(enabled bool) {
+	d.config.NodeConfig.Enabled = enabled
 	d.config.NodeConfig.EnablePerfOptimization = enabled
-	d.cloudProvisioner.(*provisioner.FakeCloudProvisioner).SetPerfOptimizationEnabled(enabled)
-}
-
-func (d *fakeDriverV2) getPerfOptimizationEnabled() bool {
-	return d.config.NodeConfig.EnablePerfOptimization
 }
 
 func (d *fakeDriverV2) GetSourceDiskSize(ctx context.Context, subsID, resourceGroup, diskName string, curDepth, maxDepth int) (*int32, error) {

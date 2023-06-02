@@ -1461,7 +1461,7 @@ func TestGetSnapshotByID(t *testing.T) {
 			testFunc: func(t *testing.T) {
 				sourceVolumeID := "unit-test"
 				ctx := context.Background()
-				d, _ := newFakeDriverV1(t)
+				d, _ := newFakeDriverV1(t, newFakeDriverConfig())
 				d.setCloud(&azure.Cloud{})
 				snapshotID := "testurl/subscriptions/23/providers/Microsoft.Compute/snapshots/snapshot-name"
 				expectedErr := status.Errorf(codes.Internal, "could not get snapshot name from testurl/subscriptions/23/providers/Microsoft.Compute/snapshots/snapshot-name, correct format: (?i).*/subscriptions/(?:.*)/resourceGroups/(?:.*)/providers/Microsoft.Compute/snapshots/(.+)")
@@ -1474,7 +1474,7 @@ func TestGetSnapshotByID(t *testing.T) {
 		{
 			name: "snapshot get error",
 			testFunc: func(t *testing.T) {
-				d, _ := newFakeDriverV1(t)
+				d, _ := newFakeDriverV1(t, newFakeDriverConfig())
 				d.setCloud(&azure.Cloud{})
 				ctrl := gomock.NewController(t)
 				defer ctrl.Finish()
@@ -2034,7 +2034,7 @@ func TestGetSourceDiskSize(t *testing.T) {
 		{
 			name: "max depth reached",
 			testFunc: func(t *testing.T) {
-				d, _ := newFakeDriverV1(t)
+				d, _ := newFakeDriverV1(t, newFakeDriverConfig())
 				_, err := d.GetSourceDiskSize(context.Background(), "test-subscription", "test-rg", "test-disk", 2, 1)
 				expectedErr := status.Errorf(codes.Internal, "current depth (2) surpassed the max depth (1) while searching for the source disk size")
 				if !testutil.IsErrorEquivalent(err, expectedErr) {
@@ -2045,7 +2045,7 @@ func TestGetSourceDiskSize(t *testing.T) {
 		{
 			name: "diskproperty not found",
 			testFunc: func(t *testing.T) {
-				d, _ := newFakeDriverV1(t)
+				d, _ := newFakeDriverV1(t, newFakeDriverConfig())
 				disk := compute.Disk{}
 				d.getCloud().DisksClient.(*mockdiskclient.MockInterface).EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(disk, nil).AnyTimes()
 				_, err := d.GetSourceDiskSize(context.Background(), "", "test-rg", "test-disk", 0, 1)
@@ -2058,7 +2058,7 @@ func TestGetSourceDiskSize(t *testing.T) {
 		{
 			name: "nil DiskSizeGB",
 			testFunc: func(t *testing.T) {
-				d, _ := newFakeDriverV1(t)
+				d, _ := newFakeDriverV1(t, newFakeDriverConfig())
 				diskProperties := compute.DiskProperties{}
 				disk := compute.Disk{
 					DiskProperties: &diskProperties,
@@ -2074,7 +2074,7 @@ func TestGetSourceDiskSize(t *testing.T) {
 		{
 			name: "successful search: depth 1",
 			testFunc: func(t *testing.T) {
-				d, _ := newFakeDriverV1(t)
+				d, _ := newFakeDriverV1(t, newFakeDriverConfig())
 				diskSizeGB := int32(8)
 				diskProperties := compute.DiskProperties{
 					DiskSizeGB: &diskSizeGB,
@@ -2093,7 +2093,7 @@ func TestGetSourceDiskSize(t *testing.T) {
 		{
 			name: "successful search: depth 2",
 			testFunc: func(t *testing.T) {
-				d, _ := newFakeDriverV1(t)
+				d, _ := newFakeDriverV1(t, newFakeDriverConfig())
 				diskSizeGB1 := int32(16)
 				diskSizeGB2 := int32(8)
 				sourceURI := "/subscriptions/xxxxxxxx/resourcegroups/test-rg/providers/microsoft.compute/disks/test-disk-1"

@@ -112,7 +112,7 @@ func TestRegisterAzDriverNodeOrDie(t *testing.T) {
 			ctx, cancel := context.WithCancel(context.TODO())
 			defer cancel()
 
-			d, err := newFakeDriverV2(t)
+			d, err := newFakeDriverV2(t, newFakeDriverConfig())
 			assert.NoError(t, err)
 
 			cleanUpFn := test.setupFn(t, d)
@@ -161,7 +161,7 @@ func TestRunAzDriverNodeHeartbeatLoop(t *testing.T) {
 			regCtx, regCancel := context.WithCancel(context.TODO())
 			defer regCancel()
 
-			d, err := newFakeDriverV2(t)
+			d, err := newFakeDriverV2(t, newFakeDriverConfig())
 			assert.NoError(t, err)
 
 			d.registerAzDriverNodeOrDie(regCtx)

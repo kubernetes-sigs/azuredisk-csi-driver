@@ -49,7 +49,6 @@ import (
 
 	cache "k8s.io/client-go/tools/cache"
 
-	"sigs.k8s.io/cloud-provider-azure/pkg/provider"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/event"
@@ -120,8 +119,13 @@ const (
 
 type goSignal struct{}
 
-// TODO Make CloudProvisioner independent of csi types.
 type CloudProvisioner interface {
+	GetSubscriptionID() string
+	GetResourceGroup() string
+	GetLocation() string
+	GetFailureDomain(ctx context.Context, nodeID string) (string, error)
+	GetInstanceType(ctx context.Context, nodeID string) (string, error)
+
 	CreateVolume(
 		ctx context.Context,
 		volumeName string,
@@ -140,8 +144,6 @@ type CloudProvisioner interface {
 	ListSnapshots(ctx context.Context, maxEntries int32, startingToken string, sourceVolumeID string, snapshotID string, secrets map[string]string) (*azdiskv1beta2.ListSnapshotsResult, error)
 	DeleteSnapshot(ctx context.Context, snapshotID string, secrets map[string]string) error
 	CheckDiskExists(ctx context.Context, diskURI string) (*compute.Disk, error)
-	GetCloud() *provider.Cloud
-	GetMetricPrefix() string
 }
 
 type replicaOperation struct {
