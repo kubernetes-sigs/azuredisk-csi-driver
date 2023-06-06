@@ -45,8 +45,9 @@ import (
 	azcache "sigs.k8s.io/cloud-provider-azure/pkg/cache"
 	azure "sigs.k8s.io/cloud-provider-azure/pkg/provider"
 	"sigs.k8s.io/cloud-provider-azure/pkg/retry"
-	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute/v5"
+	armcompute "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute/v5"
 	"github.com/Azure/azure-sdk-for-go/sdk/azidentity"
+	resources "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/resources/armresources"
 )
 
 var (
@@ -412,7 +413,9 @@ func (c *CloudProvisioner) CreateVolume(
 		}
 	}
 
-	poller, err := clientFactory.NewDisksClient().BeginCreateOrUpdate(ctx, diskParams.ResourceGroup, diskParams.DiskName, disk, nil)
+	disksClient := clientFactory.NewDisksClient()
+	c.cloud.DisksClient = disksClient
+	poller, err := disksClient.BeginCreateOrUpdate(ctx, diskParams.ResourceGroup, diskParams.DiskName, disk, nil)
 
 	if err != nil {
 		log.Fatalf("failed to finish the request: %v", err)
@@ -459,7 +462,25 @@ func (c *CloudProvisioner) DeleteVolume(
 		return nil
 	}
 
-	err = c.cloud.DeleteManagedDisk(ctx, volumeID)
+	disksClient := c.cloud.DisksClient
+	diskName := path.Base(volumeID)
+	fields := strings.Split(volumeID, "/")
+	if len(fields) != 9 || strings.ToLower(fields[3]) != "resourcegroups" {
+		return fmt.Errorf("invalid disk URI: %s", volumeID)
+	}
+	resourceGroup := fields[4]
+
+	poller, err := disksClient.BeginDelete(ctx, resourceGroup, diskName, nil)
+	if err != nil {
+		klog.Fatalf("failed to finish the request: %v", err)
+	}
+
+	res, err := poller.PollUntilDone(ctx, nil)
+	if err != nil {
+		log.Fatalf("failed to pull the result: %v", err)
+	}
+
+	//err = c.cloud.DeleteManagedDisk(ctx, volumeID)
 	return err
 }
 

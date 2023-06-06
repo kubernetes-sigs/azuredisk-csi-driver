@@ -2,6 +2,7 @@ package azureutils
 
 import {
 	"github.com/Azure/go-autorest/autorest/azure"
+	armcompute "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute/v5"
 }
 
 type cloudConfigType string
@@ -16,6 +17,8 @@ type Cloud struct {
 	Config
 	InitSecretConfig
 	Environment azure.Environment
+
+	DisksClient		*armcompute.DisksClient
 }
 
 type InitSecretConfig struct {
