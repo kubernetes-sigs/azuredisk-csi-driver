@@ -582,11 +582,11 @@ func GetCloudProviderFromClient(
 	ctx context.Context,
 	kubeClient *clientset.Clientset,
 	cloudConfig azdiskv1beta2.CloudConfiguration,
-	userAgent string) (*azure.Cloud, error) {
-	var config *azure.Config
+	userAgent string) (*Cloud, error) {
+	var config *Config
 	var fromSecret bool
 	var err error
-	az := &azure.Cloud{
+	az := Cloud{
 		InitSecretConfig: azure.InitSecretConfig{
 			SecretName:      cloudConfig.SecretName,
 			SecretNamespace: cloudConfig.SecretNamespace,

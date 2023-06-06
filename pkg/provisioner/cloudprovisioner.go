@@ -45,6 +45,8 @@ import (
 	azcache "sigs.k8s.io/cloud-provider-azure/pkg/cache"
 	azure "sigs.k8s.io/cloud-provider-azure/pkg/provider"
 	"sigs.k8s.io/cloud-provider-azure/pkg/retry"
+	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute/v5"
+	"github.com/Azure/azure-sdk-for-go/sdk/azidentity"
 )
 
 var (
@@ -73,7 +75,7 @@ func (c *CloudAttachResult) ResultChannel() chan error {
 }
 
 type CloudProvisioner struct {
-	cloud                   *azure.Cloud
+	cloud                   *azureutils.Cloud
 	kubeClient              *clientset.Clientset
 	cloudConfiguration      azdiskv1beta2.CloudConfiguration
 	enableOnlineDiskResize  bool
@@ -282,49 +284,161 @@ func (c *CloudProvisioner) CreateVolume(
 	}
 
 	diskParams.VolumeContext[azureconstants.RequestedSizeGib] = strconv.Itoa(requestGiB)
-	volumeOptions := &azure.ManagedDiskOptions{
-		DiskName:            diskParams.DiskName,
-		StorageAccountType:  skuName,
-		ResourceGroup:       diskParams.ResourceGroup,
-		PVCName:             "",
-		SizeGB:              requestGiB,
-		Tags:                diskParams.Tags,
-		AvailabilityZone:    selectedAvailabilityZone,
-		DiskIOPSReadWrite:   diskParams.DiskIOPSReadWrite,
-		DiskMBpsReadWrite:   diskParams.DiskMBPSReadWrite,
-		SourceResourceID:    sourceID,
-		SourceType:          sourceType,
-		DiskEncryptionSetID: diskParams.DiskEncryptionSetID,
-		DiskEncryptionType:  diskParams.DiskEncryptionType,
-		MaxShares:           int32(diskParams.MaxShares),
-		LogicalSectorSize:   int32(diskParams.LogicalSectorSize),
-		BurstingEnabled:     diskParams.EnableBursting,
+	// volumeOptions := &azure.ManagedDiskOptions{
+	// 	DiskName:            diskParams.DiskName,
+	// 	StorageAccountType:  skuName,
+	// 	ResourceGroup:       diskParams.ResourceGroup,
+	// 	PVCName:             "",
+	// 	SizeGB:              requestGiB,
+	// 	Tags:                diskParams.Tags,
+	// 	AvailabilityZone:    selectedAvailabilityZone,
+	// 	DiskIOPSReadWrite:   diskParams.DiskIOPSReadWrite,
+	// 	DiskMBpsReadWrite:   diskParams.DiskMBPSReadWrite,
+	// 	SourceResourceID:    sourceID,
+	// 	SourceType:          sourceType,
+	// 	DiskEncryptionSetID: diskParams.DiskEncryptionSetID,
+	// 	DiskEncryptionType:  diskParams.DiskEncryptionType,
+	// 	MaxShares:           int32(diskParams.MaxShares),
+	// 	LogicalSectorSize:   int32(diskParams.LogicalSectorSize),
+	// 	BurstingEnabled:     diskParams.EnableBursting,
+	// }
+
+	diskThrottled := c.isGetDiskThrottled()
+
+	// // Azure Stack Cloud does not support NetworkAccessPolicy
+	// if !azureutils.IsAzureStackCloud(localCloud.Config.Cloud, localCloud.Config.DisableAzureStackCloud) {
+	// 	volumeOptions.NetworkAccessPolicy = networkAccessPolicy
+	// 	if diskParams.DiskAccessID != "" {
+	// 		volumeOptions.DiskAccessID = &diskParams.DiskAccessID
+	// 	}
+	// }
+
+	// var diskURI string
+	// diskURI, err = localCloud.CreateManagedDisk(ctx, volumeOptions)
+	// if err != nil {
+	// 	if strings.Contains(err.Error(), "NotFound") {
+	// 		err = status.Error(codes.NotFound, err.Error())
+	// 		return nil, err
+	// 	}
+	// 	return nil, status.Error(codes.Internal, err.Error())
+	// }
+
+	/////////////////////////////////////////////////
+	cred, err := azidentity.NewDefaultAzureCredential(nil)
+	if err != nil {
+		klog.Fatalf("failed to obtain new credential: %v", err)
+	}
+	clientFactory, err := armcompute.NewClientFactory(c.cloud.SubscriptionID, cred, nil)
+	if err != nil {
+		klog.Fatalf("failed to create new client factory: %v", err)
+	}
+	
+	if sourceID == "" {
+		creationData := &armcompute.CreationData {
+			CreateOption: to.Ptr(armcompute.DiskCreateOptionEmpty)
+		}
+	}
+	else {
+		sourceResourceID = fmt.Sprintf("/subscriptions/%s/resourceGroups/%s/providers/Microsoft.Compute/disks/%s", c.cloud.SubscriptionID, diskParams.ResourceGroup, sourceID)
+		creationData := &armcompute.CreationData {
+			CreateOption: 			to.Ptr(armcompute.DiskCreateOptionCopy),
+			SourceResourceID:		&sourceResourceID,
+			PerformancePlus:		false,
+			LogicalSectorSize:		pointer.Int32(int32(diskParams.LogicalSectorSize)),
+		}
 	}
 
-	volumeOptions.SkipGetDiskOperation = c.isGetDiskThrottled()
+	diskSizeGB := int32(requestGiB)
+	maxShares := int32(diskParams.MaxShares)
+
+	iops, err := strconv.Atoi(diskParams.DiskIOPSReadWrite)
+	if err != nil {
+		klog.Fatalf("failed to parse DiskIOPSReadWrite: %v", err)
+	}
+
+	mbps, err := strconv.Atoi(diskParams.DiskMBPSReadWrite)
+	if err != nil {
+		klog.Fatalf("failed to parse DiskMBPSReadWrite: %v", err)
+	}
+
+	tags := make(map[string]*string)
+	azureDDTag := "kubernetes-azure-dd"
+	tags["k8s-azure-created-by"] = &azureDDTag
+	for k, v := range diskParams.Tags {
+		key := strings.Replace(k, "/", "-", -1)
+		value := strings.Replace(v, "/", "-", -1)
+		tags[newKey] = &value
+	}
+
+	var createZones []string
+	if len(selectedAvailabilityZone) > 0 {
+		var requestedZone string
+		isAvailabilityZone := strings.HasPrefix(selectedAvailabilityZone, fmt.Sprintf("%s-", localCloud.Location))
+		if isAvailabilityZone {
+			requestedZone = strings.TrimPrefix(selectedAvailabilityZone, fmt.Sprintf("%s-", localCloud.Location))
+			createZones = append(createZones, requestedZone)
+		}
+	}
+
+	disk := armcompute.Disk {
+		Location:			diskParams.Location
+		Properties:			&armcompute.DiskProperties {
+			CreationData:			creationData,
+			DiskSizeGB:				&diskSizeGB,
+			BurstingEnabled:		diskParams.EnableBursting,
+			DiskIOPSReadWrite:		pointer.Int64(int64(iops)),
+			DiskMBpsReadWrite:		pointer.Int64(int64(mbps)),
+			Encryption:				&armcompute.Encryption {
+				DiskEncryptionSetID:	&diskParams.DiskEncryptionSetID
+				Type:					armcompute.EncryptionType(diskParams.DiskEncryptionType) // custom types used like functions? 
+			}
+			MaxShares:				&maxShares
+		}
+		SKU:				&armcompute.DiskSKU {
+			Name:	skuName
+		}
+		Tags:				tags
+	}
+
+	if len(createZones) > 0 {
+		disk.Zones = &createZones
+	}
 
 	// Azure Stack Cloud does not support NetworkAccessPolicy
 	if !azureutils.IsAzureStackCloud(localCloud.Config.Cloud, localCloud.Config.DisableAzureStackCloud) {
-		volumeOptions.NetworkAccessPolicy = networkAccessPolicy
+		disk.Properties.NetworkAccessPolicy = networkAccessPolicy
 		if diskParams.DiskAccessID != "" {
-			volumeOptions.DiskAccessID = &diskParams.DiskAccessID
+			disk.Properties.DiskAccessID = &diskParams.DiskAccessID
 		}
 	}
 
-	var diskURI string
-	diskURI, err = localCloud.CreateManagedDisk(ctx, volumeOptions)
+	poller, err := clientFactory.NewDisksClient().BeginCreateOrUpdate(ctx, diskParams.ResourceGroup, diskParams.DiskName, disk, nil)
+
 	if err != nil {
-		if strings.Contains(err.Error(), "NotFound") {
-			err = status.Error(codes.NotFound, err.Error())
-			return nil, err
-		}
-		return nil, status.Error(codes.Internal, err.Error())
+		log.Fatalf("failed to finish the request: %v", err)
 	}
+
+	res, err := poller.PollUntilDone(ctx, nil)
+	if err != nil {
+		log.Fatalf("failed to pull the result: %v", err)
+	}
+
+	diskID := fmt.Sprintf("/subscriptions/%s/resourceGroups/%s/providers/Microsoft.Compute/disks/%s", c.cloud.SubscriptionID, diskParams.ResourceGroup, diskParams.DiskName)
+	if diskThrottled {
+		klog.Warningf("azureDisk - GetDisk(%s, StorageAccountType:%s) is throttled, unable to confirm provisioningState in poll process", diskParams.DiskName, skuName)
+	}
+	else {
+		if disk.Properties.ProvisioningState != nil && disk.ID != "" {
+			diskID = disk.ID
+		}
+	}
+
+	/////////////////////////////////////////////////
 
 	w.Logger().V(2).Infof("create disk(%s) account type(%s) rg(%s) location(%s) size(%d) tags(%s) successfully", diskParams.DiskName, skuName, diskParams.ResourceGroup, diskParams.Location, requestGiB, diskParams.Tags)
 
 	return &azdiskv1beta2.AzVolumeStatusDetail{
-		VolumeID:           diskURI,
+		VolumeID:           diskID,
 		CapacityBytes:      volSizeBytes,
 		VolumeContext:      diskParams.VolumeContext,
 		ContentSource:      contentSource,
