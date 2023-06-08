@@ -152,6 +152,8 @@ func GetCachingMode(attributes map[string]string) (compute.CachingTypes, error) 
 	return compute.CachingTypes(cachingMode), err
 }
 
+// GetAttachDiskInitialDelay gttachDiskInitialDelay from attributes
+// return -1 if not found
 func GetAttachDiskInitialDelay(attributes map[string]string) int {
 	for k, v := range attributes {
 		switch strings.ToLower(k) {

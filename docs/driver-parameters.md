@@ -66,6 +66,7 @@ volumeHandle| Azure disk URI | /subscriptions/{sub-id}/resourcegroups/{group-nam
 volumeAttributes.fsType | File System Type | `ext4`, `ext3`, `ext2`, `xfs`, `btrfs` on Linux, `ntfs` on Windows | No | `ext4` on Linux, `ntfs` on Windows
 volumeAttributes.partition | partition num of the existing disk (only supported on Linux) | `1`, `2`, `3` | No | empty(no partition) </br>- make sure partition format is like `-part1`
 volumeAttributes.cachingMode | [disk host cache setting](https://docs.microsoft.com/en-us/azure/virtual-machines/windows/premium-storage-performance#disk-caching)| `None`, `ReadOnly`, `ReadWrite` | No  | `ReadOnly`
+volumeAttributes.attachDiskInitialDelay | setting a large number for the initial delay in milliseconds for batch disk attach/detach could reduce the number of operations and ARM throttling |  | No | `1000`
 
 ## `VolumeSnapshotClass`
 
