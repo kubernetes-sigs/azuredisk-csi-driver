@@ -114,7 +114,6 @@ type ManagedDiskParameters struct {
 	EnableAsyncAttach       *bool
 	EnableBursting          *bool
 	FsType                  string
-	Incremental             bool
 	Location                string
 	LogicalSectorSize       int
 	MaxShares               int
@@ -568,7 +567,6 @@ func ParseDiskParameters(parameters map[string]string) (ManagedDiskParameters, e
 
 	diskParams := ManagedDiskParameters{
 		DeviceSettings: make(map[string]string),
-		Incremental:    true, //true by default
 		Tags:           make(map[string]string),
 		VolumeContext:  parameters,
 	}
@@ -647,10 +645,6 @@ func ParseDiskParameters(parameters map[string]string) (ManagedDiskParameters, e
 			diskParams.UserAgent = v
 		case consts.EnableAsyncAttachField:
 			diskParams.VolumeContext[consts.EnableAsyncAttachField] = v
-		case consts.IncrementalField:
-			if v == "false" {
-				diskParams.Incremental = false
-			}
 		case consts.AttachDiskInitialDelayField:
 			if _, err = strconv.Atoi(v); err != nil {
 				return diskParams, fmt.Errorf("parse %s failed with error: %v", v, err)
