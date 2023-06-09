@@ -1410,12 +1410,22 @@ func TestParseDiskParameters(t *testing.T) {
 			expectedError: fmt.Errorf("invalid parameter %s in storage class", "invalidField"),
 		},
 		{
-			name:        "invalid value in parameters",
+			name:        "invalid LogicalSectorSize value in parameters",
 			inputParams: map[string]string{consts.LogicalSectorSizeField: "invalidValue"},
 			expectedOutput: ManagedDiskParameters{
 				Incremental:    true,
 				Tags:           make(map[string]string),
 				VolumeContext:  map[string]string{consts.LogicalSectorSizeField: "invalidValue"},
+				DeviceSettings: make(map[string]string),
+			},
+			expectedError: fmt.Errorf("parse invalidValue failed with error: strconv.Atoi: parsing \"invalidValue\": invalid syntax"),
+		},
+		{
+			name:        "invalid AttachDiskInitialDelay value in parameters",
+			inputParams: map[string]string{consts.AttachDiskInitialDelayField: "invalidValue"},
+			expectedOutput: ManagedDiskParameters{
+				Tags:           make(map[string]string),
+				VolumeContext:  map[string]string{consts.AttachDiskInitialDelayField: "invalidValue"},
 				DeviceSettings: make(map[string]string),
 			},
 			expectedError: fmt.Errorf("parse invalidValue failed with error: strconv.Atoi: parsing \"invalidValue\": invalid syntax"),
@@ -1854,6 +1864,37 @@ func TestSetKeyValueInMap(t *testing.T) {
 		SetKeyValueInMap(test.m, test.key, test.value)
 		if !reflect.DeepEqual(test.m, test.expected) {
 			t.Errorf("test[%s]: unexpected output: %v, expected result: %v", test.desc, test.m, test.expected)
+		}
+	}
+}
+
+func TestGetAttachDiskInitialDelay(t *testing.T) {
+	tests := []struct {
+		name       string
+		attributes map[string]string
+		expected   int
+	}{
+		{
+			attributes: nil,
+			expected:   -1,
+		},
+		{
+			attributes: map[string]string{consts.AttachDiskInitialDelayField: "10"},
+			expected:   10,
+		},
+		{
+			attributes: map[string]string{"AttachDiskInitialDelay": "90"},
+			expected:   90,
+		},
+		{
+			attributes: map[string]string{"unknown": "90"},
+			expected:   -1,
+		},
+	}
+
+	for _, test := range tests {
+		if got := GetAttachDiskInitialDelay(test.attributes); got != test.expected {
+			t.Errorf("GetAttachDiskInitialDelay(%v) = %v, want %v", test.attributes, got, test.expected)
 		}
 	}
 }

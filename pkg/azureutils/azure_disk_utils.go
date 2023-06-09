@@ -146,6 +146,20 @@ func GetCachingMode(attributes map[string]string) (compute.CachingTypes, error) 
 	return compute.CachingTypes(cachingMode), err
 }
 
+// GetAttachDiskInitialDelay gttachDiskInitialDelay from attributes
+// return -1 if not found
+func GetAttachDiskInitialDelay(attributes map[string]string) int {
+	for k, v := range attributes {
+		switch strings.ToLower(k) {
+		case consts.AttachDiskInitialDelayField:
+			if v, err := strconv.Atoi(v); err == nil {
+				return v
+			}
+		}
+	}
+	return -1
+}
+
 // GetCloudProviderFromClient get Azure Cloud Provider
 func GetCloudProviderFromClient(ctx context.Context, kubeClient *clientset.Clientset, secretName, secretNamespace, userAgent string, allowEmptyCloudConfig bool) (*azure.Cloud, error) {
 	var config *azure.Config
@@ -636,6 +650,10 @@ func ParseDiskParameters(parameters map[string]string) (ManagedDiskParameters, e
 		case consts.IncrementalField:
 			if v == "false" {
 				diskParams.Incremental = false
+			}
+		case consts.AttachDiskInitialDelayField:
+			if _, err = strconv.Atoi(v); err != nil {
+				return diskParams, fmt.Errorf("parse %s failed with error: %v", v, err)
 			}
 		case consts.ZonedField:
 			// no op, only for backward compatibility with in-tree driver
