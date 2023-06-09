@@ -82,6 +82,7 @@ const (
 	ZonedField                    = "zoned"
 	EnableAsyncAttachField        = "enableasyncattach"
 	PerformancePlusField          = "enableperformanceplus"
+	AttachDiskInitialDelayField   = "attachdiskinitialdelay"
 	TooManyRequests               = "TooManyRequests"
 	ClientThrottled               = "client throttled"
 	VolumeID                      = "volumeid"

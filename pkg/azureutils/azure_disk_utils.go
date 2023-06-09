@@ -152,6 +152,20 @@ func GetCachingMode(attributes map[string]string) (compute.CachingTypes, error) 
 	return compute.CachingTypes(cachingMode), err
 }
 
+// GetAttachDiskInitialDelay gttachDiskInitialDelay from attributes
+// return -1 if not found
+func GetAttachDiskInitialDelay(attributes map[string]string) int {
+	for k, v := range attributes {
+		switch strings.ToLower(k) {
+		case consts.AttachDiskInitialDelayField:
+			if v, err := strconv.Atoi(v); err == nil {
+				return v
+			}
+		}
+	}
+	return -1
+}
+
 // GetCloudProviderFromClient get Azure Cloud Provider
 func GetCloudProviderFromClient(ctx context.Context, kubeClient *clientset.Clientset, secretName, secretNamespace, userAgent string,
 	allowEmptyCloudConfig bool, enableTrafficMgr bool, trafficMgrPort int64) (*azure.Cloud, error) {
@@ -668,6 +682,10 @@ func ParseDiskParameters(parameters map[string]string) (ManagedDiskParameters, e
 				return diskParams, fmt.Errorf("invalid %s: %s in storage class", consts.PerformancePlusField, v)
 			}
 			diskParams.PerformancePlus = &value
+		case consts.AttachDiskInitialDelayField:
+			if _, err = strconv.Atoi(v); err != nil {
+				return diskParams, fmt.Errorf("parse %s failed with error: %v", v, err)
+			}
 		default:
 			// accept all device settings params
 			// device settings need to start with azureconstants.DeviceSettingsKeyPrefix
