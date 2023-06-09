@@ -58,7 +58,6 @@ import (
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/optimization"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/util"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/workflow"
-	"sigs.k8s.io/cloud-provider-azure/pkg/azureclients"
 	cloudproviderconsts "sigs.k8s.io/cloud-provider-azure/pkg/consts"
 	azure "sigs.k8s.io/cloud-provider-azure/pkg/provider"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -586,8 +585,8 @@ func GetCloudProviderFromClient(
 	var config *Config
 	var fromSecret bool
 	var err error
-	az := Cloud{
-		InitSecretConfig: azure.InitSecretConfig{
+	az := &Cloud{
+		InitSecretConfig: InitSecretConfig{
 			SecretName:      cloudConfig.SecretName,
 			SecretNamespace: cloudConfig.SecretNamespace,
 			CloudConfigKey:  "cloud-config",
@@ -625,7 +624,7 @@ func GetCloudProviderFromClient(
 		} else {
 			defer credFileConfig.Close()
 			klog.V(2).Infof("read cloud config from file: %s successfully", credFile)
-			if config, err = azure.ParseConfig(credFileConfig); err != nil {
+			if config, err = ParseConfig(credFileConfig); err != nil {
 				klog.Warningf("parse config file(%s) failed with error: %v", credFile, err)
 			}
 		}
@@ -639,20 +638,21 @@ func GetCloudProviderFromClient(
 		}
 	} else {
 		// configure client rate limit
-		config.AttachDetachDiskRateLimit = &azureclients.RateLimitConfig{
+		config.AttachDetachDiskRateLimit = &RateLimitConfig{
 			CloudProviderRateLimit:            cloudConfig.EnableAzureClientAttachDetachRateLimiter,
 			CloudProviderRateLimitQPSWrite:    cloudConfig.AzureClientAttachDetachRateLimiterQPS,
 			CloudProviderRateLimitBucketWrite: cloudConfig.AzureClientAttachDetachRateLimiterBucket,
 		}
 
 		// configure batching parameters
-		config.AttachDetachBatchInitialDelayInMillis = cloudConfig.AzureClientAttachDetachBatchInitialDelayInMillis
+		// I cannot find this field even in the original azure.Config type
+		// config.AttachDetachBatchInitialDelayInMillis = cloudConfig.AzureClientAttachDetachBatchInitialDelayInMillis
 
 		// disable disk related rate limit
-		config.DiskRateLimit = &azureclients.RateLimitConfig{
+		config.DiskRateLimit = &RateLimitConfig{
 			CloudProviderRateLimit: false,
 		}
-		config.SnapshotRateLimit = &azureclients.RateLimitConfig{
+		config.SnapshotRateLimit = &RateLimitConfig{
 			CloudProviderRateLimit: false,
 		}
 		config.UserAgent = userAgent

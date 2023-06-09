@@ -1,16 +1,41 @@
 package azureutils
 
-import {
-	"github.com/Azure/go-autorest/autorest/azure"
-	armcompute "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute/v5"
-}
+import (
+	"context"
+	"errors"
+	"fmt"
+	"io"
+	"os"
+	"strings"
+	"sync"
 
-type cloudConfigType string
+	armcompute "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute/v5"
+	"github.com/Azure/go-autorest/autorest/azure"
+	"k8s.io/apimachinery/pkg/util/sets"
+	clientset "k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/tools/cache"
+	"k8s.io/klog/v2"
+	"sigs.k8s.io/cloud-provider-azure/pkg/consts"
+	"sigs.k8s.io/yaml"
+)
 
 const (
-	cloudConfigTypeFile   cloudConfigType = "file"
-	cloudConfigTypeSecret cloudConfigType = "secret"
-	cloudConfigTypeMerge  cloudConfigType = "merge"
+	// VMTypeVMSS is the vmss vm type
+	VMTypeVMSS = "vmss"
+	// VMTypeStandard is the vmas vm type
+	VMTypeStandard = "standard"
+	// VMTypeVmssFlex is the vmssflex vm type
+	VMTypeVmssFlex = "vmssflex"
+)
+
+const (
+	// LoadBalancerBackendPoolConfigurationTypeNodeIPConfiguration is the lb backend pool config type node IP configuration
+	LoadBalancerBackendPoolConfigurationTypeNodeIPConfiguration = "nodeIPConfiguration"
+	// LoadBalancerBackendPoolConfigurationTypeNodeIP is the lb backend pool config type node ip
+	LoadBalancerBackendPoolConfigurationTypeNodeIP = "nodeIP"
+	// LoadBalancerBackendPoolConfigurationTypePODIP is the lb backend pool config type pod ip
+	// TODO (nilo19): support pod IP in the future
+	LoadBalancerBackendPoolConfigurationTypePODIP = "podIP"
 )
 
 type Cloud struct {
@@ -18,7 +43,35 @@ type Cloud struct {
 	InitSecretConfig
 	Environment azure.Environment
 
-	DisksClient		*armcompute.DisksClient
+	DisksClient *armcompute.DisksClient
+	KubeClient  clientset.Interface
+	VMClient    *armcompute.VirtualMachinesClient
+
+	// ipv6DualStack allows overriding for unit testing.  It's normally initialized from featuregates
+	ipv6DualStackEnabled bool
+	// isSHaredLoadBalancerSynced indicates if the reconcileSharedLoadBalancer has been run
+	isSharedLoadBalancerSynced bool
+	// Lock for access to node caches, includes nodeZones, nodeResourceGroups, and unmanagedNodes.
+	nodeCachesLock sync.RWMutex
+	// nodeNames holds current nodes for tracking added nodes in VM caches.
+	nodeNames sets.String
+	// nodeZones is a mapping from Zone to a sets.Set[string] of Node's names in the Zone
+	// it is updated by the nodeInformer
+	nodeZones map[string]sets.String
+	// nodeResourceGroups holds nodes external resource groups
+	nodeResourceGroups map[string]string
+	// unmanagedNodes holds a list of nodes not managed by Azure cloud provider.
+	unmanagedNodes sets.String
+	// excludeLoadBalancerNodes holds a list of nodes that should be excluded from LoadBalancer.
+	excludeLoadBalancerNodes sets.String
+	nodePrivateIPs           map[string]sets.String
+	// nodeInformerSynced is for determining if the informer has synced.
+	nodeInformerSynced cache.InformerSynced
+
+	// routeCIDRsLock holds lock for routeCIDRs cache.
+	routeCIDRsLock sync.Mutex
+	// routeCIDRs holds cache for route CIDRs.
+	routeCIDRs map[string]string
 }
 
 type InitSecretConfig struct {
@@ -264,4 +317,231 @@ type RateLimitConfig struct {
 	CloudProviderRateLimitQPSWrite float32 `json:"cloudProviderRateLimitQPSWrite,omitempty" yaml:"cloudProviderRateLimitQPSWrite,omitempty"`
 	// Rate limit Bucket Size
 	CloudProviderRateLimitBucketWrite int `json:"cloudProviderRateLimitBucketWrite,omitempty" yaml:"cloudProviderRateLimitBucketWrite,omitempty"`
+}
+
+func ParseConfig(configReader io.Reader) (*Config, error) {
+	var config Config
+	if configReader == nil {
+		return nil, nil
+	}
+
+	configContents, err := io.ReadAll(configReader)
+	if err != nil {
+		return nil, err
+	}
+
+	err = yaml.Unmarshal(configContents, &config)
+	if err != nil {
+		return nil, err
+	}
+
+	// The resource group name may be in different cases from different Azure APIs, hence it is converted to lower here.
+	// See more context at https://github.com/kubernetes/kubernetes/issues/71994.
+	config.ResourceGroup = strings.ToLower(config.ResourceGroup)
+
+	// these environment variables are injected by workload identity webhook
+	if tenantID := os.Getenv("AZURE_TENANT_ID"); tenantID != "" {
+		config.TenantID = tenantID
+	}
+	if clientID := os.Getenv("AZURE_CLIENT_ID"); clientID != "" {
+		config.AADClientID = clientID
+	}
+	if federatedTokenFile := os.Getenv("AZURE_FEDERATED_TOKEN_FILE"); federatedTokenFile != "" {
+		config.AADFederatedTokenFile = federatedTokenFile
+		config.UseFederatedWorkloadIdentityExtension = true
+	}
+	return &config, nil
+}
+
+func NewCloudWithoutFeatureGatesFromConfig(ctx context.Context, config *Config, fromSecret, callFromCCM bool) (*Cloud, error) {
+	az := &Cloud{
+		nodeNames:                sets.NewString(),
+		nodeZones:                map[string]sets.String{},
+		nodeResourceGroups:       map[string]string{},
+		unmanagedNodes:           sets.NewString(),
+		routeCIDRs:               map[string]string{},
+		excludeLoadBalancerNodes: sets.NewString(),
+		nodePrivateIPs:           map[string]sets.String{},
+	}
+
+	err := az.InitializeCloudFromConfig(ctx, config, false, callFromCCM)
+	if err != nil {
+		return nil, err
+	}
+
+	return az, nil
+}
+
+// InitializeCloudFromConfig initializes the Cloud from config.
+func (az *Cloud) InitializeCloudFromConfig(ctx context.Context, config *Config, fromSecret, callFromCCM bool) error {
+	if config == nil {
+		// should not reach here
+		return fmt.Errorf("InitializeCloudFromConfig: cannot initialize from nil config")
+	}
+
+	if config.RouteTableResourceGroup == "" {
+		config.RouteTableResourceGroup = config.ResourceGroup
+	}
+
+	if config.SecurityGroupResourceGroup == "" {
+		config.SecurityGroupResourceGroup = config.ResourceGroup
+	}
+
+	if config.PrivateLinkServiceResourceGroup == "" {
+		config.PrivateLinkServiceResourceGroup = config.ResourceGroup
+	}
+
+	if config.VMType == "" {
+		// default to standard vmType if not set.
+		config.VMType = VMTypeStandard
+	}
+
+	if config.RouteUpdateWaitingInSeconds <= 0 {
+		config.RouteUpdateWaitingInSeconds = defaultRouteUpdateWaitingInSeconds
+	}
+
+	if config.DisableAvailabilitySetNodes && config.VMType != VMTypeVMSS {
+		return fmt.Errorf("disableAvailabilitySetNodes %v is only supported when vmType is 'vmss'", config.DisableAvailabilitySetNodes)
+	}
+
+	if config.CloudConfigType == "" {
+		// The default cloud config type is cloudConfigTypeMerge.
+		config.CloudConfigType = cloudConfigTypeMerge
+	} else {
+		supportedCloudConfigTypes := sets.New(
+			string(cloudConfigTypeMerge),
+			string(cloudConfigTypeFile),
+			string(cloudConfigTypeSecret))
+		if !supportedCloudConfigTypes.Has(string(config.CloudConfigType)) {
+			return fmt.Errorf("cloudConfigType %v is not supported, supported values are %v", config.CloudConfigType, supportedCloudConfigTypes.UnsortedList())
+		}
+	}
+
+	if config.LoadBalancerBackendPoolConfigurationType == "" ||
+		// TODO(nilo19): support pod IP mode in the future
+		strings.EqualFold(config.LoadBalancerBackendPoolConfigurationType, LoadBalancerBackendPoolConfigurationTypePODIP) {
+		config.LoadBalancerBackendPoolConfigurationType = LoadBalancerBackendPoolConfigurationTypeNodeIPConfiguration
+	} else {
+		supportedLoadBalancerBackendPoolConfigurationTypes := sets.New(
+			strings.ToLower(LoadBalancerBackendPoolConfigurationTypeNodeIPConfiguration),
+			strings.ToLower(LoadBalancerBackendPoolConfigurationTypeNodeIP),
+			strings.ToLower(LoadBalancerBackendPoolConfigurationTypePODIP))
+		if !supportedLoadBalancerBackendPoolConfigurationTypes.Has(strings.ToLower(config.LoadBalancerBackendPoolConfigurationType)) {
+			return fmt.Errorf("loadBalancerBackendPoolConfigurationType %s is not supported, supported values are %v", config.LoadBalancerBackendPoolConfigurationType, supportedLoadBalancerBackendPoolConfigurationTypes.UnsortedList())
+		}
+	}
+
+	env, err := ratelimitconfig.ParseAzureEnvironment(config.Cloud, config.ResourceManagerEndpoint, config.IdentitySystem)
+	if err != nil {
+		return err
+	}
+
+	servicePrincipalToken, err := ratelimitconfig.GetServicePrincipalToken(&config.AzureAuthConfig, env, env.ServiceManagementEndpoint)
+	if errors.Is(err, ratelimitconfig.ErrorNoAuth) {
+		// Only controller-manager would lazy-initialize from secret, and credentials are required for such case.
+		if fromSecret {
+			err := fmt.Errorf("no credentials provided for Azure cloud provider")
+			klog.Fatal(err)
+			return err
+		}
+
+		// No credentials provided, useInstanceMetadata should be enabled for Kubelet.
+		// TODO(feiskyer): print different error message for Kubelet and controller-manager, as they're
+		// requiring different credential settings.
+		if !config.UseInstanceMetadata && config.CloudConfigType == cloudConfigTypeFile {
+			return fmt.Errorf("useInstanceMetadata must be enabled without Azure credentials")
+		}
+
+		klog.V(2).Infof("Azure cloud provider is starting without credentials")
+	} else if err != nil {
+		return err
+	}
+
+	// Initialize rate limiting config options.
+	ratelimitconfig.InitializeCloudProviderRateLimitConfig(&config.CloudProviderRateLimitConfig)
+
+	resourceRequestBackoff := az.setCloudProviderBackoffDefaults(config)
+
+	err = az.setLBDefaults(config)
+	if err != nil {
+		return err
+	}
+
+	az.Config = *config
+	az.Environment = *env
+	az.ResourceRequestBackoff = resourceRequestBackoff
+	az.Metadata, err = NewInstanceMetadataService(consts.ImdsServer)
+	if err != nil {
+		return err
+	}
+
+	// No credentials provided, InstanceMetadataService would be used for getting Azure resources.
+	// Note that this only applies to Kubelet, controller-manager should configure credentials for managing Azure resources.
+	if servicePrincipalToken == nil {
+		return nil
+	}
+
+	// If uses network resources in different AAD Tenant, then prepare corresponding Service Principal Token for VM/VMSS client and network resources client
+	err = az.configureMultiTenantClients(servicePrincipalToken)
+	if err != nil {
+		return err
+	}
+
+	if az.MaximumLoadBalancerRuleCount == 0 {
+		az.MaximumLoadBalancerRuleCount = consts.MaximumLoadBalancerRuleCount
+	}
+
+	if strings.EqualFold(consts.VMTypeVMSS, az.Config.VMType) {
+		az.VMSet, err = newScaleSet(ctx, az)
+		if err != nil {
+			return err
+		}
+	} else if strings.EqualFold(consts.VMTypeVmssFlex, az.Config.VMType) {
+		az.VMSet, err = newFlexScaleSet(ctx, az)
+		if err != nil {
+			return err
+		}
+	} else {
+		az.VMSet, err = newAvailabilitySet(az)
+		if err != nil {
+			return err
+		}
+	}
+
+	if az.isLBBackendPoolTypeNodeIPConfig() {
+		az.LoadBalancerBackendPool = newBackendPoolTypeNodeIPConfig(az)
+	} else if az.isLBBackendPoolTypeNodeIP() {
+		az.LoadBalancerBackendPool = newBackendPoolTypeNodeIP(az)
+	}
+
+	err = az.initCaches()
+	if err != nil {
+		return err
+	}
+
+	if err := initDiskControllers(az); err != nil {
+		return err
+	}
+
+	// updating routes and syncing zones only in CCM
+	if callFromCCM {
+		// start delayed route updater.
+		az.routeUpdater = newDelayedRouteUpdater(az, routeUpdateInterval)
+		go az.routeUpdater.run()
+
+		// Azure Stack does not support zone at the moment
+		// https://docs.microsoft.com/en-us/azure-stack/user/azure-stack-network-differences?view=azs-2102
+		if !az.isStackCloud() {
+			// wait for the success first time of syncing zones
+			err = az.syncRegionZonesMap()
+			if err != nil {
+				klog.Errorf("InitializeCloudFromConfig: failed to sync regional zones map for the first time: %s", err.Error())
+				return err
+			}
+
+			go az.refreshZones(az.syncRegionZonesMap)
+		}
+	}
+
+	return nil
 }

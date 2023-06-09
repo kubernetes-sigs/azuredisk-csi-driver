@@ -19,6 +19,7 @@ package provisioner
 import (
 	"context"
 	"fmt"
+	"log"
 	"path"
 	"reflect"
 	"sort"
@@ -29,13 +30,17 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
+	"github.com/Azure/azure-sdk-for-go/sdk/azcore/to"
+	"github.com/Azure/azure-sdk-for-go/sdk/azidentity"
+	armcompute "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute/v5"
+	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/networkcloud/armnetworkcloud/"
 	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2022-03-01/compute"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	clientset "k8s.io/client-go/kubernetes"
-	cloudprovider "k8s.io/cloud-provider"
 	"k8s.io/klog/v2"
+	"k8s.io/utils/pointer"
 	azdiskv1beta2 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1beta2"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
@@ -44,10 +49,6 @@ import (
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/workflow"
 	azcache "sigs.k8s.io/cloud-provider-azure/pkg/cache"
 	azure "sigs.k8s.io/cloud-provider-azure/pkg/provider"
-	"sigs.k8s.io/cloud-provider-azure/pkg/retry"
-	armcompute "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute/v5"
-	"github.com/Azure/azure-sdk-for-go/sdk/azidentity"
-	resources "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/resources/armresources"
 )
 
 var (
@@ -333,19 +334,19 @@ func (c *CloudProvisioner) CreateVolume(
 	if err != nil {
 		klog.Fatalf("failed to create new client factory: %v", err)
 	}
-	
+
+	var creationData *armcompute.CreationData
 	if sourceID == "" {
-		creationData := &armcompute.CreationData {
-			CreateOption: to.Ptr(armcompute.DiskCreateOptionEmpty)
+		creationData = &armcompute.CreationData{
+			CreateOption: to.Ptr(armcompute.DiskCreateOptionEmpty),
 		}
-	}
-	else {
-		sourceResourceID = fmt.Sprintf("/subscriptions/%s/resourceGroups/%s/providers/Microsoft.Compute/disks/%s", c.cloud.SubscriptionID, diskParams.ResourceGroup, sourceID)
-		creationData := &armcompute.CreationData {
-			CreateOption: 			to.Ptr(armcompute.DiskCreateOptionCopy),
-			SourceResourceID:		&sourceResourceID,
-			PerformancePlus:		false,
-			LogicalSectorSize:		pointer.Int32(int32(diskParams.LogicalSectorSize)),
+	} else {
+		sourceResourceID := fmt.Sprintf("/subscriptions/%s/resourceGroups/%s/providers/Microsoft.Compute/disks/%s", c.cloud.SubscriptionID, diskParams.ResourceGroup, sourceID)
+		creationData = &armcompute.CreationData{
+			CreateOption:      to.Ptr(armcompute.DiskCreateOptionCopy),
+			SourceResourceID:  &sourceResourceID,
+			PerformancePlus:   false,
+			LogicalSectorSize: pointer.Int32(int32(diskParams.LogicalSectorSize)),
 		}
 	}
 
@@ -368,7 +369,7 @@ func (c *CloudProvisioner) CreateVolume(
 	for k, v := range diskParams.Tags {
 		key := strings.Replace(k, "/", "-", -1)
 		value := strings.Replace(v, "/", "-", -1)
-		tags[newKey] = &value
+		tags[key] = &value
 	}
 
 	var createZones []string
@@ -381,24 +382,24 @@ func (c *CloudProvisioner) CreateVolume(
 		}
 	}
 
-	disk := armcompute.Disk {
-		Location:			diskParams.Location
-		Properties:			&armcompute.DiskProperties {
-			CreationData:			creationData,
-			DiskSizeGB:				&diskSizeGB,
-			BurstingEnabled:		diskParams.EnableBursting,
-			DiskIOPSReadWrite:		pointer.Int64(int64(iops)),
-			DiskMBpsReadWrite:		pointer.Int64(int64(mbps)),
-			Encryption:				&armcompute.Encryption {
-				DiskEncryptionSetID:	&diskParams.DiskEncryptionSetID
-				Type:					armcompute.EncryptionType(diskParams.DiskEncryptionType) // custom types used like functions? 
-			}
-			MaxShares:				&maxShares
-		}
-		SKU:				&armcompute.DiskSKU {
-			Name:	skuName
-		}
-		Tags:				tags
+	disk := armcompute.Disk{
+		Location: diskParams.Location,
+		Properties: &armcompute.DiskProperties{
+			CreationData:      creationData,
+			DiskSizeGB:        &diskSizeGB,
+			BurstingEnabled:   diskParams.EnableBursting,
+			DiskIOPSReadWrite: pointer.Int64(int64(iops)),
+			DiskMBpsReadWrite: pointer.Int64(int64(mbps)),
+			Encryption: &armcompute.Encryption{
+				DiskEncryptionSetID: &diskParams.DiskEncryptionSetID,
+				Type:                armcompute.EncryptionType(diskParams.DiskEncryptionType), // custom types used like functions?
+			},
+			MaxShares: &maxShares,
+		},
+		SKU: &armcompute.DiskSKU{
+			Name: skuName,
+		},
+		Tags: tags,
 	}
 
 	if len(createZones) > 0 {
@@ -418,19 +419,18 @@ func (c *CloudProvisioner) CreateVolume(
 	poller, err := disksClient.BeginCreateOrUpdate(ctx, diskParams.ResourceGroup, diskParams.DiskName, disk, nil)
 
 	if err != nil {
-		log.Fatalf("failed to finish the request: %v", err)
+		klog.Fatalf("failed to finish the request: %v", err)
 	}
 
 	res, err := poller.PollUntilDone(ctx, nil)
 	if err != nil {
-		log.Fatalf("failed to pull the result: %v", err)
+		klog.Fatalf("failed to pull the result: %v", err)
 	}
 
 	diskID := fmt.Sprintf("/subscriptions/%s/resourceGroups/%s/providers/Microsoft.Compute/disks/%s", c.cloud.SubscriptionID, diskParams.ResourceGroup, diskParams.DiskName)
 	if diskThrottled {
 		klog.Warningf("azureDisk - GetDisk(%s, StorageAccountType:%s) is throttled, unable to confirm provisioningState in poll process", diskParams.DiskName, skuName)
-	}
-	else {
+	} else {
 		if disk.Properties.ProvisioningState != nil && disk.ID != "" {
 			diskID = disk.ID
 		}
@@ -533,34 +533,86 @@ func (c *CloudProvisioner) PublishVolume(
 		return
 	}
 
-	var lun int32
-	var vmState *string
-	lun, vmState, err = c.cloud.GetDiskLun(diskName, volumeID, nodeName)
-	if err == cloudprovider.InstanceNotFound {
-		err = status.Errorf(codes.NotFound, "failed to get azure instance id for node %q: %v", nodeName, err)
-		return
+	// var lun int32
+	// var vmState *string
+	// lun, vmState, err = c.cloud.GetDiskLun(diskName, volumeID, nodeName)
+	// if err == cloudprovider.InstanceNotFound {
+	// 	err = status.Errorf(codes.NotFound, "failed to get azure instance id for node %q: %v", nodeName, err)
+	// 	return
+	// }
+
+	/////////////////////////////////////////////////////////////////
+	cred, err := azidentity.NewDefaultAzureCredential(nil)
+	if err != nil {
+		klog.Fatalf("failed to obtain new credential: %v", err)
 	}
+	clientFactory, err := armcompute.NewClientFactory(c.cloud.SubscriptionID, cred, nil)
+	if err != nil {
+		klog.Fatalf("failed to create new client factory: %v", err)
+	}
+	vmClient := clientFactory.NewVirtualMachinesClient()
+	resVM, err := vmClient.Get(ctx, c.cloud.ResourceGroup, string(nodeName), nil)
+	if err != nil {
+		klog.Fatalf("failed to finish the request: %v", err)
+	}
+
+	disks := *resVM.VirtualMachine.StorageProfile.DataDisks
+	var lun int32 = -1
+
+	for _, disk := range disks {
+		if disk.Lun != nil && (disk.Name != nil && diskName != "" && strings.EqualFold(*disk.Name, diskName)) ||
+			(disk.Vhd != nil && disk.Vhd.URI != nil && volumeID != "" && strings.EqualFold(*disk.Vhd.URI, volumeID)) ||
+			(disk.ManagedDisk != nil && strings.EqualFold(*disk.ManagedDisk.ID, volumeID)) {
+			if disk.ToBeDetached != nil && *disk.ToBeDetached {
+				klog.Warningf("azureDisk - find disk(ToBeDetached): lun %d name %s uri %s", *disk.Lun, diskName, volumeID)
+			} else {
+				// found the disk
+				lun = disk.Lun
+				break
+			}
+		}
+	}
+
+	vmState := resVM.VirtualMachine.ProvisioningState
+
+	/////////////////////////////////////////////////////////////////
 
 	w.Logger().V(2).Infof("GetDiskLun returned: %v. Initiating attaching volume %q to node %q.", lun, volumeID, nodeName)
 
-	if err == nil {
+	if lun != -1 {
 		if vmState != nil && strings.ToLower(*vmState) == "failed" {
 			w.Logger().Infof("VM(%q) is in failed state, update VM first", nodeName)
-			if err = c.cloud.UpdateVM(ctx, nodeName); err != nil {
-				if _, ok := err.(*retry.PartialUpdateError); !ok {
-					err = status.Errorf(codes.Internal, "update instance %q failed with %v", nodeName, err)
-				}
-				return
+			// if err = c.cloud.UpdateVM(ctx, nodeName); err != nil {
+			// 	if _, ok := err.(*retry.PartialUpdateError); !ok {
+			// 		err = status.Errorf(codes.Internal, "update instance %q failed with %v", nodeName, err)
+			// 	}
+			// 	return
+			// }
+
+			// I do not know if this is the correct function to use
+			poller, err := vmClient.BeginUpdate(ctx, c.cloud.ResourceGroup, string(nodeName), armcompute.VirtualMachineUpdate{
+				Identity:   resVM.VirtualMachine.Identity,
+				Plan:       resVM.Plan,
+				Properties: resVM.Properties,
+				Tags:       resVM.Tags,
+				Zones:      resVM.Zones,
+			}, nil)
+			if err != nil {
+				klog.Fatalf("failed to finish the request: %v", err)
+			}
+			resUpdate, err := poller.PollUntilDone(ctx, nil)
+			if err != nil {
+				klog.Fatalf("failed to pull the result: %v", err)
 			}
 		}
 		// Volume is already attached to node.
 		w.Logger().V(2).Infof("Attach operation is successful. volume %q is already attached to node %q at lun %d.", volumeID, nodeName, lun)
 	} else {
-		if strings.Contains(strings.ToLower(err.Error()), strings.ToLower(azureconstants.TooManyRequests)) ||
-			strings.Contains(strings.ToLower(err.Error()), azureconstants.ClientThrottled) {
-			err = status.Errorf(codes.Internal, err.Error())
-			return
-		}
+		// if strings.Contains(strings.ToLower(err.Error()), strings.ToLower(azureconstants.TooManyRequests)) ||
+		// 	strings.Contains(strings.ToLower(err.Error()), azureconstants.ClientThrottled) {
+		// 	err = status.Errorf(codes.Internal, err.Error())
+		// 	return
+		// }
 
 		w.Logger().V(2).Infof("Trying to attach volume %q to node %q.", volumeID, nodeName)
 		var cachingMode compute.CachingTypes
@@ -590,6 +642,20 @@ func (c *CloudProvisioner) PublishVolume(
 			}
 			resultLunCh <- resultLun
 			close(resultLunCh)
+
+			poller, err := vmClient.BeginAttachVolume(ctx, c.cloud.ResourceGroup, string(nodeName), armnetworkcloud.VirtualMachineVolumeParameters{
+				VolumeID: &volumeID,
+			}, nil)
+			if err != nil {
+				klog.Fatalf("failed to finish the request: %v", err)
+			}
+			resAttach, err := poller.PollUntilDone(ctx, nil)
+			if err != nil {
+				klog.Fatalf("failed to pull the result: %v", err)
+			} else {
+				w.Logger().V(2).Infof("attach operation successful: volume %q attached to node %q.", volumeID, nodeName)
+			}
+
 		}()
 
 		select {
