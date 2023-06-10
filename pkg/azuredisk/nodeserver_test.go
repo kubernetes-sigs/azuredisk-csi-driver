@@ -1316,7 +1316,7 @@ func TestEnsureBlockTargetFile(t *testing.T) {
 	assert.NoError(t, err)
 	testPath, err := testutil.GetWorkDirPath(fmt.Sprintf("test%ctest", os.PathSeparator))
 	assert.NoError(t, err)
-	d, err := newFakeDriverV1(t)
+	d, err := newFakeDriverV1(t, newFakeDriverConfig())
 	assert.NoError(t, err)
 
 	tests := []struct {
@@ -1377,7 +1377,7 @@ func TestMakeDir(t *testing.T) {
 
 func TestGetDevicePathWithLUN(t *testing.T) {
 	skipIfTestingDriverV2(t)
-	d, _ := newFakeDriverV1(t)
+	d, _ := newFakeDriverV1(t, newFakeDriverConfig())
 	tests := []struct {
 		desc        string
 		req         string

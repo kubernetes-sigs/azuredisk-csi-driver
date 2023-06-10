@@ -18,26 +18,10 @@ package optimization
 
 import (
 	"context"
-	"errors"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
-	"k8s.io/apimachinery/pkg/types"
-	cloudprovider "k8s.io/cloud-provider"
-	fakecloud "k8s.io/cloud-provider/fake"
 )
-
-type fakeCloud struct {
-	fakecloud.Cloud
-}
-
-func (fake *fakeCloud) InstanceType(ctx context.Context, nodeName types.NodeName) (string, error) {
-	if instanceType, ok := fake.InstanceTypes[nodeName]; ok {
-		return instanceType, nil
-	}
-
-	return "", errors.New("Not found")
-}
 
 func TestDiskSkuInfo_GetLatencyTest(t *testing.T) {
 	for _, skuInfo := range DiskSkuMap["premium_lrs"] {
@@ -64,53 +48,26 @@ func TestDiskSkuInfo_GetLatencyTest(t *testing.T) {
 
 func TestNewNodeInfo(t *testing.T) {
 	instanceType := "Standard_DS14"
-	cloud := &fakeCloud{
-		fakecloud.Cloud{
-			InstanceTypes: map[types.NodeName]string{
-				types.NodeName("existing-node"): instanceType,
-				types.NodeName("unknown-sku"):   "unknown",
-			},
-			Zone: cloudprovider.Zone{
-				FailureDomain: "0",
-				Region:        "test",
-			},
-		},
-	}
 
 	tests := []struct {
-		description      string
-		nodeID           string
-		disableInstances bool
-		disableZones     bool
-		wantErr          bool
+		description  string
+		instanceType string
+		wantErr      bool
 	}{
 		{
-			description: "[Success] Should succeed for an existing node.",
-			nodeID:      "existing-node",
-			wantErr:     false,
+			description:  "[Success] Should succeed for an existing node.",
+			instanceType: instanceType,
+			wantErr:      false,
 		},
 		{
-			description:      "[Failure] Should return an error if Instances interface not supported by cloud provider.",
-			nodeID:           "existing-node",
-			disableInstances: true,
-			wantErr:          true,
-		},
-		{
-			description: "[Failure] Should return an error for a non-existing node.",
-			nodeID:      "non-existing node",
-			wantErr:     true,
-		},
-		{
-			description: "[Failure] Should return an error for a unknown SKU.",
-			nodeID:      "unknown-sku",
-			wantErr:     true,
+			description:  "[Failure] Should return an error for a unknown SKU.",
+			instanceType: "unknown-sku",
+			wantErr:      true,
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.description, func(t *testing.T) {
-			cloud.DisableInstances = tt.disableInstances
-			cloud.DisableZones = tt.disableZones
-			nodeInfo, err := NewNodeInfo(context.Background(), cloud, tt.nodeID)
+			nodeInfo, err := NewNodeInfo(context.Background(), tt.instanceType)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("NewNodeInfoInternal() error = %v, wantErr %v", err, tt.wantErr)
 			}

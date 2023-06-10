@@ -21,6 +21,7 @@ import (
 	"fmt"
 	"path"
 	"reflect"
+	"runtime"
 	"sort"
 	"strconv"
 	"strings"
@@ -33,7 +34,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
-	clientset "k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/kubernetes"
 	cloudprovider "k8s.io/cloud-provider"
 	"k8s.io/klog/v2"
 	azdiskv1beta2 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1beta2"
@@ -73,12 +74,9 @@ func (c *CloudAttachResult) ResultChannel() chan error {
 }
 
 type CloudProvisioner struct {
-	cloud                   *azure.Cloud
-	kubeClient              *clientset.Clientset
-	cloudConfiguration      azdiskv1beta2.CloudConfiguration
-	enableOnlineDiskResize  bool
-	perfOptimizationEnabled bool
-	enableAsyncAttach       bool
+	cloud      *azure.Cloud
+	kubeClient kubernetes.Interface
+	config     *azdiskv1beta2.AzDiskDriverConfiguration
 	// a timed cache GetDisk throttling
 	getDiskThrottlingCache *azcache.TimedCache
 }
@@ -93,18 +91,15 @@ type listVolumeStatus struct {
 
 func NewCloudProvisioner(
 	ctx context.Context,
-	kubeClient *clientset.Clientset,
-	cloudConfig azdiskv1beta2.CloudConfiguration,
-	perfOptimizationEnabled bool,
+	kubeClient kubernetes.Interface,
+	config *azdiskv1beta2.AzDiskDriverConfiguration,
 	topologyKey string,
 	userAgent string,
-	enableOnlineDiskResize bool,
-	enableAsyncAttach bool,
 ) (*CloudProvisioner, error) {
 	azCloud, err := azureutils.GetCloudProviderFromClient(
 		ctx,
 		kubeClient,
-		cloudConfig,
+		config,
 		userAgent)
 	if err != nil || azCloud.TenantID == "" || azCloud.SubscriptionID == "" {
 		klog.Fatalf("failed to get Azure Cloud Provider, error: %v", err)
@@ -121,14 +116,67 @@ func NewCloudProvisioner(
 	}
 
 	return &CloudProvisioner{
-		cloud:                   azCloud,
-		kubeClient:              kubeClient,
-		cloudConfiguration:      cloudConfig,
-		enableOnlineDiskResize:  enableOnlineDiskResize,
-		perfOptimizationEnabled: perfOptimizationEnabled,
-		enableAsyncAttach:       enableAsyncAttach,
-		getDiskThrottlingCache:  cache,
+		cloud:                  azCloud,
+		kubeClient:             kubeClient,
+		config:                 config,
+		getDiskThrottlingCache: cache,
 	}, nil
+}
+
+func (c *CloudProvisioner) GetSubscriptionID() string {
+	return c.cloud.SubscriptionID
+}
+
+func (c *CloudProvisioner) GetResourceGroup() string {
+	return c.cloud.ResourceGroup
+}
+
+func (c *CloudProvisioner) GetLocation() string {
+	return c.cloud.Location
+}
+
+func (c *CloudProvisioner) GetFailureDomain(ctx context.Context, nodeID string) (string, error) {
+	var zone cloudprovider.Zone
+	var err error
+
+	if runtime.GOOS == "windows" && (!c.cloud.UseInstanceMetadata || c.cloud.Metadata == nil) {
+		zone, err = c.cloud.VMSet.GetZoneByNodeName(nodeID)
+	} else {
+		zone, err = c.cloud.GetZone(ctx)
+	}
+
+	if err != nil {
+		return "", err
+	}
+
+	return zone.FailureDomain, nil
+}
+
+func (c *CloudProvisioner) GetInstanceType(ctx context.Context, nodeID string) (string, error) {
+	var err error
+
+	if runtime.GOOS == "windows" && c.cloud.UseInstanceMetadata && c.cloud.Metadata != nil {
+		var metadata *azure.InstanceMetadata
+		metadata, err = c.cloud.Metadata.GetMetadata(azcache.CacheReadTypeDefault)
+		if err == nil && metadata.Compute != nil {
+			return metadata.Compute.VMSize, nil
+		}
+
+		klog.Warningf("failed to get instance type from metadata for node %s: %v", nodeID, err)
+	} else {
+		instances, ok := c.cloud.Instances()
+		if ok {
+			return instances.InstanceType(ctx, types.NodeName(nodeID))
+		}
+
+		klog.Warningf("failed to get instances from cloud provider")
+	}
+
+	if err == nil {
+		err = fmt.Errorf("failed to get instance type for node %s", nodeID)
+	}
+
+	return "", err
 }
 
 func (c *CloudProvisioner) CreateVolume(
@@ -158,7 +206,7 @@ func (c *CloudProvisioner) CreateVolume(
 	localCloud := c.cloud
 	isAdvancedPerfProfile := strings.EqualFold(diskParams.PerfProfile, azureconstants.PerfProfileAdvanced)
 	// If perfProfile is set to advanced and no/invalid device settings are provided, fail the request
-	if c.GetPerfOptimizationEnabled() && isAdvancedPerfProfile {
+	if c.isPerfOptimizationEnabled() && isAdvancedPerfProfile {
 		if err := optimization.AreDeviceSettingsValid(azureconstants.DummyBlockDevicePathLinux, diskParams.DeviceSettings); err != nil {
 			return nil, err
 		}
@@ -177,7 +225,7 @@ func (c *CloudProvisioner) CreateVolume(
 		localCloud, err = azureutils.GetCloudProviderFromClient(
 			ctx,
 			c.kubeClient,
-			c.cloudConfiguration,
+			c.config,
 			diskParams.UserAgent)
 		if err != nil {
 			err = status.Errorf(codes.Internal, "create cloud with UserAgent(%s) failed with: (%s)", diskParams.UserAgent, err)
@@ -205,7 +253,7 @@ func (c *CloudProvisioner) CreateVolume(
 		return nil, status.Error(codes.InvalidArgument, err.Error())
 	}
 
-	selectedAvailabilityZone := pickAvailabilityZone(accessibilityRequirements, c.GetCloud().Location)
+	selectedAvailabilityZone := pickAvailabilityZone(accessibilityRequirements, c.cloud.Location)
 	accessibleTopology := []azdiskv1beta2.Topology{}
 	if skuName == compute.StandardSSDZRS || skuName == compute.PremiumZRS {
 		w.Logger().V(2).Infof("diskZone(%s) is reset as empty since disk(%s) is ZRS(%s)", selectedAvailabilityZone, diskParams.DiskName, skuName)
@@ -437,7 +485,7 @@ func (c *CloudProvisioner) PublishVolume(
 		lunCh := make(chan int32, 1)
 		resultLunCh := make(chan int32, 1)
 		ctx = context.WithValue(ctx, azure.LunChannelContextKey, lunCh)
-		asyncAttach := azureutils.IsAsyncAttachEnabled(c.enableAsyncAttach, volumeContext)
+		asyncAttach := azureutils.IsAsyncAttachEnabled(c.config.ControllerConfig.EnableAsyncAttach, volumeContext)
 		waitForCloud = true
 		go func() {
 			var resultErr error
@@ -543,7 +591,7 @@ func (c *CloudProvisioner) ExpandVolume(
 	w.Logger().V(2).Infof("begin to expand azure disk(%s) with new size(%d)", volumeID, requestSize.Value())
 
 	var newSize resource.Quantity
-	newSize, err = c.cloud.ResizeDisk(ctx, volumeID, oldSize, requestSize, c.enableOnlineDiskResize)
+	newSize, err = c.cloud.ResizeDisk(ctx, volumeID, oldSize, requestSize, c.config.ControllerConfig.EnableDiskOnlineResize)
 	if err != nil {
 		err = status.Errorf(codes.Internal, "failed to resize disk(%s) with error(%v)", volumeID, err)
 		return nil, err
@@ -600,7 +648,7 @@ func (c *CloudProvisioner) CreateSnapshot(
 			localCloud, err = azureutils.GetCloudProviderFromClient(
 				ctx,
 				c.kubeClient,
-				c.cloudConfiguration,
+				c.config,
 				newUserAgent)
 			if err != nil {
 				return nil, status.Errorf(codes.Internal, "create cloud with UserAgent(%s) failed with: (%s)", newUserAgent, err)
@@ -806,14 +854,6 @@ func (c *CloudProvisioner) CheckDiskExists(ctx context.Context, diskURI string) 
 	}
 
 	return &disk, nil
-}
-
-func (c *CloudProvisioner) GetCloud() *azure.Cloud {
-	return c.cloud
-}
-
-func (c *CloudProvisioner) GetMetricPrefix() string {
-	return azureconstants.AzureDiskCSIDriverName
 }
 
 // GetSourceDiskSize recursively searches for the sourceDisk and returns: sourceDisk disk size, error
@@ -1141,10 +1181,6 @@ func pickAvailabilityZone(requirement *azdiskv1beta2.TopologyRequirement, region
 	return ""
 }
 
-func (c *CloudProvisioner) GetPerfOptimizationEnabled() bool {
-	return c.perfOptimizationEnabled
-}
-
-func (c *CloudProvisioner) SetPerfOptimizationEnabled(enabled bool) {
-	c.perfOptimizationEnabled = enabled
+func (c *CloudProvisioner) isPerfOptimizationEnabled() bool {
+	return c.config.NodeConfig.EnablePerfOptimization
 }

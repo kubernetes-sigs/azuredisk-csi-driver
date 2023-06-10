@@ -32,7 +32,6 @@ import (
 	"github.com/onsi/gomega"
 	"k8s.io/kubernetes/test/e2e/framework"
 	"k8s.io/kubernetes/test/e2e/framework/config"
-	azdiskv1beta2 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1beta2"
 	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azuredisk"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
@@ -103,18 +102,11 @@ var _ = ginkgo.BeforeSuite(func() {
 		kubeconfig := os.Getenv(testconsts.KubeconfigEnvVar)
 		kubeclient, err := azureutils.GetKubeClient(kubeconfig)
 		gomega.Expect(err).NotTo(gomega.HaveOccurred())
-		cloudConfig := azdiskv1beta2.CloudConfiguration{
-			SecretName:                               "",
-			SecretNamespace:                          "",
-			AllowEmptyCloudConfig:                    false,
-			EnableAzureClientAttachDetachRateLimiter: consts.DefaultEnableAzureClientAttachDetachRateLimiter,
-			AzureClientAttachDetachRateLimiterQPS:    consts.DefaultAzureClientAttachDetachRateLimiterQPS,
-			AzureClientAttachDetachRateLimiterBucket: consts.DefaultAzureClientAttachDetachRateLimiterBucket,
-		}
+		azdiskConfig := azuredisk.NewDefaultDriverConfig()
 		azureCloud, err = azureutils.GetCloudProviderFromClient(
 			context.Background(),
 			kubeclient,
-			cloudConfig,
+			azdiskConfig,
 			azuredisk.GetUserAgent(consts.DefaultDriverName, "E2E", ""),
 		)
 		gomega.Expect(err).NotTo(gomega.HaveOccurred())

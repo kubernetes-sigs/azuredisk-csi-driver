@@ -207,75 +207,83 @@ func NewTestCloudProvisioner(controller *gomock.Controller) *CloudProvisioner {
 	}
 
 	return &CloudProvisioner{
-		cloud:                   cloud,
-		getDiskThrottlingCache:  cache,
-		perfOptimizationEnabled: util.IsLinuxOS(),
+		cloud: cloud,
+		config: &azdiskv1beta2.AzDiskDriverConfiguration{
+			ControllerConfig: azdiskv1beta2.ControllerConfiguration{
+				Enabled: true,
+			},
+			NodeConfig: azdiskv1beta2.NodeConfiguration{
+				Enabled:                true,
+				EnablePerfOptimization: util.IsLinuxOS(),
+			},
+		},
+		getDiskThrottlingCache: cache,
 	}
 }
 
 func mockExistingDisk(provisioner *CloudProvisioner) {
-	provisioner.GetCloud().DisksClient.(*mockdiskclient.MockInterface).EXPECT().
+	provisioner.cloud.DisksClient.(*mockdiskclient.MockInterface).EXPECT().
 		Get(gomock.Any(), testSubscription, testResourceGroup, testDiskName0).
 		Return(testDisk, nil).
 		AnyTimes()
 }
 
 func mockClonedDisk(provisioner *CloudProvisioner) {
-	provisioner.GetCloud().DisksClient.(*mockdiskclient.MockInterface).EXPECT().
+	provisioner.cloud.DisksClient.(*mockdiskclient.MockInterface).EXPECT().
 		Get(gomock.Any(), testSubscription, testResourceGroup, clonedDiskName).
 		Return(clonedDisk, nil).
 		AnyTimes()
 }
 
 func mockMissingDisk(provisioner *CloudProvisioner) {
-	provisioner.GetCloud().DisksClient.(*mockdiskclient.MockInterface).EXPECT().
+	provisioner.cloud.DisksClient.(*mockdiskclient.MockInterface).EXPECT().
 		Get(gomock.Any(), testSubscription, testResourceGroup, missingDiskName).
 		Return(compute.Disk{}, notFoundError).
 		AnyTimes()
 }
 
 func mockInvalidDisks(provisioner *CloudProvisioner) {
-	provisioner.GetCloud().DisksClient.(*mockdiskclient.MockInterface).EXPECT().
+	provisioner.cloud.DisksClient.(*mockdiskclient.MockInterface).EXPECT().
 		Get(gomock.Any(), testSubscription, testResourceGroup, invalidDiskWithMissingPropertiesName).
 		Return(invalidDiskWithMissingProperties, nil).
 		AnyTimes()
-	provisioner.GetCloud().DisksClient.(*mockdiskclient.MockInterface).EXPECT().
+	provisioner.cloud.DisksClient.(*mockdiskclient.MockInterface).EXPECT().
 		Get(gomock.Any(), testSubscription, testResourceGroup, invalidDiskWithEmptyPropertiesName).
 		Return(invalidDiskWithEmptyProperties, nil).
 		AnyTimes()
 }
 
 func mockExistingSnapshot(provisioner *CloudProvisioner) {
-	provisioner.GetCloud().SnapshotsClient.(*mocksnapshotclient.MockInterface).EXPECT().
+	provisioner.cloud.SnapshotsClient.(*mocksnapshotclient.MockInterface).EXPECT().
 		Get(gomock.Any(), testSubscription, testResourceGroup, testSnapshotName).
 		Return(testSnapshot, nil).
 		AnyTimes()
 }
 
 func mockMissingSnapshot(provisioner *CloudProvisioner) {
-	provisioner.GetCloud().SnapshotsClient.(*mocksnapshotclient.MockInterface).EXPECT().
+	provisioner.cloud.SnapshotsClient.(*mocksnapshotclient.MockInterface).EXPECT().
 		Get(gomock.Any(), testSubscription, testResourceGroup, missingSnapshotName).
 		Return(compute.Snapshot{}, notFoundError).
 		AnyTimes()
 }
 
 func mockInvalidSnapshots(provisioner *CloudProvisioner) {
-	provisioner.GetCloud().SnapshotsClient.(*mocksnapshotclient.MockInterface).EXPECT().
+	provisioner.cloud.SnapshotsClient.(*mocksnapshotclient.MockInterface).EXPECT().
 		Get(gomock.Any(), testSubscription, testResourceGroup, invalidSnapshotWithMissingPropertiesName).
 		Return(invalidSnapshotWithMissingProperties, nil).
 		AnyTimes()
-	provisioner.GetCloud().SnapshotsClient.(*mocksnapshotclient.MockInterface).EXPECT().
+	provisioner.cloud.SnapshotsClient.(*mocksnapshotclient.MockInterface).EXPECT().
 		Get(gomock.Any(), testSubscription, testResourceGroup, invalidSnapshotWithEmptyPropertiesName).
 		Return(invalidSnapshotWithEmptyProperties, nil).
 		AnyTimes()
 }
 
 func mockUpdateVM(provisioner *CloudProvisioner) {
-	provisioner.GetCloud().VirtualMachinesClient.(*mockvmclient.MockInterface).EXPECT().
+	provisioner.cloud.VirtualMachinesClient.(*mockvmclient.MockInterface).EXPECT().
 		Get(gomock.Any(), testResourceGroup, testVMName, gomock.Any()).
 		Return(testVM, nil).
 		AnyTimes()
-	provisioner.GetCloud().VirtualMachinesClient.(*mockvmclient.MockInterface).EXPECT().
+	provisioner.cloud.VirtualMachinesClient.(*mockvmclient.MockInterface).EXPECT().
 		Update(gomock.Any(), testResourceGroup, testVMName, gomock.Any(), gomock.Any()).
 		DoAndReturn(func(ctx context.Context, resourceGroupName string, nodeName string, parameters compute.VirtualMachineUpdate, source string) (*compute.VirtualMachine, *retry.Error) {
 			vm := &compute.VirtualMachine{
@@ -291,7 +299,7 @@ func mockUpdateVM(provisioner *CloudProvisioner) {
 			return vm, nil
 		}).
 		AnyTimes()
-	provisioner.GetCloud().VirtualMachinesClient.(*mockvmclient.MockInterface).EXPECT().
+	provisioner.cloud.VirtualMachinesClient.(*mockvmclient.MockInterface).EXPECT().
 		UpdateAsync(gomock.Any(), testResourceGroup, testVMName, gomock.Any(), gomock.Any()).
 		DoAndReturn(func(ctx context.Context, resourceGroup, nodeName string, parameters compute.VirtualMachineUpdate, source string) (*azure.Future, *retry.Error) {
 			vm := &compute.VirtualMachine{
@@ -320,7 +328,7 @@ func mockUpdateVM(provisioner *CloudProvisioner) {
 			return &f, nil
 		}).
 		AnyTimes()
-	provisioner.GetCloud().VirtualMachinesClient.(*mockvmclient.MockInterface).EXPECT().
+	provisioner.cloud.VirtualMachinesClient.(*mockvmclient.MockInterface).EXPECT().
 		WaitForUpdateResult(gomock.Any(), gomock.Any(), testResourceGroup, gomock.Any()).
 		DoAndReturn(func(ctx context.Context, future *azure.Future, resourceGroupName, source string) (*compute.VirtualMachine, *retry.Error) {
 			result := &compute.VirtualMachine{}
@@ -372,18 +380,18 @@ func mockPeristentVolumesList(provisioner *CloudProvisioner, pvCount int32) {
 			},
 		}
 
-		provisioner.GetCloud().DisksClient.(*mockdiskclient.MockInterface).EXPECT().
+		provisioner.cloud.DisksClient.(*mockdiskclient.MockInterface).EXPECT().
 			Get(gomock.Any(), testSubscription, testResourceGroup, diskName).
 			Return(diskList[i], nil).
 			AnyTimes()
 	}
 
-	provisioner.GetCloud().DisksClient.(*mockdiskclient.MockInterface).EXPECT().
+	provisioner.cloud.DisksClient.(*mockdiskclient.MockInterface).EXPECT().
 		ListByResourceGroup(gomock.Any(), testSubscription, testResourceGroup).
 		Return(diskList, nil).
 		AnyTimes()
 
-	provisioner.GetCloud().KubeClient = kfake.NewSimpleClientset(pvList...)
+	provisioner.cloud.KubeClient = kfake.NewSimpleClientset(pvList...)
 }
 
 func mockSnapshotsList(provisioner *CloudProvisioner, disk1Count, disk2Count int32) {
@@ -420,13 +428,13 @@ func mockSnapshotsList(provisioner *CloudProvisioner, disk1Count, disk2Count int
 			},
 		}
 
-		provisioner.GetCloud().SnapshotsClient.(*mocksnapshotclient.MockInterface).EXPECT().
+		provisioner.cloud.SnapshotsClient.(*mocksnapshotclient.MockInterface).EXPECT().
 			Get(gomock.Any(), testSubscription, testResourceGroup, ssName).
 			Return(azssList[i], nil).
 			AnyTimes()
 	}
 
-	provisioner.GetCloud().SnapshotsClient.(*mocksnapshotclient.MockInterface).EXPECT().
+	provisioner.cloud.SnapshotsClient.(*mocksnapshotclient.MockInterface).EXPECT().
 		ListByResourceGroup(gomock.Any(), testSubscription, testResourceGroup).
 		Return(azssList, nil).
 		AnyTimes()
@@ -438,7 +446,7 @@ func TestCreateVolume(t *testing.T) {
 	provisioner := NewTestCloudProvisioner(mockCtrl)
 
 	mockExistingDisk(provisioner)
-	provisioner.GetCloud().DisksClient.(*mockdiskclient.MockInterface).EXPECT().
+	provisioner.cloud.DisksClient.(*mockdiskclient.MockInterface).EXPECT().
 		CreateOrUpdate(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
 		DoAndReturn(func(ctx context.Context, subscriptionID, resourceGroupName, diskName string, disk compute.Disk) *retry.Error {
 			var mockedDisk compute.Disk
@@ -456,7 +464,7 @@ func TestCreateVolume(t *testing.T) {
 				mockedDisk.ProvisioningState = &provisioningStateSucceeded
 			}
 
-			provisioner.GetCloud().DisksClient.(*mockdiskclient.MockInterface).EXPECT().
+			provisioner.cloud.DisksClient.(*mockdiskclient.MockInterface).EXPECT().
 				Get(gomock.Any(), subscriptionID, resourceGroupName, diskName).
 				Return(mockedDisk, nil).
 				AnyTimes()
@@ -519,7 +527,7 @@ func TestCreateVolume(t *testing.T) {
 		},
 		{
 			description: "[Failure] advanced perfProfile fails if no device settings provided",
-			disabled:    !provisioner.perfOptimizationEnabled,
+			disabled:    !provisioner.isPerfOptimizationEnabled(),
 			diskName:    "disk-with-specific-parameters",
 			capacity: &azdiskv1beta2.CapacityRange{
 				RequiredBytes: util.GiBToBytes(10),
@@ -556,7 +564,7 @@ func TestCreateVolume(t *testing.T) {
 		},
 		{
 			description: "[Failure] advanced perfProfile fails if invalid device settings provided",
-			disabled:    !provisioner.perfOptimizationEnabled,
+			disabled:    !provisioner.isPerfOptimizationEnabled(),
 			diskName:    "disk-with-specific-parameters",
 			capacity: &azdiskv1beta2.CapacityRange{
 				RequiredBytes: util.GiBToBytes(10),
@@ -596,7 +604,7 @@ func TestCreateVolume(t *testing.T) {
 		},
 		{
 			description: "[Success] advanced perfProfile succeeds if valid device settings provided",
-			disabled:    !provisioner.perfOptimizationEnabled,
+			disabled:    !provisioner.isPerfOptimizationEnabled(),
 			diskName:    "disk-with-specific-parameters",
 			capacity: &azdiskv1beta2.CapacityRange{
 				RequiredBytes: util.GiBToBytes(10),
@@ -706,7 +714,7 @@ func TestCreateVolume(t *testing.T) {
 		tt := test
 		t.Run(test.description, func(t *testing.T) {
 			if tt.diskName != testDiskName0 {
-				provisioner.GetCloud().DisksClient.(*mockdiskclient.MockInterface).EXPECT().
+				provisioner.cloud.DisksClient.(*mockdiskclient.MockInterface).EXPECT().
 					Get(gomock.Any(), gomock.Any(), gomock.Any(), tt.diskName).
 					Return(compute.Disk{}, notFoundError).
 					MaxTimes(1)
@@ -736,7 +744,7 @@ func TestDeleteVolume(t *testing.T) {
 	provisioner := NewTestCloudProvisioner(mockCtrl)
 
 	mockExistingDisk(provisioner)
-	provisioner.GetCloud().DisksClient.(*mockdiskclient.MockInterface).EXPECT().
+	provisioner.cloud.DisksClient.(*mockdiskclient.MockInterface).EXPECT().
 		Delete(gomock.Any(), testSubscription, testResourceGroup, testDiskName0).
 		Return(nil).
 		MaxTimes(1)
@@ -778,7 +786,7 @@ func TestPublishVolume(t *testing.T) {
 	mockMissingDisk(provisioner)
 	mockUpdateVM(provisioner)
 
-	provisioner.GetCloud().VirtualMachinesClient.(*mockvmclient.MockInterface).EXPECT().
+	provisioner.cloud.VirtualMachinesClient.(*mockvmclient.MockInterface).EXPECT().
 		Get(gomock.Any(), testResourceGroup, missingVMName, gomock.Any()).
 		Return(compute.VirtualMachine{}, notFoundError).
 		AnyTimes()
@@ -844,12 +852,12 @@ func TestUnpublishVolume(t *testing.T) {
 	testVMWithAttachedDisk := testVM
 	testVMWithAttachedDisk.StorageProfile.DataDisks = &attachedDisks
 
-	provisioner.GetCloud().VirtualMachinesClient.(*mockvmclient.MockInterface).EXPECT().
+	provisioner.cloud.VirtualMachinesClient.(*mockvmclient.MockInterface).EXPECT().
 		Get(gomock.Any(), testResourceGroup, testVMName, gomock.Any()).
 		Return(testVMWithAttachedDisk, nil).
 		AnyTimes()
 
-	provisioner.GetCloud().VirtualMachinesClient.(*mockvmclient.MockInterface).EXPECT().
+	provisioner.cloud.VirtualMachinesClient.(*mockvmclient.MockInterface).EXPECT().
 		Get(gomock.Any(), testResourceGroup, missingVMName, gomock.Any()).
 		Return(compute.VirtualMachine{}, notFoundError).
 		AnyTimes()
@@ -895,7 +903,7 @@ func TestExpandVolume(t *testing.T) {
 	provisioner := NewTestCloudProvisioner(mockCtrl)
 
 	mockExistingDisk(provisioner)
-	provisioner.GetCloud().DisksClient.(*mockdiskclient.MockInterface).EXPECT().
+	provisioner.cloud.DisksClient.(*mockdiskclient.MockInterface).EXPECT().
 		Update(gomock.Any(), testSubscription, testResourceGroup, testDiskName0, gomock.Any()).
 		Return(nil).
 		AnyTimes()
@@ -957,7 +965,7 @@ func TestCreateSnapshot(t *testing.T) {
 	mockExistingDisk(provisioner)
 	mockMissingDisk(provisioner)
 
-	provisioner.GetCloud().SnapshotsClient.(*mocksnapshotclient.MockInterface).EXPECT().
+	provisioner.cloud.SnapshotsClient.(*mocksnapshotclient.MockInterface).EXPECT().
 		CreateOrUpdate(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
 		DoAndReturn(func(ctx context.Context, subscriptionID, resourceGroupName, snapshotName string, snapshot compute.Snapshot) *retry.Error {
 			if resourceGroupName == testResourceGroup && snapshotName == testSnapshotName {
@@ -976,7 +984,7 @@ func TestCreateSnapshot(t *testing.T) {
 			mockedSnapshot.ProvisioningState = &provisioningStateSucceeded
 			mockedSnapshot.TimeCreated = &timeCreated
 
-			provisioner.GetCloud().SnapshotsClient.(*mocksnapshotclient.MockInterface).EXPECT().
+			provisioner.cloud.SnapshotsClient.(*mocksnapshotclient.MockInterface).EXPECT().
 				Get(gomock.Any(), subscriptionID, resourceGroupName, snapshotName).
 				Return(mockedSnapshot, nil).
 				AnyTimes()
@@ -1038,11 +1046,11 @@ func TestDeleteSnapshot(t *testing.T) {
 	defer mockCtrl.Finish()
 	provisioner := NewTestCloudProvisioner(mockCtrl)
 
-	provisioner.GetCloud().SnapshotsClient.(*mocksnapshotclient.MockInterface).EXPECT().
+	provisioner.cloud.SnapshotsClient.(*mocksnapshotclient.MockInterface).EXPECT().
 		Delete(gomock.Any(), testSubscription, testResourceGroup, testSnapshotName).
 		Return(nil).
 		MaxTimes(1)
-	provisioner.GetCloud().SnapshotsClient.(*mocksnapshotclient.MockInterface).EXPECT().
+	provisioner.cloud.SnapshotsClient.(*mocksnapshotclient.MockInterface).EXPECT().
 		Delete(gomock.Any(), testSubscription, testResourceGroup, missingSnapshotName).
 		Return(notFoundError).
 		MaxTimes(1)
@@ -1118,9 +1126,9 @@ func TestListVolumes(t *testing.T) {
 		tt := test
 		t.Run(test.description, func(t *testing.T) {
 			if tt.useNodeResourceGroup {
-				savedKubeClient := provisioner.GetCloud().KubeClient
-				defer func() { provisioner.GetCloud().KubeClient = savedKubeClient }()
-				provisioner.GetCloud().KubeClient = nil
+				savedKubeClient := provisioner.cloud.KubeClient
+				defer func() { provisioner.cloud.KubeClient = savedKubeClient }()
+				provisioner.cloud.KubeClient = nil
 			}
 
 			startToken := ""

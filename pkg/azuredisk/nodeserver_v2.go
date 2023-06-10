@@ -22,21 +22,17 @@ package azuredisk
 import (
 	"context"
 	"fmt"
-	"runtime"
 	"strings"
 	"sync"
 	"sync/atomic"
 
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/optimization"
 	volumehelper "sigs.k8s.io/azuredisk-csi-driver/pkg/util"
-	azcache "sigs.k8s.io/cloud-provider-azure/pkg/cache"
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	"k8s.io/apimachinery/pkg/types"
-	cloudprovider "k8s.io/cloud-provider"
 	"k8s.io/klog/v2"
 	azdiskv1beta2 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1beta2"
 	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
@@ -394,32 +390,28 @@ func (d *DriverV2) NodeGetInfo(ctx context.Context, req *csi.NodeGetInfoRequest)
 	var err error
 
 	if d.config.NodeConfig.SupportZone {
-		var zone cloudprovider.Zone
+		var failureDomain string
 		if d.config.NodeConfig.GetNodeInfoFromLabels {
-			failureDomainFromLabels, instanceTypeFromLabels, err = getNodeInfoFromLabels(ctx, d.NodeID, d.cloudProvisioner.GetCloud().KubeClient)
+			failureDomainFromLabels, instanceTypeFromLabels, err = getNodeInfoFromLabels(ctx, d.NodeID, d.kubeClient)
 		} else {
-			if runtime.GOOS == "windows" && (!d.cloudProvisioner.GetCloud().UseInstanceMetadata || d.cloudProvisioner.GetCloud().Metadata == nil) {
-				zone, err = d.cloudProvisioner.GetCloud().VMSet.GetZoneByNodeName(d.NodeID)
-			} else {
-				zone, err = d.cloudProvisioner.GetCloud().GetZone(ctx)
-			}
+			failureDomain, err = d.cloudProvisioner.GetFailureDomain(ctx, d.NodeID)
 			if err != nil {
 				klog.Warningf("get zone(%s) failed with: %v, fall back to get zone from node labels", d.NodeID, err)
-				failureDomainFromLabels, instanceTypeFromLabels, err = getNodeInfoFromLabels(ctx, d.NodeID, d.cloudProvisioner.GetCloud().KubeClient)
+				failureDomainFromLabels, instanceTypeFromLabels, err = getNodeInfoFromLabels(ctx, d.NodeID, d.kubeClient)
 			}
 		}
 
 		if err != nil {
 			return nil, status.Error(codes.Internal, fmt.Sprintf("getNodeInfoFromLabels on node(%s) failed with %v", d.NodeID, err))
 		}
-		if zone.FailureDomain == "" {
-			zone.FailureDomain = failureDomainFromLabels
+		if failureDomain == "" {
+			failureDomain = failureDomainFromLabels
 		}
 
-		klog.V(2).Infof("NodeGetInfo, nodeName: %s, failureDomain: %s", d.NodeID, zone.FailureDomain)
-		if azureutils.IsValidAvailabilityZone(zone.FailureDomain, d.cloudProvisioner.GetCloud().Location) {
-			topology.Segments[topologyKey] = zone.FailureDomain
-			topology.Segments[consts.WellKnownTopologyKey] = zone.FailureDomain
+		klog.V(2).Infof("NodeGetInfo, nodeName: %s, failureDomain: %s", d.NodeID, failureDomain)
+		if azureutils.IsValidAvailabilityZone(failureDomain, d.cloudProvisioner.GetLocation()) {
+			topology.Segments[topologyKey] = failureDomain
+			topology.Segments[consts.WellKnownTopologyKey] = failureDomain
 		}
 	}
 
@@ -428,31 +420,16 @@ func (d *DriverV2) NodeGetInfo(ctx context.Context, req *csi.NodeGetInfoRequest)
 		var instanceType string
 		if d.config.NodeConfig.GetNodeInfoFromLabels {
 			if instanceTypeFromLabels == "" {
-				_, instanceTypeFromLabels, err = getNodeInfoFromLabels(ctx, d.NodeID, d.cloudProvisioner.GetCloud().KubeClient)
+				_, instanceTypeFromLabels, err = getNodeInfoFromLabels(ctx, d.NodeID, d.kubeClient)
 			}
 		} else {
-			if runtime.GOOS == "windows" && d.cloudProvisioner.GetCloud().UseInstanceMetadata && d.cloudProvisioner.GetCloud().Metadata != nil {
-				metadata, err := d.cloudProvisioner.GetCloud().Metadata.GetMetadata(azcache.CacheReadTypeDefault)
-				if err == nil && metadata.Compute != nil {
-					instanceType = metadata.Compute.VMSize
-					klog.V(5).Infof("NodeGetInfo: nodeName(%s), VM Size(%s)", d.NodeID, instanceType)
-				} else {
-					klog.Warningf("get instance type(%s) failed with: %v", d.NodeID, err)
-				}
-			} else {
-				instances, ok := d.cloudProvisioner.GetCloud().Instances()
-				if !ok {
-					klog.Warningf("failed to get instances from cloud provider")
-				} else {
-					instanceType, err = instances.InstanceType(ctx, types.NodeName(d.NodeID))
-				}
-			}
+			instanceType, err = d.cloudProvisioner.GetInstanceType(ctx, d.NodeID)
 			if err != nil {
 				klog.Warningf("get instance type(%s) failed with: %v", d.NodeID, err)
 			}
 			if instanceType == "" && instanceTypeFromLabels == "" {
 				klog.Warningf("fall back to get instance type from node labels")
-				_, instanceTypeFromLabels, err = getNodeInfoFromLabels(ctx, d.NodeID, d.cloudProvisioner.GetCloud().KubeClient)
+				_, instanceTypeFromLabels, err = getNodeInfoFromLabels(ctx, d.NodeID, d.kubeClient)
 			}
 		}
 		if err != nil {

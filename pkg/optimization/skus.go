@@ -20,13 +20,6 @@ import (
 	"context"
 	"fmt"
 	"strings"
-
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
-
-	"k8s.io/apimachinery/pkg/types"
-	cloudprovider "k8s.io/cloud-provider"
-	"k8s.io/klog/v2"
 )
 
 // NodeInfo stores VM/Node specific static information
@@ -119,19 +112,7 @@ type DiskSkuInfo struct {
 }
 
 // NewNodeInfo populates Node and Sku related information in memory
-func NewNodeInfo(ctx context.Context, cloud cloudprovider.Interface, nodeID string) (*NodeInfo, error) {
-	klog.V(2).Infof("NewNodeInfo: Starting to populate node and disk sku information.")
-
-	instances, ok := cloud.Instances()
-	if !ok {
-		return nil, status.Error(codes.Internal, "NewNodeInfo: Failed to get instances from Azure cloud provider")
-	}
-
-	instanceType, err := instances.InstanceType(ctx, types.NodeName(nodeID))
-	if err != nil {
-		return nil, fmt.Errorf("NewNodeInfo: Failed to get instance type from Azure cloud provider, nodeName: %v, error: %v", nodeID, err)
-	}
-
+func NewNodeInfo(ctx context.Context, instanceType string) (*NodeInfo, error) {
 	nodeInfo := &NodeInfo{}
 	nodeInfo.SkuName = instanceType
 

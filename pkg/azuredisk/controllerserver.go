@@ -108,18 +108,7 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 	localCloud := d.cloud
 
 	if diskParams.UserAgent != "" {
-		localCloud, err = azureutils.GetCloudProvider(
-			ctx,
-			d.kubeconfig,
-			d.cloudConfigSecretName,
-			d.cloudConfigSecretNamespace,
-			diskParams.UserAgent,
-			d.allowEmptyCloudConfig,
-			consts.DefaultEnableAzureClientAttachDetachRateLimiter,
-			consts.DefaultAzureClientAttachDetachRateLimiterQPS,
-			consts.DefaultAzureClientAttachDetachRateLimiterBucket,
-			d.enableTrafficManager,
-			d.trafficManagerPort)
+		localCloud, err = d.getCloudProviderWithUserAgent(ctx, diskParams.UserAgent)
 		if err != nil {
 			return nil, status.Errorf(codes.Internal, "create cloud with UserAgent(%s) failed with: (%s)", diskParams.UserAgent, err)
 		}
@@ -127,7 +116,7 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 
 	isAdvancedPerfProfile := strings.EqualFold(diskParams.PerfProfile, azureconstants.PerfProfileAdvanced)
 	// If perfProfile is set to advanced and no/invalid device settings are provided, fail the request
-	if d.getPerfOptimizationEnabled() && isAdvancedPerfProfile {
+	if d.isPerfOptimizationEnabled() && isAdvancedPerfProfile {
 		if err = optimization.AreDeviceSettingsValid(consts.DummyBlockDevicePathLinux, diskParams.DeviceSettings); err != nil {
 			return nil, err
 		}
@@ -842,18 +831,7 @@ func (d *Driver) CreateSnapshot(ctx context.Context, req *csi.CreateSnapshotRequ
 			location = v
 		case consts.UserAgentField:
 			newUserAgent := v
-			localCloud, err = azureutils.GetCloudProvider(
-				ctx,
-				d.kubeconfig,
-				d.cloudConfigSecretName,
-				d.cloudConfigSecretNamespace,
-				newUserAgent,
-				d.allowEmptyCloudConfig,
-				consts.DefaultEnableAzureClientAttachDetachRateLimiter,
-				consts.DefaultAzureClientAttachDetachRateLimiterQPS,
-				consts.DefaultAzureClientAttachDetachRateLimiterBucket,
-				d.enableTrafficManager,
-				d.trafficManagerPort)
+			localCloud, err = d.getCloudProviderWithUserAgent(ctx, newUserAgent)
 			if err != nil {
 				return nil, status.Errorf(codes.Internal, "create cloud with UserAgent(%s) failed with: (%s)", newUserAgent, err)
 			}
@@ -1059,4 +1037,24 @@ func (d *Driver) getSnapshotInfo(snapshotID string) (snapshotName, resourceGroup
 		return "", "", "", fmt.Errorf("cannot get SubscriptionID from %s", snapshotID)
 	}
 	return snapshotName, resourceGroup, subsID, err
+}
+
+func (d *Driver) getCloudProviderWithUserAgent(ctx context.Context, userAgent string) (*azure.Cloud, error) {
+	return azureutils.GetCloudProvider(
+		ctx,
+		d.kubeconfig,
+		d.vmType,
+		d.cloud.DisableAvailabilitySetNodes,
+		d.NodeID,
+		d.cloudConfigSecretName,
+		d.cloudConfigSecretNamespace,
+		userAgent,
+		d.allowEmptyCloudConfig,
+		consts.DefaultEnableAzureClientAttachDetachRateLimiter,
+		consts.DefaultAzureClientAttachDetachRateLimiterQPS,
+		consts.DefaultAzureClientAttachDetachRateLimiterBucket,
+		d.enableTrafficManager,
+		d.trafficManagerPort,
+		d.disableUpdateCache,
+		d.vmssCacheTTLInSeconds)
 }

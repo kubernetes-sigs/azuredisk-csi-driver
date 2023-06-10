@@ -129,65 +129,11 @@ func handle() {
 }
 
 func getDriverConfig() *azdiskv1beta2.AzDiskDriverConfiguration {
-	var driverConfig azdiskv1beta2.AzDiskDriverConfiguration
+	var driverConfig *azdiskv1beta2.AzDiskDriverConfiguration
 
 	if *driverConfigPath != "" {
 		// Initialize driveConfig object with default values
-		driverConfig = azdiskv1beta2.AzDiskDriverConfiguration{
-			ControllerConfig: azdiskv1beta2.ControllerConfiguration{
-				DisableAVSetNodes:             consts.DefaultDisableAVSetNodes,
-				VMType:                        consts.DefaultVMType,
-				EnableDiskOnlineResize:        consts.DefaultEnableDiskOnlineResize,
-				EnableAsyncAttach:             consts.DefaultEnableAsyncAttach,
-				EnableListVolumes:             consts.DefaultEnableListVolumes,
-				EnableListSnapshots:           consts.DefaultEnableListSnapshots,
-				EnableDiskCapacityCheck:       consts.DefaultEnableDiskCapacityCheck,
-				Enabled:                       consts.DefaultIsControllerPlugin,
-				LeaseDurationInSec:            consts.DefaultControllerLeaseDurationInSec,
-				LeaseRenewDeadlineInSec:       consts.DefaultControllerLeaseRenewDeadlineInSec,
-				LeaseRetryPeriodInSec:         consts.DefaultControllerLeaseRetryPeriodInSec,
-				LeaderElectionNamespace:       consts.ReleaseNamespace,
-				PartitionName:                 consts.DefaultControllerPartitionName,
-				WorkerThreads:                 consts.DefaultWorkerThreads,
-				WaitForLunEnabled:             consts.DefaultWaitForLunEnabled,
-				ReplicaVolumeAttachRetryLimit: consts.DefaultReplicaVolumeAttachRetryLimit,
-			},
-			NodeConfig: azdiskv1beta2.NodeConfiguration{
-				VolumeAttachLimit:       consts.DefaultVolumeAttachLimit,
-				SupportZone:             consts.DefaultSupportZone,
-				EnablePerfOptimization:  consts.DefaultEnablePerfOptimization,
-				UseCSIProxyGAInterface:  consts.DefaultUseCSIProxyGAInterface,
-				GetNodeInfoFromLabels:   consts.DefaultGetNodeInfoFromLabels,
-				Enabled:                 consts.DefaultIsNodePlugin,
-				HeartbeatFrequencyInSec: consts.DefaultHeartbeatFrequencyInSec,
-				PartitionName:           consts.DefaultNodePartitionName,
-			},
-			CloudConfig: azdiskv1beta2.CloudConfiguration{
-				SecretName:                                       consts.DefaultCloudConfigSecretName,
-				SecretNamespace:                                  consts.DefaultCloudConfigSecretNamespace,
-				CustomUserAgent:                                  consts.DefaultCustomUserAgent,
-				UserAgentSuffix:                                  consts.DefaultUserAgentSuffix,
-				EnableTrafficManager:                             consts.DefaultEnableTrafficManager,
-				TrafficManagerPort:                               consts.DefaultTrafficManagerPort,
-				AllowEmptyCloudConfig:                            consts.DefaultAllowEmptyCloudConfig,
-				DisableUpdateCache:                               consts.DefaultDisableUpdateCache,
-				VMSSCacheTTLInSeconds:                            consts.DefaultVMSSCacheTTLInSeconds,
-				EnableAzureClientAttachDetachRateLimiter:         consts.DefaultEnableAzureClientAttachDetachRateLimiter,
-				AzureClientAttachDetachRateLimiterQPS:            consts.DefaultAzureClientAttachDetachRateLimiterQPS,
-				AzureClientAttachDetachRateLimiterBucket:         consts.DefaultAzureClientAttachDetachRateLimiterBucket,
-				AzureClientAttachDetachBatchInitialDelayInMillis: int(consts.DefaultAzureClientAttachDetachBatchInitialDelay.Milliseconds()),
-			},
-			ClientConfig: azdiskv1beta2.ClientConfiguration{
-				Kubeconfig:      consts.DefaultKubeconfig,
-				KubeClientQPS:   consts.DefaultKubeClientQPS,
-				KubeClientBurst: consts.DefaultKubeClientBurst,
-			},
-			ObjectNamespace: consts.DefaultAzureDiskCrdNamespace,
-			Endpoint:        consts.DefaultEndpoint,
-			MetricsAddress:  consts.DefaultMetricsAddress,
-			DriverName:      consts.DefaultDriverName,
-			ProfilerAddress: consts.DefaultProfilerAddress,
-		}
+		driverConfig = azuredisk.NewDefaultDriverConfig()
 
 		// Read yaml file
 		yamlFile, err := os.ReadFile(*driverConfigPath)
@@ -208,7 +154,7 @@ func getDriverConfig() *azdiskv1beta2.AzDiskDriverConfiguration {
 			}
 		})
 	} else {
-		driverConfig = azdiskv1beta2.AzDiskDriverConfiguration{
+		driverConfig = &azdiskv1beta2.AzDiskDriverConfiguration{
 			ControllerConfig: azdiskv1beta2.ControllerConfiguration{
 				DisableAVSetNodes:             *disableAVSetNodes,
 				VMType:                        *vmType,
@@ -271,11 +217,13 @@ func getDriverConfig() *azdiskv1beta2.AzDiskDriverConfiguration {
 			}
 		})
 	}
+
 	driverConfig.NodeConfig.NodeID = *nodeID
-	if driverConfig == (azdiskv1beta2.AzDiskDriverConfiguration{}) {
+	if driverConfig == nil || *driverConfig == (azdiskv1beta2.AzDiskDriverConfiguration{}) {
 		klog.Fatal("failed to initialize the driverConfig object")
 	}
-	return &driverConfig
+
+	return driverConfig
 }
 
 func exportMetrics(driverConfig *azdiskv1beta2.AzDiskDriverConfiguration) {

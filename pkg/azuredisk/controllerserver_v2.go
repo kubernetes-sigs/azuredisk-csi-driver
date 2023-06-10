@@ -58,7 +58,7 @@ func (d *DriverV2) CreateVolume(ctx context.Context, req *csi.CreateVolumeReques
 	defer d.volumeLocks.Release(name)
 
 	var diskURI string
-	mc := metrics.NewMetricContext(d.cloudProvisioner.GetMetricPrefix(), "controller_create_volume", d.cloudProvisioner.GetCloud().ResourceGroup, d.cloudProvisioner.GetCloud().SubscriptionID, d.Name)
+	mc := metrics.NewMetricContext(consts.AzureDiskCSIDriverName, "controller_create_volume", d.cloudProvisioner.GetResourceGroup(), d.cloudProvisioner.GetSubscriptionID(), d.Name)
 	isOperationSucceeded := false
 	defer func() {
 		mc.ObserveOperationWithResult(isOperationSucceeded, consts.VolumeID, diskURI)
@@ -192,7 +192,7 @@ func (d *DriverV2) DeleteVolume(ctx context.Context, req *csi.DeleteVolumeReques
 
 	diskURI := volumeID
 
-	mc := metrics.NewMetricContext(d.cloudProvisioner.GetMetricPrefix(), "controller_delete_volume", d.cloudProvisioner.GetCloud().ResourceGroup, d.cloudProvisioner.GetCloud().SubscriptionID, d.Name)
+	mc := metrics.NewMetricContext(consts.AzureDiskCSIDriverName, "controller_delete_volume", d.cloudProvisioner.GetResourceGroup(), d.cloudProvisioner.GetSubscriptionID(), d.Name)
 	isOperationSucceeded := false
 	defer func() {
 		mc.ObserveOperationWithResult(isOperationSucceeded, consts.VolumeID, diskURI)
@@ -239,7 +239,7 @@ func (d *DriverV2) ControllerPublishVolume(ctx context.Context, req *csi.Control
 
 	nodeName := types.NodeName(nodeID)
 
-	mc := metrics.NewMetricContext(d.cloudProvisioner.GetMetricPrefix(), "controller_publish_volume", d.cloudProvisioner.GetCloud().ResourceGroup, d.cloudProvisioner.GetCloud().SubscriptionID, d.Name)
+	mc := metrics.NewMetricContext(consts.AzureDiskCSIDriverName, "controller_publish_volume", d.cloudProvisioner.GetResourceGroup(), d.cloudProvisioner.GetSubscriptionID(), d.Name)
 	isOperationSucceeded := false
 	defer func() {
 		mc.ObserveOperationWithResult(isOperationSucceeded, consts.VolumeID, diskURI, consts.Node, string(nodeName))
@@ -247,7 +247,7 @@ func (d *DriverV2) ControllerPublishVolume(ctx context.Context, req *csi.Control
 
 	volumeCapability := generateAzVolumeCapability(volCap)
 
-	attachMc := metrics.NewMetricContext(d.cloudProvisioner.GetMetricPrefix(), "attach_volume_latency", d.cloudProvisioner.GetCloud().ResourceGroup, d.cloudProvisioner.GetCloud().SubscriptionID, d.Name)
+	attachMc := metrics.NewMetricContext(consts.AzureDiskCSIDriverName, "attach_volume_latency", d.cloudProvisioner.GetResourceGroup(), d.cloudProvisioner.GetSubscriptionID(), d.Name)
 	isAttachSuccessful := false
 
 	response, err := d.crdProvisioner.PublishVolume(ctx, diskURI, nodeID, &volumeCapability, req.GetReadonly(), req.GetSecrets(), req.GetVolumeContext())
@@ -293,7 +293,7 @@ func (d *DriverV2) ControllerUnpublishVolume(ctx context.Context, req *csi.Contr
 
 	nodeName := types.NodeName(nodeID)
 
-	mc := metrics.NewMetricContext(d.cloudProvisioner.GetMetricPrefix(), "controller_unpublish_volume", d.cloudProvisioner.GetCloud().ResourceGroup, d.cloudProvisioner.GetCloud().SubscriptionID, d.Name)
+	mc := metrics.NewMetricContext(consts.AzureDiskCSIDriverName, "controller_unpublish_volume", d.cloudProvisioner.GetResourceGroup(), d.cloudProvisioner.GetSubscriptionID(), d.Name)
 	isOperationSucceeded := false
 	defer func() {
 		mc.ObserveOperationWithResult(isOperationSucceeded, consts.VolumeID, diskURI, consts.Node, string(nodeName))
@@ -368,7 +368,7 @@ func (d *DriverV2) ListVolumes(ctx context.Context, req *csi.ListVolumesRequest)
 		}
 	}
 
-	mc := metrics.NewMetricContext(d.cloudProvisioner.GetMetricPrefix(), "controller_list_volumes", d.cloudProvisioner.GetCloud().ResourceGroup, d.cloudProvisioner.GetCloud().SubscriptionID, d.Name)
+	mc := metrics.NewMetricContext(consts.AzureDiskCSIDriverName, "controller_list_volumes", d.cloudProvisioner.GetResourceGroup(), d.cloudProvisioner.GetSubscriptionID(), d.Name)
 	isOperationSucceeded := false
 	defer func() {
 		mc.ObserveOperationWithResult(isOperationSucceeded)
@@ -466,7 +466,7 @@ func (d *DriverV2) ControllerExpandVolume(ctx context.Context, req *csi.Controll
 		return nil, status.Error(codes.InvalidArgument, "volume capacity range missing in request")
 	}
 
-	mc := metrics.NewMetricContext(d.cloudProvisioner.GetMetricPrefix(), "controller_expand_volume", d.cloudProvisioner.GetCloud().ResourceGroup, d.cloudProvisioner.GetCloud().SubscriptionID, d.Name)
+	mc := metrics.NewMetricContext(consts.AzureDiskCSIDriverName, "controller_expand_volume", d.cloudProvisioner.GetResourceGroup(), d.cloudProvisioner.GetSubscriptionID(), d.Name)
 	isOperationSucceeded := false
 	defer func() {
 		mc.ObserveOperationWithResult(isOperationSucceeded, consts.VolumeID, diskURI)
@@ -506,7 +506,7 @@ func (d *DriverV2) CreateSnapshot(ctx context.Context, req *csi.CreateSnapshotRe
 	}
 	snapshotName = azureutils.CreateValidDiskName(snapshotName, false)
 
-	mc := metrics.NewMetricContext(d.cloudProvisioner.GetMetricPrefix(), "controller_create_snapshot", d.cloudProvisioner.GetCloud().ResourceGroup, d.cloudProvisioner.GetCloud().SubscriptionID, d.Name)
+	mc := metrics.NewMetricContext(consts.AzureDiskCSIDriverName, "controller_create_snapshot", d.cloudProvisioner.GetResourceGroup(), d.cloudProvisioner.GetSubscriptionID(), d.Name)
 	isOperationSucceeded := false
 	defer func() {
 		mc.ObserveOperationWithResult(isOperationSucceeded, consts.SourceResourceID, sourceVolumeID, consts.SnapshotName, snapshotName)
@@ -556,7 +556,7 @@ func (d *DriverV2) DeleteSnapshot(ctx context.Context, req *csi.DeleteSnapshotRe
 		}
 	}
 
-	mc := metrics.NewMetricContext(d.cloudProvisioner.GetMetricPrefix(), "controller_delete_snapshot", d.cloudProvisioner.GetCloud().ResourceGroup, d.cloudProvisioner.GetCloud().SubscriptionID, d.Name)
+	mc := metrics.NewMetricContext(consts.AzureDiskCSIDriverName, "controller_delete_snapshot", d.cloudProvisioner.GetResourceGroup(), d.cloudProvisioner.GetSubscriptionID(), d.Name)
 	isOperationSucceeded := false
 	defer func() {
 		mc.ObserveOperationWithResult(isOperationSucceeded, consts.SnapshotID, snapshotName)
@@ -574,7 +574,7 @@ func (d *DriverV2) DeleteSnapshot(ctx context.Context, req *csi.DeleteSnapshotRe
 
 // ListSnapshots list all snapshots
 func (d *DriverV2) ListSnapshots(ctx context.Context, req *csi.ListSnapshotsRequest) (*csi.ListSnapshotsResponse, error) {
-	mc := metrics.NewMetricContext(d.cloudProvisioner.GetMetricPrefix(), "controller_list_snapshots", d.cloudProvisioner.GetCloud().ResourceGroup, d.cloudProvisioner.GetCloud().SubscriptionID, d.Name)
+	mc := metrics.NewMetricContext(consts.AzureDiskCSIDriverName, "controller_list_snapshots", d.cloudProvisioner.GetResourceGroup(), d.cloudProvisioner.GetSubscriptionID(), d.Name)
 	isOperationSucceeded := false
 	defer func() {
 		mc.ObserveOperationWithResult(isOperationSucceeded)
