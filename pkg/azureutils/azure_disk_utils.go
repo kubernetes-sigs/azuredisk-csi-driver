@@ -114,7 +114,6 @@ type ManagedDiskParameters struct {
 	EnableAsyncAttach       *bool
 	EnableBursting          *bool
 	FsType                  string
-	Incremental             bool
 	Location                string
 	LogicalSectorSize       int
 	MaxShares               int
@@ -144,6 +143,20 @@ func GetCachingMode(attributes map[string]string) (compute.CachingTypes, error) 
 
 	cachingMode, err = NormalizeCachingMode(cachingMode)
 	return compute.CachingTypes(cachingMode), err
+}
+
+// GetAttachDiskInitialDelay gttachDiskInitialDelay from attributes
+// return -1 if not found
+func GetAttachDiskInitialDelay(attributes map[string]string) int {
+	for k, v := range attributes {
+		switch strings.ToLower(k) {
+		case consts.AttachDiskInitialDelayField:
+			if v, err := strconv.Atoi(v); err == nil {
+				return v
+			}
+		}
+	}
+	return -1
 }
 
 // GetCloudProviderFromClient get Azure Cloud Provider
@@ -562,7 +575,6 @@ func ParseDiskParameters(parameters map[string]string) (ManagedDiskParameters, e
 
 	diskParams := ManagedDiskParameters{
 		DeviceSettings: make(map[string]string),
-		Incremental:    true, //true by default
 		Tags:           make(map[string]string),
 		VolumeContext:  parameters,
 	}
@@ -641,9 +653,9 @@ func ParseDiskParameters(parameters map[string]string) (ManagedDiskParameters, e
 			diskParams.UserAgent = v
 		case consts.EnableAsyncAttachField:
 			diskParams.VolumeContext[consts.EnableAsyncAttachField] = v
-		case consts.IncrementalField:
-			if v == "false" {
-				diskParams.Incremental = false
+		case consts.AttachDiskInitialDelayField:
+			if _, err = strconv.Atoi(v); err != nil {
+				return diskParams, fmt.Errorf("parse %s failed with error: %v", v, err)
 			}
 		case consts.ZonedField:
 			// no op, only for backward compatibility with in-tree driver
