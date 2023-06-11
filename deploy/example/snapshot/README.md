@@ -1,4 +1,6 @@
-# Azure Disk Snapshot feature
+# Snapshot feature
+
+> From version 1.26.4, you can take cross-region snapshots by setting the `location` parameter to a different region than the current cluster
 
 - [Use velero to backup & restore Azure disk by snapshot feature](https://velero.io/blog/csi-integration/)
 
