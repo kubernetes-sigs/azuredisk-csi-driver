@@ -114,6 +114,7 @@ node:
   cloudConfigSecretNamespace: kube-system
   supportZone: true
   allowEmptyCloudConfig: true
+  getNodeIDFromIMDS: false
   maxUnavailable: 1
   logLevel: 5
   livenessProbe:

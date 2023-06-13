@@ -382,3 +382,46 @@ func TestWaitForSnapshotCopy(t *testing.T) {
 		t.Run(tc.name, tc.testFunc)
 	}
 }
+
+func TestGetVMSSInstanceName(t *testing.T) {
+	tests := []struct {
+		computeName   string
+		expected      string
+		expectedError error
+	}{
+		{
+			computeName:   "aks-agentpool-20657377-vmss_2",
+			expected:      "aks-agentpool-20657377-vmss000002",
+			expectedError: nil,
+		},
+		{
+			computeName:   "aks-agentpool-20657377-vmss_37",
+			expected:      "aks-agentpool-20657377-vmss000011",
+			expectedError: nil,
+		},
+		{
+			computeName:   "akswin_1",
+			expected:      "akswin000001",
+			expectedError: nil,
+		},
+		{
+			computeName:   "akswin_a",
+			expected:      "",
+			expectedError: fmt.Errorf("parsing vmss compute name(%s) failed with strconv.Atoi: parsing \"a\": invalid syntax", "akswin_a"),
+		},
+		{
+			computeName:   "aks-agentpool-20657377-vmss37",
+			expected:      "",
+			expectedError: fmt.Errorf("invalid vmss compute name: %s", "aks-agentpool-20657377-vmss37"),
+		},
+	}
+	for _, test := range tests {
+		result, err := getVMSSInstanceName(test.computeName)
+		if result != test.expected {
+			t.Errorf("Unexpected result: %s, expected result: %s, input: %s", result, test.expected, test.computeName)
+		}
+		if !reflect.DeepEqual(err, test.expectedError) {
+			t.Errorf("Unexpected error: %v, expected error: %v, input: %s", err, test.expectedError, test.computeName)
+		}
+	}
+}

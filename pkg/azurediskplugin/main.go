@@ -46,6 +46,7 @@ var (
 	volumeAttachLimit            = flag.Int64("volume-attach-limit", -1, "maximum number of attachable volumes per node")
 	supportZone                  = flag.Bool("support-zone", true, "boolean flag to get zone info in NodeGetInfo")
 	getNodeInfoFromLabels        = flag.Bool("get-node-info-from-labels", false, "boolean flag to get zone info from node labels in NodeGetInfo")
+	getNodeIDFromIMDS            = flag.Bool("get-nodeid-from-imds", false, "boolean flag to get NodeID from IMDS")
 	disableAVSetNodes            = flag.Bool("disable-avset-nodes", false, "disable DisableAvailabilitySetNodes in cloud config for controller")
 	vmType                       = flag.String("vm-type", "", "type of agent node. available values: vmss, standard")
 	enablePerfOptimization       = flag.Bool("enable-perf-optimization", false, "boolean flag to enable disk perf optimization")
@@ -115,6 +116,7 @@ func handle() {
 		VMSSCacheTTLInSeconds:        *vmssCacheTTLInSeconds,
 		VMType:                       *vmType,
 		EnableWindowsHostProcess:     *enableWindowsHostProcess,
+		GetNodeIDFromIMDS:            *getNodeIDFromIMDS,
 	}
 	driver := azuredisk.NewDriver(&driverOptions)
 	if driver == nil {

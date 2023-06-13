@@ -20,6 +20,7 @@ import (
 	"context"
 	"fmt"
 	"reflect"
+	"strconv"
 	"strings"
 	"time"
 
@@ -74,6 +75,7 @@ type DriverOptions struct {
 	VMSSCacheTTLInSeconds        int64
 	VMType                       string
 	EnableWindowsHostProcess     bool
+	GetNodeIDFromIMDS            bool
 }
 
 // CSIDriver defines the interface for a CSI driver.
@@ -120,6 +122,7 @@ type DriverCore struct {
 	attachDetachInitialDelayInMs int64
 	vmType                       string
 	enableWindowsHostProcess     bool
+	getNodeIDFromIMDS            bool
 }
 
 // Driver is the v1 implementation of the Azure Disk CSI Driver.
@@ -159,6 +162,7 @@ func newDriverV1(options *DriverOptions) *Driver {
 	driver.vmssCacheTTLInSeconds = options.VMSSCacheTTLInSeconds
 	driver.vmType = options.VMType
 	driver.enableWindowsHostProcess = options.EnableWindowsHostProcess
+	driver.getNodeIDFromIMDS = options.GetNodeIDFromIMDS
 	driver.volumeLocks = volumehelper.NewVolumeLocks()
 	driver.ioHandler = azureutils.NewOSIOHandler()
 	driver.hostUtil = hostutil.NewHostUtil()
@@ -485,4 +489,18 @@ func getDefaultDiskMBPSReadWrite(requestGiB int) int {
 		bandwidth = 4000
 	}
 	return bandwidth
+}
+
+// getVMSSInstanceName get instance name from vmss compute name, e.g. "aks-agentpool-20657377-vmss_2" -> "aks-agentpool-20657377-vmss000002"
+func getVMSSInstanceName(computeName string) (string, error) {
+	names := strings.Split(computeName, "_")
+	if len(names) != 2 {
+		return "", fmt.Errorf("invalid vmss compute name: %s", computeName)
+	}
+
+	instanceID, err := strconv.Atoi(names[1])
+	if err != nil {
+		return "", fmt.Errorf("parsing vmss compute name(%s) failed with %v", computeName, err)
+	}
+	return fmt.Sprintf("%s%06s", names[0], strconv.FormatInt(int64(instanceID), 36)), nil
 }
