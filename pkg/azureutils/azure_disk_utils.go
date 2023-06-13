@@ -28,6 +28,7 @@ import (
 	"time"
 	"unicode"
 
+	armcompute "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute/v5"
 	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2022-03-01/compute"
 	"github.com/Azure/go-autorest/autorest/to"
 	"github.com/container-storage-interface/spec/lib/go/csi"
@@ -65,8 +66,8 @@ import (
 
 const (
 	azureStackCloud                               = "AZURESTACKCLOUD"
-	azurePublicCloudDefaultStorageAccountType     = compute.StandardSSDLRS
-	azureStackCloudDefaultStorageAccountType      = compute.StandardLRS
+	azurePublicCloudDefaultStorageAccountType     = armcompute.DiskStorageAccountTypesStandardSSDLRS
+	azureStackCloudDefaultStorageAccountType      = armcompute.DiskStorageAccountTypesStandardLRS
 	defaultAzureDataDiskCachingMode               = v1.AzureDataDiskCachingReadOnly
 	defaultAzureDataDiskCachingModeForSharedDisks = v1.AzureDataDiskCachingNone
 
@@ -360,7 +361,7 @@ func ValidateDataAccessAuthMode(dataAccessAuthMode string) error {
 	return fmt.Errorf("dataAccessAuthMode(%s) is not supported", dataAccessAuthMode)
 }
 
-func NormalizeStorageAccountType(storageAccountType, cloud string, disableAzureStackCloud bool) (compute.DiskStorageAccountTypes, error) {
+func NormalizeStorageAccountType(storageAccountType, cloud string, disableAzureStackCloud bool) (armcompute.DiskStorageAccountTypes, error) {
 	if storageAccountType == "" {
 		if IsAzureStackCloud(cloud, disableAzureStackCloud) {
 			return azureStackCloudDefaultStorageAccountType, nil
@@ -368,11 +369,10 @@ func NormalizeStorageAccountType(storageAccountType, cloud string, disableAzureS
 		return azurePublicCloudDefaultStorageAccountType, nil
 	}
 
-	sku := compute.DiskStorageAccountTypes(storageAccountType)
-	supportedSkuNames := compute.PossibleDiskStorageAccountTypesValues()
-	supportedSkuNames = append(supportedSkuNames, cloudproviderconsts.PremiumV2LRS)
+	sku := armcompute.DiskStorageAccountTypes(storageAccountType)
+	supportedSkuNames := armcompute.PossibleDiskStorageAccountTypesValues()
 	if IsAzureStackCloud(cloud, disableAzureStackCloud) {
-		supportedSkuNames = []compute.DiskStorageAccountTypes{compute.StandardLRS, compute.PremiumLRS}
+		supportedSkuNames = []armcompute.DiskStorageAccountTypes{armcompute.DiskStorageAccountTypesStandardLRS, armcompute.DiskStorageAccountTypesPremiumLRS}
 	}
 	for _, s := range supportedSkuNames {
 		if sku == s {
@@ -398,12 +398,12 @@ func NormalizeCachingMode(cachingMode v1.AzureDataDiskCachingMode, maxShares int
 	return cachingMode, nil
 }
 
-func NormalizeNetworkAccessPolicy(networkAccessPolicy string) (compute.NetworkAccessPolicy, error) {
+func NormalizeNetworkAccessPolicy(networkAccessPolicy string) (armcompute.NetworkAccessPolicy, error) {
 	if networkAccessPolicy == "" {
-		return compute.AllowAll, nil
+		return armcompute.NetworkAccessPolicyAllowAll, nil
 	}
-	policy := compute.NetworkAccessPolicy(networkAccessPolicy)
-	for _, s := range compute.PossibleNetworkAccessPolicyValues() {
+	policy := armcompute.NetworkAccessPolicy(networkAccessPolicy)
+	for _, s := range armcompute.PossibleNetworkAccessPolicyValues() {
 		if policy == s {
 			return policy, nil
 		}
@@ -664,7 +664,7 @@ func GetCloudProviderFromClient(
 		}
 
 		// Create a new cloud provider
-		az, err = azure.NewCloudWithoutFeatureGatesFromConfig(ctx, config, fromSecret, false)
+		az, err = NewCloudWithoutFeatureGatesFromConfig(ctx, config, fromSecret, false)
 		if err != nil {
 			err = fmt.Errorf("failed to create cloud: %v", err)
 			klog.Errorf(err.Error())
@@ -692,7 +692,7 @@ func GetCloudProvider(
 	azureClientAttachDetachRateLimiterQPS float32,
 	azureClientAttachDetachRateLimiterBucket int,
 	enableTrafficManager bool,
-	trafficManagerPort int64) (*azure.Cloud, error) {
+	trafficManagerPort int64) (*Cloud, error) {
 	kubeClient, err := GetKubeClient(kubeConfig)
 	if err != nil {
 		klog.Warningf("get kubeconfig(%s) failed with error: %v", kubeConfig, err)

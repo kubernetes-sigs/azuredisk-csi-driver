@@ -33,7 +33,7 @@ import (
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/to"
 	"github.com/Azure/azure-sdk-for-go/sdk/azidentity"
 	armcompute "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute/v5"
-	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/networkcloud/armnetworkcloud/"
+	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/networkcloud/armnetworkcloud"
 	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2022-03-01/compute"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -189,7 +189,7 @@ func (c *CloudProvisioner) CreateVolume(
 		}
 	}
 	// normalize values
-	var skuName compute.DiskStorageAccountTypes
+	var skuName armcompute.DiskStorageAccountTypes
 	skuName, err = azureutils.NormalizeStorageAccountType(diskParams.AccountType, localCloud.Config.Cloud, localCloud.Config.DisableAzureStackCloud)
 	if err != nil {
 		return nil, status.Error(codes.InvalidArgument, err.Error())
@@ -203,7 +203,7 @@ func (c *CloudProvisioner) CreateVolume(
 		return nil, status.Error(codes.InvalidArgument, err.Error())
 	}
 
-	var networkAccessPolicy compute.NetworkAccessPolicy
+	var networkAccessPolicy armcompute.NetworkAccessPolicy
 	networkAccessPolicy, err = azureutils.NormalizeNetworkAccessPolicy(diskParams.NetworkAccessPolicy)
 	if err != nil {
 		return nil, status.Error(codes.InvalidArgument, err.Error())
@@ -211,7 +211,7 @@ func (c *CloudProvisioner) CreateVolume(
 
 	selectedAvailabilityZone := pickAvailabilityZone(accessibilityRequirements, c.GetCloud().Location)
 	accessibleTopology := []azdiskv1beta2.Topology{}
-	if skuName == compute.StandardSSDZRS || skuName == compute.PremiumZRS {
+	if skuName == armcompute.DiskStorageAccountTypesStandardSSDZRS || skuName == armcompute.DiskStorageAccountTypesPremiumZRS {
 		w.Logger().V(2).Infof("diskZone(%s) is reset as empty since disk(%s) is ZRS(%s)", selectedAvailabilityZone, diskParams.DiskName, skuName)
 		selectedAvailabilityZone = ""
 		// make volume scheduled on all 3 availability zones
@@ -258,15 +258,15 @@ func (c *CloudProvisioner) CreateVolume(
 		diskParams.Tags[azure.WriteAcceleratorEnabled] = azureconstants.TrueValue
 	}
 	sourceID := ""
-	sourceType := ""
+	//sourceType := ""
 	contentSource := &azdiskv1beta2.ContentVolumeSource{}
 	if volumeContentSource != nil {
 		sourceID = volumeContentSource.ContentSourceID
 		contentSource.ContentSource = volumeContentSource.ContentSource
 		contentSource.ContentSourceID = volumeContentSource.ContentSourceID
-		sourceType = azureconstants.SourceSnapshot
+		//sourceType = azureconstants.SourceSnapshot
 		if volumeContentSource.ContentSource == azdiskv1beta2.ContentVolumeSourceTypeVolume {
-			sourceType = azureconstants.SourceVolume
+			//sourceType = azureconstants.SourceVolume
 
 			ctx, cancel := context.WithCancel(ctx)
 			if sourceGiB, _ := c.GetSourceDiskSize(ctx, diskParams.ResourceGroup, path.Base(sourceID), 0, azureconstants.SourceDiskSearchMaxDepth); sourceGiB != nil && *sourceGiB < int32(requestGiB) {
@@ -276,7 +276,7 @@ func (c *CloudProvisioner) CreateVolume(
 		}
 	}
 
-	if skuName == compute.UltraSSDLRS {
+	if skuName == armcompute.DiskStorageAccountTypesUltraSSDLRS {
 		if diskParams.DiskIOPSReadWrite == "" && diskParams.DiskMBPSReadWrite == "" {
 			// set default DiskIOPSReadWrite, DiskMBPSReadWrite per request size
 			diskParams.DiskIOPSReadWrite = strconv.Itoa(azureutils.GetDefaultDiskIOPSReadWrite(requestGiB))
@@ -342,10 +342,11 @@ func (c *CloudProvisioner) CreateVolume(
 		}
 	} else {
 		sourceResourceID := fmt.Sprintf("/subscriptions/%s/resourceGroups/%s/providers/Microsoft.Compute/disks/%s", c.cloud.SubscriptionID, diskParams.ResourceGroup, sourceID)
+		performancePlus := false
 		creationData = &armcompute.CreationData{
 			CreateOption:      to.Ptr(armcompute.DiskCreateOptionCopy),
 			SourceResourceID:  &sourceResourceID,
-			PerformancePlus:   false,
+			PerformancePlus:   &performancePlus,
 			LogicalSectorSize: pointer.Int32(int32(diskParams.LogicalSectorSize)),
 		}
 	}
@@ -372,18 +373,20 @@ func (c *CloudProvisioner) CreateVolume(
 		tags[key] = &value
 	}
 
-	var createZones []string
+	var createZones []*string
 	if len(selectedAvailabilityZone) > 0 {
 		var requestedZone string
 		isAvailabilityZone := strings.HasPrefix(selectedAvailabilityZone, fmt.Sprintf("%s-", localCloud.Location))
 		if isAvailabilityZone {
 			requestedZone = strings.TrimPrefix(selectedAvailabilityZone, fmt.Sprintf("%s-", localCloud.Location))
-			createZones = append(createZones, requestedZone)
+			createZones = append(createZones, &requestedZone)
 		}
 	}
 
+	encryptionType := armcompute.EncryptionType(diskParams.DiskEncryptionType)
+
 	disk := armcompute.Disk{
-		Location: diskParams.Location,
+		Location: &diskParams.Location,
 		Properties: &armcompute.DiskProperties{
 			CreationData:      creationData,
 			DiskSizeGB:        &diskSizeGB,
@@ -392,37 +395,37 @@ func (c *CloudProvisioner) CreateVolume(
 			DiskMBpsReadWrite: pointer.Int64(int64(mbps)),
 			Encryption: &armcompute.Encryption{
 				DiskEncryptionSetID: &diskParams.DiskEncryptionSetID,
-				Type:                armcompute.EncryptionType(diskParams.DiskEncryptionType), // custom types used like functions?
+				Type:                &encryptionType, // custom types used like functions?
 			},
 			MaxShares: &maxShares,
 		},
 		SKU: &armcompute.DiskSKU{
-			Name: skuName,
+			Name: &skuName,
 		},
 		Tags: tags,
 	}
 
 	if len(createZones) > 0 {
-		disk.Zones = &createZones
+		disk.Zones = createZones
 	}
 
 	// Azure Stack Cloud does not support NetworkAccessPolicy
 	if !azureutils.IsAzureStackCloud(localCloud.Config.Cloud, localCloud.Config.DisableAzureStackCloud) {
-		disk.Properties.NetworkAccessPolicy = networkAccessPolicy
+		disk.Properties.NetworkAccessPolicy = &networkAccessPolicy
 		if diskParams.DiskAccessID != "" {
 			disk.Properties.DiskAccessID = &diskParams.DiskAccessID
 		}
 	}
 
 	disksClient := clientFactory.NewDisksClient()
-	c.cloud.DisksClient = disksClient
+	// c.cloud.DisksClient = disksClient
 	poller, err := disksClient.BeginCreateOrUpdate(ctx, diskParams.ResourceGroup, diskParams.DiskName, disk, nil)
 
 	if err != nil {
 		klog.Fatalf("failed to finish the request: %v", err)
 	}
 
-	res, err := poller.PollUntilDone(ctx, nil)
+	_, err = poller.PollUntilDone(ctx, nil)
 	if err != nil {
 		klog.Fatalf("failed to pull the result: %v", err)
 	}
@@ -431,8 +434,8 @@ func (c *CloudProvisioner) CreateVolume(
 	if diskThrottled {
 		klog.Warningf("azureDisk - GetDisk(%s, StorageAccountType:%s) is throttled, unable to confirm provisioningState in poll process", diskParams.DiskName, skuName)
 	} else {
-		if disk.Properties.ProvisioningState != nil && disk.ID != "" {
-			diskID = disk.ID
+		if disk.Properties.ProvisioningState != nil && *disk.ID != "" {
+			diskID = *disk.ID
 		}
 	}
 
@@ -475,7 +478,7 @@ func (c *CloudProvisioner) DeleteVolume(
 		klog.Fatalf("failed to finish the request: %v", err)
 	}
 
-	res, err := poller.PollUntilDone(ctx, nil)
+	_, err = poller.PollUntilDone(ctx, nil)
 	if err != nil {
 		log.Fatalf("failed to pull the result: %v", err)
 	}
@@ -499,6 +502,7 @@ func (c *CloudProvisioner) ListVolumes(
 }
 
 // PublishVolume calls AttachDisk asynchronously and returns early lun assignment value and a channel for the async attach results.
+// WORK IN PROGRESS
 func (c *CloudProvisioner) PublishVolume(
 	ctx context.Context,
 	volumeID string,
@@ -517,8 +521,8 @@ func (c *CloudProvisioner) PublishVolume(
 	ctx, w := workflow.New(ctx)
 	defer func() { w.Finish(err) }()
 
-	var disk *compute.Disk
-	disk, err = c.CheckDiskExists(ctx, volumeID)
+	// var disk *armcompute.Disk
+	_, err = c.CheckDiskExists(ctx, volumeID)
 	if err != nil {
 		err = status.Errorf(codes.NotFound, "Volume not found, failed with error: %v", err)
 		return
@@ -556,7 +560,7 @@ func (c *CloudProvisioner) PublishVolume(
 		klog.Fatalf("failed to finish the request: %v", err)
 	}
 
-	disks := *resVM.VirtualMachine.StorageProfile.DataDisks
+	disks := resVM.VirtualMachine.Properties.StorageProfile.DataDisks
 	var lun int32 = -1
 
 	for _, disk := range disks {
@@ -567,13 +571,13 @@ func (c *CloudProvisioner) PublishVolume(
 				klog.Warningf("azureDisk - find disk(ToBeDetached): lun %d name %s uri %s", *disk.Lun, diskName, volumeID)
 			} else {
 				// found the disk
-				lun = disk.Lun
+				lun = *disk.Lun
 				break
 			}
 		}
 	}
 
-	vmState := resVM.VirtualMachine.ProvisioningState
+	vmState := resVM.VirtualMachine.Properties.ProvisioningState
 
 	/////////////////////////////////////////////////////////////////
 
@@ -600,7 +604,7 @@ func (c *CloudProvisioner) PublishVolume(
 			if err != nil {
 				klog.Fatalf("failed to finish the request: %v", err)
 			}
-			resUpdate, err := poller.PollUntilDone(ctx, nil)
+			_, err = poller.PollUntilDone(ctx, nil)
 			if err != nil {
 				klog.Fatalf("failed to pull the result: %v", err)
 			}
@@ -615,16 +619,16 @@ func (c *CloudProvisioner) PublishVolume(
 		// }
 
 		w.Logger().V(2).Infof("Trying to attach volume %q to node %q.", volumeID, nodeName)
-		var cachingMode compute.CachingTypes
-		if cachingMode, err = azureutils.GetCachingMode(volumeContext); err != nil {
-			err = status.Error(codes.Internal, err.Error())
-			return
-		}
+		// var cachingMode compute.CachingTypes
+		// if cachingMode, err = azureutils.GetCachingMode(volumeContext); err != nil {
+		// 	err = status.Error(codes.Internal, err.Error())
+		// 	return
+		// }
 
 		lunCh := make(chan int32, 1)
 		resultLunCh := make(chan int32, 1)
 		ctx = context.WithValue(ctx, azure.LunChannelContextKey, lunCh)
-		asyncAttach := azureutils.IsAsyncAttachEnabled(c.enableAsyncAttach, volumeContext)
+		// asyncAttach := azureutils.IsAsyncAttachEnabled(c.enableAsyncAttach, volumeContext)
 		waitForCloud = true
 		go func() {
 			var resultErr error
@@ -632,30 +636,51 @@ func (c *CloudProvisioner) PublishVolume(
 			ctx, w := workflow.New(ctx)
 			defer func() { w.Finish(resultErr) }()
 
-			resultLun, resultErr = c.cloud.AttachDisk(ctx, asyncAttach, diskName, volumeID, nodeName, cachingMode, disk)
-			attachResult.ResultChannel() <- resultErr
-			close(attachResult.ResultChannel())
-			if resultErr != nil {
-				w.Logger().Errorf(resultErr, "attach volume %q to instance %q failed", volumeID, nodeName)
-			} else {
-				w.Logger().V(2).Infof("attach operation successful: volume %q attached to node %q.", volumeID, nodeName)
-			}
-			resultLunCh <- resultLun
-			close(resultLunCh)
+			// resultLun, resultErr = c.cloud.AttachDisk(ctx, asyncAttach, diskName, volumeID, nodeName, cachingMode, disk)
+			// attachResult.ResultChannel() <- resultErr
+			// close(attachResult.ResultChannel())
+			// if resultErr != nil {
+			// 	w.Logger().Errorf(resultErr, "attach volume %q to instance %q failed", volumeID, nodeName)
+			// } else {
+			// 	w.Logger().V(2).Infof("attach operation successful: volume %q attached to node %q.", volumeID, nodeName)
+			// }
+			// resultLunCh <- resultLun
+			// close(resultLunCh)
 
-			poller, err := vmClient.BeginAttachVolume(ctx, c.cloud.ResourceGroup, string(nodeName), armnetworkcloud.VirtualMachineVolumeParameters{
-				VolumeID: &volumeID,
-			}, nil)
+			vmssClient, err := armcompute.NewVirtualMachineScaleSetVMsClient(c.cloud.SubscriptionID, cred, nil)
+			if err != nil {
+				klog.Fatalf("failed to create client: %v", err)
+			}
+
+			// _, err = vmssClient.Get(ctx, c.cloud.ResourceGroup, )
+
+			poller, err := vmssClient.BeginUpdate(ctx, c.cloud.ResourceGroup, string(nodeName))
 			if err != nil {
 				klog.Fatalf("failed to finish the request: %v", err)
 			}
-			resAttach, err := poller.PollUntilDone(ctx, nil)
+			_, err = poller.PollUntilDone(ctx, nil)
 			if err != nil {
 				klog.Fatalf("failed to pull the result: %v", err)
 			} else {
 				w.Logger().V(2).Infof("attach operation successful: volume %q attached to node %q.", volumeID, nodeName)
 			}
 
+			for _, disk := range disks {
+				if disk.Lun != nil && (disk.Name != nil && diskName != "" && strings.EqualFold(*disk.Name, diskName)) ||
+					(disk.Vhd != nil && disk.Vhd.URI != nil && volumeID != "" && strings.EqualFold(*disk.Vhd.URI, volumeID)) ||
+					(disk.ManagedDisk != nil && strings.EqualFold(*disk.ManagedDisk.ID, volumeID)) {
+					if disk.ToBeDetached != nil && *disk.ToBeDetached {
+						klog.Warningf("azureDisk - find disk(ToBeDetached): lun %d name %s uri %s", *disk.Lun, diskName, volumeID)
+					} else {
+						// found the disk
+						resultLun = *disk.Lun
+						break
+					}
+				}
+			}
+
+			resultLunCh <- resultLun
+			close(resultLunCh)
 		}()
 
 		select {
@@ -679,23 +704,45 @@ func (c *CloudProvisioner) UnpublishVolume(
 
 	nodeName := types.NodeName(nodeID)
 
-	var diskName string
-	diskName, err = azureutils.GetDiskName(volumeID)
-	if err != nil {
-		return status.Error(codes.Internal, err.Error())
-	}
+	// var diskName string
+	// diskName, err = azureutils.GetDiskName(volumeID)
+	// if err != nil {
+	// 	return status.Error(codes.Internal, err.Error())
+	// }
 
 	w.Logger().V(2).Infof("Trying to detach volume %s from node %s", volumeID, nodeID)
 
-	if err = c.cloud.DetachDisk(ctx, diskName, volumeID, nodeName); err != nil {
-		if strings.Contains(err.Error(), azureconstants.ErrDiskNotFound) {
-			w.Logger().Infof("volume %s already detached from node %s", volumeID, nodeID)
-		} else {
-			err = status.Errorf(codes.Internal, "could not detach volume %q from node %q: %v", volumeID, nodeID, err)
-			return err
-		}
+	cred, err := azidentity.NewDefaultAzureCredential(nil)
+	if err != nil {
+		klog.Fatalf("failed to obtain new credential: %v", err)
 	}
-	w.Logger().V(2).Infof("detach volume %s from node %s successfully", volumeID, nodeID)
+	clientFactory, err := armnetworkcloud.NewClientFactory(c.cloud.SubscriptionID, cred, nil)
+	if err != nil {
+		klog.Fatalf("failed to create new client factory: %v", err)
+	}
+	vmClient := clientFactory.NewVirtualMachinesClient()
+
+	poller, err := vmClient.BeginDetachVolume(ctx, c.cloud.ResourceGroup, string(nodeName), armnetworkcloud.VirtualMachineVolumeParameters{
+		VolumeID: &volumeID,
+	}, nil)
+	if err != nil {
+		klog.Fatalf("failed to finish the request: %v", err)
+	}
+	_, err = poller.PollUntilDone(ctx, nil)
+	if err != nil {
+		klog.Fatalf("failed to pull the result: %v", err)
+	} else {
+		w.Logger().V(2).Infof("detach volume %s from node %s successfully", volumeID, nodeID)
+	}
+
+	// if err = c.cloud.DetachDisk(ctx, diskName, volumeID, nodeName); err != nil {
+	// 	if strings.Contains(err.Error(), azureconstants.ErrDiskNotFound) {
+	// 		w.Logger().Infof("volume %s already detached from node %s", volumeID, nodeID)
+	// 	} else {
+	// 		err = status.Errorf(codes.Internal, "could not detach volume %q from node %q: %v", volumeID, nodeID, err)
+	// 		return err
+	// 	}
+	// }
 
 	return nil
 }
@@ -730,31 +777,34 @@ func (c *CloudProvisioner) ExpandVolume(
 		return nil, err
 	}
 
-	result, rerr := c.cloud.DisksClient.Get(ctx, c.cloud.SubscriptionID, resourceGroup, diskName)
+	result, rerr := c.cloud.DisksClient.Get(ctx, resourceGroup, diskName, nil)
 	if rerr != nil {
 		err = status.Errorf(codes.Internal, "could not get the disk(%s) under rg(%s) with error(%v)", diskName, resourceGroup, rerr.Error())
 		return nil, err
 	}
-	if result.DiskProperties.DiskSizeGB == nil {
+	if result.Disk.Properties.DiskSizeGB == nil {
 		err = status.Errorf(codes.Internal, "could not get size of the disk(%s)", diskName)
 		return nil, err
 	}
-	oldSize := *resource.NewQuantity(int64(*result.DiskProperties.DiskSizeGB), resource.BinarySI)
+	// oldSize := *resource.NewQuantity(int64(*result.Properties.DiskSizeGB), resource.BinarySI)
 
 	w.Logger().V(2).Infof("begin to expand azure disk(%s) with new size(%d)", volumeID, requestSize.Value())
 
-	var newSize resource.Quantity
-	newSize, err = c.cloud.ResizeDisk(ctx, volumeID, oldSize, requestSize, c.enableOnlineDiskResize)
+	poller, err := c.cloud.DisksClient.BeginUpdate(ctx, c.cloud.ResourceGroup, diskName, armcompute.DiskUpdate{
+		Properties: &armcompute.DiskUpdateProperties{
+			DiskSizeGB: pointer.Int32(int32(requestSize.Value())),
+		},
+	}, nil)
 	if err != nil {
 		err = status.Errorf(codes.Internal, "failed to resize disk(%s) with error(%v)", volumeID, err)
 		return nil, err
 	}
-
-	currentSize, ok := newSize.AsInt64()
-	if !ok {
-		err = status.Errorf(codes.Internal, "failed to transform disk size with error(%v)", err)
-		return nil, err
+	res, err := poller.PollUntilDone(ctx, nil)
+	if err != nil {
+		klog.Fatalf("failed to pull the result: %v", err)
 	}
+
+	currentSize := int64(*res.Disk.Properties.DiskSizeGB)
 
 	w.Logger().V(2).Infof("expand azure disk(%s) successfully, currentSize(%d)", volumeID, currentSize)
 
@@ -764,223 +814,223 @@ func (c *CloudProvisioner) ExpandVolume(
 	}, nil
 }
 
-func (c *CloudProvisioner) CreateSnapshot(
-	ctx context.Context,
-	sourceVolumeID string,
-	snapshotName string,
-	secrets map[string]string,
-	parameters map[string]string) (*azdiskv1beta2.Snapshot, error) {
-	snapshotName = azureutils.CreateValidDiskName(snapshotName, true)
+// func (c *CloudProvisioner) CreateSnapshot(
+// 	ctx context.Context,
+// 	sourceVolumeID string,
+// 	snapshotName string,
+// 	secrets map[string]string,
+// 	parameters map[string]string) (*azdiskv1beta2.Snapshot, error) {
+// 	snapshotName = azureutils.CreateValidDiskName(snapshotName, true)
 
-	var customTags string
-	// set incremental snapshot as true by default
-	incremental := true
-	var resourceGroup, subsID, dataAccessAuthMode string
-	var err error
-	localCloud := c.cloud
-	location := c.cloud.Location
+// 	var customTags string
+// 	// set incremental snapshot as true by default
+// 	incremental := true
+// 	var resourceGroup, subsID, dataAccessAuthMode string
+// 	var err error
+// 	localCloud := c.cloud
+// 	location := c.cloud.Location
 
-	for k, v := range parameters {
-		switch strings.ToLower(k) {
-		case azureconstants.TagsField:
-			customTags = v
-		case azureconstants.IncrementalField:
-			if v == "false" {
-				incremental = false
-			}
-		case azureconstants.ResourceGroupField:
-			resourceGroup = v
-		case azureconstants.SubscriptionIDField:
-			subsID = v
-		case azureconstants.DataAccessAuthModeField:
-			dataAccessAuthMode = v
-		case azureconstants.LocationField:
-			location = v
-		case azureconstants.UserAgentField:
-			newUserAgent := v
-			localCloud, err = azureutils.GetCloudProviderFromClient(
-				ctx,
-				c.kubeClient,
-				c.cloudConfiguration,
-				newUserAgent)
-			if err != nil {
-				return nil, status.Errorf(codes.Internal, "create cloud with UserAgent(%s) failed with: (%s)", newUserAgent, err)
-			}
-		default:
-			return nil, status.Errorf(codes.Internal, "AzureDisk - invalid option %s in VolumeSnapshotClass", k)
-		}
-	}
+// 	for k, v := range parameters {
+// 		switch strings.ToLower(k) {
+// 		case azureconstants.TagsField:
+// 			customTags = v
+// 		case azureconstants.IncrementalField:
+// 			if v == "false" {
+// 				incremental = false
+// 			}
+// 		case azureconstants.ResourceGroupField:
+// 			resourceGroup = v
+// 		case azureconstants.SubscriptionIDField:
+// 			subsID = v
+// 		case azureconstants.DataAccessAuthModeField:
+// 			dataAccessAuthMode = v
+// 		case azureconstants.LocationField:
+// 			location = v
+// 		case azureconstants.UserAgentField:
+// 			newUserAgent := v
+// 			localCloud, err = azureutils.GetCloudProviderFromClient(
+// 				ctx,
+// 				c.kubeClient,
+// 				c.cloudConfiguration,
+// 				newUserAgent)
+// 			if err != nil {
+// 				return nil, status.Errorf(codes.Internal, "create cloud with UserAgent(%s) failed with: (%s)", newUserAgent, err)
+// 			}
+// 		default:
+// 			return nil, status.Errorf(codes.Internal, "AzureDisk - invalid option %s in VolumeSnapshotClass", k)
+// 		}
+// 	}
 
-	if azureutils.IsAzureStackCloud(localCloud.Config.Cloud, localCloud.Config.DisableAzureStackCloud) {
-		klog.V(2).Info("Use full snapshot instead as Azure Stack does not support incremental snapshot.")
-		incremental = false
-	}
+// 	if azureutils.IsAzureStackCloud(localCloud.Config.Cloud, localCloud.Config.DisableAzureStackCloud) {
+// 		klog.V(2).Info("Use full snapshot instead as Azure Stack does not support incremental snapshot.")
+// 		incremental = false
+// 	}
 
-	if resourceGroup == "" {
-		resourceGroup, err = azureutils.GetResourceGroupFromURI(sourceVolumeID)
-		if err != nil {
-			return nil, status.Errorf(codes.InvalidArgument, "could not get resource group from diskURI(%s) with error(%v)", sourceVolumeID, err)
-		}
-	}
-	if subsID == "" {
-		subsID = azureutils.GetSubscriptionIDFromURI(sourceVolumeID)
-	}
+// 	if resourceGroup == "" {
+// 		resourceGroup, err = azureutils.GetResourceGroupFromURI(sourceVolumeID)
+// 		if err != nil {
+// 			return nil, status.Errorf(codes.InvalidArgument, "could not get resource group from diskURI(%s) with error(%v)", sourceVolumeID, err)
+// 		}
+// 	}
+// 	if subsID == "" {
+// 		subsID = azureutils.GetSubscriptionIDFromURI(sourceVolumeID)
+// 	}
 
-	customTagsMap, err := volumehelper.ConvertTagsToMap(customTags)
-	if err != nil {
-		return nil, status.Errorf(codes.InvalidArgument, err.Error())
-	}
-	tags := make(map[string]*string)
-	for k, v := range customTagsMap {
-		value := v
-		tags[k] = &value
-	}
+// 	customTagsMap, err := volumehelper.ConvertTagsToMap(customTags)
+// 	if err != nil {
+// 		return nil, status.Errorf(codes.InvalidArgument, err.Error())
+// 	}
+// 	tags := make(map[string]*string)
+// 	for k, v := range customTagsMap {
+// 		value := v
+// 		tags[k] = &value
+// 	}
 
-	snapshot := compute.Snapshot{
-		SnapshotProperties: &compute.SnapshotProperties{
-			CreationData: &compute.CreationData{
-				CreateOption: compute.Copy,
-				SourceURI:    &sourceVolumeID,
-			},
-			Incremental: &incremental,
-		},
-		Location: &location,
-		Tags:     tags,
-	}
-	if dataAccessAuthMode != "" {
-		if err := azureutils.ValidateDataAccessAuthMode(dataAccessAuthMode); err != nil {
-			return nil, status.Error(codes.InvalidArgument, err.Error())
-		}
-		snapshot.SnapshotProperties.DataAccessAuthMode = compute.DataAccessAuthMode(dataAccessAuthMode)
-	}
+// 	snapshot := compute.Snapshot{
+// 		SnapshotProperties: &compute.SnapshotProperties{
+// 			CreationData: &compute.CreationData{
+// 				CreateOption: compute.Copy,
+// 				SourceURI:    &sourceVolumeID,
+// 			},
+// 			Incremental: &incremental,
+// 		},
+// 		Location: &location,
+// 		Tags:     tags,
+// 	}
+// 	if dataAccessAuthMode != "" {
+// 		if err := azureutils.ValidateDataAccessAuthMode(dataAccessAuthMode); err != nil {
+// 			return nil, status.Error(codes.InvalidArgument, err.Error())
+// 		}
+// 		snapshot.SnapshotProperties.DataAccessAuthMode = compute.DataAccessAuthMode(dataAccessAuthMode)
+// 	}
 
-	klog.V(2).Infof("begin to create snapshot(%s, incremental: %v) under rg(%s)", snapshotName, incremental, resourceGroup)
+// 	klog.V(2).Infof("begin to create snapshot(%s, incremental: %v) under rg(%s)", snapshotName, incremental, resourceGroup)
 
-	rerr := localCloud.SnapshotsClient.CreateOrUpdate(ctx, subsID, resourceGroup, snapshotName, snapshot)
-	if rerr != nil {
-		if strings.Contains(rerr.Error().Error(), "existing disk") {
-			return nil, status.Error(codes.AlreadyExists, fmt.Sprintf("request snapshot(%s) under rg(%s) already exists, but the SourceVolumeId is different, error details: %v", snapshotName, resourceGroup, rerr.Error()))
-		}
+// 	rerr := localCloud.SnapshotsClient.CreateOrUpdate(ctx, subsID, resourceGroup, snapshotName, snapshot)
+// 	if rerr != nil {
+// 		if strings.Contains(rerr.Error().Error(), "existing disk") {
+// 			return nil, status.Error(codes.AlreadyExists, fmt.Sprintf("request snapshot(%s) under rg(%s) already exists, but the SourceVolumeId is different, error details: %v", snapshotName, resourceGroup, rerr.Error()))
+// 		}
 
-		azureutils.SleepIfThrottled(rerr.Error(), azureconstants.SnapshotOpThrottlingSleepSec)
-		return nil, status.Error(codes.Internal, fmt.Sprintf("create snapshot error: %v", rerr.Error()))
-	}
-	klog.V(2).Infof("create snapshot(%s) under rg(%s) successfully", snapshotName, resourceGroup)
+// 		azureutils.SleepIfThrottled(rerr.Error(), azureconstants.SnapshotOpThrottlingSleepSec)
+// 		return nil, status.Error(codes.Internal, fmt.Sprintf("create snapshot error: %v", rerr.Error()))
+// 	}
+// 	klog.V(2).Infof("create snapshot(%s) under rg(%s) successfully", snapshotName, resourceGroup)
 
-	snapshotObj, err := c.getSnapshotByID(ctx, resourceGroup, snapshotName, sourceVolumeID)
-	if err != nil {
-		return nil, err
-	}
+// 	snapshotObj, err := c.getSnapshotByID(ctx, resourceGroup, snapshotName, sourceVolumeID)
+// 	if err != nil {
+// 		return nil, err
+// 	}
 
-	return snapshotObj, nil
-}
+// 	return snapshotObj, nil
+// }
 
-func (c *CloudProvisioner) ListSnapshots(
-	ctx context.Context,
-	maxEntries int32,
-	startingToken string,
-	sourceVolumeID string,
-	snapshotID string,
-	secrets map[string]string) (*azdiskv1beta2.ListSnapshotsResult, error) {
-	// SnapshotID is not empty, return snapshot that match the snapshot id.
-	if len(snapshotID) != 0 {
-		snapshot, err := c.getSnapshotByID(ctx, c.cloud.ResourceGroup, snapshotID, sourceVolumeID)
-		if err != nil {
-			if strings.Contains(err.Error(), azureconstants.ResourceNotFound) {
-				return &azdiskv1beta2.ListSnapshotsResult{}, nil
-			}
-			return nil, status.Error(codes.Internal, err.Error())
-		}
-		entries := []azdiskv1beta2.Snapshot{*snapshot}
+// func (c *CloudProvisioner) ListSnapshots(
+// 	ctx context.Context,
+// 	maxEntries int32,
+// 	startingToken string,
+// 	sourceVolumeID string,
+// 	snapshotID string,
+// 	secrets map[string]string) (*azdiskv1beta2.ListSnapshotsResult, error) {
+// 	// SnapshotID is not empty, return snapshot that match the snapshot id.
+// 	if len(snapshotID) != 0 {
+// 		snapshot, err := c.getSnapshotByID(ctx, c.cloud.ResourceGroup, snapshotID, sourceVolumeID)
+// 		if err != nil {
+// 			if strings.Contains(err.Error(), azureconstants.ResourceNotFound) {
+// 				return &azdiskv1beta2.ListSnapshotsResult{}, nil
+// 			}
+// 			return nil, status.Error(codes.Internal, err.Error())
+// 		}
+// 		entries := []azdiskv1beta2.Snapshot{*snapshot}
 
-		listSnapshotResp := &azdiskv1beta2.ListSnapshotsResult{
-			Entries: entries,
-		}
-		return listSnapshotResp, nil
-	}
+// 		listSnapshotResp := &azdiskv1beta2.ListSnapshotsResult{
+// 			Entries: entries,
+// 		}
+// 		return listSnapshotResp, nil
+// 	}
 
-	// no SnapshotID is set, return all snapshots that satisfy the request.
-	snapshots, rerr := c.cloud.SnapshotsClient.ListByResourceGroup(ctx, c.cloud.SubscriptionID, c.cloud.ResourceGroup)
-	if rerr != nil {
-		return nil, status.Error(codes.Internal, fmt.Sprintf("Unknown list snapshot error: %v", rerr.Error()))
-	}
+// 	// no SnapshotID is set, return all snapshots that satisfy the request.
+// 	snapshots, rerr := c.cloud.SnapshotsClient.ListByResourceGroup(ctx, c.cloud.SubscriptionID, c.cloud.ResourceGroup)
+// 	if rerr != nil {
+// 		return nil, status.Error(codes.Internal, fmt.Sprintf("Unknown list snapshot error: %v", rerr.Error()))
+// 	}
 
-	// There are 4 scenarios for listing snapshots.
-	// 1. StartingToken is null, and MaxEntries is null. Return all snapshots from zero.
-	// 2. StartingToken is null, and MaxEntries is not null. Return `MaxEntries` snapshots from zero.
-	// 3. StartingToken is not null, and MaxEntries is null. Return all snapshots from `StartingToken`.
-	// 4. StartingToken is not null, and MaxEntries is not null. Return `MaxEntries` snapshots from `StartingToken`.
-	start := 0
-	if startingToken != "" {
-		var err error
-		start, err = strconv.Atoi(startingToken)
-		if err != nil {
-			return nil, status.Errorf(codes.Aborted, "ListSnapshots starting token(%s) parsing with error: %v", startingToken, err)
+// 	// There are 4 scenarios for listing snapshots.
+// 	// 1. StartingToken is null, and MaxEntries is null. Return all snapshots from zero.
+// 	// 2. StartingToken is null, and MaxEntries is not null. Return `MaxEntries` snapshots from zero.
+// 	// 3. StartingToken is not null, and MaxEntries is null. Return all snapshots from `StartingToken`.
+// 	// 4. StartingToken is not null, and MaxEntries is not null. Return `MaxEntries` snapshots from `StartingToken`.
+// 	start := 0
+// 	if startingToken != "" {
+// 		var err error
+// 		start, err = strconv.Atoi(startingToken)
+// 		if err != nil {
+// 			return nil, status.Errorf(codes.Aborted, "ListSnapshots starting token(%s) parsing with error: %v", startingToken, err)
 
-		}
-		if start >= len(snapshots) {
-			return nil, status.Errorf(codes.Aborted, "ListSnapshots starting token(%d) is greater than total number of snapshots", start)
-		}
-		if start < 0 {
-			return nil, status.Errorf(codes.Aborted, "ListSnapshots starting token(%d) can not be negative", start)
-		}
-	}
+// 		}
+// 		if start >= len(snapshots) {
+// 			return nil, status.Errorf(codes.Aborted, "ListSnapshots starting token(%d) is greater than total number of snapshots", start)
+// 		}
+// 		if start < 0 {
+// 			return nil, status.Errorf(codes.Aborted, "ListSnapshots starting token(%d) can not be negative", start)
+// 		}
+// 	}
 
-	maxAvailableEntries := len(snapshots) - start
-	totalEntries := maxAvailableEntries
-	if maxEntries > 0 && int(maxEntries) < maxAvailableEntries {
-		totalEntries = int(maxEntries)
-	}
-	entries := []azdiskv1beta2.Snapshot{}
-	for count := 0; start < len(snapshots) && count < totalEntries; start++ {
-		if (sourceVolumeID != "" && sourceVolumeID == azureutils.GetSourceVolumeID(&snapshots[start])) || sourceVolumeID == "" {
-			snapshotObj, err := azureutils.NewAzureDiskSnapshot(sourceVolumeID, &snapshots[start])
-			if err != nil {
-				return nil, fmt.Errorf("failed to generate snapshot entry: %v", err)
-			}
-			entries = append(entries, *snapshotObj)
-			count++
-		}
-	}
+// 	maxAvailableEntries := len(snapshots) - start
+// 	totalEntries := maxAvailableEntries
+// 	if maxEntries > 0 && int(maxEntries) < maxAvailableEntries {
+// 		totalEntries = int(maxEntries)
+// 	}
+// 	entries := []azdiskv1beta2.Snapshot{}
+// 	for count := 0; start < len(snapshots) && count < totalEntries; start++ {
+// 		if (sourceVolumeID != "" && sourceVolumeID == azureutils.GetSourceVolumeID(&snapshots[start])) || sourceVolumeID == "" {
+// 			snapshotObj, err := azureutils.NewAzureDiskSnapshot(sourceVolumeID, &snapshots[start])
+// 			if err != nil {
+// 				return nil, fmt.Errorf("failed to generate snapshot entry: %v", err)
+// 			}
+// 			entries = append(entries, *snapshotObj)
+// 			count++
+// 		}
+// 	}
 
-	nextToken := len(snapshots)
-	if start < len(snapshots) {
-		nextToken = start
-	}
+// 	nextToken := len(snapshots)
+// 	if start < len(snapshots) {
+// 		nextToken = start
+// 	}
 
-	listSnapshotResp := &azdiskv1beta2.ListSnapshotsResult{
-		Entries:   entries,
-		NextToken: strconv.Itoa(nextToken),
-	}
+// 	listSnapshotResp := &azdiskv1beta2.ListSnapshotsResult{
+// 		Entries:   entries,
+// 		NextToken: strconv.Itoa(nextToken),
+// 	}
 
-	return listSnapshotResp, nil
-}
+// 	return listSnapshotResp, nil
+// }
 
-func (c *CloudProvisioner) DeleteSnapshot(
-	ctx context.Context,
-	snapshotID string,
-	secrets map[string]string) error {
-	snapshotName, resourceGroup, err := c.GetSnapshotAndResourceNameFromSnapshotID(snapshotID)
-	if err != nil {
-		return err
-	}
+// func (c *CloudProvisioner) DeleteSnapshot(
+// 	ctx context.Context,
+// 	snapshotID string,
+// 	secrets map[string]string) error {
+// 	snapshotName, resourceGroup, err := c.GetSnapshotAndResourceNameFromSnapshotID(snapshotID)
+// 	if err != nil {
+// 		return err
+// 	}
 
-	if snapshotName == "" && resourceGroup == "" {
-		snapshotName = snapshotID
-		resourceGroup = c.cloud.ResourceGroup
-	}
+// 	if snapshotName == "" && resourceGroup == "" {
+// 		snapshotName = snapshotID
+// 		resourceGroup = c.cloud.ResourceGroup
+// 	}
 
-	klog.V(2).Infof("begin to delete snapshot(%s) under rg(%s)", snapshotName, resourceGroup)
-	rerr := c.cloud.SnapshotsClient.Delete(ctx, c.cloud.SubscriptionID, resourceGroup, snapshotName)
-	if rerr != nil {
-		return status.Error(codes.Internal, fmt.Sprintf("delete snapshot error: %v", rerr.Error()))
-	}
-	klog.V(2).Infof("delete snapshot(%s) under rg(%s) successfully", snapshotName, resourceGroup)
+// 	klog.V(2).Infof("begin to delete snapshot(%s) under rg(%s)", snapshotName, resourceGroup)
+// 	rerr := c.cloud.SnapshotsClient.Delete(ctx, c.cloud.SubscriptionID, resourceGroup, snapshotName)
+// 	if rerr != nil {
+// 		return status.Error(codes.Internal, fmt.Sprintf("delete snapshot error: %v", rerr.Error()))
+// 	}
+// 	klog.V(2).Infof("delete snapshot(%s) under rg(%s) successfully", snapshotName, resourceGroup)
 
-	return nil
-}
+// 	return nil
+// }
 
-func (c *CloudProvisioner) CheckDiskExists(ctx context.Context, diskURI string) (*compute.Disk, error) {
+func (c *CloudProvisioner) CheckDiskExists(ctx context.Context, diskURI string) (*armcompute.Disk, error) {
 	diskName, err := azureutils.GetDiskName(diskURI)
 	if err != nil {
 		return nil, err
@@ -996,20 +1046,20 @@ func (c *CloudProvisioner) CheckDiskExists(ctx context.Context, diskURI string) 
 		return nil, nil
 	}
 
-	disk, rerr := c.cloud.DisksClient.Get(ctx, c.cloud.SubscriptionID, resourceGroup, diskName)
+	disk, rerr := c.cloud.DisksClient.Get(ctx, resourceGroup, diskName, nil)
 	if rerr != nil {
-		if rerr.IsThrottled() || strings.Contains(rerr.RawError.Error(), azureconstants.RateLimited) {
-			klog.Warningf("checkDiskExists(%s) is throttled with error: %v", diskURI, rerr.Error())
-			c.getDiskThrottlingCache.Set(azureconstants.ThrottlingKey, "")
-			return nil, nil
-		}
-		return nil, rerr.Error()
+		// if rerr.IsThrottled() || strings.Contains(rerr.RawError.Error(), azureconstants.RateLimited) {
+		// 	klog.Warningf("checkDiskExists(%s) is throttled with error: %v", diskURI, rerr.Error())
+		// 	c.getDiskThrottlingCache.Set(azureconstants.ThrottlingKey, "")
+		// 	return nil, nil
+		// }
+		return nil, rerr
 	}
 
-	return &disk, nil
+	return &disk.Disk, nil
 }
 
-func (c *CloudProvisioner) GetCloud() *azure.Cloud {
+func (c *CloudProvisioner) GetCloud() *azureutils.Cloud {
 	return c.cloud
 }
 
@@ -1022,26 +1072,26 @@ func (c *CloudProvisioner) GetSourceDiskSize(ctx context.Context, resourceGroup,
 	if curDepth > maxDepth {
 		return nil, status.Error(codes.Internal, fmt.Sprintf("current depth (%d) surpassed the max depth (%d) while searching for the source disk size", curDepth, maxDepth))
 	}
-	result, rerr := c.cloud.DisksClient.Get(ctx, c.cloud.SubscriptionID, resourceGroup, diskName)
+	result, rerr := c.cloud.DisksClient.Get(ctx, resourceGroup, diskName, nil)
 	if rerr != nil {
-		return nil, rerr.Error()
+		return nil, rerr
 	}
-	if result.DiskProperties == nil {
+	if result.Properties == nil {
 		return nil, status.Error(codes.Internal, fmt.Sprintf("DiskProperty not found for disk (%s) in resource group (%s)", diskName, resourceGroup))
 	}
 
-	if result.DiskProperties.CreationData != nil && (*result.DiskProperties.CreationData).CreateOption == "Copy" {
+	if result.Properties.CreationData != nil && *(*result.Properties.CreationData).CreateOption == "Copy" {
 		klog.V(2).Infof("Clone source disk has a parent source")
-		sourceResourceID := *result.DiskProperties.CreationData.SourceResourceID
+		sourceResourceID := *result.Properties.CreationData.SourceResourceID
 		parentResourceGroup, _ := azureutils.GetResourceGroupFromURI(sourceResourceID)
 		parentDiskName := path.Base(sourceResourceID)
 		return c.GetSourceDiskSize(ctx, parentResourceGroup, parentDiskName, curDepth+1, maxDepth)
 	}
 
-	if (*result.DiskProperties).DiskSizeGB == nil {
+	if (*result.Properties).DiskSizeGB == nil {
 		return nil, status.Error(codes.Internal, fmt.Sprintf("DiskSizeGB for disk (%s) in resourcegroup (%s) is nil", diskName, resourceGroup))
 	}
-	return (*result.DiskProperties).DiskSizeGB, nil
+	return (*result.Properties).DiskSizeGB, nil
 }
 
 func (c *CloudProvisioner) CheckDiskCapacity(ctx context.Context, resourceGroup, diskName string, requestGiB int) (bool, error) {
@@ -1050,18 +1100,18 @@ func (c *CloudProvisioner) CheckDiskCapacity(ctx context.Context, resourceGroup,
 		return true, nil
 	}
 
-	disk, rerr := c.cloud.DisksClient.Get(ctx, c.cloud.SubscriptionID, resourceGroup, diskName)
+	disk, rerr := c.cloud.DisksClient.Get(ctx, resourceGroup, diskName, nil)
 	// Because we can not judge the reason of the error. Maybe the disk does not exist.
 	// So here we do not handle the error.
 	if rerr == nil {
-		if !reflect.DeepEqual(disk, compute.Disk{}) && disk.DiskSizeGB != nil && int(*disk.DiskSizeGB) != requestGiB {
-			return false, status.Errorf(codes.AlreadyExists, "the request volume already exists, but its capacity(%v) is different from (%v)", *disk.DiskProperties.DiskSizeGB, requestGiB)
+		if !reflect.DeepEqual(disk, compute.Disk{}) && disk.Properties.DiskSizeGB != nil && int(*disk.Properties.DiskSizeGB) != requestGiB {
+			return false, status.Errorf(codes.AlreadyExists, "the request volume already exists, but its capacity(%v) is different from (%v)", *disk.Properties.DiskSizeGB, requestGiB)
 		}
 	} else {
-		if rerr.IsThrottled() || strings.Contains(rerr.RawError.Error(), azureconstants.RateLimited) {
-			klog.Warningf("checkDiskCapacity(%s, %s) is throttled with error: %v", resourceGroup, diskName, rerr.Error())
-			c.getDiskThrottlingCache.Set(azureconstants.ThrottlingKey, "")
-		}
+		// if rerr.IsThrottled() || strings.Contains(rerr.RawError.Error(), azureconstants.RateLimited) {
+		// 	klog.Warningf("checkDiskCapacity(%s, %s) is throttled with error: %v", resourceGroup, diskName, rerr.Error())
+		// 	c.getDiskThrottlingCache.Set(azureconstants.ThrottlingKey, "")
+		// }
 	}
 	return true, nil
 }
@@ -1080,24 +1130,24 @@ func (c *CloudProvisioner) GetSnapshotAndResourceNameFromSnapshotID(snapshotID s
 	return snapshotName, resourceGroup, err
 }
 
-func (c *CloudProvisioner) getSnapshotByID(ctx context.Context, resourceGroup string, snapshotName string, sourceVolumeID string) (*azdiskv1beta2.Snapshot, error) {
-	snapshotNameVal, resourceGroupName, err := c.GetSnapshotAndResourceNameFromSnapshotID(snapshotName)
-	if err != nil {
-		return nil, err
-	}
+// func (c *CloudProvisioner) getSnapshotByID(ctx context.Context, resourceGroup string, snapshotName string, sourceVolumeID string) (*azdiskv1beta2.Snapshot, error) {
+// 	snapshotNameVal, resourceGroupName, err := c.GetSnapshotAndResourceNameFromSnapshotID(snapshotName)
+// 	if err != nil {
+// 		return nil, err
+// 	}
 
-	if snapshotNameVal == "" && resourceGroupName == "" {
-		snapshotNameVal = snapshotName
-		resourceGroupName = resourceGroup
-	}
+// 	if snapshotNameVal == "" && resourceGroupName == "" {
+// 		snapshotNameVal = snapshotName
+// 		resourceGroupName = resourceGroup
+// 	}
 
-	snapshot, rerr := c.cloud.SnapshotsClient.Get(ctx, c.cloud.SubscriptionID, resourceGroupName, snapshotNameVal)
-	if rerr != nil {
-		return nil, status.Error(codes.Internal, fmt.Sprintf("get snapshot %s from rg(%s) error: %v", snapshotNameVal, resourceGroupName, rerr.Error()))
-	}
+// 	snapshot, rerr := c.cloud.SnapshotsClient.Get(ctx, c.cloud.SubscriptionID, resourceGroupName, snapshotNameVal)
+// 	if rerr != nil {
+// 		return nil, status.Error(codes.Internal, fmt.Sprintf("get snapshot %s from rg(%s) error: %v", snapshotNameVal, resourceGroupName, rerr.Error()))
+// 	}
 
-	return azureutils.NewAzureDiskSnapshot(sourceVolumeID, &snapshot)
-}
+// 	return azureutils.NewAzureDiskSnapshot(sourceVolumeID, &snapshot)
+// }
 
 func (c *CloudProvisioner) isGetDiskThrottled() bool {
 	cache, err := c.getDiskThrottlingCache.Get(azureconstants.ThrottlingKey, azcache.CacheReadTypeDefault)
@@ -1241,10 +1291,21 @@ func (c *CloudProvisioner) listVolumesInNodeResourceGroup(ctx context.Context, s
 
 // listVolumesByResourceGroup is a helper function that updates the ListVolumeResponse_Entry slice and returns number of total visited volumes, number of volumes that needs to be visited and an error if found
 func (c *CloudProvisioner) listVolumesByResourceGroup(ctx context.Context, resourceGroup string, entries []azdiskv1beta2.VolumeEntry, start, maxEntries int, volSet map[string]bool) listVolumeStatus {
-	disks, derr := c.cloud.DisksClient.ListByResourceGroup(ctx, c.cloud.SubscriptionID, resourceGroup)
-	if derr != nil {
-		return listVolumeStatus{err: status.Errorf(codes.Internal, "ListVolumes on rg(%s) failed with error: %v", resourceGroup, derr.Error())}
+	pager := c.cloud.DisksClient.NewListByResourceGroupPager(resourceGroup, nil)
+	var disks []armcompute.Disk
+	for pager.More() {
+		page, err := pager.NextPage(ctx)
+		if err != nil {
+			log.Fatalf("failed to advance page: %v", err)
+		}
+		for _, disk := range page.Value {
+			disks = append(disks, *disk)
+		}
 	}
+	// if derr != nil {
+	// 	return listVolumeStatus{err: status.Errorf(codes.Internal, "ListVolumes on rg(%s) failed with error: %v", resourceGroup, derr.Error())}
+	// }
+
 	// if volSet is initialized but is empty, return
 	if volSet != nil && len(volSet) == 0 {
 		return listVolumeStatus{
@@ -1277,11 +1338,11 @@ func (c *CloudProvisioner) listVolumesByResourceGroup(ctx context.Context, resou
 			continue
 		}
 		// HyperVGeneration property is only setup for os disks. Only the non os disks should be included in the list
-		if disk.DiskProperties == nil || disk.DiskProperties.HyperVGeneration == "" {
+		if disk.Properties == nil || *disk.Properties.HyperVGeneration == "" {
 			nodeList := []string{}
 
 			if disk.ManagedBy != nil {
-				attachedNode, err := c.cloud.VMSet.GetNodeNameByProviderID(*disk.ManagedBy)
+				attachedNode, err := c.cloud.VMClient.Get(*disk.ManagedBy)
 				if err != nil {
 					return listVolumeStatus{err: err}
 				}
