@@ -419,6 +419,11 @@ func (d *Driver) ControllerPublishVolume(ctx context.Context, req *csi.Controlle
 		klog.V(2).Infof("Trying to attach volume %s to node %s", diskURI, nodeName)
 
 		asyncAttach := isAsyncAttachEnabled(d.enableAsyncAttach, volumeContext)
+		attachDiskInitialDelay := azureutils.GetAttachDiskInitialDelay(volumeContext)
+		if attachDiskInitialDelay > 0 {
+			klog.V(2).Infof("attachDiskInitialDelayInMs is set to %d", attachDiskInitialDelay)
+			d.cloud.AttachDetachInitialDelayInMs = attachDiskInitialDelay
+		}
 		lun, err = d.cloud.AttachDisk(ctx, asyncAttach, diskName, diskURI, nodeName, cachingMode, disk)
 		if err == nil {
 			klog.V(2).Infof("Attach operation successful: volume %s attached to node %s.", diskURI, nodeName)

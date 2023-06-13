@@ -1391,7 +1391,6 @@ func TestParseDiskParameters(t *testing.T) {
 			name:        "nil disk parameters",
 			inputParams: nil,
 			expectedOutput: ManagedDiskParameters{
-				Incremental:    true,
 				Tags:           make(map[string]string),
 				VolumeContext:  make(map[string]string),
 				DeviceSettings: make(map[string]string),
@@ -1402,7 +1401,6 @@ func TestParseDiskParameters(t *testing.T) {
 			name:        "invalid field in parameters",
 			inputParams: map[string]string{"invalidField": "someValue"},
 			expectedOutput: ManagedDiskParameters{
-				Incremental:    true,
 				Tags:           make(map[string]string),
 				VolumeContext:  map[string]string{"invalidField": "someValue"},
 				DeviceSettings: make(map[string]string),
@@ -1410,12 +1408,21 @@ func TestParseDiskParameters(t *testing.T) {
 			expectedError: fmt.Errorf("invalid parameter %s in storage class", "invalidField"),
 		},
 		{
-			name:        "invalid value in parameters",
+			name:        "invalid LogicalSectorSize value in parameters",
 			inputParams: map[string]string{consts.LogicalSectorSizeField: "invalidValue"},
 			expectedOutput: ManagedDiskParameters{
-				Incremental:    true,
 				Tags:           make(map[string]string),
 				VolumeContext:  map[string]string{consts.LogicalSectorSizeField: "invalidValue"},
+				DeviceSettings: make(map[string]string),
+			},
+			expectedError: fmt.Errorf("parse invalidValue failed with error: strconv.Atoi: parsing \"invalidValue\": invalid syntax"),
+		},
+		{
+			name:        "invalid AttachDiskInitialDelay value in parameters",
+			inputParams: map[string]string{consts.AttachDiskInitialDelayField: "invalidValue"},
+			expectedOutput: ManagedDiskParameters{
+				Tags:           make(map[string]string),
+				VolumeContext:  map[string]string{consts.AttachDiskInitialDelayField: "invalidValue"},
 				DeviceSettings: make(map[string]string),
 			},
 			expectedError: fmt.Errorf("parse invalidValue failed with error: strconv.Atoi: parsing \"invalidValue\": invalid syntax"),
@@ -1425,7 +1432,6 @@ func TestParseDiskParameters(t *testing.T) {
 			inputParams: map[string]string{consts.SkuNameField: "PremiumV2_LRS"},
 			expectedOutput: ManagedDiskParameters{
 				AccountType:    "PremiumV2_LRS",
-				Incremental:    true,
 				Tags:           make(map[string]string),
 				VolumeContext:  map[string]string{consts.SkuNameField: "PremiumV2_LRS"},
 				DeviceSettings: make(map[string]string),
@@ -1441,7 +1447,6 @@ func TestParseDiskParameters(t *testing.T) {
 			expectedOutput: ManagedDiskParameters{
 				AccountType: "PremiumV2_LRS",
 				CachingMode: "none",
-				Incremental: true,
 				Tags:        make(map[string]string),
 				VolumeContext: map[string]string{
 					consts.SkuNameField:     "PremiumV2_LRS",
@@ -1460,7 +1465,6 @@ func TestParseDiskParameters(t *testing.T) {
 			expectedOutput: ManagedDiskParameters{
 				AccountType: "PremiumV2_LRS",
 				CachingMode: "ReadOnly",
-				Incremental: true,
 				Tags:        make(map[string]string),
 				VolumeContext: map[string]string{
 					consts.SkuNameField:     "PremiumV2_LRS",
@@ -1496,7 +1500,6 @@ func TestParseDiskParameters(t *testing.T) {
 				consts.EnableBurstingField:      "true",
 				consts.UserAgentField:           "userAgent",
 				consts.EnableAsyncAttachField:   "enableAsyncAttach",
-				consts.IncrementalField:         "false",
 				consts.ZonedField:               "ignored",
 			},
 			expectedOutput: ManagedDiskParameters{
@@ -1508,7 +1511,6 @@ func TestParseDiskParameters(t *testing.T) {
 				DiskMBPSReadWrite:   "diskMBPSReadWrite",
 				DiskName:            "diskName",
 				DiskEncryptionSetID: "diskEncyptionSetID",
-				Incremental:         false,
 				Tags: map[string]string{
 					consts.PvcNameTag:      "pvcName",
 					consts.PvcNamespaceTag: "pvcNamespace",
@@ -1547,7 +1549,6 @@ func TestParseDiskParameters(t *testing.T) {
 					consts.EnableBurstingField:      "true",
 					consts.UserAgentField:           "userAgent",
 					consts.EnableAsyncAttachField:   "enableAsyncAttach",
-					consts.IncrementalField:         "false",
 					consts.ZonedField:               "ignored",
 				},
 				DeviceSettings:    make(map[string]string),
@@ -1854,6 +1855,37 @@ func TestSetKeyValueInMap(t *testing.T) {
 		SetKeyValueInMap(test.m, test.key, test.value)
 		if !reflect.DeepEqual(test.m, test.expected) {
 			t.Errorf("test[%s]: unexpected output: %v, expected result: %v", test.desc, test.m, test.expected)
+		}
+	}
+}
+
+func TestGetAttachDiskInitialDelay(t *testing.T) {
+	tests := []struct {
+		name       string
+		attributes map[string]string
+		expected   int
+	}{
+		{
+			attributes: nil,
+			expected:   -1,
+		},
+		{
+			attributes: map[string]string{consts.AttachDiskInitialDelayField: "10"},
+			expected:   10,
+		},
+		{
+			attributes: map[string]string{"AttachDiskInitialDelay": "90"},
+			expected:   90,
+		},
+		{
+			attributes: map[string]string{"unknown": "90"},
+			expected:   -1,
+		},
+	}
+
+	for _, test := range tests {
+		if got := GetAttachDiskInitialDelay(test.attributes); got != test.expected {
+			t.Errorf("GetAttachDiskInitialDelay(%v) = %v, want %v", test.attributes, got, test.expected)
 		}
 	}
 }

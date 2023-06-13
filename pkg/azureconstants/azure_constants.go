@@ -80,6 +80,7 @@ const (
 	WriteAcceleratorEnabled       = "writeacceleratorenabled"
 	ZonedField                    = "zoned"
 	EnableAsyncAttachField        = "enableasyncattach"
+	AttachDiskInitialDelayField   = "attachdiskinitialdelay"
 	TooManyRequests               = "TooManyRequests"
 	ClientThrottled               = "client throttled"
 	VolumeID                      = "volumeid"
