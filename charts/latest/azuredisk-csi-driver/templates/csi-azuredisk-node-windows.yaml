@@ -130,6 +130,7 @@ spec:
             - "--allow-empty-cloud-config={{ .Values.node.allowEmptyCloudConfig }}"
             - "--support-zone={{ .Values.node.supportZone }}"
             - "--get-node-info-from-labels={{ .Values.windows.getNodeInfoFromLabels }}"
+            - "--get-nodeid-from-imds={{ .Values.node.getNodeIDFromIMDS }}"
           ports:
             - containerPort: {{ .Values.node.livenessProbe.healthPort }}
               name: healthz

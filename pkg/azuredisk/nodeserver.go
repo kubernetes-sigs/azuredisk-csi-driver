@@ -394,7 +394,7 @@ func (d *Driver) NodeGetInfo(ctx context.Context, req *csi.NodeGetInfoRequest) (
 	}
 
 	nodeID := d.NodeID
-	if d.cloud.UseInstanceMetadata && d.cloud.Metadata != nil {
+	if d.getNodeIDFromIMDS && d.cloud.UseInstanceMetadata && d.cloud.Metadata != nil {
 		metadata, err := d.cloud.Metadata.GetMetadata(azcache.CacheReadTypeDefault)
 		if err == nil && metadata != nil && metadata.Compute != nil {
 			klog.V(2).Infof("NodeGetInfo: NodeID(%s), metadata.Compute.Name(%s)", d.NodeID, metadata.Compute.Name)

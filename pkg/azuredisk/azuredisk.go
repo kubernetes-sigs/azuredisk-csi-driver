@@ -75,6 +75,7 @@ type DriverOptions struct {
 	VMSSCacheTTLInSeconds        int64
 	VMType                       string
 	EnableWindowsHostProcess     bool
+	GetNodeIDFromIMDS            bool
 }
 
 // CSIDriver defines the interface for a CSI driver.
@@ -121,6 +122,7 @@ type DriverCore struct {
 	attachDetachInitialDelayInMs int64
 	vmType                       string
 	enableWindowsHostProcess     bool
+	getNodeIDFromIMDS            bool
 }
 
 // Driver is the v1 implementation of the Azure Disk CSI Driver.
@@ -160,6 +162,7 @@ func newDriverV1(options *DriverOptions) *Driver {
 	driver.vmssCacheTTLInSeconds = options.VMSSCacheTTLInSeconds
 	driver.vmType = options.VMType
 	driver.enableWindowsHostProcess = options.EnableWindowsHostProcess
+	driver.getNodeIDFromIMDS = options.GetNodeIDFromIMDS
 	driver.volumeLocks = volumehelper.NewVolumeLocks()
 	driver.ioHandler = azureutils.NewOSIOHandler()
 	driver.hostUtil = hostutil.NewHostUtil()
