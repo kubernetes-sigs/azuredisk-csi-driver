@@ -41,7 +41,7 @@ spec:
       hostNetwork: true
       initContainers:
         - name: init
-          image: mcr.microsoft.com/oss/kubernetes-csi/azuredisk-csi:v1.28.0-windows-hp
+          image: mcr.microsoft.com/k8s/csi/azuredisk-csi:latest-windows-hp
           imagePullPolicy: IfNotPresent
           command:
             - "powershell.exe"
@@ -76,7 +76,7 @@ spec:
               cpu: 30m
               memory: 40Mi
         - name: azuredisk
-          image: mcr.microsoft.com/oss/kubernetes-csi/azuredisk-csi:v1.28.0-windows-hp
+          image: mcr.microsoft.com/k8s/csi/azuredisk-csi:latest-windows-hp
           imagePullPolicy: IfNotPresent
           command:
             - "azurediskplugin.exe"
