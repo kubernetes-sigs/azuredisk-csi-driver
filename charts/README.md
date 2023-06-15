@@ -70,7 +70,7 @@ helm repo update azuredisk-csi-driver
 ### install a specific version
 
 ```console
-helm install azuredisk-csi-driver azuredisk-csi-driver/azuredisk-csi-driver --namespace kube-system --version v1.26.4
+helm install azuredisk-csi-driver azuredisk-csi-driver/azuredisk-csi-driver --namespace kube-system --version v1.26.5
 ```
 
 ### install on Azure Stack
