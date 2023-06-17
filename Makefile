@@ -19,7 +19,7 @@ REGISTRY_NAME ?= $(shell echo $(REGISTRY) | sed "s/.azurecr.io//g")
 IMAGE_NAME ?= azuredisk-csi
 ifneq ($(BUILD_V2), true)
 PLUGIN_NAME = azurediskplugin
-IMAGE_VERSION ?= v1.28.0
+IMAGE_VERSION ?= v1.29.0
 CHART_VERSION ?= latest
 else
 PLUGIN_NAME = azurediskpluginv2
