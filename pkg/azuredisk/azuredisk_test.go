@@ -25,11 +25,10 @@ package azuredisk
 // 	"testing"
 // 	"time"
 
-// 	clientset "k8s.io/client-go/kubernetes"
-// 	azdiskv1beta2 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1beta2"
-// 	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
-// 	azure "sigs.k8s.io/cloud-provider-azure/pkg/provider"
-// )
+	clientset "k8s.io/client-go/kubernetes"
+	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
+	azure "sigs.k8s.io/cloud-provider-azure/pkg/provider"
+)
 
 // func TestRun(t *testing.T) {
 // 	fakeCredFile := "fake-cred-file.json"
@@ -156,25 +155,15 @@ package azuredisk
 
 // 				t.Setenv(consts.DefaultAzureCredentialFileEnv, fakeCredFile)
 
-// 				d := newDriverV1(&azdiskv1beta2.AzDiskDriverConfiguration{
-// 					NodeConfig: azdiskv1beta2.NodeConfiguration{
-// 						NodeID:                 "",
-// 						EnablePerfOptimization: true,
-// 					},
-// 					DriverName: consts.DefaultDriverName,
-// 					ControllerConfig: azdiskv1beta2.ControllerConfiguration{
-// 						EnableListVolumes:   true,
-// 						EnableListSnapshots: true,
-// 						VMType:              "vmss",
-// 					},
-// 					CloudConfig: azdiskv1beta2.CloudConfiguration{
-// 						VMSSCacheTTLInSeconds: 10,
-// 					},
-// 				})
-// 				d.Run("tcp://127.0.0.1:0", "", true, true)
-// 			},
-// 		},
-// 	}
+				driverConfig := NewDefaultDriverConfig()
+				driverConfig.ControllerConfig.VMType = "vmss"
+				driverConfig.CloudConfig.VMSSCacheTTLInSeconds = 10
+
+				d, _ := newFakeDriverV1(t, driverConfig)
+				d.Run("tcp://127.0.0.1:0", "", true, true)
+			},
+		},
+	}
 
 // 	for _, tc := range testCases {
 // 		t.Run(tc.name, tc.testFunc)

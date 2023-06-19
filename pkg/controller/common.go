@@ -81,12 +81,13 @@ func (n *noOpReconciler) Reconcile(_ context.Context, _ reconcile.Request) (reco
 type operationRequester string
 
 const (
-	azdrivernode     operationRequester = "azdrivernode-controller"
-	azvolume         operationRequester = "azvolume-controller"
-	pv               operationRequester = "pv-controller"
-	replica          operationRequester = "replica-controller"
-	nodeavailability operationRequester = "nodeavailability-controller"
-	pod              operationRequester = "pod-controller"
+	node     operationRequester = "node-controller"
+	azvolume operationRequester = "azvolume-controller"
+	pv       operationRequester = "pv-controller"
+	replica  operationRequester = "replica-controller"
+	pod      operationRequester = "pod-controller"
+	detach   operationRequester = "detach-opeation"
+	attach   operationRequester = "attach-opeation"
 )
 
 type attachmentCleanUpMode int
@@ -119,8 +120,13 @@ const (
 
 type goSignal struct{}
 
-// TODO Make CloudProvisioner independent of csi types.
 type CloudProvisioner interface {
+	GetSubscriptionID() string
+	GetResourceGroup() string
+	GetLocation() string
+	GetFailureDomain(ctx context.Context, nodeID string) (string, error)
+	GetInstanceType(ctx context.Context, nodeID string) (string, error)
+
 	CreateVolume(
 		ctx context.Context,
 		volumeName string,
@@ -138,9 +144,7 @@ type CloudProvisioner interface {
 	CreateSnapshot(ctx context.Context, sourceVolumeID string, snapshotName string, secrets map[string]string, parameters map[string]string) (*azdiskv1beta2.Snapshot, error)
 	ListSnapshots(ctx context.Context, maxEntries int32, startingToken string, sourceVolumeID string, snapshotID string, secrets map[string]string) (*azdiskv1beta2.ListSnapshotsResult, error)
 	DeleteSnapshot(ctx context.Context, snapshotID string, secrets map[string]string) error
-	CheckDiskExists(ctx context.Context, diskURI string) (*armcompute.Disk, error)
-	GetCloud() *azureutils.Cloud
-	GetMetricPrefix() string
+	CheckDiskExists(ctx context.Context, diskURI string) (*compute.Disk, error)
 }
 
 type replicaOperation struct {
@@ -980,6 +984,10 @@ func isDemotionRequested(attachment *azdiskv1beta2.AzVolumeAttachment) bool {
 	return attachment != nil && attachment.Status.Detail != nil && attachment.Status.Detail.Role == azdiskv1beta2.PrimaryRole && attachment.Spec.RequestedRole == azdiskv1beta2.ReplicaRole
 }
 
+func isPromotionRequested(attachment *azdiskv1beta2.AzVolumeAttachment) bool {
+	return attachment != nil && attachment.Status.Detail != nil && attachment.Status.Detail.Role == azdiskv1beta2.ReplicaRole && attachment.Spec.RequestedRole == azdiskv1beta2.PrimaryRole
+}
+
 func isPreProvisioned(volume *azdiskv1beta2.AzVolume) bool {
 	return volume != nil && azureutils.MapContains(volume.Status.Annotations, consts.PreProvisionedVolumeAnnotation)
 }
@@ -1128,6 +1136,25 @@ func verifyObjectFailedOrDeleted(obj interface{}, objectDeleted bool) (bool, err
 		}
 	}
 
+	return false, nil
+}
+
+func verifyObjectPromotedOrDemoted(obj interface{}, objectDeleted bool) (bool, error) {
+	if obj == nil || objectDeleted {
+		return false, fmt.Errorf("obj is nil or has been deleted")
+	}
+
+	azVolumeAttachmentInstance := obj.(*azdiskv1beta2.AzVolumeAttachment)
+	if azVolumeAttachmentInstance.Labels != nil {
+		if label, ok := azVolumeAttachmentInstance.Labels[consts.RoleChangeLabel]; ok {
+			isPromoteUpdated := label == consts.Promoted && azVolumeAttachmentInstance.Status.Detail.PreviousRole == azdiskv1beta2.ReplicaRole && azVolumeAttachmentInstance.Status.Detail.Role == azdiskv1beta2.PrimaryRole
+			isDemoteUpdated := label == consts.Demoted && azVolumeAttachmentInstance.Status.Detail.PreviousRole == azdiskv1beta2.PrimaryRole && azVolumeAttachmentInstance.Status.Detail.Role == azdiskv1beta2.ReplicaRole
+
+			if isPromoteUpdated || isDemoteUpdated {
+				return true, nil
+			}
+		}
+	}
 	return false, nil
 }
 

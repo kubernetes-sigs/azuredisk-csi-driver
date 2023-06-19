@@ -24,19 +24,14 @@ package azuredisk
 // 	"github.com/stretchr/testify/assert"
 // )
 
-// const (
-// 	fakeCSIDriverName = "disk.csi.azure.com"
-// 	vendorVersion     = "0.3.0"
-// )
-
-// func TestGetPluginInfo(t *testing.T) {
-// 	// Check with correct arguments
-// 	d, _ := NewFakeDriver(t)
-// 	req := csi.GetPluginInfoRequest{}
-// 	resp, err := d.GetPluginInfo(context.Background(), &req)
-// 	assert.NoError(t, err)
-// 	assert.Equal(t, resp.Name, fakeCSIDriverName)
-// 	assert.Equal(t, resp.GetVendorVersion(), vendorVersion)
+func TestGetPluginInfo(t *testing.T) {
+	// Check with correct arguments
+	d, _ := NewFakeDriver(t)
+	req := csi.GetPluginInfoRequest{}
+	resp, err := d.GetPluginInfo(context.Background(), &req)
+	assert.NoError(t, err)
+	assert.Equal(t, resp.Name, fakeDriverName)
+	assert.Equal(t, resp.GetVendorVersion(), fakeDriverVersion)
 
 // 	//Check error when driver name is empty
 // 	d, _ = NewFakeDriver(t)

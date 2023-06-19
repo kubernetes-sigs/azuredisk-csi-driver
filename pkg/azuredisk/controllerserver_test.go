@@ -1452,56 +1452,56 @@ package azuredisk
 // func TestGetSnapshotByID(t *testing.T) {
 // 	skipIfTestingDriverV2(t)
 
-// 	testCases := []struct {
-// 		name     string
-// 		testFunc func(t *testing.T)
-// 	}{
-// 		{
-// 			name: "snapshotID not valid",
-// 			testFunc: func(t *testing.T) {
-// 				sourceVolumeID := "unit-test"
-// 				ctx := context.Background()
-// 				d, _ := newFakeDriverV1(t)
-// 				d.setCloud(&azure.Cloud{})
-// 				snapshotID := "testurl/subscriptions/23/providers/Microsoft.Compute/snapshots/snapshot-name"
-// 				expectedErr := status.Errorf(codes.Internal, "could not get snapshot name from testurl/subscriptions/23/providers/Microsoft.Compute/snapshots/snapshot-name, correct format: (?i).*/subscriptions/(?:.*)/resourceGroups/(?:.*)/providers/Microsoft.Compute/snapshots/(.+)")
-// 				_, err := d.getSnapshotByID(ctx, d.getCloud().SubscriptionID, d.getCloud().ResourceGroup, snapshotID, sourceVolumeID)
-// 				if !testutil.IsErrorEquivalent(err, expectedErr) {
-// 					t.Errorf("actualErr: (%v), expectedErr: (%v)", err, expectedErr)
-// 				}
-// 			},
-// 		},
-// 		{
-// 			name: "snapshot get error",
-// 			testFunc: func(t *testing.T) {
-// 				d, _ := newFakeDriverV1(t)
-// 				d.setCloud(&azure.Cloud{})
-// 				ctrl := gomock.NewController(t)
-// 				defer ctrl.Finish()
-// 				mockSnapshotClient := mocksnapshotclient.NewMockInterface(ctrl)
-// 				d.getCloud().SnapshotsClient = mockSnapshotClient
-// 				rerr := &retry.Error{
-// 					RawError: fmt.Errorf("test"),
-// 				}
-// 				snapshotID := "testurl/subscriptions/23/providers/Microsoft.Compute/snapshots/snapshot-name"
-// 				snapshot := compute.Snapshot{
-// 					SnapshotProperties: &compute.SnapshotProperties{},
-// 					ID:                 &snapshotID,
-// 				}
-// 				snapshotVolumeID := "unit-test"
-// 				mockSnapshotClient.EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(snapshot, rerr).AnyTimes()
-// 				expectedErr := status.Errorf(codes.Internal, "could not get snapshot name from testurl/subscriptions/23/providers/Microsoft.Compute/snapshots/snapshot-name, correct format: (?i).*/subscriptions/(?:.*)/resourceGroups/(?:.*)/providers/Microsoft.Compute/snapshots/(.+)")
-// 				_, err := d.getSnapshotByID(context.Background(), d.getCloud().SubscriptionID, d.getCloud().ResourceGroup, snapshotID, snapshotVolumeID)
-// 				if !testutil.IsErrorEquivalent(err, expectedErr) {
-// 					t.Errorf("actualErr: (%v), expectedErr: (%v)", err, expectedErr)
-// 				}
-// 			},
-// 		},
-// 	}
-// 	for _, tc := range testCases {
-// 		t.Run(tc.name, tc.testFunc)
-// 	}
-// }
+	testCases := []struct {
+		name     string
+		testFunc func(t *testing.T)
+	}{
+		{
+			name: "snapshotID not valid",
+			testFunc: func(t *testing.T) {
+				sourceVolumeID := "unit-test"
+				ctx := context.Background()
+				d, _ := newFakeDriverV1(t, newFakeDriverConfig())
+				d.setCloud(&azure.Cloud{})
+				snapshotID := "testurl/subscriptions/23/providers/Microsoft.Compute/snapshots/snapshot-name"
+				expectedErr := status.Errorf(codes.Internal, "could not get snapshot name from testurl/subscriptions/23/providers/Microsoft.Compute/snapshots/snapshot-name, correct format: (?i).*/subscriptions/(?:.*)/resourceGroups/(?:.*)/providers/Microsoft.Compute/snapshots/(.+)")
+				_, err := d.getSnapshotByID(ctx, d.getCloud().SubscriptionID, d.getCloud().ResourceGroup, snapshotID, sourceVolumeID)
+				if !testutil.IsErrorEquivalent(err, expectedErr) {
+					t.Errorf("actualErr: (%v), expectedErr: (%v)", err, expectedErr)
+				}
+			},
+		},
+		{
+			name: "snapshot get error",
+			testFunc: func(t *testing.T) {
+				d, _ := newFakeDriverV1(t, newFakeDriverConfig())
+				d.setCloud(&azure.Cloud{})
+				ctrl := gomock.NewController(t)
+				defer ctrl.Finish()
+				mockSnapshotClient := mocksnapshotclient.NewMockInterface(ctrl)
+				d.getCloud().SnapshotsClient = mockSnapshotClient
+				rerr := &retry.Error{
+					RawError: fmt.Errorf("test"),
+				}
+				snapshotID := "testurl/subscriptions/23/providers/Microsoft.Compute/snapshots/snapshot-name"
+				snapshot := compute.Snapshot{
+					SnapshotProperties: &compute.SnapshotProperties{},
+					ID:                 &snapshotID,
+				}
+				snapshotVolumeID := "unit-test"
+				mockSnapshotClient.EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(snapshot, rerr).AnyTimes()
+				expectedErr := status.Errorf(codes.Internal, "could not get snapshot name from testurl/subscriptions/23/providers/Microsoft.Compute/snapshots/snapshot-name, correct format: (?i).*/subscriptions/(?:.*)/resourceGroups/(?:.*)/providers/Microsoft.Compute/snapshots/(.+)")
+				_, err := d.getSnapshotByID(context.Background(), d.getCloud().SubscriptionID, d.getCloud().ResourceGroup, snapshotID, snapshotVolumeID)
+				if !testutil.IsErrorEquivalent(err, expectedErr) {
+					t.Errorf("actualErr: (%v), expectedErr: (%v)", err, expectedErr)
+				}
+			},
+		},
+	}
+	for _, tc := range testCases {
+		t.Run(tc.name, tc.testFunc)
+	}
+}
 
 // func TestListSnapshots(t *testing.T) {
 // 	testCases := []struct {
@@ -2027,106 +2027,106 @@ package azuredisk
 // func TestGetSourceDiskSize(t *testing.T) {
 // 	skipIfTestingDriverV2(t)
 
-// 	testCases := []struct {
-// 		name     string
-// 		testFunc func(t *testing.T)
-// 	}{
-// 		{
-// 			name: "max depth reached",
-// 			testFunc: func(t *testing.T) {
-// 				d, _ := newFakeDriverV1(t)
-// 				_, err := d.GetSourceDiskSize(context.Background(), "test-subscription", "test-rg", "test-disk", 2, 1)
-// 				expectedErr := status.Errorf(codes.Internal, "current depth (2) surpassed the max depth (1) while searching for the source disk size")
-// 				if !testutil.IsErrorEquivalent(err, expectedErr) {
-// 					t.Errorf("actualErr: (%v), expectedErr: (%v)", err, expectedErr)
-// 				}
-// 			},
-// 		},
-// 		{
-// 			name: "diskproperty not found",
-// 			testFunc: func(t *testing.T) {
-// 				d, _ := newFakeDriverV1(t)
-// 				disk := compute.Disk{}
-// 				d.getCloud().DisksClient.(*mockdiskclient.MockInterface).EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(disk, nil).AnyTimes()
-// 				_, err := d.GetSourceDiskSize(context.Background(), "", "test-rg", "test-disk", 0, 1)
-// 				expectedErr := status.Error(codes.Internal, "DiskProperty not found for disk (test-disk) in resource group (test-rg)")
-// 				if !testutil.IsErrorEquivalent(err, expectedErr) {
-// 					t.Errorf("actualErr: (%v), expectedErr: (%v)", err, expectedErr)
-// 				}
-// 			},
-// 		},
-// 		{
-// 			name: "nil DiskSizeGB",
-// 			testFunc: func(t *testing.T) {
-// 				d, _ := newFakeDriverV1(t)
-// 				diskProperties := compute.DiskProperties{}
-// 				disk := compute.Disk{
-// 					DiskProperties: &diskProperties,
-// 				}
-// 				d.getCloud().DisksClient.(*mockdiskclient.MockInterface).EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(disk, nil).AnyTimes()
-// 				_, err := d.GetSourceDiskSize(context.Background(), "", "test-rg", "test-disk", 0, 1)
-// 				expectedErr := status.Error(codes.Internal, "DiskSizeGB for disk (test-disk) in resourcegroup (test-rg) is nil")
-// 				if !testutil.IsErrorEquivalent(err, expectedErr) {
-// 					t.Errorf("actualErr: (%v), expectedErr: (%v)", err, expectedErr)
-// 				}
-// 			},
-// 		},
-// 		{
-// 			name: "successful search: depth 1",
-// 			testFunc: func(t *testing.T) {
-// 				d, _ := newFakeDriverV1(t)
-// 				diskSizeGB := int32(8)
-// 				diskProperties := compute.DiskProperties{
-// 					DiskSizeGB: &diskSizeGB,
-// 				}
-// 				disk := compute.Disk{
-// 					DiskProperties: &diskProperties,
-// 				}
-// 				d.getCloud().DisksClient.(*mockdiskclient.MockInterface).EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(disk, nil).AnyTimes()
-// 				size, _ := d.GetSourceDiskSize(context.Background(), "", "test-rg", "test-disk", 0, 1)
-// 				expectedOutput := diskSizeGB
-// 				if *size != expectedOutput {
-// 					t.Errorf("actualOutput: (%v), expectedOutput: (%v)", *size, expectedOutput)
-// 				}
-// 			},
-// 		},
-// 		{
-// 			name: "successful search: depth 2",
-// 			testFunc: func(t *testing.T) {
-// 				d, _ := newFakeDriverV1(t)
-// 				diskSizeGB1 := int32(16)
-// 				diskSizeGB2 := int32(8)
-// 				sourceURI := "/subscriptions/xxxxxxxx/resourcegroups/test-rg/providers/microsoft.compute/disks/test-disk-1"
-// 				creationData := compute.CreationData{
-// 					CreateOption: "Copy",
-// 					SourceURI:    &sourceURI,
-// 				}
-// 				diskProperties1 := compute.DiskProperties{
-// 					CreationData: &creationData,
-// 					DiskSizeGB:   &diskSizeGB1,
-// 				}
-// 				diskProperties2 := compute.DiskProperties{
-// 					DiskSizeGB: &diskSizeGB2,
-// 				}
-// 				disk1 := compute.Disk{
-// 					DiskProperties: &diskProperties1,
-// 				}
-// 				disk2 := compute.Disk{
-// 					DiskProperties: &diskProperties2,
-// 				}
-// 				d.getCloud().DisksClient.(*mockdiskclient.MockInterface).EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(disk1, nil).Return(disk2, nil).AnyTimes()
-// 				size, _ := d.GetSourceDiskSize(context.Background(), "", "test-rg", "test-disk-1", 0, 2)
-// 				expectedOutput := diskSizeGB2
-// 				if *size != expectedOutput {
-// 					t.Errorf("actualOutput: (%v), expectedOutput: (%v)", *size, expectedOutput)
-// 				}
-// 			},
-// 		},
-// 	}
-// 	for _, tc := range testCases {
-// 		t.Run(tc.name, tc.testFunc)
-// 	}
-// }
+	testCases := []struct {
+		name     string
+		testFunc func(t *testing.T)
+	}{
+		{
+			name: "max depth reached",
+			testFunc: func(t *testing.T) {
+				d, _ := newFakeDriverV1(t, newFakeDriverConfig())
+				_, err := d.GetSourceDiskSize(context.Background(), "test-subscription", "test-rg", "test-disk", 2, 1)
+				expectedErr := status.Errorf(codes.Internal, "current depth (2) surpassed the max depth (1) while searching for the source disk size")
+				if !testutil.IsErrorEquivalent(err, expectedErr) {
+					t.Errorf("actualErr: (%v), expectedErr: (%v)", err, expectedErr)
+				}
+			},
+		},
+		{
+			name: "diskproperty not found",
+			testFunc: func(t *testing.T) {
+				d, _ := newFakeDriverV1(t, newFakeDriverConfig())
+				disk := compute.Disk{}
+				d.getCloud().DisksClient.(*mockdiskclient.MockInterface).EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(disk, nil).AnyTimes()
+				_, err := d.GetSourceDiskSize(context.Background(), "", "test-rg", "test-disk", 0, 1)
+				expectedErr := status.Error(codes.Internal, "DiskProperty not found for disk (test-disk) in resource group (test-rg)")
+				if !testutil.IsErrorEquivalent(err, expectedErr) {
+					t.Errorf("actualErr: (%v), expectedErr: (%v)", err, expectedErr)
+				}
+			},
+		},
+		{
+			name: "nil DiskSizeGB",
+			testFunc: func(t *testing.T) {
+				d, _ := newFakeDriverV1(t, newFakeDriverConfig())
+				diskProperties := compute.DiskProperties{}
+				disk := compute.Disk{
+					DiskProperties: &diskProperties,
+				}
+				d.getCloud().DisksClient.(*mockdiskclient.MockInterface).EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(disk, nil).AnyTimes()
+				_, err := d.GetSourceDiskSize(context.Background(), "", "test-rg", "test-disk", 0, 1)
+				expectedErr := status.Error(codes.Internal, "DiskSizeGB for disk (test-disk) in resourcegroup (test-rg) is nil")
+				if !testutil.IsErrorEquivalent(err, expectedErr) {
+					t.Errorf("actualErr: (%v), expectedErr: (%v)", err, expectedErr)
+				}
+			},
+		},
+		{
+			name: "successful search: depth 1",
+			testFunc: func(t *testing.T) {
+				d, _ := newFakeDriverV1(t, newFakeDriverConfig())
+				diskSizeGB := int32(8)
+				diskProperties := compute.DiskProperties{
+					DiskSizeGB: &diskSizeGB,
+				}
+				disk := compute.Disk{
+					DiskProperties: &diskProperties,
+				}
+				d.getCloud().DisksClient.(*mockdiskclient.MockInterface).EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(disk, nil).AnyTimes()
+				size, _ := d.GetSourceDiskSize(context.Background(), "", "test-rg", "test-disk", 0, 1)
+				expectedOutput := diskSizeGB
+				if *size != expectedOutput {
+					t.Errorf("actualOutput: (%v), expectedOutput: (%v)", *size, expectedOutput)
+				}
+			},
+		},
+		{
+			name: "successful search: depth 2",
+			testFunc: func(t *testing.T) {
+				d, _ := newFakeDriverV1(t, newFakeDriverConfig())
+				diskSizeGB1 := int32(16)
+				diskSizeGB2 := int32(8)
+				sourceURI := "/subscriptions/xxxxxxxx/resourcegroups/test-rg/providers/microsoft.compute/disks/test-disk-1"
+				creationData := compute.CreationData{
+					CreateOption: "Copy",
+					SourceURI:    &sourceURI,
+				}
+				diskProperties1 := compute.DiskProperties{
+					CreationData: &creationData,
+					DiskSizeGB:   &diskSizeGB1,
+				}
+				diskProperties2 := compute.DiskProperties{
+					DiskSizeGB: &diskSizeGB2,
+				}
+				disk1 := compute.Disk{
+					DiskProperties: &diskProperties1,
+				}
+				disk2 := compute.Disk{
+					DiskProperties: &diskProperties2,
+				}
+				d.getCloud().DisksClient.(*mockdiskclient.MockInterface).EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(disk1, nil).Return(disk2, nil).AnyTimes()
+				size, _ := d.GetSourceDiskSize(context.Background(), "", "test-rg", "test-disk-1", 0, 2)
+				expectedOutput := diskSizeGB2
+				if *size != expectedOutput {
+					t.Errorf("actualOutput: (%v), expectedOutput: (%v)", *size, expectedOutput)
+				}
+			},
+		},
+	}
+	for _, tc := range testCases {
+		t.Run(tc.name, tc.testFunc)
+	}
+}
 
 // func getFakeDriverWithKubeClient(t *testing.T) FakeDriver {
 // 	d, _ := NewFakeDriver(t)

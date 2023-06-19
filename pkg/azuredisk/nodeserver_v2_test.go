@@ -43,7 +43,7 @@ func TestNodeStageVolumeMountRecovery(t *testing.T) {
 	if mounter.IsFakeUsingCSIProxy() {
 		t.Skip("Skipping test because CSI Proxy is used.")
 	}
-	d, err := newFakeDriverV2(t)
+	d, err := newFakeDriverV2(t, newFakeDriverConfig())
 	assert.NoError(t, err)
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
@@ -195,7 +195,7 @@ func TestNodeStageVolumeMountRecovery(t *testing.T) {
 }
 
 func TestRecoverMount(t *testing.T) {
-	d, _ := newFakeDriverV2(t)
+	d, _ := newFakeDriverV2(t, newFakeDriverConfig())
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 	d.crdProvisioner = mockprovisioner.NewMockCrdProvisioner(ctrl)

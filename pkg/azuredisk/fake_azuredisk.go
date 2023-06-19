@@ -29,15 +29,16 @@ package azuredisk
 // 	"k8s.io/mount-utils"
 // 	testingexec "k8s.io/utils/exec/testing"
 
-// 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
-// 	csicommon "sigs.k8s.io/azuredisk-csi-driver/pkg/csi-common"
-// 	"sigs.k8s.io/azuredisk-csi-driver/pkg/mounter"
-// 	"sigs.k8s.io/azuredisk-csi-driver/pkg/optimization"
-// 	"sigs.k8s.io/azuredisk-csi-driver/pkg/optimization/mockoptimization"
-// 	volumehelper "sigs.k8s.io/azuredisk-csi-driver/pkg/util"
-// 	azcache "sigs.k8s.io/cloud-provider-azure/pkg/cache"
-// 	"sigs.k8s.io/cloud-provider-azure/pkg/provider"
-// )
+	azdiskv1beta2 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1beta2"
+	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
+	csicommon "sigs.k8s.io/azuredisk-csi-driver/pkg/csi-common"
+	"sigs.k8s.io/azuredisk-csi-driver/pkg/mounter"
+	"sigs.k8s.io/azuredisk-csi-driver/pkg/optimization"
+	"sigs.k8s.io/azuredisk-csi-driver/pkg/optimization/mockoptimization"
+	volumehelper "sigs.k8s.io/azuredisk-csi-driver/pkg/util"
+	azcache "sigs.k8s.io/cloud-provider-azure/pkg/cache"
+	"sigs.k8s.io/cloud-provider-azure/pkg/provider"
+)
 
 // const (
 // 	fakeDriverName    = "disk.csi.azure.com"
@@ -83,11 +84,11 @@ package azuredisk
 // 	getCrdProvisioner() CrdProvisioner
 // 	setCrdProvisioner(crdProvisioner CrdProvisioner)
 
-// 	getDeviceHelper() optimization.Interface
-// 	setPerfOptimizationEnabled(bool)
-// 	getPerfOptimizationEnabled() bool
-// 	setMounter(*mount.SafeFormatAndMount)
-// 	setPathIsDeviceResult(path string, isDevice bool, err error)
+	getDeviceHelper() optimization.Interface
+	setPerfOptimizationEnabled(bool)
+	isPerfOptimizationEnabled() bool
+	setMounter(*mount.SafeFormatAndMount)
+	setPathIsDeviceResult(path string, isDevice bool, err error)
 
 // 	checkDiskCapacity(context.Context, string, string, string, int) (bool, error)
 // 	checkDiskExists(ctx context.Context, diskURI string) (*compute.Disk, error)
@@ -103,24 +104,47 @@ package azuredisk
 // 	Driver
 // }
 
-// func newFakeDriverV1(t *testing.T) (*fakeDriverV1, error) {
-// 	driver := fakeDriverV1{}
-// 	driver.Name = fakeDriverName
-// 	driver.Version = fakeDriverVersion
-// 	driver.NodeID = fakeNodeID
-// 	driver.CSIDriver = *csicommon.NewFakeCSIDriver()
-// 	driver.ready = make(chan struct{})
-// 	driver.volumeLocks = volumehelper.NewVolumeLocks()
-// 	driver.VolumeAttachLimit = -1
-// 	driver.supportZone = true
-// 	driver.ioHandler = azureutils.NewFakeIOHandler()
-// 	driver.hostUtil = azureutils.NewFakeHostUtil()
-// 	driver.useCSIProxyGAInterface = true
-// 	driver.allowEmptyCloudConfig = true
+func newFakeDriverConfig() *azdiskv1beta2.AzDiskDriverConfiguration {
+	driverConfig := NewDefaultDriverConfig()
 
-// 	driver.VolumeAttachLimit = -1
-// 	driver.ioHandler = azureutils.NewFakeIOHandler()
-// 	driver.hostUtil = azureutils.NewFakeHostUtil()
+	driverConfig.DriverName = fakeDriverName
+	driverConfig.NodeConfig.NodeID = fakeNodeID
+
+	return driverConfig
+}
+
+func newFakeDriverV1(t *testing.T, config *azdiskv1beta2.AzDiskDriverConfiguration) (*fakeDriverV1, error) {
+	driver := fakeDriverV1{}
+	driver.CSIDriver = *csicommon.NewFakeCSIDriver()
+
+	driver.Name = config.DriverName
+	driver.Version = fakeDriverVersion
+	driver.NodeID = config.NodeConfig.NodeID
+	driver.VolumeAttachLimit = config.NodeConfig.VolumeAttachLimit
+	driver.perfOptimizationEnabled = config.NodeConfig.EnablePerfOptimization
+	driver.cloudConfigSecretName = config.CloudConfig.SecretName
+	driver.cloudConfigSecretNamespace = config.CloudConfig.SecretNamespace
+	driver.customUserAgent = config.CloudConfig.CustomUserAgent
+	driver.userAgentSuffix = config.CloudConfig.UserAgentSuffix
+	driver.useCSIProxyGAInterface = config.NodeConfig.UseCSIProxyGAInterface
+	driver.enableDiskOnlineResize = config.ControllerConfig.EnableDiskOnlineResize
+	driver.allowEmptyCloudConfig = config.CloudConfig.AllowEmptyCloudConfig
+	driver.enableAsyncAttach = config.ControllerConfig.EnableAsyncAttach
+	driver.enableListVolumes = config.ControllerConfig.EnableListVolumes
+	driver.enableListSnapshots = config.ControllerConfig.EnableListSnapshots
+	driver.supportZone = config.NodeConfig.SupportZone
+	driver.getNodeInfoFromLabels = config.NodeConfig.GetNodeInfoFromLabels
+	driver.enableDiskCapacityCheck = config.ControllerConfig.EnableDiskCapacityCheck
+	driver.vmssCacheTTLInSeconds = config.CloudConfig.VMSSCacheTTLInSeconds
+	driver.vmType = config.ControllerConfig.VMType
+	driver.disableUpdateCache = config.CloudConfig.DisableUpdateCache
+	driver.enableTrafficManager = config.CloudConfig.EnableTrafficManager
+	driver.trafficManagerPort = config.CloudConfig.TrafficManagerPort
+
+	driver.ready = make(chan struct{})
+	driver.volumeLocks = volumehelper.NewVolumeLocks()
+	driver.ioHandler = azureutils.NewFakeIOHandler()
+	driver.hostUtil = azureutils.NewFakeHostUtil()
 
 // 	ctrl := gomock.NewController(t)
 // 	defer ctrl.Finish()

@@ -20,7 +20,6 @@ import (
 	"time"
 
 	"github.com/golang/mock/gomock"
-	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
 	azcache "sigs.k8s.io/cloud-provider-azure/pkg/cache"
 )
 
@@ -28,8 +27,8 @@ type FakeCloudProvisioner struct {
 	CloudProvisioner
 }
 
-func NewFakeCloudProvisioner(ctrl *gomock.Controller) (*FakeCloudProvisioner, error) {
-	fakeCloud := &azureutils.Cloud{}
+func NewFakeCloudProvisioner(ctrl *gomock.Controller, config *azdiskv1beta2.AzDiskDriverConfiguration) (*FakeCloudProvisioner, error) {
+	fakeCloud := provider.GetTestCloud(ctrl)
 
 	cache, err := azcache.NewTimedcache(time.Minute, func(key string) (interface{}, error) {
 		return nil, nil
@@ -39,7 +38,12 @@ func NewFakeCloudProvisioner(ctrl *gomock.Controller) (*FakeCloudProvisioner, er
 	}
 
 	return &FakeCloudProvisioner{
-		CloudProvisioner: CloudProvisioner{cloud: fakeCloud, getDiskThrottlingCache: cache},
+		CloudProvisioner: CloudProvisioner{
+			cloud:                  fakeCloud,
+			kubeClient:             kfake.NewSimpleClientset(),
+			config:                 config,
+			getDiskThrottlingCache: cache,
+		},
 	}, nil
 }
 
@@ -49,12 +53,4 @@ func (fake *FakeCloudProvisioner) GetCloud() *azureutils.Cloud {
 
 func (fake *FakeCloudProvisioner) SetCloud(cloud *azureutils.Cloud) {
 	fake.cloud = cloud
-}
-
-func (fake *FakeCloudProvisioner) GetPerfOptimizationEnabled() bool {
-	return fake.perfOptimizationEnabled
-}
-
-func (fake *FakeCloudProvisioner) SetPerfOptimizationEnabled(enabled bool) {
-	fake.perfOptimizationEnabled = enabled
 }

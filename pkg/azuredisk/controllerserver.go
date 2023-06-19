@@ -107,36 +107,25 @@ package azuredisk
 
 // 	localCloud := d.cloud
 
-// 	if diskParams.UserAgent != "" {
-// 		localCloud, err = azureutils.GetCloudProvider(
-// 			ctx,
-// 			d.kubeconfig,
-// 			d.cloudConfigSecretName,
-// 			d.cloudConfigSecretNamespace,
-// 			diskParams.UserAgent,
-// 			d.allowEmptyCloudConfig,
-// 			consts.DefaultEnableAzureClientAttachDetachRateLimiter,
-// 			consts.DefaultAzureClientAttachDetachRateLimiterQPS,
-// 			consts.DefaultAzureClientAttachDetachRateLimiterBucket,
-// 			d.enableTrafficManager,
-// 			d.trafficManagerPort)
-// 		if err != nil {
-// 			return nil, status.Errorf(codes.Internal, "create cloud with UserAgent(%s) failed with: (%s)", diskParams.UserAgent, err)
-// 		}
-// 	}
+	if diskParams.UserAgent != "" {
+		localCloud, err = d.getCloudProviderWithUserAgent(ctx, diskParams.UserAgent)
+		if err != nil {
+			return nil, status.Errorf(codes.Internal, "create cloud with UserAgent(%s) failed with: (%s)", diskParams.UserAgent, err)
+		}
+	}
 
-// 	isAdvancedPerfProfile := strings.EqualFold(diskParams.PerfProfile, azureconstants.PerfProfileAdvanced)
-// 	// If perfProfile is set to advanced and no/invalid device settings are provided, fail the request
-// 	if d.getPerfOptimizationEnabled() && isAdvancedPerfProfile {
-// 		if err = optimization.AreDeviceSettingsValid(consts.DummyBlockDevicePathLinux, diskParams.DeviceSettings); err != nil {
-// 			return nil, err
-// 		}
-// 	}
-// 	if azureutils.IsAzureStackCloud(localCloud.Config.Cloud, localCloud.Config.DisableAzureStackCloud) {
-// 		if diskParams.MaxShares > 1 {
-// 			return nil, status.Error(codes.InvalidArgument, fmt.Sprintf("Invalid maxShares value: %d as Azure Stack does not support shared disk.", diskParams.MaxShares))
-// 		}
-// 	}
+	isAdvancedPerfProfile := strings.EqualFold(diskParams.PerfProfile, azureconstants.PerfProfileAdvanced)
+	// If perfProfile is set to advanced and no/invalid device settings are provided, fail the request
+	if d.isPerfOptimizationEnabled() && isAdvancedPerfProfile {
+		if err = optimization.AreDeviceSettingsValid(consts.DummyBlockDevicePathLinux, diskParams.DeviceSettings); err != nil {
+			return nil, err
+		}
+	}
+	if azureutils.IsAzureStackCloud(localCloud.Config.Cloud, localCloud.Config.DisableAzureStackCloud) {
+		if diskParams.MaxShares > 1 {
+			return nil, status.Error(codes.InvalidArgument, fmt.Sprintf("Invalid maxShares value: %d as Azure Stack does not support shared disk.", diskParams.MaxShares))
+		}
+	}
 
 // 	if diskParams.DiskName == "" {
 // 		diskParams.DiskName = name
@@ -827,44 +816,33 @@ package azuredisk
 // 	localCloud := d.cloud
 // 	location := d.cloud.Location
 
-// 	parameters := req.GetParameters()
-// 	for k, v := range parameters {
-// 		switch strings.ToLower(k) {
-// 		case consts.TagsField:
-// 			customTags = v
-// 		case consts.IncrementalField:
-// 			if v == "false" {
-// 				incremental = false
-// 			}
-// 		case consts.ResourceGroupField:
-// 			resourceGroup = v
-// 		case consts.LocationField:
-// 			location = v
-// 		case consts.UserAgentField:
-// 			newUserAgent := v
-// 			localCloud, err = azureutils.GetCloudProvider(
-// 				ctx,
-// 				d.kubeconfig,
-// 				d.cloudConfigSecretName,
-// 				d.cloudConfigSecretNamespace,
-// 				newUserAgent,
-// 				d.allowEmptyCloudConfig,
-// 				consts.DefaultEnableAzureClientAttachDetachRateLimiter,
-// 				consts.DefaultAzureClientAttachDetachRateLimiterQPS,
-// 				consts.DefaultAzureClientAttachDetachRateLimiterBucket,
-// 				d.enableTrafficManager,
-// 				d.trafficManagerPort)
-// 			if err != nil {
-// 				return nil, status.Errorf(codes.Internal, "create cloud with UserAgent(%s) failed with: (%s)", newUserAgent, err)
-// 			}
-// 		case consts.SubscriptionIDField:
-// 			subsID = v
-// 		case consts.DataAccessAuthModeField:
-// 			dataAccessAuthMode = v
-// 		default:
-// 			return nil, status.Errorf(codes.Internal, "AzureDisk - invalid option %s in VolumeSnapshotClass", k)
-// 		}
-// 	}
+	parameters := req.GetParameters()
+	for k, v := range parameters {
+		switch strings.ToLower(k) {
+		case consts.TagsField:
+			customTags = v
+		case consts.IncrementalField:
+			if v == "false" {
+				incremental = false
+			}
+		case consts.ResourceGroupField:
+			resourceGroup = v
+		case consts.LocationField:
+			location = v
+		case consts.UserAgentField:
+			newUserAgent := v
+			localCloud, err = d.getCloudProviderWithUserAgent(ctx, newUserAgent)
+			if err != nil {
+				return nil, status.Errorf(codes.Internal, "create cloud with UserAgent(%s) failed with: (%s)", newUserAgent, err)
+			}
+		case consts.SubscriptionIDField:
+			subsID = v
+		case consts.DataAccessAuthModeField:
+			dataAccessAuthMode = v
+		default:
+			return nil, status.Errorf(codes.Internal, "AzureDisk - invalid option %s in VolumeSnapshotClass", k)
+		}
+	}
 
 // 	if azureutils.IsAzureStackCloud(localCloud.Config.Cloud, localCloud.Config.DisableAzureStackCloud) {
 // 		klog.V(2).Info("Use full snapshot instead as Azure Stack does not support incremental snapshot.")
@@ -1047,16 +1025,36 @@ package azuredisk
 // 	return (*result.DiskProperties).DiskSizeGB, nil
 // }
 
-// // The format of snapshot id is /subscriptions/xxx/resourceGroups/xxx/providers/Microsoft.Compute/snapshots/snapshot-xxx-xxx.
-// func (d *Driver) getSnapshotInfo(snapshotID string) (snapshotName, resourceGroup, subsID string, err error) {
-// 	if snapshotName, err = azureutils.GetSnapshotNameFromURI(snapshotID); err != nil {
-// 		return "", "", "", err
-// 	}
-// 	if resourceGroup, err = azureutils.GetResourceGroupFromURI(snapshotID); err != nil {
-// 		return "", "", "", err
-// 	}
-// 	if subsID = azureutils.GetSubscriptionIDFromURI(snapshotID); subsID == "" {
-// 		return "", "", "", fmt.Errorf("cannot get SubscriptionID from %s", snapshotID)
-// 	}
-// 	return snapshotName, resourceGroup, subsID, err
-// }
+// The format of snapshot id is /subscriptions/xxx/resourceGroups/xxx/providers/Microsoft.Compute/snapshots/snapshot-xxx-xxx.
+func (d *Driver) getSnapshotInfo(snapshotID string) (snapshotName, resourceGroup, subsID string, err error) {
+	if snapshotName, err = azureutils.GetSnapshotNameFromURI(snapshotID); err != nil {
+		return "", "", "", err
+	}
+	if resourceGroup, err = azureutils.GetResourceGroupFromURI(snapshotID); err != nil {
+		return "", "", "", err
+	}
+	if subsID = azureutils.GetSubscriptionIDFromURI(snapshotID); subsID == "" {
+		return "", "", "", fmt.Errorf("cannot get SubscriptionID from %s", snapshotID)
+	}
+	return snapshotName, resourceGroup, subsID, err
+}
+
+func (d *Driver) getCloudProviderWithUserAgent(ctx context.Context, userAgent string) (*azure.Cloud, error) {
+	return azureutils.GetCloudProvider(
+		ctx,
+		d.kubeconfig,
+		d.vmType,
+		d.cloud.DisableAvailabilitySetNodes,
+		d.NodeID,
+		d.cloudConfigSecretName,
+		d.cloudConfigSecretNamespace,
+		userAgent,
+		d.allowEmptyCloudConfig,
+		consts.DefaultEnableAzureClientAttachDetachRateLimiter,
+		consts.DefaultAzureClientAttachDetachRateLimiterQPS,
+		consts.DefaultAzureClientAttachDetachRateLimiterBucket,
+		d.enableTrafficManager,
+		d.trafficManagerPort,
+		d.disableUpdateCache,
+		d.vmssCacheTTLInSeconds)
+}

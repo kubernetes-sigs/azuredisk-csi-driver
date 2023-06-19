@@ -116,8 +116,8 @@ func WaitForVolumeDetach(c clientset.Interface, pvName string, poll, pollTimeout
 }
 
 // WaitForAllReplicaAttachmentsToAttach waits for all replica attachments to be attached until timeout occurs, whichever comes first,
-// and returns the number of attached replica attachments.
-func WaitForAllReplicaAttachmentsToAttach(testTimeout int, tickerDuration time.Duration, desiredNumberOfReplicaAtts int, cs *azdisk.Clientset) (numberOfAttachedReplicaAtts int) {
+// and returns the number of attached replica attachments and if the azvolumeattachments were over issued in the process.
+func WaitForAllReplicaAttachmentsToAttach(testTimeout int, tickerDuration time.Duration, desiredNumberOfReplicaAtts int, desiredNumberOfAzAtts int, cs *azdisk.Clientset) (numberOfAttachedReplicaAtts int, overIssued bool) {
 	ticker := time.NewTicker(tickerDuration)
 	tickerCount := 0
 	timeout := time.After(time.Duration(testTimeout) * time.Minute)
@@ -128,7 +128,10 @@ func WaitForAllReplicaAttachmentsToAttach(testTimeout int, tickerDuration time.D
 			return
 		case <-ticker.C:
 			tickerCount++
-			numberOfAttachedReplicaAtts = CountAllAttachedReplicaAttachments(cs)
+			numberOfAttachedReplicaAtts = countAllAttachedReplicaAttachments(cs)
+			if !overIssued {
+				overIssued = countAllAzAttachments(cs) > desiredNumberOfAzAtts
+			}
 			framework.Logf("%.1f min: %d replica attachments are attached", float64(tickerCount)*tickerDuration.Minutes(), numberOfAttachedReplicaAtts)
 			if numberOfAttachedReplicaAtts >= desiredNumberOfReplicaAtts {
 				return
@@ -137,9 +140,9 @@ func WaitForAllReplicaAttachmentsToAttach(testTimeout int, tickerDuration time.D
 	}
 }
 
-// WaitForAllReplicaAttachmentsToDetach waits for all replica attachments to be detached until timeout occurs, whichever comes first,
-// and returns the number of attached replica attachments.
-func WaitForAllReplicaAttachmentsToDetach(testTimeout int, tickerDuration time.Duration, cs *azdisk.Clientset) (numberOfAttachedReplicaAtts int) {
+// WaitForAllAzAttachmentsToDelete waits for all azvolumeattachments to be deleted until timeout occurs, whichever comes first,
+// and returns the number of remaining azvolumeattachments.
+func WaitForAllAzAttachmentsToDelete(testTimeout int, tickerDuration time.Duration, cs *azdisk.Clientset) (numberOfAzAtts int) {
 	framework.ExpectEqual(testTimeout > int(tickerDuration.Minutes()), true)
 	ticker := time.NewTicker(tickerDuration)
 	tickerCount := 0
@@ -151,9 +154,9 @@ func WaitForAllReplicaAttachmentsToDetach(testTimeout int, tickerDuration time.D
 			return
 		case <-ticker.C:
 			tickerCount++
-			numberOfAttachedReplicaAtts = CountAllAttachedReplicaAttachments(cs)
-			framework.Logf("%.1f min: %d replica attachments are attached", float64(tickerCount)*tickerDuration.Minutes(), numberOfAttachedReplicaAtts)
-			if numberOfAttachedReplicaAtts <= 0 {
+			numberOfAzAtts = countAllAzAttachments(cs)
+			framework.Logf("%.1f min: %d azVolumeAttachments are remaining", float64(tickerCount)*tickerDuration.Minutes(), numberOfAzAtts)
+			if numberOfAzAtts <= 0 {
 				return
 			}
 		}
@@ -161,7 +164,7 @@ func WaitForAllReplicaAttachmentsToDetach(testTimeout int, tickerDuration time.D
 }
 
 // Returns the number of attached replica attachments in the cluster
-func CountAllAttachedReplicaAttachments(cs *azdisk.Clientset) int {
+func countAllAttachedReplicaAttachments(cs *azdisk.Clientset) int {
 	framework.Logf("Getting all replica attachments")
 	roleReq, err := azureutils.CreateLabelRequirements(consts.RoleLabel, selection.Equals, string(azdiskv1beta2.ReplicaRole))
 	framework.ExpectNoError(err)
@@ -179,4 +182,15 @@ func CountAllAttachedReplicaAttachments(cs *azdisk.Clientset) int {
 		}
 	}
 	return numberOfAttachedReplicaAtts
+}
+
+// Returns the number of azvolumeattachments in the cluster
+func countAllAzAttachments(cs *azdisk.Clientset) int {
+	framework.Logf("Getting all azVolumeAttachments")
+	replicaAtts, err := cs.DiskV1beta2().AzVolumeAttachments(consts.DefaultAzureDiskCrdNamespace).List(context.TODO(), metav1.ListOptions{})
+
+	if err != nil {
+		framework.Failf("Failed to get azVolumeAttachments: %v.", err)
+	}
+	return len(replicaAtts.Items)
 }

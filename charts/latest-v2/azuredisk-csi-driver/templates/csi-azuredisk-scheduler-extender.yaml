@@ -17,6 +17,13 @@ data:
       resourceLock: leases
       resourceName: csi-azuredisk-scheduler-extender
       resourceNamespace: {{ .Release.Namespace }}
+    clientConnection:
+{{- if .Values.schedulerExtender.kubeApiQps }}
+      qps: {{ .Values.schedulerExtender.kubeApiQps }}
+{{- end }}
+{{- if .Values.schedulerExtender.kubeApiBurst }}
+      burst: {{ .Values.schedulerExtender.kubeApiBurst }}
+{{- end }}
     profiles:
     - schedulerName: csi-azuredisk-scheduler-extender
     extenders:

@@ -41,7 +41,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	apiRuntime "k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/informers"
-	clientset "k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/leaderelection/resourcelock"
@@ -69,7 +69,6 @@ import (
 	volumehelper "sigs.k8s.io/azuredisk-csi-driver/pkg/util"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/watcher"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/workflow"
-	azurecloudconsts "sigs.k8s.io/cloud-provider-azure/pkg/consts"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
 	"sigs.k8s.io/controller-runtime/pkg/source"
 )
@@ -120,7 +119,7 @@ type DriverV2 struct {
 	crdProvisioner       CrdProvisioner
 	volumeLocks          *volumehelper.VolumeLocks
 	kubeConfig           *rest.Config
-	kubeClient           *clientset.Clientset
+	kubeClient           kubernetes.Interface
 	azdiskClient         azdisk.Interface
 	crdClient            crdClientset.Interface
 	azDriverNodeInformer azdiskinformertypes.AzDriverNodeInformer
@@ -229,49 +228,23 @@ func (d *DriverV2) Run(endpoint, kubeconfig string, disableAVSetNodes, testingMo
 		d.cloudProvisioner, err = provisioner.NewCloudProvisioner(
 			ctx,
 			d.kubeClient,
-			d.config.CloudConfig,
-			d.isPerfOptimizationEnabled(),
+			d.config,
 			topologyKey,
-			userAgent,
-			d.config.ControllerConfig.EnableDiskOnlineResize,
-			d.config.ControllerConfig.EnableAsyncAttach)
+			userAgent)
 		if err != nil {
 			klog.Fatalf("Failed to get controller provisioner. Error: %v", err)
-		}
-	}
-
-	if d.cloudProvisioner.GetCloud() != nil {
-		if d.config.ControllerConfig.VMType != "" {
-			klog.V(2).Infof("override VMType(%s) in cloud config as %s", d.cloudProvisioner.GetCloud().VMType, d.config.ControllerConfig.VMType)
-			d.cloudProvisioner.GetCloud().VMType = d.config.ControllerConfig.VMType
-		}
-		if d.NodeID == "" {
-			// Disable UseInstanceMetadata for controller to mitigate a timeout issue using IMDS
-			// https://github.com/kubernetes-sigs/azuredisk-csi-driver/issues/168
-			klog.V(2).Infof("disable UseInstanceMetadata for controller")
-			d.cloudProvisioner.GetCloud().Config.UseInstanceMetadata = false
-
-			if d.cloudProvisioner.GetCloud().VMType == azurecloudconsts.VMTypeStandard && d.cloudProvisioner.GetCloud().DisableAvailabilitySetNodes {
-				klog.V(2).Infof("set DisableAvailabilitySetNodes as false since VMType is %s", d.cloudProvisioner.GetCloud().VMType)
-				d.cloudProvisioner.GetCloud().DisableAvailabilitySetNodes = false
-			}
-
-			if d.cloudProvisioner.GetCloud().VMType == azurecloudconsts.VMTypeVMSS && !d.cloudProvisioner.GetCloud().DisableAvailabilitySetNodes {
-				if disableAVSetNodes {
-					klog.V(2).Infof("DisableAvailabilitySetNodes for controller since current VMType is vmss")
-					d.cloudProvisioner.GetCloud().DisableAvailabilitySetNodes = true
-				} else {
-					klog.Warningf("DisableAvailabilitySetNodes for controller is set as false while current VMType is vmss")
-				}
-			}
-			klog.V(2).Infof("cloud: %s, location: %s, rg: %s, VMType: %s, PrimaryScaleSetName: %s, PrimaryAvailabilitySetName: %s, DisableAvailabilitySetNodes: %v", d.cloudProvisioner.GetCloud().Cloud, d.cloudProvisioner.GetCloud().Location, d.cloudProvisioner.GetCloud().ResourceGroup, d.cloudProvisioner.GetCloud().VMType, d.cloudProvisioner.GetCloud().PrimaryScaleSetName, d.cloudProvisioner.GetCloud().PrimaryAvailabilitySetName, d.cloudProvisioner.GetCloud().DisableAvailabilitySetNodes)
 		}
 	}
 
 	d.deviceHelper = optimization.NewSafeDeviceHelper()
 
 	if d.isPerfOptimizationEnabled() {
-		d.nodeInfo, err = optimization.NewNodeInfo(context.Background(), d.cloudProvisioner.GetCloud(), d.NodeID)
+		instanceType, err := d.cloudProvisioner.GetInstanceType(ctx, d.NodeID)
+		if err != nil {
+			klog.Fatalf("Failed to get instance type. Error: %v", err)
+		}
+
+		d.nodeInfo, err = optimization.NewNodeInfo(context.Background(), instanceType)
 		if err != nil {
 			klog.Errorf("Failed to get node info. Error: %v", err)
 		}

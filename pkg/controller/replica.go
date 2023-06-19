@@ -75,85 +75,77 @@ func (r *ReconcileReplica) Reconcile(ctx context.Context, request reconcile.Requ
 			// If not, cancel scheduled garbage collection if there is one enqueued
 			r.removeGarbageCollection(azVolumeAttachment.Spec.VolumeName)
 
-			// If promotion event, create a replacement replica
-			if isAttached(azVolumeAttachment) && azVolumeAttachment.Status.Detail.PreviousRole == azdiskv1beta2.ReplicaRole {
-				r.triggerManageReplica(azVolumeAttachment.Spec.VolumeName)
+			// If promotion event, create a replacement replica after promotion update is done
+			if isAttached(azVolumeAttachment) && isPromotionRequested(azVolumeAttachment) {
+				go r.handlePromoteUpdate(context.Background(), azVolumeAttachment)
 			}
 		}
 	} else {
 		// queue garbage collection if a primary attachment is being demoted
 		if isDemotionRequested(azVolumeAttachment) {
-			//nolint:contextcheck // Garbage collection is asynchronous; context is not inherited by design
-			r.triggerGarbageCollection(ctx, azVolumeAttachment.Spec.VolumeName)
-			return reconcile.Result{}, nil
-		}
-
-		if deleteRequested, _ := objectDeletionRequested(azVolumeAttachment); !deleteRequested {
-			// create a replica attachment was requested for a detach, create a replacement replica if the attachment is not being cleaned up
-			if volumeDetachRequested(azVolumeAttachment) {
-				if azVolumeAttachment.Status.State == azdiskv1beta2.DetachmentFailed {
-					// if detachment failed and the driver is uninstalling, delete azvolumeattachment CRI to let uninstallation proceed
-					if r.driverLifecycle.IsDriverUninstall() {
-						r.logger.Info("Deleting AzVolumeAttachment in DetachmentFailed state without detaching disk", workflow.GetObjectDetails(azVolumeAttachment)...)
-						if err := r.cachedClient.Delete(ctx, azVolumeAttachment); err != nil {
-							return reconcile.Result{Requeue: true}, err
-						}
-					} else {
-						if _, err := azureutils.UpdateCRIWithRetry(ctx, nil, r.cachedClient, r.azClient, azVolumeAttachment, func(obj client.Object) error {
-							azVolumeAttachment := obj.(*azdiskv1beta2.AzVolumeAttachment)
-							_, err = updateState(azVolumeAttachment, azdiskv1beta2.ForceDetachPending, normalUpdate)
-							return err
-						}, consts.NormalUpdateMaxNetRetry, azureutils.UpdateCRIStatus); err != nil {
-							return reconcile.Result{Requeue: true}, err
-						}
-					}
-				}
-
-				if !isCleanupRequested(azVolumeAttachment) {
-					go r.handleReplicaDelete(context.Background(), azVolumeAttachment)
-				}
-			} else if azVolumeAttachment.Status.State == azdiskv1beta2.AttachmentFailed {
-				// if the failed attachment isn't retriable, delete the CRI so that replacing replica AzVolumeAttachment can be created
-				// once the attachment has ever been retriable, it should be retried until it succeeds or gets detached
-				if !azureutils.MapContains(azVolumeAttachment.Status.Annotations, consts.ReplicaVolumeAttachRetryAnnotation) && !azureutils.MapContains(azVolumeAttachment.Status.Annotations, consts.ReplicaVolumeAttachRetryCount) {
+			go r.handleDemoteUpdate(context.Background(), azVolumeAttachment)
+		} else if volumeDetachRequested(azVolumeAttachment) {
+			if azVolumeAttachment.Status.State == azdiskv1beta2.DetachmentFailed {
+				// if detachment failed and the driver is uninstalling, delete azvolumeattachment CRI to let uninstallation proceed
+				if r.driverLifecycle.IsDriverUninstall() {
+					r.logger.Info("Deleting AzVolumeAttachment in DetachmentFailed state without detaching disk", workflow.GetObjectDetails(azVolumeAttachment)...)
 					if err := r.cachedClient.Delete(ctx, azVolumeAttachment); err != nil {
 						return reconcile.Result{Requeue: true}, err
 					}
-					go r.handleReplicaDelete(context.Background(), azVolumeAttachment)
-					// else, reset the state to AttachmentPending to retry the attachment
 				} else {
-					retryCount := 0
-					if value, exists := azureutils.GetFromMap(azVolumeAttachment.Status.Annotations, consts.ReplicaVolumeAttachRetryCount); exists {
-						if n, err := strconv.Atoi(value); err == nil {
-							retryCount = n
-						} else {
-							r.logger.Error(err, "failed to convert retry count to int")
-						}
-					}
-
-					var updateFunc azureutils.UpdateCRIFunc
-					if retryCount < r.config.ControllerConfig.ReplicaVolumeAttachRetryLimit {
-						updateFunc = func(obj client.Object) error {
-							azva := obj.(*azdiskv1beta2.AzVolumeAttachment)
-							azureutils.RemoveFromMap(azva.Status.Annotations, consts.ReplicaVolumeAttachRetryAnnotation)
-							azureutils.AddToMap(azva.Status.Annotations, consts.ReplicaVolumeAttachRetryCount, strconv.Itoa(retryCount+1))
-							_, derr := updateState(azva, azdiskv1beta2.AttachmentPending, forceUpdate)
-							azva.Status.Detail = nil
-							azva.Status.Error = nil
-							return derr
-						}
-					} else {
-						updateFunc = func(obj client.Object) error {
-							azva := obj.(*azdiskv1beta2.AzVolumeAttachment)
-							azureutils.AddToMap(azva.Status.Annotations, consts.VolumeDetachRequestAnnotation, "replica-controller")
-							_, derr := updateState(azva, azdiskv1beta2.AttachmentPending, forceUpdate)
-							return derr
-						}
-					}
-
-					if _, err := azureutils.UpdateCRIWithRetry(ctx, nil, r.cachedClient, r.azClient, azVolumeAttachment, updateFunc, consts.NormalUpdateMaxNetRetry, azureutils.UpdateCRIStatus); err != nil {
+					if _, err := azureutils.UpdateCRIWithRetry(ctx, nil, r.cachedClient, r.azClient, azVolumeAttachment, func(obj client.Object) error {
+						azVolumeAttachment := obj.(*azdiskv1beta2.AzVolumeAttachment)
+						_, err = updateState(azVolumeAttachment, azdiskv1beta2.ForceDetachPending, normalUpdate)
+						return err
+					}, consts.NormalUpdateMaxNetRetry, azureutils.UpdateCRIStatus); err != nil {
 						return reconcile.Result{Requeue: true}, err
 					}
+				}
+				//create a replacement replica if the attachment is not being cleaned up
+			} else if !isCleanupRequested(azVolumeAttachment) {
+				go r.handleReplicaDelete(context.Background(), azVolumeAttachment, detach)
+			}
+		} else if deleteRequested, _ := objectDeletionRequested(azVolumeAttachment); !deleteRequested && azVolumeAttachment.Status.State == azdiskv1beta2.AttachmentFailed {
+			// if the failed attachment isn't retriable, delete the CRI so that replacing replica AzVolumeAttachment can be created
+			// once the attachment has ever been retriable, it should be retried until it succeeds or gets detached
+			if !azureutils.MapContains(azVolumeAttachment.Status.Annotations, consts.ReplicaVolumeAttachRetryAnnotation) && !azureutils.MapContains(azVolumeAttachment.Status.Annotations, consts.ReplicaVolumeAttachRetryCount) {
+				if err := r.cachedClient.Delete(ctx, azVolumeAttachment); err != nil {
+					return reconcile.Result{Requeue: true}, err
+				}
+				go r.handleReplicaDelete(context.Background(), azVolumeAttachment, attach)
+				// else, reset the state to AttachmentPending to retry the attachment
+			} else {
+				retryCount := 0
+				if value, exists := azureutils.GetFromMap(azVolumeAttachment.Status.Annotations, consts.ReplicaVolumeAttachRetryCount); exists {
+					if n, err := strconv.Atoi(value); err == nil {
+						retryCount = n
+					} else {
+						r.logger.Error(err, "failed to convert retry count to int")
+					}
+				}
+
+				var updateFunc azureutils.UpdateCRIFunc
+				if retryCount < r.config.ControllerConfig.ReplicaVolumeAttachRetryLimit {
+					updateFunc = func(obj client.Object) error {
+						azva := obj.(*azdiskv1beta2.AzVolumeAttachment)
+						azureutils.RemoveFromMap(azva.Status.Annotations, consts.ReplicaVolumeAttachRetryAnnotation)
+						azureutils.AddToMap(azva.Status.Annotations, consts.ReplicaVolumeAttachRetryCount, strconv.Itoa(retryCount+1))
+						_, derr := updateState(azva, azdiskv1beta2.AttachmentPending, forceUpdate)
+						azva.Status.Detail = nil
+						azva.Status.Error = nil
+						return derr
+					}
+				} else {
+					updateFunc = func(obj client.Object) error {
+						azva := obj.(*azdiskv1beta2.AzVolumeAttachment)
+						azureutils.AddToMap(azva.Status.Annotations, consts.VolumeDetachRequestAnnotation, "replica-controller")
+						_, derr := updateState(azva, azdiskv1beta2.AttachmentPending, forceUpdate)
+						return derr
+					}
+				}
+
+				if _, err := azureutils.UpdateCRIWithRetry(ctx, nil, r.cachedClient, r.azClient, azVolumeAttachment, updateFunc, consts.NormalUpdateMaxNetRetry, azureutils.UpdateCRIStatus); err != nil {
+					return reconcile.Result{Requeue: true}, err
 				}
 			}
 		}
@@ -161,16 +153,37 @@ func (r *ReconcileReplica) Reconcile(ctx context.Context, request reconcile.Requ
 	return reconcile.Result{}, nil
 }
 
-func (r *ReconcileReplica) handleReplicaDelete(ctx context.Context, azVolumeAttachment *azdiskv1beta2.AzVolumeAttachment) {
-	// wait for replica AzVolumeAttachment deletion or failure of detahcment
-	waiter := r.conditionWatcher.NewConditionWaiter(ctx, watcher.AzVolumeAttachmentType, azVolumeAttachment.Name, verifyObjectFailedOrDeleted)
+func (r *ReconcileReplica) handlePromoteUpdate(ctx context.Context, azVolumeAttachment *azdiskv1beta2.AzVolumeAttachment) {
+	// wait for the promotion update to be done and call replica management operation
+	waiter := r.conditionWatcher.NewConditionWaiter(ctx, watcher.AzVolumeAttachmentType, azVolumeAttachment.Name, verifyObjectPromotedOrDemoted)
 	defer waiter.Close()
-	_, err := waiter.Wait(ctx)
 
-	// add replica management operation to the queue if the replica AzVolumeAttachment is deleted
-	if err == nil {
+	if _, err := waiter.Wait(ctx); err == nil {
 		r.triggerManageReplica(azVolumeAttachment.Spec.VolumeName)
 	}
+}
+
+func (r *ReconcileReplica) handleDemoteUpdate(ctx context.Context, azVolumeAttachment *azdiskv1beta2.AzVolumeAttachment) {
+	// wait for the demotion update to be done and collect garbage
+	waiter := r.conditionWatcher.NewConditionWaiter(ctx, watcher.AzVolumeAttachmentType, azVolumeAttachment.Name, verifyObjectPromotedOrDemoted)
+	defer waiter.Close()
+
+	if _, err := waiter.Wait(ctx); err == nil {
+		//nolint:contextcheck // Garbage collection is asynchronous; context is not inherited by design
+		r.triggerGarbageCollection(ctx, azVolumeAttachment.Spec.VolumeName)
+	}
+}
+
+func (r *ReconcileReplica) handleReplicaDelete(ctx context.Context, azVolumeAttachment *azdiskv1beta2.AzVolumeAttachment, caller operationRequester) {
+	w := workflow.GetWorkflow(ctx, azVolumeAttachment)
+	w.Logger().V(5).Infof("handleReplicaDelete requested by %s for AzVolumeAttachment (%s)", caller, azVolumeAttachment.Name)
+
+	// wait for replica AzVolumeAttachment deletion and add replica management operation to the queue
+	waiter := r.conditionWatcher.NewConditionWaiter(ctx, watcher.AzVolumeAttachmentType, azVolumeAttachment.Name, verifyObjectDeleted)
+	defer waiter.Close()
+	_, _ = waiter.Wait(ctx)
+
+	r.triggerManageReplica(azVolumeAttachment.Spec.VolumeName)
 }
 
 //nolint:contextcheck // context is not inherited by design
@@ -300,13 +313,32 @@ func NewReplicaController(mgr manager.Manager, controllerSharedState *SharedStat
 			return false
 		},
 		UpdateFunc: func(e event.UpdateEvent) bool {
-			return true
+			objOld, okOld := e.ObjectOld.(*azdiskv1beta2.AzVolumeAttachment)
+			objNew, okNew := e.ObjectNew.(*azdiskv1beta2.AzVolumeAttachment)
+			if okOld && okNew {
+				demoteRequestUpdate := !isDemotionRequested(objOld) && isDemotionRequested(objNew)
+				promoteRequestUpdate := !isPromotionRequested(objOld) && isPromotionRequested(objNew)
+				attachRequestUpdate := !volumeAttachRequested(objOld) && volumeAttachRequested(objNew)
+				detachRequestUpdate := !volumeDetachRequested(objOld) && volumeDetachRequested(objNew)
+				attachFailedUpdate := objOld.Status.State != azdiskv1beta2.AttachmentFailed && objNew.Status.State == azdiskv1beta2.AttachmentFailed
+				detachFailedUpdate := objOld.Status.State != azdiskv1beta2.DetachmentFailed && objNew.Status.State == azdiskv1beta2.DetachmentFailed
+
+				deleteRequestedOld, _ := objectDeletionRequested(objOld)
+				deleteRequestedNew, _ := objectDeletionRequested(objNew)
+				deleteTimestampUpdate := !deleteRequestedOld && deleteRequestedNew
+
+				updateEventsForPrimary := (objNew.Spec.RequestedRole == azdiskv1beta2.PrimaryRole) && (attachRequestUpdate || promoteRequestUpdate || detachRequestUpdate)
+				updateEventsForReplica := (objNew.Spec.RequestedRole == azdiskv1beta2.ReplicaRole) && (demoteRequestUpdate || attachFailedUpdate || deleteTimestampUpdate || detachFailedUpdate)
+
+				return updateEventsForPrimary || updateEventsForReplica
+			}
+			return false
 		},
 		GenericFunc: func(e event.GenericEvent) bool {
 			return false
 		},
 		DeleteFunc: func(e event.DeleteEvent) bool {
-			return true
+			return false
 		},
 	})
 	if err != nil {

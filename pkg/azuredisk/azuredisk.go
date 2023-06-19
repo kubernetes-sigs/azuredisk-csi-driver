@@ -29,6 +29,7 @@ import (
 	"google.golang.org/grpc/status"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 	clientset "k8s.io/client-go/kubernetes"
 	"k8s.io/klog/v2"
 	"k8s.io/kubernetes/pkg/volume/util/hostutil"
@@ -43,7 +44,7 @@ import (
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/optimization"
 	volumehelper "sigs.k8s.io/azuredisk-csi-driver/pkg/util"
 	azcache "sigs.k8s.io/cloud-provider-azure/pkg/cache"
-	azurecloudconsts "sigs.k8s.io/cloud-provider-azure/pkg/consts"
+	azure "sigs.k8s.io/cloud-provider-azure/pkg/provider"
 )
 
 // CSIDriver defines the interface for a CSI driver.
@@ -100,6 +101,64 @@ type Driver struct {
 	disableUpdateCache         bool
 	vmssCacheTTLInSeconds      int64
 	vmType                     string
+}
+
+func NewDefaultDriverConfig() *azdiskv1beta2.AzDiskDriverConfiguration {
+	return &azdiskv1beta2.AzDiskDriverConfiguration{
+		ControllerConfig: azdiskv1beta2.ControllerConfiguration{
+			DisableAVSetNodes:             consts.DefaultDisableAVSetNodes,
+			VMType:                        consts.DefaultVMType,
+			EnableDiskOnlineResize:        consts.DefaultEnableDiskOnlineResize,
+			EnableAsyncAttach:             consts.DefaultEnableAsyncAttach,
+			EnableListVolumes:             consts.DefaultEnableListVolumes,
+			EnableListSnapshots:           consts.DefaultEnableListSnapshots,
+			EnableDiskCapacityCheck:       consts.DefaultEnableDiskCapacityCheck,
+			Enabled:                       consts.DefaultIsControllerPlugin,
+			LeaseDurationInSec:            consts.DefaultControllerLeaseDurationInSec,
+			LeaseRenewDeadlineInSec:       consts.DefaultControllerLeaseRenewDeadlineInSec,
+			LeaseRetryPeriodInSec:         consts.DefaultControllerLeaseRetryPeriodInSec,
+			LeaderElectionNamespace:       consts.ReleaseNamespace,
+			PartitionName:                 consts.DefaultControllerPartitionName,
+			WorkerThreads:                 consts.DefaultWorkerThreads,
+			WaitForLunEnabled:             consts.DefaultWaitForLunEnabled,
+			ReplicaVolumeAttachRetryLimit: consts.DefaultReplicaVolumeAttachRetryLimit,
+		},
+		NodeConfig: azdiskv1beta2.NodeConfiguration{
+			VolumeAttachLimit:       consts.DefaultVolumeAttachLimit,
+			SupportZone:             consts.DefaultSupportZone,
+			EnablePerfOptimization:  consts.DefaultEnablePerfOptimization,
+			UseCSIProxyGAInterface:  consts.DefaultUseCSIProxyGAInterface,
+			GetNodeInfoFromLabels:   consts.DefaultGetNodeInfoFromLabels,
+			Enabled:                 consts.DefaultIsNodePlugin,
+			HeartbeatFrequencyInSec: consts.DefaultHeartbeatFrequencyInSec,
+			PartitionName:           consts.DefaultNodePartitionName,
+		},
+		CloudConfig: azdiskv1beta2.CloudConfiguration{
+			SecretName:                                       consts.DefaultCloudConfigSecretName,
+			SecretNamespace:                                  consts.DefaultCloudConfigSecretNamespace,
+			CustomUserAgent:                                  consts.DefaultCustomUserAgent,
+			UserAgentSuffix:                                  consts.DefaultUserAgentSuffix,
+			EnableTrafficManager:                             consts.DefaultEnableTrafficManager,
+			TrafficManagerPort:                               consts.DefaultTrafficManagerPort,
+			AllowEmptyCloudConfig:                            consts.DefaultAllowEmptyCloudConfig,
+			DisableUpdateCache:                               consts.DefaultDisableUpdateCache,
+			VMSSCacheTTLInSeconds:                            consts.DefaultVMSSCacheTTLInSeconds,
+			EnableAzureClientAttachDetachRateLimiter:         consts.DefaultEnableAzureClientAttachDetachRateLimiter,
+			AzureClientAttachDetachRateLimiterQPS:            consts.DefaultAzureClientAttachDetachRateLimiterQPS,
+			AzureClientAttachDetachRateLimiterBucket:         consts.DefaultAzureClientAttachDetachRateLimiterBucket,
+			AzureClientAttachDetachBatchInitialDelayInMillis: int(consts.DefaultAzureClientAttachDetachBatchInitialDelay.Milliseconds()),
+		},
+		ClientConfig: azdiskv1beta2.ClientConfiguration{
+			Kubeconfig:      consts.DefaultKubeconfig,
+			KubeClientQPS:   consts.DefaultKubeClientQPS,
+			KubeClientBurst: consts.DefaultKubeClientBurst,
+		},
+		ObjectNamespace: consts.DefaultAzureDiskCrdNamespace,
+		Endpoint:        consts.DefaultEndpoint,
+		MetricsAddress:  consts.DefaultMetricsAddress,
+		DriverName:      consts.DefaultDriverName,
+		ProfilerAddress: consts.DefaultProfilerAddress,
+	}
 }
 
 // newDriverV1 Creates a NewCSIDriver object. Assumes vendor version is equal to driver version &
@@ -160,6 +219,9 @@ func (d *Driver) Run(endpoint, kubeconfig string, disableAVSetNodes, testingMock
 	cloud, err := azureutils.GetCloudProvider(
 		context.Background(),
 		kubeconfig,
+		d.vmType,
+		disableAVSetNodes,
+		d.NodeID,
 		d.cloudConfigSecretName,
 		d.cloudConfigSecretNamespace,
 		userAgent,
@@ -168,54 +230,34 @@ func (d *Driver) Run(endpoint, kubeconfig string, disableAVSetNodes, testingMock
 		consts.DefaultAzureClientAttachDetachRateLimiterQPS,
 		consts.DefaultAzureClientAttachDetachRateLimiterBucket,
 		d.enableTrafficManager,
-		d.trafficManagerPort)
+		d.trafficManagerPort,
+		d.disableUpdateCache,
+		d.vmssCacheTTLInSeconds)
 	if err != nil {
 		klog.Fatalf("failed to get Azure Cloud Provider, error: %v", err)
 	}
 	d.cloud = cloud
 	d.kubeconfig = kubeconfig
 
-	if d.cloud != nil {
-		if d.vmType != "" {
-			klog.V(2).Infof("override VMType(%s) in cloud config as %s", d.cloud.VMType, d.vmType)
-			d.cloud.VMType = d.vmType
-		}
-
-		if d.NodeID == "" {
-			// Disable UseInstanceMetadata for controller to mitigate a timeout issue using IMDS
-			// https://github.com/kubernetes-sigs/azuredisk-csi-driver/issues/168
-			klog.V(2).Infof("disable UseInstanceMetadata for controller")
-			d.cloud.Config.UseInstanceMetadata = false
-
-			if d.cloud.VMType == azurecloudconsts.VMTypeStandard && d.cloud.DisableAvailabilitySetNodes {
-				klog.V(2).Infof("set DisableAvailabilitySetNodes as false since VMType is %s", d.cloud.VMType)
-				d.cloud.DisableAvailabilitySetNodes = false
-			}
-
-			if d.cloud.VMType == azurecloudconsts.VMTypeVMSS && !d.cloud.DisableAvailabilitySetNodes && disableAVSetNodes {
-				klog.V(2).Infof("DisableAvailabilitySetNodes for controller since current VMType is vmss")
-				d.cloud.DisableAvailabilitySetNodes = true
-			}
-			klog.V(2).Infof("cloud: %s, location: %s, rg: %s, VMType: %s, PrimaryScaleSetName: %s, PrimaryAvailabilitySetName: %s, DisableAvailabilitySetNodes: %v", d.cloud.Cloud, d.cloud.Location, d.cloud.ResourceGroup, d.cloud.VMType, d.cloud.PrimaryScaleSetName, d.cloud.PrimaryAvailabilitySetName, d.cloud.DisableAvailabilitySetNodes)
-		}
-
-		if d.vmssCacheTTLInSeconds > 0 {
-			klog.V(2).Infof("reset vmssCacheTTLInSeconds as %d", d.vmssCacheTTLInSeconds)
-			d.cloud.VMCacheTTLInSeconds = int(d.vmssCacheTTLInSeconds)
-			d.cloud.VmssCacheTTLInSeconds = int(d.vmssCacheTTLInSeconds)
-		}
-
-		if d.cloud.ManagedDiskController != nil {
-			d.cloud.DisableUpdateCache = d.disableUpdateCache
-		}
-	}
-
 	d.deviceHelper = optimization.NewSafeDeviceHelper()
 
-	if d.getPerfOptimizationEnabled() {
-		d.nodeInfo, err = optimization.NewNodeInfo(context.TODO(), d.cloud, d.NodeID)
-		if err != nil {
-			klog.Warningf("Failed to get node info. Error: %v", err)
+	if d.isPerfOptimizationEnabled() {
+		klog.V(2).Infof("Starting to populate node and disk sku information.")
+
+		instances, ok := cloud.Instances()
+		if !ok {
+			klog.Error("Failed to get instances from Azure cloud provider")
+		} else {
+			instanceType, err := instances.InstanceType(context.TODO(), types.NodeName(d.NodeID))
+			if err != nil {
+				klog.Errorf("Failed to get instance type from Azure cloud provider, nodeName: %v, error: %v", d.NodeID, err)
+			} else {
+				d.nodeInfo, err = optimization.NewNodeInfo(context.TODO(), instanceType)
+				if err != nil {
+					klog.Warningf("Failed to get node info. Error: %v", err)
+				}
+			}
+
 		}
 	}
 
@@ -331,8 +373,8 @@ func (d *Driver) getVolumeLocks() *volumehelper.VolumeLocks {
 	return d.volumeLocks
 }
 
-// getPerfOptimizationEnabled returns the value of the perfOptimizationEnabled field. It is intended for use with unit tests.
-func (d *Driver) getPerfOptimizationEnabled() bool {
+// isPerfOptimizationEnabled returns the value of the perfOptimizationEnabled field. It is intended for use with unit tests.
+func (d *Driver) isPerfOptimizationEnabled() bool {
 	return d.perfOptimizationEnabled
 }
 

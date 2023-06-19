@@ -398,6 +398,9 @@ users:
 			context.Background(),
 			test.kubeconfig,
 			"",
+			false,
+			"",
+			"",
 			"",
 			test.userAgent,
 			test.allowEmptyCloudConfig,
@@ -405,6 +408,8 @@ users:
 			consts.DefaultAzureClientAttachDetachRateLimiterQPS,
 			consts.DefaultAzureClientAttachDetachRateLimiterBucket,
 			consts.DefaultEnableTrafficManager,
+			-1,
+			false,
 			-1)
 		if !reflect.DeepEqual(err, test.expectedErr) && (err == nil || !strings.Contains(err.Error(), test.expectedErr.Error())) {
 			t.Errorf("desc: %s,\n input: %q, GetCloudProvider err: %v, expectedErr: %v", test.desc, test.kubeconfig, err, test.expectedErr)

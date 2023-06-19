@@ -59,6 +59,7 @@ type PodSchedulingOnFailoverScaleTest struct {
 
 type Result struct {
 	count         int
+	objOverIssued bool
 	completedTime time.Time
 }
 
@@ -69,6 +70,7 @@ func (t *PodSchedulingWithPVScaleTest) Run(client clientset.Interface, namespace
 	totalNumberOfPods := t.Replicas
 	testWithReplicas := t.MaxShares > 1
 	totalNumberOfReplicaAtts := totalNumberOfPods * (t.MaxShares - 1)
+	totalNumberOfAzAtts := totalNumberOfPods * t.MaxShares
 
 	tStorageClass, storageCleanup := t.Pod.CreateStorageClass(client, namespace, t.CSIDriver, t.StorageClassParameters)
 	defer storageCleanup()
@@ -81,10 +83,12 @@ func (t *PodSchedulingWithPVScaleTest) Run(client clientset.Interface, namespace
 
 	numberOfAttachedReplicaAtts := 0
 	scaleOutReplicaAttsCompleted := float64(0)
+	objOverIssued := false
 	scaleOutReplicaAttsChan := make(chan Result)
 	if testWithReplicas {
 		go func() {
-			scaleOutReplicaAttsChan <- Result{volutil.WaitForAllReplicaAttachmentsToAttach(*scaleTestTimeout, time.Minute, totalNumberOfReplicaAtts, t.AzDiskClient), time.Now()}
+			numberOfAttachedReplicaAtts, overIssued := volutil.WaitForAllReplicaAttachmentsToAttach(*scaleTestTimeout, time.Minute, totalNumberOfReplicaAtts, totalNumberOfAzAtts, t.AzDiskClient)
+			scaleOutReplicaAttsChan <- Result{numberOfAttachedReplicaAtts, overIssued, time.Now()}
 		}()
 	}
 
@@ -94,6 +98,7 @@ func (t *PodSchedulingWithPVScaleTest) Run(client clientset.Interface, namespace
 	if testWithReplicas {
 		scaleOutReplicaAttsResult := <-scaleOutReplicaAttsChan
 		numberOfAttachedReplicaAtts = scaleOutReplicaAttsResult.count
+		objOverIssued = scaleOutReplicaAttsResult.objOverIssued
 		scaleOutReplicaAttsCompleted = scaleOutReplicaAttsResult.completedTime.Sub(startScaleOut).Minutes()
 	}
 
@@ -115,15 +120,15 @@ func (t *PodSchedulingWithPVScaleTest) Run(client clientset.Interface, namespace
 
 	scaleInVAChan := make(chan Result)
 	go func() {
-		scaleInVAChan <- Result{volutil.WaitForAllVolumeAttachmentsToDelete(*scaleTestTimeout, 30*time.Second, client), time.Now()}
+		scaleInVAChan <- Result{volutil.WaitForAllVolumeAttachmentsToDelete(*scaleTestTimeout, 30*time.Second, client), false, time.Now()}
 	}()
 
-	numberOfRemainingReplicaAtts := 0
+	numberOfRemainingAzAtts := 0
 	scaleInAttsCompleted := float64(0)
 	if testWithReplicas {
 		time.Sleep(controller.DefaultTimeUntilGarbageCollection)
 		startScaleInAtts := time.Now()
-		numberOfRemainingReplicaAtts = volutil.WaitForAllReplicaAttachmentsToDetach(*scaleTestTimeout, time.Minute, t.AzDiskClient)
+		numberOfRemainingAzAtts = volutil.WaitForAllAzAttachmentsToDelete(*scaleTestTimeout, time.Minute, t.AzDiskClient)
 		scaleInAttsCompleted = time.Since(startScaleInAtts).Minutes()
 	}
 
@@ -143,16 +148,16 @@ func (t *PodSchedulingWithPVScaleTest) Run(client clientset.Interface, namespace
 		klog.Infof("Scaling out test of replica attachments completed in %f minutes.", scaleOutReplicaAttsCompleted)
 		klog.Infof("Total number of replica attachments are attached: %d", numberOfAttachedReplicaAtts)
 
-		klog.Infof("Scaling in test of replica attachments completed in %f minutes.", scaleInAttsCompleted)
-		klog.Infof("Total number of remaining replica attachments: %d", numberOfRemainingReplicaAtts)
+		klog.Infof("Scaling in test of azvolumeattachments completed in %f minutes.", scaleInAttsCompleted)
+		klog.Infof("Total number of remaining azvolumeattachments: %d", numberOfRemainingAzAtts)
 	}
 
-	if numberOfRunningPods != totalNumberOfPods || numberOfAttachedReplicaAtts != totalNumberOfReplicaAtts || numberOfRemainingPods != 0 || numberOfRemainingReplicaAtts != 0 || numberOfRemainingVolumeAtts != 0 {
-		podTestResult := fmt.Sprintf("Scale test failed to fully scale out/in. Number of pods that ran: %d, number of pods that were not deleted: %d, number of volumes that were not detached: %d", numberOfRunningPods, numberOfRemainingPods, numberOfRemainingReplicaAtts)
+	if numberOfRunningPods != totalNumberOfPods || numberOfAttachedReplicaAtts != totalNumberOfReplicaAtts || numberOfRemainingPods != 0 || numberOfRemainingAzAtts != 0 || numberOfRemainingVolumeAtts != 0 || objOverIssued {
+		podTestResult := fmt.Sprintf("Scale test failed to fully scale out/in. Number of pods that ran: %d, number of pods that were not deleted: %d, number of volumes that were not detached: %d", numberOfRunningPods, numberOfRemainingPods, numberOfRemainingVolumeAtts)
 
 		replicaTestResult := ""
 		if testWithReplicas {
-			replicaTestResult = fmt.Sprintf(", number of replica attachments that were attached: %d, number of replicas that were not detached: %d", numberOfAttachedReplicaAtts, numberOfRemainingReplicaAtts)
+			replicaTestResult = fmt.Sprintf(", number of replica attachments that were attached: %d, number of azvolumeattachments that were not deleted: %d, replica azvolumeattachments were over issued in the process.", numberOfAttachedReplicaAtts, numberOfRemainingAzAtts)
 		}
 		ginkgo.Fail(podTestResult + replicaTestResult)
 	}
@@ -202,6 +207,7 @@ func (t *PodSchedulingOnFailoverScaleTest) Run(client clientset.Interface, names
 	// uncordon the second nodes and measure the amount of time to create replica attachments
 	maxShares, _ := azureutils.GetMaxSharesAndMaxMountReplicaCount(t.StorageClassParameters, false)
 	totalNumberOfReplicaAtts := totalNumberOfPods * (maxShares - 1)
+	totalNumberOfAzAtts := totalNumberOfPods * maxShares
 
 	var wg sync.WaitGroup
 	for _, node := range nodes[midNode:] {
@@ -216,7 +222,7 @@ func (t *PodSchedulingOnFailoverScaleTest) Run(client clientset.Interface, names
 	wg.Wait()
 
 	startCreateReplicaAtts := time.Now()
-	numberOfAttachedReplicaAtts := volutil.WaitForAllReplicaAttachmentsToAttach(*scaleTestTimeout, time.Minute, totalNumberOfReplicaAtts, t.AzDiskClient)
+	numberOfAttachedReplicaAtts, _ := volutil.WaitForAllReplicaAttachmentsToAttach(*scaleTestTimeout, time.Minute, totalNumberOfReplicaAtts, totalNumberOfAzAtts, t.AzDiskClient)
 	createReplicaAttsCompleted := time.Since(startCreateReplicaAtts).Minutes()
 
 	// delete all pods

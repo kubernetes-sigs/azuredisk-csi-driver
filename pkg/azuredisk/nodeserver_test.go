@@ -1308,16 +1308,16 @@ package azuredisk
 // 	// This functionality has moved to the provisioner package in DriverV2.
 // 	skipIfTestingDriverV2(t)
 
-// 	// Skip this test because `util/mount` not supported on darwin
-// 	if runtime.GOOS == "darwin" {
-// 		t.Skip("Skipping tests on darwin")
-// 	}
-// 	testTarget, err := testutil.GetWorkDirPath("test")
-// 	assert.NoError(t, err)
-// 	testPath, err := testutil.GetWorkDirPath(fmt.Sprintf("test%ctest", os.PathSeparator))
-// 	assert.NoError(t, err)
-// 	d, err := newFakeDriverV1(t)
-// 	assert.NoError(t, err)
+	// Skip this test because `util/mount` not supported on darwin
+	if runtime.GOOS == "darwin" {
+		t.Skip("Skipping tests on darwin")
+	}
+	testTarget, err := testutil.GetWorkDirPath("test")
+	assert.NoError(t, err)
+	testPath, err := testutil.GetWorkDirPath(fmt.Sprintf("test%ctest", os.PathSeparator))
+	assert.NoError(t, err)
+	d, err := newFakeDriverV1(t, newFakeDriverConfig())
+	assert.NoError(t, err)
 
 // 	tests := []struct {
 // 		desc        string
@@ -1375,27 +1375,27 @@ package azuredisk
 // 	assert.NoError(t, err)
 // }
 
-// func TestGetDevicePathWithLUN(t *testing.T) {
-// 	skipIfTestingDriverV2(t)
-// 	d, _ := newFakeDriverV1(t)
-// 	tests := []struct {
-// 		desc        string
-// 		req         string
-// 		expectedErr error
-// 	}{
-// 		{
-// 			desc:        "valid test",
-// 			req:         "unit-test",
-// 			expectedErr: errors.New("cannot parse deviceInfo: unit-test"),
-// 		},
-// 	}
-// 	for _, test := range tests {
-// 		_, err := d.getDevicePathWithLUN(test.req)
-// 		if !testutil.IsErrorEquivalent(test.expectedErr, err) {
-// 			t.Errorf("desc: %s\n actualErr: (%v), expectedErr: (%v)", test.desc, err, test.expectedErr)
-// 		}
-// 	}
-// }
+func TestGetDevicePathWithLUN(t *testing.T) {
+	skipIfTestingDriverV2(t)
+	d, _ := newFakeDriverV1(t, newFakeDriverConfig())
+	tests := []struct {
+		desc        string
+		req         string
+		expectedErr error
+	}{
+		{
+			desc:        "valid test",
+			req:         "unit-test",
+			expectedErr: errors.New("cannot parse deviceInfo: unit-test"),
+		},
+	}
+	for _, test := range tests {
+		_, err := d.getDevicePathWithLUN(test.req)
+		if !testutil.IsErrorEquivalent(test.expectedErr, err) {
+			t.Errorf("desc: %s\n actualErr: (%v), expectedErr: (%v)", test.desc, err, test.expectedErr)
+		}
+	}
+}
 
 // func createAzVolumeAttachmentWithPublishContext(publishContext map[string]string) *azdiskv1beta2.AzVolumeAttachment {
 // 	azVA := testAzVolumeAttachment.DeepCopy()
