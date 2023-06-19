@@ -20,7 +20,6 @@ import (
 	"context"
 	"fmt"
 	"reflect"
-	"strings"
 	"time"
 
 	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2022-03-01/compute"
@@ -35,6 +34,7 @@ import (
 	"k8s.io/kubernetes/pkg/volume/util/hostutil"
 	"k8s.io/mount-utils"
 
+	armcompute "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute/v5"
 	azdiskv1beta2 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1beta2"
 	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
@@ -44,7 +44,6 @@ import (
 	volumehelper "sigs.k8s.io/azuredisk-csi-driver/pkg/util"
 	azcache "sigs.k8s.io/cloud-provider-azure/pkg/cache"
 	azurecloudconsts "sigs.k8s.io/cloud-provider-azure/pkg/consts"
-	azure "sigs.k8s.io/cloud-provider-azure/pkg/provider"
 )
 
 // CSIDriver defines the interface for a CSI driver.
@@ -75,7 +74,7 @@ type DriverCore struct {
 // Driver is the v1 implementation of the Azure Disk CSI Driver.
 type Driver struct {
 	DriverCore
-	cloud       *azure.Cloud
+	cloud       *azureutils.Cloud
 	kubeconfig  string
 	mounter     *mount.SafeFormatAndMount
 	volumeLocks *volumehelper.VolumeLocks
@@ -275,7 +274,7 @@ func (d *Driver) isGetDiskThrottled() bool {
 	return cache != nil
 }
 
-func (d *Driver) checkDiskExists(ctx context.Context, diskURI string) (*compute.Disk, error) {
+func (d *Driver) checkDiskExists(ctx context.Context, diskURI string) (*armcompute.Disk, error) {
 	diskName, err := azureutils.GetDiskName(diskURI)
 	if err != nil {
 		return nil, err
@@ -290,16 +289,20 @@ func (d *Driver) checkDiskExists(ctx context.Context, diskURI string) (*compute.
 		klog.Warningf("skip checkDiskExists(%s) since it's still in throttling", diskURI)
 		return nil, nil
 	}
-	subsID := azureutils.GetSubscriptionIDFromURI(diskURI)
-	disk, rerr := d.cloud.DisksClient.Get(ctx, subsID, resourceGroup, diskName)
+	// subsID := azureutils.GetSubscriptionIDFromURI(diskURI)
+	res, rerr := d.cloud.DisksClient.Get(ctx, resourceGroup, diskName, nil)
+	// if rerr != nil {
+	// 	if rerr.IsThrottled() || strings.Contains(rerr.RawError.Error(), consts.RateLimited) {
+	// 		klog.Warningf("checkDiskExists(%s) is throttled with error: %v", diskURI, rerr.Error())
+	// 		d.getDiskThrottlingCache.Set(consts.ThrottlingKey, "")
+	// 		return nil, nil
+	// 	}
+	// 	return nil, rerr.Error()
+	// }
 	if rerr != nil {
-		if rerr.IsThrottled() || strings.Contains(rerr.RawError.Error(), consts.RateLimited) {
-			klog.Warningf("checkDiskExists(%s) is throttled with error: %v", diskURI, rerr.Error())
-			d.getDiskThrottlingCache.Set(consts.ThrottlingKey, "")
-			return nil, nil
-		}
-		return nil, rerr.Error()
+		klog.Fatalf("failed to create request: %v", rerr)
 	}
+	disk := res.Disk
 
 	return &disk, nil
 }
@@ -310,18 +313,16 @@ func (d *Driver) checkDiskCapacity(ctx context.Context, subsID, resourceGroup, d
 		return true, nil
 	}
 
-	disk, rerr := d.cloud.DisksClient.Get(ctx, subsID, resourceGroup, diskName)
+	res, rerr := d.cloud.DisksClient.Get(ctx, resourceGroup, diskName, nil)
+	disk := res.Disk
 	// Because we can not judge the reason of the error. Maybe the disk does not exist.
 	// So here we do not handle the error.
 	if rerr == nil {
-		if !reflect.DeepEqual(disk, compute.Disk{}) && disk.DiskSizeGB != nil && int(*disk.DiskSizeGB) != requestGiB {
-			return false, status.Errorf(codes.AlreadyExists, "the request volume already exists, but its capacity(%v) is different from (%v)", *disk.DiskProperties.DiskSizeGB, requestGiB)
+		if !reflect.DeepEqual(disk, compute.Disk{}) && disk.Properties.DiskSizeGB != nil && int(*disk.Properties.DiskSizeGB) != requestGiB {
+			return false, status.Errorf(codes.AlreadyExists, "the request volume already exists, but its capacity(%v) is different from (%v)", *disk.Properties.DiskSizeGB, requestGiB)
 		}
 	} else {
-		if rerr.IsThrottled() || strings.Contains(rerr.RawError.Error(), consts.RateLimited) {
-			klog.Warningf("checkDiskCapacity(%s, %s) is throttled with error: %v", resourceGroup, diskName, rerr.Error())
-			d.getDiskThrottlingCache.Set(consts.ThrottlingKey, "")
-		}
+		klog.Fatalf("failed to create request: %v", rerr)
 	}
 	return true, nil
 }

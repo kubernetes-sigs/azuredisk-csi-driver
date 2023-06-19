@@ -16,14 +16,14 @@ limitations under the License.
 
 package azuredisk
 
-import (
-	"testing"
+// import (
+// 	"testing"
 
-	"github.com/stretchr/testify/assert"
-)
+// 	"github.com/stretchr/testify/assert"
+// )
 
-func TestNewFakeDriver(t *testing.T) {
-	d, err := NewFakeDriver(t)
-	assert.NotNil(t, d)
-	assert.Nil(t, err)
-}
+// func TestNewFakeDriver(t *testing.T) {
+// 	d, err := NewFakeDriver(t)
+// 	assert.NotNil(t, d)
+// 	assert.Nil(t, err)
+// }

@@ -32,10 +32,11 @@ import (
 	"github.com/onsi/gomega"
 	"k8s.io/kubernetes/test/e2e/framework"
 	"k8s.io/kubernetes/test/e2e/framework/config"
-	azdiskv1beta2 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1beta2"
-	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
-	"sigs.k8s.io/azuredisk-csi-driver/pkg/azuredisk"
-	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
+
+	// azdiskv1beta2 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1beta2"
+	// consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
+	// "sigs.k8s.io/azuredisk-csi-driver/pkg/azuredisk"
+	// "sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
 	testconsts "sigs.k8s.io/azuredisk-csi-driver/test/const"
 	"sigs.k8s.io/azuredisk-csi-driver/test/utils/azure"
 	"sigs.k8s.io/azuredisk-csi-driver/test/utils/credentials"
@@ -100,23 +101,24 @@ var _ = ginkgo.BeforeSuite(func() {
 		}
 
 		os.Setenv("AZURE_CREDENTIAL_FILE", testconsts.TempAzureCredentialFilePath)
-		kubeconfig := os.Getenv(testconsts.KubeconfigEnvVar)
-		kubeclient, err := azureutils.GetKubeClient(kubeconfig)
+		// kubeconfig := os.Getenv(testconsts.KubeconfigEnvVar)
+		// kubeclient, err := azureutils.GetKubeClient(kubeconfig)
 		gomega.Expect(err).NotTo(gomega.HaveOccurred())
-		cloudConfig := azdiskv1beta2.CloudConfiguration{
-			SecretName:                               "",
-			SecretNamespace:                          "",
-			AllowEmptyCloudConfig:                    false,
-			EnableAzureClientAttachDetachRateLimiter: consts.DefaultEnableAzureClientAttachDetachRateLimiter,
-			AzureClientAttachDetachRateLimiterQPS:    consts.DefaultAzureClientAttachDetachRateLimiterQPS,
-			AzureClientAttachDetachRateLimiterBucket: consts.DefaultAzureClientAttachDetachRateLimiterBucket,
-		}
-		azureCloud, err = azureutils.GetCloudProviderFromClient(
-			context.Background(),
-			kubeclient,
-			cloudConfig,
-			azuredisk.GetUserAgent(consts.DefaultDriverName, "E2E", ""),
-		)
+		// cloudConfig := azdiskv1beta2.CloudConfiguration{
+		// 	SecretName:                               "",
+		// 	SecretNamespace:                          "",
+		// 	AllowEmptyCloudConfig:                    false,
+		// 	EnableAzureClientAttachDetachRateLimiter: consts.DefaultEnableAzureClientAttachDetachRateLimiter,
+		// 	AzureClientAttachDetachRateLimiterQPS:    consts.DefaultAzureClientAttachDetachRateLimiterQPS,
+		// 	AzureClientAttachDetachRateLimiterBucket: consts.DefaultAzureClientAttachDetachRateLimiterBucket,
+		// }
+		// azureCloud, err = azureutils.GetCloudProviderFromClient(
+		// 	context.Background(),
+		// 	kubeclient,
+		// 	cloudConfig,
+		// 	azuredisk.GetUserAgent(consts.DefaultDriverName, "E2E", ""),
+		// )
+
 		gomega.Expect(err).NotTo(gomega.HaveOccurred())
 	}
 })

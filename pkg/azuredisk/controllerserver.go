@@ -24,6 +24,7 @@ import (
 	"strconv"
 	"strings"
 
+	armcompute "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute/v5"
 	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2022-03-01/compute"
 	"github.com/container-storage-interface/spec/lib/go/csi"
 
@@ -169,7 +170,7 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 	requirement := req.GetAccessibilityRequirements()
 	diskZone := azureutils.PickAvailabilityZone(requirement, diskParams.Location, topologyKey)
 	accessibleTopology := []*csi.Topology{}
-	if skuName == compute.StandardSSDZRS || skuName == compute.PremiumZRS {
+	if skuName == armcompute.DiskStorageAccountTypesStandardSSDZRS || skuName == armcompute.DiskStorageAccountTypesPremiumZRS {
 		klog.V(2).Infof("diskZone(%s) is reset as empty since disk(%s) is ZRS(%s)", diskZone, diskParams.DiskName, skuName)
 		diskZone = ""
 		// make volume scheduled on all 3 availability zones
@@ -237,7 +238,7 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 		}
 	}
 
-	if skuName == compute.UltraSSDLRS {
+	if skuName == armcompute.DiskStorageAccountTypesUltraSSDLRS {
 		if diskParams.DiskIOPSReadWrite == "" && diskParams.DiskMBPSReadWrite == "" {
 			// set default DiskIOPSReadWrite, DiskMBPSReadWrite per request size
 			diskParams.DiskIOPSReadWrite = strconv.Itoa(azureutils.GetDefaultDiskIOPSReadWrite(requestGiB))

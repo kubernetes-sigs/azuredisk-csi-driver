@@ -49,7 +49,6 @@ import (
 
 	cache "k8s.io/client-go/tools/cache"
 
-	"sigs.k8s.io/cloud-provider-azure/pkg/provider"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/event"
@@ -140,7 +139,7 @@ type CloudProvisioner interface {
 	ListSnapshots(ctx context.Context, maxEntries int32, startingToken string, sourceVolumeID string, snapshotID string, secrets map[string]string) (*azdiskv1beta2.ListSnapshotsResult, error)
 	DeleteSnapshot(ctx context.Context, snapshotID string, secrets map[string]string) error
 	CheckDiskExists(ctx context.Context, diskURI string) (*armcompute.Disk, error)
-	GetCloud() *provider.Cloud
+	GetCloud() *azureutils.Cloud
 	GetMetricPrefix() string
 }
 

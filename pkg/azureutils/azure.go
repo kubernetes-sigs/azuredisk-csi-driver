@@ -8,15 +8,48 @@ import (
 	"os"
 	"strings"
 	"sync"
+	"time"
 
+	"github.com/Azure/azure-sdk-for-go/sdk/azidentity"
 	armcompute "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute/v5"
+	armnetwork "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/network/armnetwork/v2"
+	"github.com/Azure/go-autorest/autorest/adal"
 	"github.com/Azure/go-autorest/autorest/azure"
+
 	"k8s.io/apimachinery/pkg/util/sets"
+	"k8s.io/apimachinery/pkg/util/wait"
 	clientset "k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/cache"
+	"k8s.io/client-go/util/flowcontrol"
+	cloudprovider "k8s.io/cloud-provider"
 	"k8s.io/klog/v2"
-	"sigs.k8s.io/cloud-provider-azure/pkg/consts"
+
 	"sigs.k8s.io/yaml"
+)
+
+var (
+	// Master nodes are not added to standard load balancer by default.
+	defaultExcludeMasterFromStandardLB = true
+	// Outbound SNAT is enabled by default.
+	defaultDisableOutboundSNAT = false
+	// RouteUpdateWaitingInSeconds is 30 seconds by default.
+	defaultRouteUpdateWaitingInSeconds = 30
+)
+
+// azure cloud config
+const (
+	// CloudProviderName is the value used for the --cloud-provider flag
+	CloudProviderName = "azure"
+	// AzureStackCloudName is the cloud name of Azure Stack
+	AzureStackCloudName = "AZURESTACKCLOUD"
+	// BackoffRetriesDefault is the default backoff retry count
+	BackoffRetriesDefault = 6
+	// BackoffExponentDefault is the default value of the backoff exponent
+	BackoffExponentDefault = 1.5
+	// BackoffDurationDefault is the default value of the backoff duration
+	BackoffDurationDefault = 5 // in seconds
+	// BackoffJitterDefault is the default value of the backoff jitter
+	BackoffJitterDefault = 1.0
 )
 
 const (
@@ -29,6 +62,18 @@ const (
 )
 
 const (
+	ImdsServer = "http://169.254.169.254"
+)
+
+const (
+	// MaximumLoadBalancerRuleCount is the maximum number of load balancer rules
+	// ref: https://docs.microsoft.com/en-us/azure/azure-subscription-service-limits#load-balancer.
+	MaximumLoadBalancerRuleCount = 250
+	// LoadBalancerSkuStandard is the load balancer standard sku
+	LoadBalancerSkuStandard = "standard"
+)
+
+const (
 	// LoadBalancerBackendPoolConfigurationTypeNodeIPConfiguration is the lb backend pool config type node IP configuration
 	LoadBalancerBackendPoolConfigurationTypeNodeIPConfiguration = "nodeIPConfiguration"
 	// LoadBalancerBackendPoolConfigurationTypeNodeIP is the lb backend pool config type node ip
@@ -38,14 +83,33 @@ const (
 	LoadBalancerBackendPoolConfigurationTypePODIP = "podIP"
 )
 
+const (
+	// ZoneFetchingInterval defines the interval of performing zoneClient.GetZones
+	ZoneFetchingInterval = 30 * time.Minute
+)
+
+// Cloud holds the config and clients
 type Cloud struct {
 	Config
 	InitSecretConfig
 	Environment azure.Environment
 
-	DisksClient *armcompute.DisksClient
-	KubeClient  clientset.Interface
-	VMClient    *armcompute.VirtualMachinesClient
+	DisksClient                   *armcompute.DisksClient
+	KubeClient                    clientset.Interface
+	VMClient                      *armcompute.VirtualMachinesClient
+	SnapshotsClient               string // placeholder
+	VirtualMachineScaleSetsClient *armcompute.VirtualMachineScaleSetsClient
+	AvailabilitySetsClient        *armcompute.AvailabilitySetsClient
+	LoadBalancerClient            *armnetwork.LoadBalancersClient
+	SecurityGroupsClient          *armnetwork.SecurityGroupsClient
+	RouteTablesClient             *armnetwork.RouteTablesClient
+	PublicIPAddressesClient       *armnetwork.PublicIPAddressesClient
+	PrivateLinkServiceClient      *armnetwork.PrivateLinkServicesClient
+
+	VMSet                   VMSet
+	ResourceRequestBackoff  wait.Backoff
+	Metadata                *InstanceMetadataService
+	LoadBalancerBackendPool BackendPool
 
 	// ipv6DualStack allows overriding for unit testing.  It's normally initialized from featuregates
 	ipv6DualStackEnabled bool
@@ -72,6 +136,22 @@ type Cloud struct {
 	routeCIDRsLock sync.Mutex
 	// routeCIDRs holds cache for route CIDRs.
 	routeCIDRs map[string]string
+
+	routeUpdater *delayedRouteUpdater
+
+	vmCache  *TimedCache
+	lbCache  *TimedCache
+	nsgCache *TimedCache
+	rtCache  *TimedCache
+	// public ip cache
+	// key: [resourceGroupName]
+	// Value: sync.Map of [pipName]*PublicIPAddress
+	pipCache *TimedCache
+	// use LB frontEndIpConfiguration ID as the key and search for PLS attached to the frontEnd
+	plsCache *TimedCache
+
+	*controllerCommon
+	*ManagedDiskController
 }
 
 type InitSecretConfig struct {
@@ -80,6 +160,13 @@ type InitSecretConfig struct {
 	CloudConfigKey  string `json:"cloudConfigKey,omitempty" yaml:"cloudConfigKey,omitempty"`
 }
 
+// Config holds the configuration parsed from the --cloud-config flag
+// All fields are required unless otherwise specified
+// NOTE: Cloud config files should follow the same Kubernetes deprecation policy as
+// flags or CLIs. Config fields should not change behavior in incompatible ways and
+// should be deprecated for at least 2 release prior to removing.
+// See https://kubernetes.io/docs/reference/using-api/deprecation-policy/#deprecating-a-flag-or-cli
+// for more details.
 type Config struct {
 	AzureAuthConfig
 	CloudProviderRateLimitConfig
@@ -240,85 +327,7 @@ type Config struct {
 	EnableMigrateToIPBasedBackendPoolAPI bool `json:"enableMigrateToIPBasedBackendPoolAPI" yaml:"enableMigrateToIPBasedBackendPoolAPI"`
 }
 
-type AzureAuthConfig struct {
-	// The cloud environment identifier. Takes values from https://github.com/Azure/go-autorest/blob/ec5f4903f77ed9927ac95b19ab8e44ada64c1356/autorest/azure/environments.go#L13
-	Cloud string `json:"cloud,omitempty" yaml:"cloud,omitempty"`
-	// The AAD Tenant ID for the Subscription that the cluster is deployed in
-	TenantID string `json:"tenantId,omitempty" yaml:"tenantId,omitempty"`
-	// The ClientID for an AAD application with RBAC access to talk to Azure RM APIs
-	AADClientID string `json:"aadClientId,omitempty" yaml:"aadClientId,omitempty"`
-	// The ClientSecret for an AAD application with RBAC access to talk to Azure RM APIs
-	AADClientSecret string `json:"aadClientSecret,omitempty" yaml:"aadClientSecret,omitempty" datapolicy:"token"`
-	// The path of a client certificate for an AAD application with RBAC access to talk to Azure RM APIs
-	AADClientCertPath string `json:"aadClientCertPath,omitempty" yaml:"aadClientCertPath,omitempty"`
-	// The password of the client certificate for an AAD application with RBAC access to talk to Azure RM APIs
-	AADClientCertPassword string `json:"aadClientCertPassword,omitempty" yaml:"aadClientCertPassword,omitempty" datapolicy:"password"`
-	// Use managed service identity for the virtual machine to access Azure ARM APIs
-	UseManagedIdentityExtension bool `json:"useManagedIdentityExtension,omitempty" yaml:"useManagedIdentityExtension,omitempty"`
-	// UserAssignedIdentityID contains the Client ID of the user assigned MSI which is assigned to the underlying VMs. If empty the user assigned identity is not used.
-	// More details of the user assigned identity can be found at: https://docs.microsoft.com/en-us/azure/active-directory/managed-service-identity/overview
-	// For the user assigned identity specified here to be used, the UseManagedIdentityExtension has to be set to true.
-	UserAssignedIdentityID string `json:"userAssignedIdentityID,omitempty" yaml:"userAssignedIdentityID,omitempty"`
-	// The ID of the Azure Subscription that the cluster is deployed in
-	SubscriptionID string `json:"subscriptionId,omitempty" yaml:"subscriptionId,omitempty"`
-	// IdentitySystem indicates the identity provider. Relevant only to hybrid clouds (Azure Stack).
-	// Allowed values are 'azure_ad' (default), 'adfs'.
-	IdentitySystem string `json:"identitySystem,omitempty" yaml:"identitySystem,omitempty"`
-	// ResourceManagerEndpoint is the cloud's resource manager endpoint. If set, cloud provider queries this endpoint
-	// in order to generate an autorest.Environment instance instead of using one of the pre-defined Environments.
-	ResourceManagerEndpoint string `json:"resourceManagerEndpoint,omitempty" yaml:"resourceManagerEndpoint,omitempty"`
-	// The AAD Tenant ID for the Subscription that the network resources are deployed in
-	NetworkResourceTenantID string `json:"networkResourceTenantID,omitempty" yaml:"networkResourceTenantID,omitempty"`
-	// The ID of the Azure Subscription that the network resources are deployed in
-	NetworkResourceSubscriptionID string `json:"networkResourceSubscriptionID,omitempty" yaml:"networkResourceSubscriptionID,omitempty"`
-	// The AAD federated token file
-	AADFederatedTokenFile string `json:"aadFederatedTokenFile,omitempty" yaml:"aadFederatedTokenFile,omitempty"`
-	// Use workload identity federation for the virtual machine to access Azure ARM APIs
-	UseFederatedWorkloadIdentityExtension bool `json:"useFederatedWorkloadIdentityExtension,omitempty" yaml:"useFederatedWorkloadIdentityExtension,omitempty"`
-}
-
-type CloudProviderRateLimitConfig struct {
-	// The default rate limit config options.
-	RateLimitConfig
-
-	// Rate limit config for each clients. Values would override default settings above.
-	RouteRateLimit                  *RateLimitConfig `json:"routeRateLimit,omitempty" yaml:"routeRateLimit,omitempty"`
-	SubnetsRateLimit                *RateLimitConfig `json:"subnetsRateLimit,omitempty" yaml:"subnetsRateLimit,omitempty"`
-	InterfaceRateLimit              *RateLimitConfig `json:"interfaceRateLimit,omitempty" yaml:"interfaceRateLimit,omitempty"`
-	RouteTableRateLimit             *RateLimitConfig `json:"routeTableRateLimit,omitempty" yaml:"routeTableRateLimit,omitempty"`
-	LoadBalancerRateLimit           *RateLimitConfig `json:"loadBalancerRateLimit,omitempty" yaml:"loadBalancerRateLimit,omitempty"`
-	PublicIPAddressRateLimit        *RateLimitConfig `json:"publicIPAddressRateLimit,omitempty" yaml:"publicIPAddressRateLimit,omitempty"`
-	SecurityGroupRateLimit          *RateLimitConfig `json:"securityGroupRateLimit,omitempty" yaml:"securityGroupRateLimit,omitempty"`
-	VirtualMachineRateLimit         *RateLimitConfig `json:"virtualMachineRateLimit,omitempty" yaml:"virtualMachineRateLimit,omitempty"`
-	StorageAccountRateLimit         *RateLimitConfig `json:"storageAccountRateLimit,omitempty" yaml:"storageAccountRateLimit,omitempty"`
-	DiskRateLimit                   *RateLimitConfig `json:"diskRateLimit,omitempty" yaml:"diskRateLimit,omitempty"`
-	SnapshotRateLimit               *RateLimitConfig `json:"snapshotRateLimit,omitempty" yaml:"snapshotRateLimit,omitempty"`
-	VirtualMachineScaleSetRateLimit *RateLimitConfig `json:"virtualMachineScaleSetRateLimit,omitempty" yaml:"virtualMachineScaleSetRateLimit,omitempty"`
-	VirtualMachineSizeRateLimit     *RateLimitConfig `json:"virtualMachineSizesRateLimit,omitempty" yaml:"virtualMachineSizesRateLimit,omitempty"`
-	AvailabilitySetRateLimit        *RateLimitConfig `json:"availabilitySetRateLimit,omitempty" yaml:"availabilitySetRateLimit,omitempty"`
-	AttachDetachDiskRateLimit       *RateLimitConfig `json:"attachDetachDiskRateLimit,omitempty" yaml:"attachDetachDiskRateLimit,omitempty"`
-	ContainerServiceRateLimit       *RateLimitConfig `json:"containerServiceRateLimit,omitempty" yaml:"containerServiceRateLimit,omitempty"`
-	DeploymentRateLimit             *RateLimitConfig `json:"deploymentRateLimit,omitempty" yaml:"deploymentRateLimit,omitempty"`
-	PrivateDNSRateLimit             *RateLimitConfig `json:"privateDNSRateLimit,omitempty" yaml:"privateDNSRateLimit,omitempty"`
-	PrivateDNSZoneGroupRateLimit    *RateLimitConfig `json:"privateDNSZoneGroupRateLimit,omitempty" yaml:"privateDNSZoneGroupRateLimit,omitempty"`
-	PrivateEndpointRateLimit        *RateLimitConfig `json:"privateEndpointRateLimit,omitempty" yaml:"privateEndpointRateLimit,omitempty"`
-	PrivateLinkServiceRateLimit     *RateLimitConfig `json:"privateLinkServiceRateLimit,omitempty" yaml:"privateLinkServiceRateLimit,omitempty"`
-	VirtualNetworkRateLimit         *RateLimitConfig `json:"virtualNetworkRateLimit,omitempty" yaml:"virtualNetworkRateLimit,omitempty"`
-}
-
-type RateLimitConfig struct {
-	// Enable rate limiting
-	CloudProviderRateLimit bool `json:"cloudProviderRateLimit,omitempty" yaml:"cloudProviderRateLimit,omitempty"`
-	// Rate limit QPS (Read)
-	CloudProviderRateLimitQPS float32 `json:"cloudProviderRateLimitQPS,omitempty" yaml:"cloudProviderRateLimitQPS,omitempty"`
-	// Rate limit Bucket Size
-	CloudProviderRateLimitBucket int `json:"cloudProviderRateLimitBucket,omitempty" yaml:"cloudProviderRateLimitBucket,omitempty"`
-	// Rate limit QPS (Write)
-	CloudProviderRateLimitQPSWrite float32 `json:"cloudProviderRateLimitQPSWrite,omitempty" yaml:"cloudProviderRateLimitQPSWrite,omitempty"`
-	// Rate limit Bucket Size
-	CloudProviderRateLimitBucketWrite int `json:"cloudProviderRateLimitBucketWrite,omitempty" yaml:"cloudProviderRateLimitBucketWrite,omitempty"`
-}
-
+// ParseConfig returns a parsed configuration for an Azure cloudprovider config file
 func ParseConfig(configReader io.Reader) (*Config, error) {
 	var config Config
 	if configReader == nil {
@@ -431,13 +440,13 @@ func (az *Cloud) InitializeCloudFromConfig(ctx context.Context, config *Config, 
 		}
 	}
 
-	env, err := ratelimitconfig.ParseAzureEnvironment(config.Cloud, config.ResourceManagerEndpoint, config.IdentitySystem)
+	env, err := ParseAzureEnvironment(config.Cloud, config.ResourceManagerEndpoint, config.IdentitySystem)
 	if err != nil {
 		return err
 	}
 
-	servicePrincipalToken, err := ratelimitconfig.GetServicePrincipalToken(&config.AzureAuthConfig, env, env.ServiceManagementEndpoint)
-	if errors.Is(err, ratelimitconfig.ErrorNoAuth) {
+	servicePrincipalToken, err := GetServicePrincipalToken(&config.AzureAuthConfig, env, env.ServiceManagementEndpoint)
+	if errors.Is(err, ErrorNoAuth) {
 		// Only controller-manager would lazy-initialize from secret, and credentials are required for such case.
 		if fromSecret {
 			err := fmt.Errorf("no credentials provided for Azure cloud provider")
@@ -458,7 +467,7 @@ func (az *Cloud) InitializeCloudFromConfig(ctx context.Context, config *Config, 
 	}
 
 	// Initialize rate limiting config options.
-	ratelimitconfig.InitializeCloudProviderRateLimitConfig(&config.CloudProviderRateLimitConfig)
+	InitializeCloudProviderRateLimitConfig(&config.CloudProviderRateLimitConfig)
 
 	resourceRequestBackoff := az.setCloudProviderBackoffDefaults(config)
 
@@ -470,7 +479,7 @@ func (az *Cloud) InitializeCloudFromConfig(ctx context.Context, config *Config, 
 	az.Config = *config
 	az.Environment = *env
 	az.ResourceRequestBackoff = resourceRequestBackoff
-	az.Metadata, err = NewInstanceMetadataService(consts.ImdsServer)
+	az.Metadata, err = NewInstanceMetadataService(ImdsServer)
 	if err != nil {
 		return err
 	}
@@ -488,15 +497,15 @@ func (az *Cloud) InitializeCloudFromConfig(ctx context.Context, config *Config, 
 	}
 
 	if az.MaximumLoadBalancerRuleCount == 0 {
-		az.MaximumLoadBalancerRuleCount = consts.MaximumLoadBalancerRuleCount
+		az.MaximumLoadBalancerRuleCount = MaximumLoadBalancerRuleCount
 	}
 
-	if strings.EqualFold(consts.VMTypeVMSS, az.Config.VMType) {
+	if strings.EqualFold(VMTypeVMSS, az.Config.VMType) {
 		az.VMSet, err = newScaleSet(ctx, az)
 		if err != nil {
 			return err
 		}
-	} else if strings.EqualFold(consts.VMTypeVmssFlex, az.Config.VMType) {
+	} else if strings.EqualFold(VMTypeVmssFlex, az.Config.VMType) {
 		az.VMSet, err = newFlexScaleSet(ctx, az)
 		if err != nil {
 			return err
@@ -531,17 +540,393 @@ func (az *Cloud) InitializeCloudFromConfig(ctx context.Context, config *Config, 
 
 		// Azure Stack does not support zone at the moment
 		// https://docs.microsoft.com/en-us/azure-stack/user/azure-stack-network-differences?view=azs-2102
-		if !az.isStackCloud() {
-			// wait for the success first time of syncing zones
-			err = az.syncRegionZonesMap()
-			if err != nil {
-				klog.Errorf("InitializeCloudFromConfig: failed to sync regional zones map for the first time: %s", err.Error())
-				return err
-			}
+		// if !az.isStackCloud() {
+		// 	// wait for the success first time of syncing zones
+		// 	err = az.syncRegionZonesMap()
+		// 	if err != nil {
+		// 		klog.Errorf("InitializeCloudFromConfig: failed to sync regional zones map for the first time: %s", err.Error())
+		// 		return err
+		// 	}
 
-			go az.refreshZones(az.syncRegionZonesMap)
-		}
+		// 	go az.refreshZones(az.syncRegionZonesMap)
+		// }
 	}
 
 	return nil
 }
+
+func (az *Cloud) isLBBackendPoolTypeNodeIPConfig() bool {
+	return strings.EqualFold(az.LoadBalancerBackendPoolConfigurationType, LoadBalancerBackendPoolConfigurationTypeNodeIPConfiguration)
+}
+
+func (az *Cloud) isLBBackendPoolTypeNodeIP() bool {
+	return strings.EqualFold(az.LoadBalancerBackendPoolConfigurationType, LoadBalancerBackendPoolConfigurationTypeNodeIP)
+}
+
+func (az *Cloud) isStackCloud() bool {
+	return strings.EqualFold(az.Config.Cloud, AzureStackCloudName) && !az.Config.DisableAzureStackCloud
+}
+
+func (az *Cloud) initCaches() (err error) {
+	az.vmCache, err = az.newVMCache()
+	if err != nil {
+		return err
+	}
+
+	az.lbCache, err = az.newLBCache()
+	if err != nil {
+		return err
+	}
+
+	az.nsgCache, err = az.newNSGCache()
+	if err != nil {
+		return err
+	}
+
+	az.rtCache, err = az.newRouteTableCache()
+	if err != nil {
+		return err
+	}
+
+	az.pipCache, err = az.newPIPCache()
+	if err != nil {
+		return err
+	}
+
+	az.plsCache, err = az.newPLSCache()
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (az *Cloud) setLBDefaults(config *Config) error {
+	if config.LoadBalancerSku == "" {
+		config.LoadBalancerSku = LoadBalancerSkuStandard
+	}
+
+	if strings.EqualFold(config.LoadBalancerSku, LoadBalancerSkuStandard) {
+		// Do not add master nodes to standard LB by default.
+		if config.ExcludeMasterFromStandardLB == nil {
+			config.ExcludeMasterFromStandardLB = &defaultExcludeMasterFromStandardLB
+		}
+
+		// Enable outbound SNAT by default.
+		if config.DisableOutboundSNAT == nil {
+			config.DisableOutboundSNAT = &defaultDisableOutboundSNAT
+		}
+	} else {
+		if config.DisableOutboundSNAT != nil && *config.DisableOutboundSNAT {
+			return fmt.Errorf("disableOutboundSNAT should only set when loadBalancerSku is standard")
+		}
+	}
+	return nil
+}
+
+func (az *Cloud) setCloudProviderBackoffDefaults(config *Config) wait.Backoff {
+	// Conditionally configure resource request backoff
+	resourceRequestBackoff := wait.Backoff{
+		Steps: 1,
+	}
+	if config.CloudProviderBackoff {
+		// Assign backoff defaults if no configuration was passed in
+		if config.CloudProviderBackoffRetries == 0 {
+			config.CloudProviderBackoffRetries = BackoffRetriesDefault
+		}
+		if config.CloudProviderBackoffDuration == 0 {
+			config.CloudProviderBackoffDuration = BackoffDurationDefault
+		}
+		if config.CloudProviderBackoffExponent == 0 {
+			config.CloudProviderBackoffExponent = BackoffExponentDefault
+		}
+
+		if config.CloudProviderBackoffJitter == 0 {
+			config.CloudProviderBackoffJitter = BackoffJitterDefault
+		}
+
+		resourceRequestBackoff = wait.Backoff{
+			Steps:    config.CloudProviderBackoffRetries,
+			Factor:   config.CloudProviderBackoffExponent,
+			Duration: time.Duration(config.CloudProviderBackoffDuration) * time.Second,
+			Jitter:   config.CloudProviderBackoffJitter,
+		}
+		klog.V(2).Infof("Azure cloudprovider using try backoff: retries=%d, exponent=%f, duration=%d, jitter=%f",
+			config.CloudProviderBackoffRetries,
+			config.CloudProviderBackoffExponent,
+			config.CloudProviderBackoffDuration,
+			config.CloudProviderBackoffJitter)
+	} else {
+		// CloudProviderBackoffRetries will be set to 1 by default as the requirements of Azure SDK.
+		config.CloudProviderBackoffRetries = 1
+		config.CloudProviderBackoffDuration = BackoffDurationDefault
+	}
+	return resourceRequestBackoff
+}
+
+// func (az *Cloud) syncRegionZonesMap() error {
+// 	klog.V(2).Infof("syncRegionZonesMap: starting to fetch all available zones for the subscription %s", az.SubscriptionID)
+// 	zones, rerr := az.ZoneClient.GetZones(context.Background(), az.SubscriptionID)
+// 	if rerr != nil {
+// 		klog.Warningf("syncRegionZonesMap: error when get zones: %s, will retry after %s", rerr.Error().Error(), ZoneFetchingInterval.String())
+// 		return rerr.Error()
+// 	}
+// 	if len(zones) == 0 {
+// 		klog.Warning("syncRegionZonesMap: empty zone list")
+// 	}
+
+// 	az.updateRegionZonesMap(zones)
+
+// 	return nil
+// }
+
+// func (az *Cloud) refreshZones(refreshFunc func() error) {
+// 	ticker := time.NewTicker(ZoneFetchingInterval)
+// 	defer ticker.Stop()
+
+// 	for range ticker.C {
+// 		_ = refreshFunc()
+// 	}
+// }
+
+func (az *Cloud) configureMultiTenantClients(servicePrincipalToken *adal.ServicePrincipalToken) error {
+	var err error
+	var multiTenantServicePrincipalToken *adal.MultiTenantServicePrincipalToken
+	var networkResourceServicePrincipalToken *adal.ServicePrincipalToken
+	if az.Config.UsesNetworkResourceInDifferentTenant() {
+		multiTenantServicePrincipalToken, err = GetMultiTenantServicePrincipalToken(&az.Config.AzureAuthConfig, &az.Environment)
+		if err != nil {
+			return err
+		}
+		networkResourceServicePrincipalToken, err = GetNetworkResourceServicePrincipalToken(&az.Config.AzureAuthConfig, &az.Environment)
+		if err != nil {
+			return err
+		}
+	}
+
+	az.configAzureClients(servicePrincipalToken, multiTenantServicePrincipalToken, networkResourceServicePrincipalToken)
+	return nil
+}
+
+// GetResourceGroups returns a set of resource groups that all nodes are running on.
+func (az *Cloud) GetResourceGroups() (sets.Set[string], error) {
+	// Kubelet won't set az.nodeInformerSynced, always return configured resourceGroup.
+	if az.nodeInformerSynced == nil {
+		return sets.New(az.ResourceGroup), nil
+	}
+
+	az.nodeCachesLock.RLock()
+	defer az.nodeCachesLock.RUnlock()
+	if !az.nodeInformerSynced() {
+		return nil, fmt.Errorf("node informer is not synced when trying to GetResourceGroups")
+	}
+
+	resourceGroups := sets.New(az.ResourceGroup)
+	for _, rg := range az.nodeResourceGroups {
+		resourceGroups.Insert(rg)
+	}
+
+	return resourceGroups, nil
+}
+
+// ListVirtualMachines invokes az.VirtualMachinesClient.List with exponential backoff retry
+func (az *Cloud) ListVirtualMachines(resourceGroup string) ([]armcompute.VirtualMachine, error) {
+	ctx, cancel := getContextWithCancel()
+	defer cancel()
+
+	pager := az.VMClient.NewListPager(resourceGroup, nil)
+	var allNodes []armcompute.VirtualMachine
+	for pager.More() {
+		page, err := pager.NextPage(ctx)
+		if err != nil {
+			klog.Fatalf("failed to advance page: %v", err)
+		}
+		for _, node := range page.Value {
+			allNodes = append(allNodes, *node)
+		}
+	}
+	klog.V(6).Infof("VirtualMachinesClient.List(%v) success", resourceGroup)
+	return allNodes, nil
+}
+
+// ProviderName returns the cloud provider ID.
+func (az *Cloud) ProviderName() string {
+	return CloudProviderName
+}
+
+// GetNodeNames returns a set of all node names in the k8s cluster.
+func (az *Cloud) GetNodeNames() (sets.Set[string], error) {
+	// Kubelet won't set az.nodeInformerSynced, return nil.
+	if az.nodeInformerSynced == nil {
+		return nil, nil
+	}
+
+	az.nodeCachesLock.RLock()
+	defer az.nodeCachesLock.RUnlock()
+	if !az.nodeInformerSynced() {
+		return nil, fmt.Errorf("node informer is not synced when trying to GetNodeNames")
+	}
+
+	return sets.New(az.nodeNames.UnsortedList()...), nil
+}
+
+// GetNodeResourceGroup gets resource group for given node.
+func (az *Cloud) GetNodeResourceGroup(nodeName string) (string, error) {
+	// Kubelet won't set az.nodeInformerSynced, always return configured resourceGroup.
+	if az.nodeInformerSynced == nil {
+		return az.ResourceGroup, nil
+	}
+
+	az.nodeCachesLock.RLock()
+	defer az.nodeCachesLock.RUnlock()
+	if !az.nodeInformerSynced() {
+		return "", fmt.Errorf("node informer is not synced when trying to GetNodeResourceGroup")
+	}
+
+	// Return external resource group if it has been cached.
+	if cachedRG, ok := az.nodeResourceGroups[nodeName]; ok {
+		return cachedRG, nil
+	}
+
+	// Return resource group from cloud provider options.
+	return az.ResourceGroup, nil
+}
+
+func initDiskControllers(az *Cloud) error {
+	// Common controller contains the function
+	// needed by both blob disk and managed disk controllers
+
+	qps := float32(DefaultAtachDetachDiskQPS)
+	bucket := DefaultAtachDetachDiskBucket
+	if az.Config.AttachDetachDiskRateLimit != nil {
+		qps = az.Config.AttachDetachDiskRateLimit.CloudProviderRateLimitQPSWrite
+		bucket = az.Config.AttachDetachDiskRateLimit.CloudProviderRateLimitBucketWrite
+	}
+	klog.V(2).Infof("attach/detach disk operation rate limit QPS: %f, Bucket: %d", qps, bucket)
+
+	common := &controllerCommon{
+		cloud:                        az,
+		lockMap:                      newLockMap(),
+		diskOpRateLimiter:            flowcontrol.NewTokenBucketRateLimiter(qps, bucket),
+		AttachDetachInitialDelayInMs: defaultAttachDetachInitialDelayInMs,
+	}
+
+	az.ManagedDiskController = &ManagedDiskController{common: common}
+	az.controllerCommon = common
+
+	return nil
+}
+
+func (az *Cloud) configAzureClients(
+	servicePrincipalToken *adal.ServicePrincipalToken,
+	multiTenantServicePrincipalToken *adal.MultiTenantServicePrincipalToken,
+	networkResourceServicePrincipalToken *adal.ServicePrincipalToken) {
+
+	cred, err := azidentity.NewDefaultAzureCredential(nil)
+	if err != nil {
+		klog.Fatalf("failed to obtain new credential: %v", err)
+	}
+
+	// Initialize all azure clients based on client config
+	az.DisksClient, err = armcompute.NewDisksClient(az.SubscriptionID, cred, nil)
+	if err != nil {
+		klog.Fatalf("failed to create client: %v", err)
+	}
+	az.VMClient, err = armcompute.NewVirtualMachinesClient(az.SubscriptionID, cred, nil)
+	if err != nil {
+		klog.Fatalf("failed to create client: %v", err)
+	}
+	az.VirtualMachineScaleSetsClient, err = armcompute.NewVirtualMachineScaleSetsClient(az.SubscriptionID, cred, nil)
+	if err != nil {
+		klog.Fatalf("failed to create client: %v", err)
+	}
+	az.RouteTablesClient, err = armnetwork.NewRouteTablesClient(az.SubscriptionID, cred, nil)
+	if err != nil {
+		klog.Fatalf("failed to create client: %v", err)
+	}
+	az.LoadBalancerClient, err = armnetwork.NewLoadBalancersClient(az.SubscriptionID, cred, nil)
+	if err != nil {
+		klog.Fatalf("failed to create client: %v", err)
+	}
+	az.SecurityGroupsClient, err = armnetwork.NewSecurityGroupsClient(az.SubscriptionID, cred, nil)
+	if err != nil {
+		klog.Fatalf("failed to create client: %v", err)
+	}
+	az.PublicIPAddressesClient, err = armnetwork.NewPublicIPAddressesClient(az.SubscriptionID, cred, nil)
+	if err != nil {
+		klog.Fatalf("failed to create client: %v", err)
+	}
+	az.AvailabilitySetsClient, err = armcompute.NewAvailabilitySetsClient(az.SubscriptionID, cred, nil)
+	if err != nil {
+		klog.Fatalf("failed to create client: %v", err)
+	}
+	az.PrivateLinkServiceClient, err = armnetwork.NewPrivateLinkServicesClient(az.SubscriptionID, cred, nil)
+	if err != nil {
+		klog.Fatalf("failed to create client: %v", err)
+	}
+
+	// if az.ZoneClient == nil {
+	// 	az.ZoneClient = zoneclient.New(zoneClientConfig)
+	// }
+}
+
+const (
+	defaultAttachDetachInitialDelayInMs = 1000
+)
+
+type controllerCommon struct {
+	diskStateMap sync.Map // <diskURI, attaching/detaching state>
+	lockMap      *lockMap
+	cloud        *Cloud
+	// disk queue that is waiting for attach or detach on specific node
+	// <nodeName, map<diskURI, *AttachDiskOptions/DetachDiskOptions>>
+	attachDiskMap sync.Map
+	detachDiskMap sync.Map
+	// attach/detach disk rate limiter
+	diskOpRateLimiter flowcontrol.RateLimiter
+	// DisableUpdateCache whether disable update cache in disk attach/detach
+	DisableUpdateCache bool
+	// DisableDiskLunCheck whether disable disk lun check after disk attach/detach
+	DisableDiskLunCheck bool
+	// AttachDetachInitialDelayInMs determines initial delay in milliseconds for batch disk attach/detach
+	AttachDetachInitialDelayInMs int
+}
+
+// ManagedDiskController : managed disk controller struct
+type ManagedDiskController struct {
+	common *controllerCommon
+}
+
+// PLACEHOLDER
+// Initialize provides the cloud with a kubernetes client builder and may spawn goroutines
+// to perform housekeeping or run custom controllers specific to the cloud provider.
+// Any tasks started here should be cleaned up when the stop channel closes.
+func (az *Cloud) Initialize(clientBuilder cloudprovider.ControllerClientBuilder, stop <-chan struct{}) {
+}
+
+// LoadBalancer returns a balancer interface. Also returns true if the interface is supported, false otherwise.
+func (az *Cloud) LoadBalancer() (cloudprovider.LoadBalancer, bool) { return nil, false }
+
+// Instances returns an instances interface. Also returns true if the interface is supported, false otherwise.
+func (az *Cloud) Instances() (cloudprovider.Instances, bool) { return nil, false }
+
+// InstancesV2 is an implementation for instances and should only be implemented by external cloud providers.
+// Implementing InstancesV2 is behaviorally identical to Instances but is optimized to significantly reduce
+// API calls to the cloud provider when registering and syncing nodes. Implementation of this interface will
+// disable calls to the Zones interface. Also returns true if the interface is supported, false otherwise.
+func (az *Cloud) InstancesV2() (cloudprovider.InstancesV2, bool) { return nil, false }
+
+// Zones returns a zones interface. Also returns true if the interface is supported, false otherwise.
+// DEPRECATED: Zones is deprecated in favor of retrieving zone/region information from InstancesV2.
+// This interface will not be called if InstancesV2 is enabled.
+func (az *Cloud) Zones() (cloudprovider.Zones, bool) { return nil, false }
+
+// Clusters returns a clusters interface.  Also returns true if the interface is supported, false otherwise.
+func (az *Cloud) Clusters() (cloudprovider.Clusters, bool) { return nil, false }
+
+// Routes returns a routes interface along with whether the interface is supported.
+func (az *Cloud) Routes() (cloudprovider.Routes, bool) { return nil, false }
+
+// ProviderName returns the cloud provider ID.
+// HasClusterID returns true if a ClusterID is required and set
+func (az *Cloud) HasClusterID() bool { return false }

@@ -20,8 +20,8 @@ import (
 	"time"
 
 	"github.com/golang/mock/gomock"
+	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
 	azcache "sigs.k8s.io/cloud-provider-azure/pkg/cache"
-	"sigs.k8s.io/cloud-provider-azure/pkg/provider"
 )
 
 type FakeCloudProvisioner struct {
@@ -29,7 +29,7 @@ type FakeCloudProvisioner struct {
 }
 
 func NewFakeCloudProvisioner(ctrl *gomock.Controller) (*FakeCloudProvisioner, error) {
-	fakeCloud := provider.GetTestCloud(ctrl)
+	fakeCloud := &azureutils.Cloud{}
 
 	cache, err := azcache.NewTimedcache(time.Minute, func(key string) (interface{}, error) {
 		return nil, nil
@@ -43,11 +43,11 @@ func NewFakeCloudProvisioner(ctrl *gomock.Controller) (*FakeCloudProvisioner, er
 	}, nil
 }
 
-func (fake *FakeCloudProvisioner) GetCloud() *provider.Cloud {
+func (fake *FakeCloudProvisioner) GetCloud() *azureutils.Cloud {
 	return fake.cloud
 }
 
-func (fake *FakeCloudProvisioner) SetCloud(cloud *provider.Cloud) {
+func (fake *FakeCloudProvisioner) SetCloud(cloud *azureutils.Cloud) {
 	fake.cloud = cloud
 }
 

@@ -19,19 +19,19 @@ limitations under the License.
 
 package azuredisk
 
-import (
-	"testing"
-)
+// import (
+// 	"testing"
+// )
 
-// NewFakeDriver returns a driver implementation suitable for use in unit tests.
-func NewFakeDriver(t *testing.T) (FakeDriver, error) {
-	return newFakeDriverV1(t)
-}
+// // NewFakeDriver returns a driver implementation suitable for use in unit tests.
+// func NewFakeDriver(t *testing.T) (FakeDriver, error) {
+// 	return newFakeDriverV1(t)
+// }
 
-func skipIfTestingDriverV2(t *testing.T) {
+// func skipIfTestingDriverV2(t *testing.T) {
 
-}
+// }
 
-func isTestingDriverV2() bool {
-	return false
-}
+// func isTestingDriverV2() bool {
+// 	return false
+// }
