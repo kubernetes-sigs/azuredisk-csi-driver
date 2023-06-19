@@ -898,36 +898,36 @@ func (c *CloudProvisioner) CreateSnapshot(
 	// 	localCloud := c.cloud
 	// 	location := c.cloud.Location
 
-	for k, v := range parameters {
-		switch strings.ToLower(k) {
-		case azureconstants.TagsField:
-			customTags = v
-		case azureconstants.IncrementalField:
-			if v == "false" {
-				incremental = false
-			}
-		case azureconstants.ResourceGroupField:
-			resourceGroup = v
-		case azureconstants.SubscriptionIDField:
-			subsID = v
-		case azureconstants.DataAccessAuthModeField:
-			dataAccessAuthMode = v
-		case azureconstants.LocationField:
-			location = v
-		case azureconstants.UserAgentField:
-			newUserAgent := v
-			localCloud, err = azureutils.GetCloudProviderFromClient(
-				ctx,
-				c.kubeClient,
-				c.config,
-				newUserAgent)
-			if err != nil {
-				return nil, status.Errorf(codes.Internal, "create cloud with UserAgent(%s) failed with: (%s)", newUserAgent, err)
-			}
-		default:
-			return nil, status.Errorf(codes.Internal, "AzureDisk - invalid option %s in VolumeSnapshotClass", k)
-		}
-	}
+	// for k, v := range parameters {
+	// 	switch strings.ToLower(k) {
+	// 	case azureconstants.TagsField:
+	// 		customTags = v
+	// 	case azureconstants.IncrementalField:
+	// 		if v == "false" {
+	// 			incremental = false
+	// 		}
+	// 	case azureconstants.ResourceGroupField:
+	// 		resourceGroup = v
+	// 	case azureconstants.SubscriptionIDField:
+	// 		subsID = v
+	// 	case azureconstants.DataAccessAuthModeField:
+	// 		dataAccessAuthMode = v
+	// 	case azureconstants.LocationField:
+	// 		location = v
+	// 	case azureconstants.UserAgentField:
+	// 		newUserAgent := v
+	// 		localCloud, err = azureutils.GetCloudProviderFromClient(
+	// 			ctx,
+	// 			c.kubeClient,
+	// 			c.config,
+	// 			newUserAgent)
+	// 		if err != nil {
+	// 			return nil, status.Errorf(codes.Internal, "create cloud with UserAgent(%s) failed with: (%s)", newUserAgent, err)
+	// 		}
+	// 	default:
+	// 		return nil, status.Errorf(codes.Internal, "AzureDisk - invalid option %s in VolumeSnapshotClass", k)
+	// 	}
+	// }
 
 	// 	if azureutils.IsAzureStackCloud(localCloud.Config.Cloud, localCloud.Config.DisableAzureStackCloud) {
 	// 		klog.V(2).Info("Use full snapshot instead as Azure Stack does not support incremental snapshot.")
