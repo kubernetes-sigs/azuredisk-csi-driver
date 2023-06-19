@@ -46,7 +46,9 @@ func newBackendPoolTypeNodeIP(c *Cloud) BackendPool {
 
 // PLACEHOLDER
 // EnsureHostsInPool ensures the nodes join the backend pool of the load balancer
-func (bc *backendPoolTypeNodeIPConfig) EnsureHostsInPool(service *v1.Service, nodes []*v1.Node, backendPoolID, vmSetName, clusterName, lbName string, backendPool armnetwork.BackendAddressPool) error
+func (bc *backendPoolTypeNodeIPConfig) EnsureHostsInPool(service *v1.Service, nodes []*v1.Node, backendPoolID, vmSetName, clusterName, lbName string, backendPool armnetwork.BackendAddressPool) error {
+	return nil
+}
 
 // CleanupVMSetFromBackendPoolByCondition removes nodes of the unwanted vmSet from the lb backend pool.
 // This is needed in two scenarios:
@@ -55,18 +57,26 @@ func (bc *backendPoolTypeNodeIPConfig) EnsureHostsInPool(service *v1.Service, no
 // nodes from the primary agent pool to join the backend pool.
 // 2. When migrating from dedicated SLB to shared SLB (or vice versa), we should move the vmSet from
 // one SLB to another one.
-func (bc *backendPoolTypeNodeIPConfig) CleanupVMSetFromBackendPoolByCondition(slb *armnetwork.LoadBalancer, service *v1.Service, nodes []*v1.Node, clusterName string, shouldRemoveVMSetFromSLB func(string) bool) (*network.LoadBalancer, error)
+func (bc *backendPoolTypeNodeIPConfig) CleanupVMSetFromBackendPoolByCondition(slb *armnetwork.LoadBalancer, service *v1.Service, nodes []*v1.Node, clusterName string, shouldRemoveVMSetFromSLB func(string) bool) (*network.LoadBalancer, error) {
+	return nil, nil
+}
 
 // ReconcileBackendPools creates the inbound backend pool if it is not existed, and removes nodes that are supposed to be
 // excluded from the load balancers.
-func (bc *backendPoolTypeNodeIPConfig) ReconcileBackendPools(clusterName string, service *v1.Service, lb *armnetwork.LoadBalancer) (bool, bool, bool, error)
+func (bc *backendPoolTypeNodeIPConfig) ReconcileBackendPools(clusterName string, service *v1.Service, lb *armnetwork.LoadBalancer) (bool, bool, bool, error) {
+	return false, false, false, nil
+}
 
 // GetBackendPrivateIPs returns the private IPs of LoadBalancer's backend pool
-func (bc *backendPoolTypeNodeIPConfig) GetBackendPrivateIPs(clusterName string, service *v1.Service, lb *armnetwork.LoadBalancer) ([]string, []string)
+func (bc *backendPoolTypeNodeIPConfig) GetBackendPrivateIPs(clusterName string, service *v1.Service, lb *armnetwork.LoadBalancer) ([]string, []string) {
+	return nil, nil
+}
 
 // PLACEHOLDER
 // EnsureHostsInPool ensures the nodes join the backend pool of the load balancer
-func (bc *backendPoolTypeNodeIP) EnsureHostsInPool(service *v1.Service, nodes []*v1.Node, backendPoolID, vmSetName, clusterName, lbName string, backendPool armnetwork.BackendAddressPool) error
+func (bc *backendPoolTypeNodeIP) EnsureHostsInPool(service *v1.Service, nodes []*v1.Node, backendPoolID, vmSetName, clusterName, lbName string, backendPool armnetwork.BackendAddressPool) error {
+	return nil
+}
 
 // CleanupVMSetFromBackendPoolByCondition removes nodes of the unwanted vmSet from the lb backend pool.
 // This is needed in two scenarios:
@@ -75,11 +85,17 @@ func (bc *backendPoolTypeNodeIP) EnsureHostsInPool(service *v1.Service, nodes []
 // nodes from the primary agent pool to join the backend pool.
 // 2. When migrating from dedicated SLB to shared SLB (or vice versa), we should move the vmSet from
 // one SLB to another one.
-func (bc *backendPoolTypeNodeIP) CleanupVMSetFromBackendPoolByCondition(slb *armnetwork.LoadBalancer, service *v1.Service, nodes []*v1.Node, clusterName string, shouldRemoveVMSetFromSLB func(string) bool) (*network.LoadBalancer, error)
+func (bc *backendPoolTypeNodeIP) CleanupVMSetFromBackendPoolByCondition(slb *armnetwork.LoadBalancer, service *v1.Service, nodes []*v1.Node, clusterName string, shouldRemoveVMSetFromSLB func(string) bool) (*network.LoadBalancer, error) {
+	return nil, nil
+}
 
 // ReconcileBackendPools creates the inbound backend pool if it is not existed, and removes nodes that are supposed to be
 // excluded from the load balancers.
-func (bc *backendPoolTypeNodeIP) ReconcileBackendPools(clusterName string, service *v1.Service, lb *armnetwork.LoadBalancer) (bool, bool, bool, error)
+func (bc *backendPoolTypeNodeIP) ReconcileBackendPools(clusterName string, service *v1.Service, lb *armnetwork.LoadBalancer) (bool, bool, bool, error) {
+	return false, false, false, nil
+}
 
 // GetBackendPrivateIPs returns the private IPs of LoadBalancer's backend pool
-func (bc *backendPoolTypeNodeIP) GetBackendPrivateIPs(clusterName string, service *v1.Service, lb *armnetwork.LoadBalancer) ([]string, []string)
+func (bc *backendPoolTypeNodeIP) GetBackendPrivateIPs(clusterName string, service *v1.Service, lb *armnetwork.LoadBalancer) ([]string, []string) {
+	return nil, nil
+}

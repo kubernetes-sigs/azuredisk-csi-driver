@@ -11,32 +11,64 @@ import (
 	"k8s.io/klog/v2"
 )
 
-const (
-	// MetadataCacheTTL is the TTL of the metadata service
-	MetadataCacheTTL = time.Minute
-)
-
+// metadata service
 const (
 	// ImdsInstanceAPIVersion is the imds instance api version
 	ImdsInstanceAPIVersion = "2021-10-01"
-	// ImdsLoadBalancerAPIVersion is the imds load balancer api version
-	ImdsLoadBalancerAPIVersion = "2020-10-01"
 	// ImdsInstanceURI is the imds instance uri
 	ImdsInstanceURI = "/metadata/instance"
 	// ImdsLoadBalancerURI is the imds load balancer uri
 	ImdsLoadBalancerURI = "/metadata/loadbalancer"
+	// ImdsLoadBalancerAPIVersion is the imds load balancer api version
+	ImdsLoadBalancerAPIVersion = "2020-10-01"
 )
 
-// InstanceMetadata represents instance information.
-type InstanceMetadata struct {
-	Compute *ComputeMetadata `json:"compute,omitempty"`
-	Network *NetworkMetadata `json:"network,omitempty"`
+const (
+	// MetadataCacheTTL is the TTL of the metadata service
+	MetadataCacheTTL = time.Minute
+	// MetadataCacheKey is the metadata cache key
+	MetadataCacheKey = "InstanceMetadata"
+)
+
+// NetworkData contains IP information for a network.
+type NetworkData struct {
+	IPAddress []IPAddress `json:"ipAddress"`
+	Subnet    []Subnet    `json:"subnet"`
+}
+
+// NetworkInterface represents an instances network interface.
+type NetworkInterface struct {
+	IPV4 NetworkData `json:"ipv4"`
+	IPV6 NetworkData `json:"ipv6"`
+	MAC  string      `json:"macAddress"`
+}
+
+// IPAddress represents IP address information.
+type IPAddress struct {
+	PrivateIP string `json:"privateIpAddress"`
+	PublicIP  string `json:"publicIpAddress"`
+}
+
+// Subnet represents subnet information.
+type Subnet struct {
+	Address string `json:"address"`
+	Prefix  string `json:"prefix"`
 }
 
 // PublicIPMetadata represents the public IP metadata.
 type PublicIPMetadata struct {
 	FrontendIPAddress string `json:"frontendIpAddress,omitempty"`
 	PrivateIPAddress  string `json:"privateIpAddress,omitempty"`
+}
+
+// LoadbalancerProfile represents load balancer profile in IMDS.
+type LoadbalancerProfile struct {
+	PublicIPAddresses []PublicIPMetadata `json:"publicIpAddresses,omitempty"`
+}
+
+// LoadBalancerMetadata represents load balancer metadata.
+type LoadBalancerMetadata struct {
+	LoadBalancer *LoadbalancerProfile `json:"loadbalancer,omitempty"`
 }
 
 // ComputeMetadata represents compute information
@@ -62,29 +94,10 @@ type NetworkMetadata struct {
 	Interface []NetworkInterface `json:"interface"`
 }
 
-// NetworkInterface represents an instances network interface.
-type NetworkInterface struct {
-	IPV4 NetworkData `json:"ipv4"`
-	IPV6 NetworkData `json:"ipv6"`
-	MAC  string      `json:"macAddress"`
-}
-
-// NetworkData contains IP information for a network.
-type NetworkData struct {
-	IPAddress []IPAddress `json:"ipAddress"`
-	Subnet    []Subnet    `json:"subnet"`
-}
-
-// IPAddress represents IP address information.
-type IPAddress struct {
-	PrivateIP string `json:"privateIpAddress"`
-	PublicIP  string `json:"publicIpAddress"`
-}
-
-// Subnet represents subnet information.
-type Subnet struct {
-	Address string `json:"address"`
-	Prefix  string `json:"prefix"`
+// InstanceMetadata represents instance information.
+type InstanceMetadata struct {
+	Compute *ComputeMetadata `json:"compute,omitempty"`
+	Network *NetworkMetadata `json:"network,omitempty"`
 }
 
 // InstanceMetadataService knows how to query the Azure instance metadata server.
@@ -93,14 +106,24 @@ type InstanceMetadataService struct {
 	imsCache   *TimedCache
 }
 
-// LoadbalancerProfile represents load balancer profile in IMDS.
-type LoadbalancerProfile struct {
-	PublicIPAddresses []PublicIPMetadata `json:"publicIpAddresses,omitempty"`
-}
+// GetMetadata gets instance metadata from cache.
+// crt determines if we can get data from stalled cache/need fresh if cache expired.
+func (ims *InstanceMetadataService) GetMetadata(crt AzureCacheReadType) (*InstanceMetadata, error) {
+	cache, err := ims.imsCache.Get(MetadataCacheKey, crt)
+	if err != nil {
+		return nil, err
+	}
 
-// LoadBalancerMetadata represents load balancer metadata.
-type LoadBalancerMetadata struct {
-	LoadBalancer *LoadbalancerProfile `json:"loadbalancer,omitempty"`
+	// Cache shouldn't be nil, but added a check in case something is wrong.
+	if cache == nil {
+		return nil, fmt.Errorf("failure of getting instance metadata")
+	}
+
+	if metadata, ok := cache.(*InstanceMetadata); ok {
+		return metadata, nil
+	}
+
+	return nil, fmt.Errorf("failure of getting instance metadata")
 }
 
 // NewInstanceMetadataService creates an instance of the InstanceMetadataService accessor object.
@@ -116,6 +139,62 @@ func NewInstanceMetadataService(imdsServer string) (*InstanceMetadataService, er
 
 	ims.imsCache = imsCache
 	return ims, nil
+}
+
+// fillNetInterfacePublicIPs finds PIPs from imds load balancer and fills them into net interface config.
+func fillNetInterfacePublicIPs(publicIPs []PublicIPMetadata, netInterface *NetworkInterface) {
+	// IPv6 IPs from imds load balancer are wrapped by brackets while those from imds are not.
+	trimIP := func(ip string) string {
+		return strings.Trim(strings.Trim(ip, "["), "]")
+	}
+
+	if len(netInterface.IPV4.IPAddress) > 0 && len(netInterface.IPV4.IPAddress[0].PrivateIP) > 0 {
+		for _, pip := range publicIPs {
+			if pip.PrivateIPAddress == netInterface.IPV4.IPAddress[0].PrivateIP {
+				netInterface.IPV4.IPAddress[0].PublicIP = pip.FrontendIPAddress
+				break
+			}
+		}
+	}
+	if len(netInterface.IPV6.IPAddress) > 0 && len(netInterface.IPV6.IPAddress[0].PrivateIP) > 0 {
+		for _, pip := range publicIPs {
+			privateIP := trimIP(pip.PrivateIPAddress)
+			frontendIP := trimIP(pip.FrontendIPAddress)
+			if privateIP == netInterface.IPV6.IPAddress[0].PrivateIP {
+				netInterface.IPV6.IPAddress[0].PublicIP = frontendIP
+				break
+			}
+		}
+	}
+}
+
+func (ims *InstanceMetadataService) getMetadata(key string) (interface{}, error) {
+	instanceMetadata, err := ims.getInstanceMetadata(key)
+	if err != nil {
+		return nil, err
+	}
+
+	if instanceMetadata.Network != nil && len(instanceMetadata.Network.Interface) > 0 {
+		netInterface := instanceMetadata.Network.Interface[0]
+		if (len(netInterface.IPV4.IPAddress) > 0 && len(netInterface.IPV4.IPAddress[0].PublicIP) > 0) ||
+			(len(netInterface.IPV6.IPAddress) > 0 && len(netInterface.IPV6.IPAddress[0].PublicIP) > 0) {
+			// Return if public IP address has already part of instance metadata.
+			return instanceMetadata, nil
+		}
+
+		loadBalancerMetadata, err := ims.getLoadBalancerMetadata()
+		if err != nil || loadBalancerMetadata == nil || loadBalancerMetadata.LoadBalancer == nil {
+			// Log a warning since loadbalancer metadata may not be available when the VM
+			// is not in standard LoadBalancer backend address pool.
+			klog.V(4).Infof("Warning: failed to get loadbalancer metadata: %v", err)
+			return instanceMetadata, nil
+		}
+
+		publicIPs := loadBalancerMetadata.LoadBalancer.PublicIPAddresses
+		fillNetInterfacePublicIPs(publicIPs, &netInterface)
+	}
+
+	return instanceMetadata, nil
 }
 
 func (ims *InstanceMetadataService) getInstanceMetadata(key string) (*InstanceMetadata, error) {
@@ -154,62 +233,6 @@ func (ims *InstanceMetadataService) getInstanceMetadata(key string) (*InstanceMe
 	}
 
 	return &obj, nil
-}
-
-func (ims *InstanceMetadataService) getMetadata(key string) (interface{}, error) {
-	instanceMetadata, err := ims.getInstanceMetadata(key)
-	if err != nil {
-		return nil, err
-	}
-
-	if instanceMetadata.Network != nil && len(instanceMetadata.Network.Interface) > 0 {
-		netInterface := instanceMetadata.Network.Interface[0]
-		if (len(netInterface.IPV4.IPAddress) > 0 && len(netInterface.IPV4.IPAddress[0].PublicIP) > 0) ||
-			(len(netInterface.IPV6.IPAddress) > 0 && len(netInterface.IPV6.IPAddress[0].PublicIP) > 0) {
-			// Return if public IP address has already part of instance metadata.
-			return instanceMetadata, nil
-		}
-
-		loadBalancerMetadata, err := ims.getLoadBalancerMetadata()
-		if err != nil || loadBalancerMetadata == nil || loadBalancerMetadata.LoadBalancer == nil {
-			// Log a warning since loadbalancer metadata may not be available when the VM
-			// is not in standard LoadBalancer backend address pool.
-			klog.V(4).Infof("Warning: failed to get loadbalancer metadata: %v", err)
-			return instanceMetadata, nil
-		}
-
-		publicIPs := loadBalancerMetadata.LoadBalancer.PublicIPAddresses
-		fillNetInterfacePublicIPs(publicIPs, &netInterface)
-	}
-
-	return instanceMetadata, nil
-}
-
-// fillNetInterfacePublicIPs finds PIPs from imds load balancer and fills them into net interface config.
-func fillNetInterfacePublicIPs(publicIPs []PublicIPMetadata, netInterface *NetworkInterface) {
-	// IPv6 IPs from imds load balancer are wrapped by brackets while those from imds are not.
-	trimIP := func(ip string) string {
-		return strings.Trim(strings.Trim(ip, "["), "]")
-	}
-
-	if len(netInterface.IPV4.IPAddress) > 0 && len(netInterface.IPV4.IPAddress[0].PrivateIP) > 0 {
-		for _, pip := range publicIPs {
-			if pip.PrivateIPAddress == netInterface.IPV4.IPAddress[0].PrivateIP {
-				netInterface.IPV4.IPAddress[0].PublicIP = pip.FrontendIPAddress
-				break
-			}
-		}
-	}
-	if len(netInterface.IPV6.IPAddress) > 0 && len(netInterface.IPV6.IPAddress[0].PrivateIP) > 0 {
-		for _, pip := range publicIPs {
-			privateIP := trimIP(pip.PrivateIPAddress)
-			frontendIP := trimIP(pip.FrontendIPAddress)
-			if privateIP == netInterface.IPV6.IPAddress[0].PrivateIP {
-				netInterface.IPV6.IPAddress[0].PublicIP = frontendIP
-				break
-			}
-		}
-	}
 }
 
 func (ims *InstanceMetadataService) getLoadBalancerMetadata() (*LoadBalancerMetadata, error) {

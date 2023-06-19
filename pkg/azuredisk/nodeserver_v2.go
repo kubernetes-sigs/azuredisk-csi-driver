@@ -31,7 +31,6 @@ import (
 
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/optimization"
 	volumehelper "sigs.k8s.io/azuredisk-csi-driver/pkg/util"
-	azcache "sigs.k8s.io/cloud-provider-azure/pkg/cache"
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	"google.golang.org/grpc/codes"
@@ -434,7 +433,7 @@ func (d *DriverV2) NodeGetInfo(ctx context.Context, req *csi.NodeGetInfoRequest)
 			}
 		} else {
 			if runtime.GOOS == "windows" && d.cloudProvisioner.GetCloud().UseInstanceMetadata && d.cloudProvisioner.GetCloud().Metadata != nil {
-				metadata, err := d.cloudProvisioner.GetCloud().Metadata.GetMetadata(azcache.CacheReadTypeDefault)
+				metadata, err := d.cloudProvisioner.GetCloud().Metadata.GetMetadata(azureutils.CacheReadTypeDefault)
 				if err == nil && metadata.Compute != nil {
 					instanceType = metadata.Compute.VMSize
 					klog.V(5).Infof("NodeGetInfo: nodeName(%s), VM Size(%s)", d.NodeID, instanceType)
