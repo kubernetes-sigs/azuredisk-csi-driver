@@ -27,9 +27,13 @@ github.com/Azure/azure-sdk-for-go/services/resources/mgmt/2017-05-10/resources
 github.com/Azure/azure-sdk-for-go/services/resources/mgmt/2018-05-01/resources
 github.com/Azure/azure-sdk-for-go/services/storage/mgmt/2021-09-01/storage
 github.com/Azure/azure-sdk-for-go/version
-# github.com/Azure/azure-sdk-for-go/sdk/azcore v1.3.1
+# github.com/Azure/azure-sdk-for-go/sdk/azcore v1.4.0
 ## explicit; go 1.18
 github.com/Azure/azure-sdk-for-go/sdk/azcore
+github.com/Azure/azure-sdk-for-go/sdk/azcore/arm
+github.com/Azure/azure-sdk-for-go/sdk/azcore/arm/internal/resource
+github.com/Azure/azure-sdk-for-go/sdk/azcore/arm/policy
+github.com/Azure/azure-sdk-for-go/sdk/azcore/arm/runtime
 github.com/Azure/azure-sdk-for-go/sdk/azcore/cloud
 github.com/Azure/azure-sdk-for-go/sdk/azcore/internal/exported
 github.com/Azure/azure-sdk-for-go/sdk/azcore/internal/log
@@ -43,17 +47,27 @@ github.com/Azure/azure-sdk-for-go/sdk/azcore/log
 github.com/Azure/azure-sdk-for-go/sdk/azcore/policy
 github.com/Azure/azure-sdk-for-go/sdk/azcore/runtime
 github.com/Azure/azure-sdk-for-go/sdk/azcore/streaming
+github.com/Azure/azure-sdk-for-go/sdk/azcore/to
 github.com/Azure/azure-sdk-for-go/sdk/azcore/tracing
-# github.com/Azure/azure-sdk-for-go/sdk/azidentity v1.2.1
+# github.com/Azure/azure-sdk-for-go/sdk/azidentity v1.2.2
 ## explicit; go 1.18
 github.com/Azure/azure-sdk-for-go/sdk/azidentity
-# github.com/Azure/azure-sdk-for-go/sdk/internal v1.1.2
+# github.com/Azure/azure-sdk-for-go/sdk/internal v1.2.0
 ## explicit; go 1.18
 github.com/Azure/azure-sdk-for-go/sdk/internal/diag
 github.com/Azure/azure-sdk-for-go/sdk/internal/errorinfo
 github.com/Azure/azure-sdk-for-go/sdk/internal/log
 github.com/Azure/azure-sdk-for-go/sdk/internal/temporal
 github.com/Azure/azure-sdk-for-go/sdk/internal/uuid
+# github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute/v5 v5.0.0
+## explicit; go 1.18
+github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute/v5
+# github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/network/armnetwork/v2 v2.2.1
+## explicit; go 1.18
+github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/network/armnetwork/v2
+# github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/networkcloud/armnetworkcloud v0.1.0
+## explicit; go 1.18
+github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/networkcloud/armnetworkcloud
 # github.com/Azure/go-amqp v0.17.5
 ## explicit; go 1.12
 github.com/Azure/go-amqp
@@ -68,7 +82,7 @@ github.com/Azure/go-autorest
 ## explicit; go 1.15
 github.com/Azure/go-autorest/autorest
 github.com/Azure/go-autorest/autorest/azure
-# github.com/Azure/go-autorest/autorest/adal v0.9.22
+# github.com/Azure/go-autorest/autorest/adal v0.9.23
 ## explicit; go 1.15
 github.com/Azure/go-autorest/autorest/adal
 # github.com/Azure/go-autorest/autorest/azure/auth v0.5.11
@@ -91,7 +105,7 @@ github.com/Azure/go-autorest/logger
 # github.com/Azure/go-autorest/tracing v0.6.0
 ## explicit; go 1.12
 github.com/Azure/go-autorest/tracing
-# github.com/AzureAD/microsoft-authentication-library-for-go v0.8.1
+# github.com/AzureAD/microsoft-authentication-library-for-go v0.9.0
 ## explicit; go 1.18
 github.com/AzureAD/microsoft-authentication-library-for-go/apps/cache
 github.com/AzureAD/microsoft-authentication-library-for-go/apps/confidential
@@ -211,7 +225,7 @@ github.com/gobuffalo/flect
 ## explicit; go 1.15
 github.com/gogo/protobuf/proto
 github.com/gogo/protobuf/sortkeys
-# github.com/golang-jwt/jwt/v4 v4.4.3
+# github.com/golang-jwt/jwt/v4 v4.5.0
 ## explicit; go 1.16
 github.com/golang-jwt/jwt/v4
 # github.com/golang/groupcache v0.0.0-20210331224755-41bb18bfe9da
@@ -405,7 +419,7 @@ github.com/pborman/uuid
 # github.com/pelletier/go-toml v1.9.4
 ## explicit; go 1.12
 github.com/pelletier/go-toml
-# github.com/pkg/browser v0.0.0-20210115035449-ce105d075bb4
+# github.com/pkg/browser v0.0.0-20210911075715-681adbf594b8
 ## explicit; go 1.14
 github.com/pkg/browser
 # github.com/pkg/errors v0.9.1
@@ -460,7 +474,7 @@ github.com/spf13/viper/internal/encoding/hcl
 github.com/spf13/viper/internal/encoding/json
 github.com/spf13/viper/internal/encoding/toml
 github.com/spf13/viper/internal/encoding/yaml
-# github.com/stretchr/testify v1.8.1
+# github.com/stretchr/testify v1.8.2
 ## explicit; go 1.13
 github.com/stretchr/testify/assert
 github.com/stretchr/testify/require
@@ -522,7 +536,7 @@ go.opentelemetry.io/proto/otlp/collector/trace/v1
 go.opentelemetry.io/proto/otlp/common/v1
 go.opentelemetry.io/proto/otlp/resource/v1
 go.opentelemetry.io/proto/otlp/trace/v1
-# golang.org/x/crypto v0.5.0
+# golang.org/x/crypto v0.10.0
 ## explicit; go 1.17
 golang.org/x/crypto/blowfish
 golang.org/x/crypto/chacha20
@@ -535,12 +549,12 @@ golang.org/x/crypto/pkcs12
 golang.org/x/crypto/pkcs12/internal/rc2
 golang.org/x/crypto/ssh
 golang.org/x/crypto/ssh/internal/bcrypt_pbkdf
-# golang.org/x/mod v0.7.0
+# golang.org/x/mod v0.8.0
 ## explicit; go 1.17
 golang.org/x/mod/internal/lazyregexp
 golang.org/x/mod/module
 golang.org/x/mod/semver
-# golang.org/x/net v0.7.0
+# golang.org/x/net v0.10.0
 ## explicit; go 1.17
 golang.org/x/net/context
 golang.org/x/net/context/ctxhttp
@@ -563,7 +577,7 @@ golang.org/x/oauth2/internal
 # golang.org/x/sync v0.1.0
 ## explicit
 golang.org/x/sync/semaphore
-# golang.org/x/sys v0.5.0
+# golang.org/x/sys v0.9.0
 ## explicit; go 1.17
 golang.org/x/sys/cpu
 golang.org/x/sys/execabs
@@ -572,10 +586,10 @@ golang.org/x/sys/plan9
 golang.org/x/sys/unix
 golang.org/x/sys/windows
 golang.org/x/sys/windows/registry
-# golang.org/x/term v0.5.0
+# golang.org/x/term v0.9.0
 ## explicit; go 1.17
 golang.org/x/term
-# golang.org/x/text v0.7.0
+# golang.org/x/text v0.10.0
 ## explicit; go 1.17
 golang.org/x/text/encoding
 golang.org/x/text/encoding/charmap
@@ -600,7 +614,7 @@ golang.org/x/text/unicode/norm
 # golang.org/x/time v0.3.0
 ## explicit
 golang.org/x/time/rate
-# golang.org/x/tools v0.4.0
+# golang.org/x/tools v0.6.0
 ## explicit; go 1.18
 golang.org/x/tools/go/ast/astutil
 golang.org/x/tools/go/gcexportdata
@@ -618,6 +632,7 @@ golang.org/x/tools/internal/gopathwalk
 golang.org/x/tools/internal/imports
 golang.org/x/tools/internal/packagesinternal
 golang.org/x/tools/internal/pkgbits
+golang.org/x/tools/internal/tokeninternal
 golang.org/x/tools/internal/typeparams
 golang.org/x/tools/internal/typesinternal
 # gomodules.xyz/jsonpatch/v2 v2.2.0
