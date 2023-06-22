@@ -1,6 +1,7 @@
+/*
 //go:build azurediskv2
 // +build azurediskv2
-
+*/
 /*
 Copyright 2020 The Kubernetes Authors.
 
@@ -39,7 +40,7 @@ import (
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/provisioner"
 
 	volumehelper "sigs.k8s.io/azuredisk-csi-driver/pkg/util"
-	"sigs.k8s.io/cloud-provider-azure/pkg/provider"
+	// "sigs.k8s.io/cloud-provider-azure/pkg/provider"
 )
 
 type fakeDriverV2 struct {
@@ -135,11 +136,11 @@ func (d *fakeDriverV2) setIsBlockDevicePathError(path string, isDevice bool, res
 	d.nodeProvisioner.(*provisioner.FakeNodeProvisioner).SetIsBlockDevicePathResult(path, isDevice, result)
 }
 
-func (d *fakeDriverV2) getCloud() *provider.Cloud {
+func (d *fakeDriverV2) getCloud() *azureutils.Cloud {
 	return d.cloudProvisioner.(*provisioner.FakeCloudProvisioner).GetCloud()
 }
 
-func (d *fakeDriverV2) setCloud(cloud *provider.Cloud) {
+func (d *fakeDriverV2) setCloud(cloud *azureutils.Cloud) {
 	d.cloudProvisioner.(*provisioner.FakeCloudProvisioner).SetCloud(cloud)
 }
 

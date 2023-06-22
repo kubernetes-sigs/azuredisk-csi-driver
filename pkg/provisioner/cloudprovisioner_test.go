@@ -1,203 +1,201 @@
-/*
-Copyright 2021 The Kubernetes Authors.
+// /*
+// Copyright 2021 The Kubernetes Authors.
 
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
 
-    http://www.apache.org/licenses/LICENSE-2.0
+//     http://www.apache.org/licenses/LICENSE-2.0
 
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
-*/
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+// */
 
 package provisioner
 
-import (
-	// "context"
-	// "encoding/json"
-	"errors"
-	"fmt"
-	"net/http"
+// import (
+// 	"context"
+// 	"encoding/json"
+// 	"errors"
+// 	"fmt"
+// 	"net/http"
+// 	"testing"
+// 	"time"
 
-	// "testing"
-	"time"
+// 	armcompute "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute/v5"
+// 	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2022-03-01/compute"
+// 	"github.com/Azure/go-autorest/autorest"
+// 	"github.com/Azure/go-autorest/autorest/azure"
+// 	"github.com/Azure/go-autorest/autorest/date"
+// 	autorestmocks "github.com/Azure/go-autorest/autorest/mocks"
+// 	"github.com/golang/mock/gomock"
+// 	"github.com/stretchr/testify/assert"
+// 	"google.golang.org/grpc/codes"
+// 	"google.golang.org/grpc/status"
+// 	corev1 "k8s.io/api/core/v1"
+// 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+// 	"k8s.io/apimachinery/pkg/runtime"
+// 	kfake "k8s.io/client-go/kubernetes/fake"
+// 	cloudprovider "k8s.io/cloud-provider"
+// 	azdiskv1beta2 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1beta2"
+// 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
+// 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
+// 	"sigs.k8s.io/azuredisk-csi-driver/pkg/util"
+// 	"sigs.k8s.io/cloud-provider-azure/pkg/azureclients/diskclient/mockdiskclient"
+// 	"sigs.k8s.io/cloud-provider-azure/pkg/azureclients/snapshotclient/mocksnapshotclient"
+// 	"sigs.k8s.io/cloud-provider-azure/pkg/azureclients/vmclient/mockvmclient"
+// 	azcache "sigs.k8s.io/cloud-provider-azure/pkg/cache"
+// 	"sigs.k8s.io/cloud-provider-azure/pkg/retry"
+// )
 
-	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2022-03-01/compute"
-	// "github.com/Azure/go-autorest/autorest"
-	// "github.com/Azure/go-autorest/autorest/azure"
-	"github.com/Azure/go-autorest/autorest/date"
-	// autorestmocks "github.com/Azure/go-autorest/autorest/mocks"
-	// "github.com/golang/mock/gomock"
-	// "github.com/stretchr/testify/assert"
-	// "google.golang.org/grpc/codes"
-	// "google.golang.org/grpc/status"
-	// corev1 "k8s.io/api/core/v1"
-	// metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	// "k8s.io/apimachinery/pkg/runtime"
-	// kfake "k8s.io/client-go/kubernetes/fake"
-	// cloudprovider "k8s.io/cloud-provider"
-	azdiskv1beta2 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1beta2"
-	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
-	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
+// var (
+// 	computeDiskURIFormat     = "/subscriptions/%s/resourceGroups/%s/providers/Microsoft.Compute/disks/%s"
+// 	computeSnapshotURIFormat = "/subscriptions/%s/resourceGroups/%s/providers/Microsoft.Compute/snapshots/%s"
+// 	virtualMachineURIFormat  = "/subscriptions/%s/resourceGroups/%s/providers/Microsoft.Compute/virtualMachines/%s"
 
-	// "sigs.k8s.io/azuredisk-csi-driver/pkg/util"
-	// "sigs.k8s.io/cloud-provider-azure/pkg/azureclients/diskclient/mockdiskclient"
-	// "sigs.k8s.io/cloud-provider-azure/pkg/azureclients/snapshotclient/mocksnapshotclient"
-	// "sigs.k8s.io/cloud-provider-azure/pkg/azureclients/vmclient/mockvmclient"
-	// azcache "sigs.k8s.io/cloud-provider-azure/pkg/cache"
-	// "sigs.k8s.io/cloud-provider-azure/pkg/provider"
-	"sigs.k8s.io/cloud-provider-azure/pkg/retry"
-)
+// 	testSubscription  = "12345678-90ab-cedf-1234-567890abcdef"
+// 	testResourceGroup = "test-rg"
 
-var (
-	computeDiskURIFormat     = "/subscriptions/%s/resourceGroups/%s/providers/Microsoft.Compute/disks/%s"
-	computeSnapshotURIFormat = "/subscriptions/%s/resourceGroups/%s/providers/Microsoft.Compute/snapshots/%s"
-	virtualMachineURIFormat  = "/subscriptions/%s/resourceGroups/%s/providers/Microsoft.Compute/virtualMachines/%s"
+// 	notFoundError = &retry.Error{
+// 		Retriable:      false,
+// 		HTTPStatusCode: http.StatusNotFound,
+// 		RawError:       errors.New(azureconstants.ResourceNotFound),
+// 	}
+// 	existingDiskError = &retry.Error{
+// 		Retriable:      false,
+// 		HTTPStatusCode: http.StatusConflict,
+// 		RawError:       errors.New("existing disk"),
+// 	}
 
-	testSubscription  = "12345678-90ab-cedf-1234-567890abcdef"
-	testResourceGroup = "test-rg"
+// 	provisioningStateSucceeded = "Succeeded"
 
-	notFoundError = &retry.Error{
-		Retriable:      false,
-		HTTPStatusCode: http.StatusNotFound,
-		RawError:       errors.New(azureconstants.ResourceNotFound),
-	}
-	existingDiskError = &retry.Error{
-		Retriable:      false,
-		HTTPStatusCode: http.StatusConflict,
-		RawError:       errors.New("existing disk"),
-	}
+// 	testDiskName0             = "test-disk-0"
+// 	testDiskURI0              = fmt.Sprintf(computeDiskURIFormat, testSubscription, testResourceGroup, testDiskName0)
+// 	testDiskName1             = "test-disk-1"
+// 	testDiskURI1              = fmt.Sprintf(computeDiskURIFormat, testSubscription, testResourceGroup, testDiskName1)
+// 	testDiskSizeGiB     int32 = 10
+// 	testDiskTimeCreated       = date.Time{Time: time.Now()}
 
-	provisioningStateSucceeded = "Succeeded"
+// 	testDisk = compute.Disk{
+// 		Name: &testDiskName0,
+// 		ID:   &testDiskURI0,
+// 		DiskProperties: &compute.DiskProperties{
+// 			DiskSizeGB:        &testDiskSizeGiB,
+// 			DiskState:         compute.Unattached,
+// 			ProvisioningState: &provisioningStateSucceeded,
+// 			TimeCreated:       &testDiskTimeCreated,
+// 		},
+// 	}
 
-	testDiskName0             = "test-disk-0"
-	testDiskURI0              = fmt.Sprintf(computeDiskURIFormat, testSubscription, testResourceGroup, testDiskName0)
-	testDiskName1             = "test-disk-1"
-	testDiskURI1              = fmt.Sprintf(computeDiskURIFormat, testSubscription, testResourceGroup, testDiskName1)
-	testDiskSizeGiB     int32 = 10
-	testDiskTimeCreated       = date.Time{Time: time.Now()}
+// 	missingDiskName = "missing-disk"
+// 	missingDiskURI  = fmt.Sprintf(computeDiskURIFormat, testSubscription, testResourceGroup, missingDiskName)
 
-	testDisk = compute.Disk{
-		Name: &testDiskName0,
-		ID:   &testDiskURI0,
-		DiskProperties: &compute.DiskProperties{
-			DiskSizeGB:        &testDiskSizeGiB,
-			DiskState:         compute.Unattached,
-			ProvisioningState: &provisioningStateSucceeded,
-			TimeCreated:       &testDiskTimeCreated,
-		},
-	}
+// 	clonedDiskName          = "child-disk"
+// 	clonedDiskURI           = fmt.Sprintf(computeDiskURIFormat, testSubscription, testResourceGroup, clonedDiskName)
+// 	clonedDiskSizeGiB int32 = 100
 
-	missingDiskName = "missing-disk"
-	missingDiskURI  = fmt.Sprintf(computeDiskURIFormat, testSubscription, testResourceGroup, missingDiskName)
+// 	clonedDisk = compute.Disk{
+// 		Name: &clonedDiskName,
+// 		ID:   &clonedDiskURI,
+// 		DiskProperties: &compute.DiskProperties{
+// 			CreationData: &compute.CreationData{
+// 				CreateOption:     compute.Copy,
+// 				SourceResourceID: &testDiskURI0,
+// 			},
+// 			DiskSizeGB:        &clonedDiskSizeGiB,
+// 			DiskState:         compute.Unattached,
+// 			ProvisioningState: &provisioningStateSucceeded,
+// 			TimeCreated:       &testDiskTimeCreated,
+// 		},
+// 	}
 
-	clonedDiskName          = "child-disk"
-	clonedDiskURI           = fmt.Sprintf(computeDiskURIFormat, testSubscription, testResourceGroup, clonedDiskName)
-	clonedDiskSizeGiB int32 = 100
+// 	invalidDiskWithMissingPropertiesName = "disk-missing-properties"
+// 	invalidDiskWithMissingPropertiesURI  = fmt.Sprintf(computeDiskURIFormat, testSubscription, testResourceGroup, invalidDiskWithMissingPropertiesName)
 
-	clonedDisk = compute.Disk{
-		Name: &clonedDiskName,
-		ID:   &clonedDiskURI,
-		DiskProperties: &compute.DiskProperties{
-			CreationData: &compute.CreationData{
-				CreateOption:     compute.Copy,
-				SourceResourceID: &testDiskURI0,
-			},
-			DiskSizeGB:        &clonedDiskSizeGiB,
-			DiskState:         compute.Unattached,
-			ProvisioningState: &provisioningStateSucceeded,
-			TimeCreated:       &testDiskTimeCreated,
-		},
-	}
+// 	invalidDiskWithMissingProperties = compute.Disk{
+// 		Name: &invalidDiskWithMissingPropertiesName,
+// 		ID:   &invalidDiskWithMissingPropertiesURI,
+// 	}
 
-	invalidDiskWithMissingPropertiesName = "disk-missing-properties"
-	invalidDiskWithMissingPropertiesURI  = fmt.Sprintf(computeDiskURIFormat, testSubscription, testResourceGroup, invalidDiskWithMissingPropertiesName)
+// 	invalidDiskWithEmptyPropertiesName = "disk-empty-properties"
+// 	invalidDiskWithEmptyPropertiesURI  = fmt.Sprintf(computeDiskURIFormat, testSubscription, testResourceGroup, invalidDiskWithEmptyPropertiesName)
 
-	invalidDiskWithMissingProperties = compute.Disk{
-		Name: &invalidDiskWithMissingPropertiesName,
-		ID:   &invalidDiskWithMissingPropertiesURI,
-	}
+// 	invalidDiskWithEmptyProperties = compute.Disk{
+// 		Name:           &invalidDiskWithEmptyPropertiesName,
+// 		ID:             &invalidDiskWithEmptyPropertiesURI,
+// 		DiskProperties: &compute.DiskProperties{},
+// 	}
 
-	invalidDiskWithEmptyPropertiesName = "disk-empty-properties"
-	invalidDiskWithEmptyPropertiesURI  = fmt.Sprintf(computeDiskURIFormat, testSubscription, testResourceGroup, invalidDiskWithEmptyPropertiesName)
+// 	testSnapshotName        = "test-snapshot"
+// 	testSnapshotURI         = fmt.Sprintf(computeSnapshotURIFormat, testSubscription, testResourceGroup, testSnapshotName)
+// 	testSnapshotSizeGiB     = testDiskSizeGiB
+// 	testSnapshotTimeCreated = time.Now()
 
-	invalidDiskWithEmptyProperties = compute.Disk{
-		Name:           &invalidDiskWithEmptyPropertiesName,
-		ID:             &invalidDiskWithEmptyPropertiesURI,
-		DiskProperties: &compute.DiskProperties{},
-	}
+// 	testSnapshot = armcompute.Snapshot{
+// 		Name: &testSnapshotName,
+// 		ID:   &testSnapshotURI,
+// 		Properties: &armcompute.SnapshotProperties{
+// 			CreationData: &armcompute.CreationData{
+// 				SourceResourceID: &testDiskURI0,
+// 			},
+// 			DiskSizeGB:        &testSnapshotSizeGiB,
+// 			ProvisioningState: &provisioningStateSucceeded,
+// 			TimeCreated:       &testSnapshotTimeCreated,
+// 		},
+// 	}
 
-	testSnapshotName        = "test-snapshot"
-	testSnapshotURI         = fmt.Sprintf(computeSnapshotURIFormat, testSubscription, testResourceGroup, testSnapshotName)
-	testSnapshotSizeGiB     = testDiskSizeGiB
-	testSnapshotTimeCreated = date.Time{Time: time.Now()}
+// 	testAzSnapshot *azdiskv1beta2.Snapshot
 
-	testSnapshot = compute.Snapshot{
-		Name: &testSnapshotName,
-		ID:   &testSnapshotURI,
-		SnapshotProperties: &compute.SnapshotProperties{
-			CreationData: &compute.CreationData{
-				SourceResourceID: &testDiskURI0,
-			},
-			DiskSizeGB:        &testSnapshotSizeGiB,
-			ProvisioningState: &provisioningStateSucceeded,
-			TimeCreated:       &testSnapshotTimeCreated,
-		},
-	}
+// 	missingSnapshotName = "missing-snapshot"
+// 	missingSnapshotURI  = fmt.Sprintf(computeSnapshotURIFormat, testSubscription, testResourceGroup, missingSnapshotName)
 
-	testAzSnapshot *azdiskv1beta2.Snapshot
+// 	invalidSnapshotWithMissingPropertiesName = "snapshot-missing-properties"
+// 	invalidSnapshotWithMissingPropertiesURI  = fmt.Sprintf(computeSnapshotURIFormat, testSubscription, testResourceGroup, invalidSnapshotWithMissingPropertiesName)
 
-	missingSnapshotName = "missing-snapshot"
-	missingSnapshotURI  = fmt.Sprintf(computeSnapshotURIFormat, testSubscription, testResourceGroup, missingSnapshotName)
+// 	invalidSnapshotWithMissingProperties = compute.Snapshot{
+// 		Name: &invalidSnapshotWithMissingPropertiesName,
+// 		ID:   &invalidSnapshotWithMissingPropertiesURI,
+// 	}
 
-	invalidSnapshotWithMissingPropertiesName = "snapshot-missing-properties"
-	invalidSnapshotWithMissingPropertiesURI  = fmt.Sprintf(computeSnapshotURIFormat, testSubscription, testResourceGroup, invalidSnapshotWithMissingPropertiesName)
+// 	invalidSnapshotWithEmptyPropertiesName = "snapshot-empty-properties"
+// 	invalidSnapshotWithEmptyPropertiesURI  = fmt.Sprintf(computeSnapshotURIFormat, testSubscription, testResourceGroup, invalidSnapshotWithEmptyPropertiesName)
 
-	invalidSnapshotWithMissingProperties = compute.Snapshot{
-		Name: &invalidSnapshotWithMissingPropertiesName,
-		ID:   &invalidSnapshotWithMissingPropertiesURI,
-	}
+// 	invalidSnapshotWithEmptyProperties = compute.Snapshot{
+// 		Name:               &invalidSnapshotWithEmptyPropertiesName,
+// 		ID:                 &invalidSnapshotWithEmptyPropertiesURI,
+// 		SnapshotProperties: &compute.SnapshotProperties{},
+// 	}
 
-	invalidSnapshotWithEmptyPropertiesName = "snapshot-empty-properties"
-	invalidSnapshotWithEmptyPropertiesURI  = fmt.Sprintf(computeSnapshotURIFormat, testSubscription, testResourceGroup, invalidSnapshotWithEmptyPropertiesName)
+// 	testVMName = "test-vm"
+// 	testVMID   = fmt.Sprint(virtualMachineURIFormat, testSubscription, testResourceGroup, "deadbeef-eded-eded-eded-0123456789abcd")
+// 	testVMURI  = fmt.Sprint(virtualMachineURIFormat, testSubscription, testResourceGroup, testVMName)
+// 	testVM     = compute.VirtualMachine{
+// 		Name: &testVMName,
+// 		ID:   &testVMURI,
+// 		VirtualMachineProperties: &compute.VirtualMachineProperties{
+// 			ProvisioningState: &provisioningStateSucceeded,
+// 			StorageProfile: &compute.StorageProfile{
+// 				DataDisks: new([]compute.DataDisk),
+// 			},
+// 		},
+// 	}
 
-	invalidSnapshotWithEmptyProperties = compute.Snapshot{
-		Name:               &invalidSnapshotWithEmptyPropertiesName,
-		ID:                 &invalidSnapshotWithEmptyPropertiesURI,
-		SnapshotProperties: &compute.SnapshotProperties{},
-	}
+// 	missingVMName = "missing-vm"
+// )
 
-	testVMName = "test-vm"
-	testVMID   = fmt.Sprint(virtualMachineURIFormat, testSubscription, testResourceGroup, "deadbeef-eded-eded-eded-0123456789abcd")
-	testVMURI  = fmt.Sprint(virtualMachineURIFormat, testSubscription, testResourceGroup, testVMName)
-	testVM     = compute.VirtualMachine{
-		Name: &testVMName,
-		ID:   &testVMURI,
-		VirtualMachineProperties: &compute.VirtualMachineProperties{
-			ProvisioningState: &provisioningStateSucceeded,
-			StorageProfile: &compute.StorageProfile{
-				DataDisks: new([]compute.DataDisk),
-			},
-		},
-	}
-
-	missingVMName = "missing-vm"
-)
-
-func init() {
-	var err error
-	testAzSnapshot, err = azureutils.NewAzureDiskSnapshot(testDiskURI0, &testSnapshot)
-	if err != nil {
-		panic(err)
-	}
-}
+// func init() {
+// 	var err error
+// 	testAzSnapshot, err = azureutils.NewAzureDiskSnapshot(testDiskURI0, &testSnapshot)
+// 	if err != nil {
+// 		panic(err)
+// 	}
+// }
 
 // func NewTestCloudProvisioner(controller *gomock.Controller) *CloudProvisioner {
-// 	cloud := provider.GetTestCloud(controller)
+// 	cloud := azureutils.GetTestCloud(controller)
 // 	cloud.SubscriptionID = testSubscription
 // 	cloud.ResourceGroup = testResourceGroup
 
@@ -208,115 +206,115 @@ func init() {
 // 		panic(err)
 // 	}
 
-	return &CloudProvisioner{
-		cloud: cloud,
-		config: &azdiskv1beta2.AzDiskDriverConfiguration{
-			ControllerConfig: azdiskv1beta2.ControllerConfiguration{
-				Enabled: true,
-			},
-			NodeConfig: azdiskv1beta2.NodeConfiguration{
-				Enabled:                true,
-				EnablePerfOptimization: util.IsLinuxOS(),
-			},
-		},
-		getDiskThrottlingCache: cache,
-	}
-}
+// 	return &CloudProvisioner{
+// 		cloud: cloud,
+// 		config: &azdiskv1beta2.AzDiskDriverConfiguration{
+// 			ControllerConfig: azdiskv1beta2.ControllerConfiguration{
+// 				Enabled: true,
+// 			},
+// 			NodeConfig: azdiskv1beta2.NodeConfiguration{
+// 				Enabled:                true,
+// 				EnablePerfOptimization: util.IsLinuxOS(),
+// 			},
+// 		},
+// 		getDiskThrottlingCache: cache,
+// 	}
+// }
 
-func mockExistingDisk(provisioner *CloudProvisioner) {
-	provisioner.cloud.DisksClient.(*mockdiskclient.MockInterface).EXPECT().
-		Get(gomock.Any(), testSubscription, testResourceGroup, testDiskName0).
-		Return(testDisk, nil).
-		AnyTimes()
-}
+// func mockExistingDisk(provisioner *CloudProvisioner) {
+// 	provisioner.cloud.DisksClient.(*mockdiskclient.MockInterface).EXPECT().
+// 		Get(gomock.Any(), testSubscription, testResourceGroup, testDiskName0).
+// 		Return(testDisk, nil).
+// 		AnyTimes()
+// }
 
-func mockClonedDisk(provisioner *CloudProvisioner) {
-	provisioner.cloud.DisksClient.(*mockdiskclient.MockInterface).EXPECT().
-		Get(gomock.Any(), testSubscription, testResourceGroup, clonedDiskName).
-		Return(clonedDisk, nil).
-		AnyTimes()
-}
+// func mockClonedDisk(provisioner *CloudProvisioner) {
+// 	provisioner.cloud.DisksClient.(*mockdiskclient.MockInterface).EXPECT().
+// 		Get(gomock.Any(), testSubscription, testResourceGroup, clonedDiskName).
+// 		Return(clonedDisk, nil).
+// 		AnyTimes()
+// }
 
-func mockMissingDisk(provisioner *CloudProvisioner) {
-	provisioner.cloud.DisksClient.(*mockdiskclient.MockInterface).EXPECT().
-		Get(gomock.Any(), testSubscription, testResourceGroup, missingDiskName).
-		Return(compute.Disk{}, notFoundError).
-		AnyTimes()
-}
+// func mockMissingDisk(provisioner *CloudProvisioner) {
+// 	provisioner.cloud.DisksClient.(*mockdiskclient.MockInterface).EXPECT().
+// 		Get(gomock.Any(), testSubscription, testResourceGroup, missingDiskName).
+// 		Return(compute.Disk{}, notFoundError).
+// 		AnyTimes()
+// }
 
-func mockInvalidDisks(provisioner *CloudProvisioner) {
-	provisioner.cloud.DisksClient.(*mockdiskclient.MockInterface).EXPECT().
-		Get(gomock.Any(), testSubscription, testResourceGroup, invalidDiskWithMissingPropertiesName).
-		Return(invalidDiskWithMissingProperties, nil).
-		AnyTimes()
-	provisioner.cloud.DisksClient.(*mockdiskclient.MockInterface).EXPECT().
-		Get(gomock.Any(), testSubscription, testResourceGroup, invalidDiskWithEmptyPropertiesName).
-		Return(invalidDiskWithEmptyProperties, nil).
-		AnyTimes()
-}
+// func mockInvalidDisks(provisioner *CloudProvisioner) {
+// 	provisioner.cloud.DisksClient.(*mockdiskclient.MockInterface).EXPECT().
+// 		Get(gomock.Any(), testSubscription, testResourceGroup, invalidDiskWithMissingPropertiesName).
+// 		Return(invalidDiskWithMissingProperties, nil).
+// 		AnyTimes()
+// 	provisioner.cloud.DisksClient.(*mockdiskclient.MockInterface).EXPECT().
+// 		Get(gomock.Any(), testSubscription, testResourceGroup, invalidDiskWithEmptyPropertiesName).
+// 		Return(invalidDiskWithEmptyProperties, nil).
+// 		AnyTimes()
+// }
 
-func mockExistingSnapshot(provisioner *CloudProvisioner) {
-	provisioner.cloud.SnapshotsClient.(*mocksnapshotclient.MockInterface).EXPECT().
-		Get(gomock.Any(), testSubscription, testResourceGroup, testSnapshotName).
-		Return(testSnapshot, nil).
-		AnyTimes()
-}
+// func mockExistingSnapshot(provisioner *CloudProvisioner) {
+// 	provisioner.cloud.SnapshotsClient.(*mocksnapshotclient.MockInterface).EXPECT().
+// 		Get(gomock.Any(), testSubscription, testResourceGroup, testSnapshotName).
+// 		Return(testSnapshot, nil).
+// 		AnyTimes()
+// }
 
-func mockMissingSnapshot(provisioner *CloudProvisioner) {
-	provisioner.cloud.SnapshotsClient.(*mocksnapshotclient.MockInterface).EXPECT().
-		Get(gomock.Any(), testSubscription, testResourceGroup, missingSnapshotName).
-		Return(compute.Snapshot{}, notFoundError).
-		AnyTimes()
-}
+// func mockMissingSnapshot(provisioner *CloudProvisioner) {
+// 	provisioner.cloud.SnapshotsClient.(*mocksnapshotclient.MockInterface).EXPECT().
+// 		Get(gomock.Any(), testSubscription, testResourceGroup, missingSnapshotName).
+// 		Return(compute.Snapshot{}, notFoundError).
+// 		AnyTimes()
+// }
 
-func mockInvalidSnapshots(provisioner *CloudProvisioner) {
-	provisioner.cloud.SnapshotsClient.(*mocksnapshotclient.MockInterface).EXPECT().
-		Get(gomock.Any(), testSubscription, testResourceGroup, invalidSnapshotWithMissingPropertiesName).
-		Return(invalidSnapshotWithMissingProperties, nil).
-		AnyTimes()
-	provisioner.cloud.SnapshotsClient.(*mocksnapshotclient.MockInterface).EXPECT().
-		Get(gomock.Any(), testSubscription, testResourceGroup, invalidSnapshotWithEmptyPropertiesName).
-		Return(invalidSnapshotWithEmptyProperties, nil).
-		AnyTimes()
-}
+// func mockInvalidSnapshots(provisioner *CloudProvisioner) {
+// 	provisioner.cloud.SnapshotsClient.(*mocksnapshotclient.MockInterface).EXPECT().
+// 		Get(gomock.Any(), testSubscription, testResourceGroup, invalidSnapshotWithMissingPropertiesName).
+// 		Return(invalidSnapshotWithMissingProperties, nil).
+// 		AnyTimes()
+// 	provisioner.cloud.SnapshotsClient.(*mocksnapshotclient.MockInterface).EXPECT().
+// 		Get(gomock.Any(), testSubscription, testResourceGroup, invalidSnapshotWithEmptyPropertiesName).
+// 		Return(invalidSnapshotWithEmptyProperties, nil).
+// 		AnyTimes()
+// }
 
-func mockUpdateVM(provisioner *CloudProvisioner) {
-	provisioner.cloud.VirtualMachinesClient.(*mockvmclient.MockInterface).EXPECT().
-		Get(gomock.Any(), testResourceGroup, testVMName, gomock.Any()).
-		Return(testVM, nil).
-		AnyTimes()
-	provisioner.cloud.VirtualMachinesClient.(*mockvmclient.MockInterface).EXPECT().
-		Update(gomock.Any(), testResourceGroup, testVMName, gomock.Any(), gomock.Any()).
-		DoAndReturn(func(ctx context.Context, resourceGroupName string, nodeName string, parameters compute.VirtualMachineUpdate, source string) (*compute.VirtualMachine, *retry.Error) {
-			vm := &compute.VirtualMachine{
-				Name:                     &nodeName,
-				Plan:                     parameters.Plan,
-				VirtualMachineProperties: parameters.VirtualMachineProperties,
-				Identity:                 parameters.Identity,
-				Zones:                    parameters.Zones,
-				Tags:                     parameters.Tags,
-				ID:                       &testVMID,
-			}
+// func mockUpdateVM(provisioner *CloudProvisioner) {
+// 	provisioner.cloud.VirtualMachinesClient.(*mockvmclient.MockInterface).EXPECT().
+// 		Get(gomock.Any(), testResourceGroup, testVMName, gomock.Any()).
+// 		Return(testVM, nil).
+// 		AnyTimes()
+// 	provisioner.cloud.VirtualMachinesClient.(*mockvmclient.MockInterface).EXPECT().
+// 		Update(gomock.Any(), testResourceGroup, testVMName, gomock.Any(), gomock.Any()).
+// 		DoAndReturn(func(ctx context.Context, resourceGroupName string, nodeName string, parameters compute.VirtualMachineUpdate, source string) (*compute.VirtualMachine, *retry.Error) {
+// 			vm := &compute.VirtualMachine{
+// 				Name:                     &nodeName,
+// 				Plan:                     parameters.Plan,
+// 				VirtualMachineProperties: parameters.VirtualMachineProperties,
+// 				Identity:                 parameters.Identity,
+// 				Zones:                    parameters.Zones,
+// 				Tags:                     parameters.Tags,
+// 				ID:                       &testVMID,
+// 			}
 
-			return vm, nil
-		}).
-		AnyTimes()
-	provisioner.cloud.VirtualMachinesClient.(*mockvmclient.MockInterface).EXPECT().
-		UpdateAsync(gomock.Any(), testResourceGroup, testVMName, gomock.Any(), gomock.Any()).
-		DoAndReturn(func(ctx context.Context, resourceGroup, nodeName string, parameters compute.VirtualMachineUpdate, source string) (*azure.Future, *retry.Error) {
-			vm := &compute.VirtualMachine{
-				Name:                     &nodeName,
-				Plan:                     parameters.Plan,
-				VirtualMachineProperties: parameters.VirtualMachineProperties,
-				Identity:                 parameters.Identity,
-				Zones:                    parameters.Zones,
-				Tags:                     parameters.Tags,
-				ID:                       &testVMID,
-			}
-			c, err := json.Marshal(vm)
-			if err != nil {
-				return nil, retry.NewError(false, err)
-			}
+// 			return vm, nil
+// 		}).
+// 		AnyTimes()
+// 	provisioner.cloud.VirtualMachinesClient.(*mockvmclient.MockInterface).EXPECT().
+// 		UpdateAsync(gomock.Any(), testResourceGroup, testVMName, gomock.Any(), gomock.Any()).
+// 		DoAndReturn(func(ctx context.Context, resourceGroup, nodeName string, parameters compute.VirtualMachineUpdate, source string) (*azure.Future, *retry.Error) {
+// 			vm := &compute.VirtualMachine{
+// 				Name:                     &nodeName,
+// 				Plan:                     parameters.Plan,
+// 				VirtualMachineProperties: parameters.VirtualMachineProperties,
+// 				Identity:                 parameters.Identity,
+// 				Zones:                    parameters.Zones,
+// 				Tags:                     parameters.Tags,
+// 				ID:                       &testVMID,
+// 			}
+// 			c, err := json.Marshal(vm)
+// 			if err != nil {
+// 				return nil, retry.NewError(false, err)
+// 			}
 
 // 			r := autorestmocks.NewResponseWithContent(string(c))
 // 			defer r.Body.Close()
@@ -327,25 +325,25 @@ func mockUpdateVM(provisioner *CloudProvisioner) {
 // 				return nil, retry.NewError(false, err)
 // 			}
 
-			return &f, nil
-		}).
-		AnyTimes()
-	provisioner.cloud.VirtualMachinesClient.(*mockvmclient.MockInterface).EXPECT().
-		WaitForUpdateResult(gomock.Any(), gomock.Any(), testResourceGroup, gomock.Any()).
-		DoAndReturn(func(ctx context.Context, future *azure.Future, resourceGroupName, source string) (*compute.VirtualMachine, *retry.Error) {
-			result := &compute.VirtualMachine{}
-			resp, _ := future.GetResult(autorestmocks.NewSender())
-			defer resp.Body.Close()
-			err := autorest.Respond(
-				resp,
-				azure.WithErrorUnlessStatusCode(http.StatusOK, http.StatusCreated),
-				autorest.ByUnmarshallingJSON(&result),
-				autorest.ByClosing())
-			result.Response = autorest.Response{Response: resp}
-			return result, retry.GetError(resp, err)
-		}).
-		AnyTimes()
-}
+// 			return &f, nil
+// 		}).
+// 		AnyTimes()
+// 	provisioner.cloud.VirtualMachinesClient.(*mockvmclient.MockInterface).EXPECT().
+// 		WaitForUpdateResult(gomock.Any(), gomock.Any(), testResourceGroup, gomock.Any()).
+// 		DoAndReturn(func(ctx context.Context, future *azure.Future, resourceGroupName, source string) (*compute.VirtualMachine, *retry.Error) {
+// 			result := &compute.VirtualMachine{}
+// 			resp, _ := future.GetResult(autorestmocks.NewSender())
+// 			defer resp.Body.Close()
+// 			err := autorest.Respond(
+// 				resp,
+// 				azure.WithErrorUnlessStatusCode(http.StatusOK, http.StatusCreated),
+// 				autorest.ByUnmarshallingJSON(&result),
+// 				autorest.ByClosing())
+// 			result.Response = autorest.Response{Response: resp}
+// 			return result, retry.GetError(resp, err)
+// 		}).
+// 		AnyTimes()
+// }
 
 // func mockPeristentVolumesList(provisioner *CloudProvisioner, pvCount int32) {
 // 	var pvList = make([]runtime.Object, pvCount)
@@ -382,19 +380,19 @@ func mockUpdateVM(provisioner *CloudProvisioner) {
 // 			},
 // 		}
 
-		provisioner.cloud.DisksClient.(*mockdiskclient.MockInterface).EXPECT().
-			Get(gomock.Any(), testSubscription, testResourceGroup, diskName).
-			Return(diskList[i], nil).
-			AnyTimes()
-	}
+// 		provisioner.cloud.DisksClient.(*mockdiskclient.MockInterface).EXPECT().
+// 			Get(gomock.Any(), testSubscription, testResourceGroup, diskName).
+// 			Return(diskList[i], nil).
+// 			AnyTimes()
+// 	}
 
-	provisioner.cloud.DisksClient.(*mockdiskclient.MockInterface).EXPECT().
-		ListByResourceGroup(gomock.Any(), testSubscription, testResourceGroup).
-		Return(diskList, nil).
-		AnyTimes()
+// 	provisioner.cloud.DisksClient.(*mockdiskclient.MockInterface).EXPECT().
+// 		ListByResourceGroup(gomock.Any(), testSubscription, testResourceGroup).
+// 		Return(diskList, nil).
+// 		AnyTimes()
 
-	provisioner.cloud.KubeClient = kfake.NewSimpleClientset(pvList...)
-}
+// 	provisioner.cloud.KubeClient = kfake.NewSimpleClientset(pvList...)
+// }
 
 // func mockSnapshotsList(provisioner *CloudProvisioner, disk1Count, disk2Count int32) {
 // 	totalCount := disk1Count + disk2Count
@@ -430,28 +428,28 @@ func mockUpdateVM(provisioner *CloudProvisioner) {
 // 			},
 // 		}
 
-		provisioner.cloud.SnapshotsClient.(*mocksnapshotclient.MockInterface).EXPECT().
-			Get(gomock.Any(), testSubscription, testResourceGroup, ssName).
-			Return(azssList[i], nil).
-			AnyTimes()
-	}
+// 		provisioner.cloud.SnapshotsClient.(*mocksnapshotclient.MockInterface).EXPECT().
+// 			Get(gomock.Any(), testSubscription, testResourceGroup, ssName).
+// 			Return(azssList[i], nil).
+// 			AnyTimes()
+// 	}
 
-	provisioner.cloud.SnapshotsClient.(*mocksnapshotclient.MockInterface).EXPECT().
-		ListByResourceGroup(gomock.Any(), testSubscription, testResourceGroup).
-		Return(azssList, nil).
-		AnyTimes()
-}
+// 	provisioner.cloud.SnapshotsClient.(*mocksnapshotclient.MockInterface).EXPECT().
+// 		ListByResourceGroup(gomock.Any(), testSubscription, testResourceGroup).
+// 		Return(azssList, nil).
+// 		AnyTimes()
+// }
 
 // func TestCreateVolume(t *testing.T) {
 // 	mockCtrl := gomock.NewController(t)
 // 	defer mockCtrl.Finish()
 // 	provisioner := NewTestCloudProvisioner(mockCtrl)
 
-	mockExistingDisk(provisioner)
-	provisioner.cloud.DisksClient.(*mockdiskclient.MockInterface).EXPECT().
-		CreateOrUpdate(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
-		DoAndReturn(func(ctx context.Context, subscriptionID, resourceGroupName, diskName string, disk compute.Disk) *retry.Error {
-			var mockedDisk compute.Disk
+// 	mockExistingDisk(provisioner)
+// 	provisioner.cloud.DisksClient.(*mockdiskclient.MockInterface).EXPECT().
+// 		CreateOrUpdate(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+// 		DoAndReturn(func(ctx context.Context, subscriptionID, resourceGroupName, diskName string, disk compute.Disk) *retry.Error {
+// 			var mockedDisk compute.Disk
 
 // 			if resourceGroupName == testResourceGroup && diskName == testDiskName0 {
 // 				mockedDisk = testDisk
@@ -466,261 +464,261 @@ func mockUpdateVM(provisioner *CloudProvisioner) {
 // 				mockedDisk.ProvisioningState = &provisioningStateSucceeded
 // 			}
 
-			provisioner.cloud.DisksClient.(*mockdiskclient.MockInterface).EXPECT().
-				Get(gomock.Any(), subscriptionID, resourceGroupName, diskName).
-				Return(mockedDisk, nil).
-				AnyTimes()
+// 			provisioner.cloud.DisksClient.(*mockdiskclient.MockInterface).EXPECT().
+// 				Get(gomock.Any(), subscriptionID, resourceGroupName, diskName).
+// 				Return(mockedDisk, nil).
+// 				AnyTimes()
 
 // 			return nil
 // 		}).
 // 		AnyTimes()
 
-	tests := []struct {
-		description   string
-		diskName      string
-		capacity      *azdiskv1beta2.CapacityRange
-		capabilities  []azdiskv1beta2.VolumeCapability
-		parameter     map[string]string
-		secrets       map[string]string
-		contentSource *azdiskv1beta2.ContentVolumeSource
-		topology      *azdiskv1beta2.TopologyRequirement
-		expectedError error
-		disabled      bool
-	}{
-		{
-			description:   "[Success] Creates a disk with default parameters",
-			diskName:      "disk-with-default-parameters",
-			expectedError: nil,
-		},
-		{
-			description: "[Success] Creates a disk with specific parameters",
-			diskName:    "disk-with-specific-parameters",
-			capacity: &azdiskv1beta2.CapacityRange{
-				RequiredBytes: util.GiBToBytes(10),
-				LimitBytes:    util.GiBToBytes(10),
-			},
-			capabilities: []azdiskv1beta2.VolumeCapability{
-				{
-					AccessMode: azdiskv1beta2.VolumeCapabilityAccessModeSingleNodeWriter,
-				},
-			},
-			parameter: map[string]string{
-				"resourceGroup":      testResourceGroup,
-				"maxShares":          "1",
-				"storageAccountType": "Premium_LRS",
-			},
-			secrets: map[string]string{
-				"sh": "a secret",
-			},
-			contentSource: &azdiskv1beta2.ContentVolumeSource{
-				ContentSource:   azdiskv1beta2.ContentVolumeSourceTypeVolume,
-				ContentSourceID: testDiskURI0,
-			},
-			topology: &azdiskv1beta2.TopologyRequirement{
-				Requisite: []azdiskv1beta2.Topology{
-					{
-						Segments: map[string]string{
-							topologyKeyStr: "testregion-1",
-						},
-					},
-				},
-			},
-			expectedError: nil,
-		},
-		{
-			description: "[Failure] advanced perfProfile fails if no device settings provided",
-			disabled:    !provisioner.isPerfOptimizationEnabled(),
-			diskName:    "disk-with-specific-parameters",
-			capacity: &azdiskv1beta2.CapacityRange{
-				RequiredBytes: util.GiBToBytes(10),
-				LimitBytes:    util.GiBToBytes(10),
-			},
-			capabilities: []azdiskv1beta2.VolumeCapability{
-				{
-					AccessMode: azdiskv1beta2.VolumeCapabilityAccessModeSingleNodeWriter,
-				},
-			},
-			parameter: map[string]string{
-				"resourceGroup":      testResourceGroup,
-				"maxShares":          "1",
-				"storageAccountType": "Premium_LRS",
-				"perfProfile":        "advanced",
-			},
-			secrets: map[string]string{
-				"sh": "a secret",
-			},
-			contentSource: &azdiskv1beta2.ContentVolumeSource{
-				ContentSource:   azdiskv1beta2.ContentVolumeSourceTypeVolume,
-				ContentSourceID: testDiskURI0,
-			},
-			topology: &azdiskv1beta2.TopologyRequirement{
-				Requisite: []azdiskv1beta2.Topology{
-					{
-						Segments: map[string]string{
-							topologyKeyStr: "testregion-1",
-						},
-					},
-				},
-			},
-			expectedError: fmt.Errorf("AreDeviceSettingsValid: No deviceSettings passed"),
-		},
-		{
-			description: "[Failure] advanced perfProfile fails if invalid device settings provided",
-			disabled:    !provisioner.isPerfOptimizationEnabled(),
-			diskName:    "disk-with-specific-parameters",
-			capacity: &azdiskv1beta2.CapacityRange{
-				RequiredBytes: util.GiBToBytes(10),
-				LimitBytes:    util.GiBToBytes(10),
-			},
-			capabilities: []azdiskv1beta2.VolumeCapability{
-				{
-					AccessMode: azdiskv1beta2.VolumeCapabilityAccessModeSingleNodeWriter,
-				},
-			},
-			parameter: map[string]string{
-				"resourceGroup":      testResourceGroup,
-				"maxShares":          "1",
-				"storageAccountType": "Premium_LRS",
-				"perfProfile":        "advanced",
-				azureconstants.DeviceSettingsKeyPrefix + "device/scheduler":        "8",
-				azureconstants.DeviceSettingsKeyPrefix + "../../device/nr_request": "8",
-			},
-			secrets: map[string]string{
-				"sh": "a secret",
-			},
-			contentSource: &azdiskv1beta2.ContentVolumeSource{
-				ContentSource:   azdiskv1beta2.ContentVolumeSourceTypeVolume,
-				ContentSourceID: testDiskURI0,
-			},
-			topology: &azdiskv1beta2.TopologyRequirement{
-				Requisite: []azdiskv1beta2.Topology{
-					{
-						Segments: map[string]string{
-							topologyKeyStr: "testregion-1",
-						},
-					},
-				},
-			},
-			expectedError: fmt.Errorf("AreDeviceSettingsValid: Setting /sys/device/nr_request is not a valid file path under %s",
-				azureconstants.DummyBlockDevicePathLinux),
-		},
-		{
-			description: "[Success] advanced perfProfile succeeds if valid device settings provided",
-			disabled:    !provisioner.isPerfOptimizationEnabled(),
-			diskName:    "disk-with-specific-parameters",
-			capacity: &azdiskv1beta2.CapacityRange{
-				RequiredBytes: util.GiBToBytes(10),
-				LimitBytes:    util.GiBToBytes(10),
-			},
-			capabilities: []azdiskv1beta2.VolumeCapability{
-				{
-					AccessMode: azdiskv1beta2.VolumeCapabilityAccessModeSingleNodeWriter,
-				},
-			},
-			parameter: map[string]string{
-				"resourceGroup":      testResourceGroup,
-				"maxShares":          "1",
-				"storageAccountType": "Premium_LRS",
-				"perfProfile":        "advanced",
-				azureconstants.DeviceSettingsKeyPrefix + "device/nr_request": "8",
-			},
-			secrets: map[string]string{
-				"sh": "a secret",
-			},
-			contentSource: &azdiskv1beta2.ContentVolumeSource{
-				ContentSource:   azdiskv1beta2.ContentVolumeSourceTypeVolume,
-				ContentSourceID: testDiskURI0,
-			},
-			topology: &azdiskv1beta2.TopologyRequirement{
-				Requisite: []azdiskv1beta2.Topology{
-					{
-						Segments: map[string]string{
-							topologyKeyStr: "testregion-1",
-						},
-					},
-				},
-			},
-			expectedError: nil,
-		},
-		{
-			description: "[Success] Creates a disk with Premium_ZRS storage account type",
-			diskName:    "disk-with-premium-zrs",
-			parameter: map[string]string{
-				"storageAccountType": "Premium_ZRS",
-			},
-			expectedError: nil,
-		},
-		{
-			description: "[Success] Returns no error for existing disk when same creation parameters are used (CreateVolume is idempotent)",
-			diskName:    testDiskName0,
-			capacity: &azdiskv1beta2.CapacityRange{
-				RequiredBytes: util.GiBToBytes(int64(testDiskSizeGiB)),
-				LimitBytes:    util.GiBToBytes(int64(testDiskSizeGiB)),
-			},
-			parameter: map[string]string{
-				"resourceGroup": testResourceGroup,
-			},
-			expectedError: nil,
-		},
-		{
-			description: "[Failure] Returns an error for existing disk when different a different size is requested",
-			diskName:    testDiskName0,
-			capacity: &azdiskv1beta2.CapacityRange{
-				RequiredBytes: util.GiBToBytes(int64(testDiskSizeGiB * 2)),
-				LimitBytes:    util.GiBToBytes(int64(testDiskSizeGiB * 2)),
-			},
-			parameter: map[string]string{
-				"resourceGroup": testResourceGroup,
-			},
-			expectedError: status.Errorf(codes.AlreadyExists, "the request volume already exists, but its capacity(%d) is different from (%d)", testDiskSizeGiB, testDiskSizeGiB*2),
-		},
-		{
-			description: "[Failure] Returns an error when requested size is larger than limit",
-			diskName:    "disk-with-invalid-capacity",
-			capacity: &azdiskv1beta2.CapacityRange{
-				RequiredBytes: util.GiBToBytes(100),
-				LimitBytes:    util.GiBToBytes(10),
-			},
-			expectedError: status.Error(codes.InvalidArgument, "After round-up, volume size exceeds the limit specified"),
-		},
-		{
-			description: "[Failure] Returns an error when maxShares is not a number",
-			diskName:    "disk-with-invalid-max-shares",
-			parameter: map[string]string{
-				"maxShares": "NaN",
-			},
-			expectedError: status.Error(codes.InvalidArgument, "Failed parsing disk parameters: parse NaN failed with error: strconv.Atoi: parsing \"NaN\": invalid syntax"),
-		},
-		{
-			description: "[Failure] Returns an error when an unsupported storage account type is specified",
-			diskName:    "disk-with-invalid-storage-account-type",
-			parameter: map[string]string{
-				"storageAccountType": "SuperPremiumSSD_URS",
-			},
-			expectedError: status.Error(codes.InvalidArgument, "azureDisk - SuperPremiumSSD_URS is not supported sku/storageaccounttype. Supported values are [Premium_LRS Premium_ZRS Standard_LRS StandardSSD_LRS StandardSSD_ZRS UltraSSD_LRS PremiumV2_LRS]"),
-		},
-		{
-			description: "[Failure] Returns an error when an unsupported caching mode is specified",
-			diskName:    "disk-with-invalid-caching-mode",
-			parameter: map[string]string{
-				"cachingmode": "InvalidCachingMode",
-			},
-			expectedError: status.Error(codes.InvalidArgument, "azureDisk - InvalidCachingMode is not supported cachingmode. Supported values are [None ReadOnly ReadWrite]"),
-		},
-	}
+// 	tests := []struct {
+// 		description   string
+// 		diskName      string
+// 		capacity      *azdiskv1beta2.CapacityRange
+// 		capabilities  []azdiskv1beta2.VolumeCapability
+// 		parameter     map[string]string
+// 		secrets       map[string]string
+// 		contentSource *azdiskv1beta2.ContentVolumeSource
+// 		topology      *azdiskv1beta2.TopologyRequirement
+// 		expectedError error
+// 		disabled      bool
+// 	}{
+// 		{
+// 			description:   "[Success] Creates a disk with default parameters",
+// 			diskName:      "disk-with-default-parameters",
+// 			expectedError: nil,
+// 		},
+// 		{
+// 			description: "[Success] Creates a disk with specific parameters",
+// 			diskName:    "disk-with-specific-parameters",
+// 			capacity: &azdiskv1beta2.CapacityRange{
+// 				RequiredBytes: util.GiBToBytes(10),
+// 				LimitBytes:    util.GiBToBytes(10),
+// 			},
+// 			capabilities: []azdiskv1beta2.VolumeCapability{
+// 				{
+// 					AccessMode: azdiskv1beta2.VolumeCapabilityAccessModeSingleNodeWriter,
+// 				},
+// 			},
+// 			parameter: map[string]string{
+// 				"resourceGroup":      testResourceGroup,
+// 				"maxShares":          "1",
+// 				"storageAccountType": "Premium_LRS",
+// 			},
+// 			secrets: map[string]string{
+// 				"sh": "a secret",
+// 			},
+// 			contentSource: &azdiskv1beta2.ContentVolumeSource{
+// 				ContentSource:   azdiskv1beta2.ContentVolumeSourceTypeVolume,
+// 				ContentSourceID: testDiskURI0,
+// 			},
+// 			topology: &azdiskv1beta2.TopologyRequirement{
+// 				Requisite: []azdiskv1beta2.Topology{
+// 					{
+// 						Segments: map[string]string{
+// 							topologyKeyStr: "testregion-1",
+// 						},
+// 					},
+// 				},
+// 			},
+// 			expectedError: nil,
+// 		},
+// 		{
+// 			description: "[Failure] advanced perfProfile fails if no device settings provided",
+// 			disabled:    !provisioner.isPerfOptimizationEnabled(),
+// 			diskName:    "disk-with-specific-parameters",
+// 			capacity: &azdiskv1beta2.CapacityRange{
+// 				RequiredBytes: util.GiBToBytes(10),
+// 				LimitBytes:    util.GiBToBytes(10),
+// 			},
+// 			capabilities: []azdiskv1beta2.VolumeCapability{
+// 				{
+// 					AccessMode: azdiskv1beta2.VolumeCapabilityAccessModeSingleNodeWriter,
+// 				},
+// 			},
+// 			parameter: map[string]string{
+// 				"resourceGroup":      testResourceGroup,
+// 				"maxShares":          "1",
+// 				"storageAccountType": "Premium_LRS",
+// 				"perfProfile":        "advanced",
+// 			},
+// 			secrets: map[string]string{
+// 				"sh": "a secret",
+// 			},
+// 			contentSource: &azdiskv1beta2.ContentVolumeSource{
+// 				ContentSource:   azdiskv1beta2.ContentVolumeSourceTypeVolume,
+// 				ContentSourceID: testDiskURI0,
+// 			},
+// 			topology: &azdiskv1beta2.TopologyRequirement{
+// 				Requisite: []azdiskv1beta2.Topology{
+// 					{
+// 						Segments: map[string]string{
+// 							topologyKeyStr: "testregion-1",
+// 						},
+// 					},
+// 				},
+// 			},
+// 			expectedError: fmt.Errorf("AreDeviceSettingsValid: No deviceSettings passed"),
+// 		},
+// 		{
+// 			description: "[Failure] advanced perfProfile fails if invalid device settings provided",
+// 			disabled:    !provisioner.isPerfOptimizationEnabled(),
+// 			diskName:    "disk-with-specific-parameters",
+// 			capacity: &azdiskv1beta2.CapacityRange{
+// 				RequiredBytes: util.GiBToBytes(10),
+// 				LimitBytes:    util.GiBToBytes(10),
+// 			},
+// 			capabilities: []azdiskv1beta2.VolumeCapability{
+// 				{
+// 					AccessMode: azdiskv1beta2.VolumeCapabilityAccessModeSingleNodeWriter,
+// 				},
+// 			},
+// 			parameter: map[string]string{
+// 				"resourceGroup":      testResourceGroup,
+// 				"maxShares":          "1",
+// 				"storageAccountType": "Premium_LRS",
+// 				"perfProfile":        "advanced",
+// 				azureconstants.DeviceSettingsKeyPrefix + "device/scheduler":        "8",
+// 				azureconstants.DeviceSettingsKeyPrefix + "../../device/nr_request": "8",
+// 			},
+// 			secrets: map[string]string{
+// 				"sh": "a secret",
+// 			},
+// 			contentSource: &azdiskv1beta2.ContentVolumeSource{
+// 				ContentSource:   azdiskv1beta2.ContentVolumeSourceTypeVolume,
+// 				ContentSourceID: testDiskURI0,
+// 			},
+// 			topology: &azdiskv1beta2.TopologyRequirement{
+// 				Requisite: []azdiskv1beta2.Topology{
+// 					{
+// 						Segments: map[string]string{
+// 							topologyKeyStr: "testregion-1",
+// 						},
+// 					},
+// 				},
+// 			},
+// 			expectedError: fmt.Errorf("AreDeviceSettingsValid: Setting /sys/device/nr_request is not a valid file path under %s",
+// 				azureconstants.DummyBlockDevicePathLinux),
+// 		},
+// 		{
+// 			description: "[Success] advanced perfProfile succeeds if valid device settings provided",
+// 			disabled:    !provisioner.isPerfOptimizationEnabled(),
+// 			diskName:    "disk-with-specific-parameters",
+// 			capacity: &azdiskv1beta2.CapacityRange{
+// 				RequiredBytes: util.GiBToBytes(10),
+// 				LimitBytes:    util.GiBToBytes(10),
+// 			},
+// 			capabilities: []azdiskv1beta2.VolumeCapability{
+// 				{
+// 					AccessMode: azdiskv1beta2.VolumeCapabilityAccessModeSingleNodeWriter,
+// 				},
+// 			},
+// 			parameter: map[string]string{
+// 				"resourceGroup":      testResourceGroup,
+// 				"maxShares":          "1",
+// 				"storageAccountType": "Premium_LRS",
+// 				"perfProfile":        "advanced",
+// 				azureconstants.DeviceSettingsKeyPrefix + "device/nr_request": "8",
+// 			},
+// 			secrets: map[string]string{
+// 				"sh": "a secret",
+// 			},
+// 			contentSource: &azdiskv1beta2.ContentVolumeSource{
+// 				ContentSource:   azdiskv1beta2.ContentVolumeSourceTypeVolume,
+// 				ContentSourceID: testDiskURI0,
+// 			},
+// 			topology: &azdiskv1beta2.TopologyRequirement{
+// 				Requisite: []azdiskv1beta2.Topology{
+// 					{
+// 						Segments: map[string]string{
+// 							topologyKeyStr: "testregion-1",
+// 						},
+// 					},
+// 				},
+// 			},
+// 			expectedError: nil,
+// 		},
+// 		{
+// 			description: "[Success] Creates a disk with Premium_ZRS storage account type",
+// 			diskName:    "disk-with-premium-zrs",
+// 			parameter: map[string]string{
+// 				"storageAccountType": "Premium_ZRS",
+// 			},
+// 			expectedError: nil,
+// 		},
+// 		{
+// 			description: "[Success] Returns no error for existing disk when same creation parameters are used (CreateVolume is idempotent)",
+// 			diskName:    testDiskName0,
+// 			capacity: &azdiskv1beta2.CapacityRange{
+// 				RequiredBytes: util.GiBToBytes(int64(testDiskSizeGiB)),
+// 				LimitBytes:    util.GiBToBytes(int64(testDiskSizeGiB)),
+// 			},
+// 			parameter: map[string]string{
+// 				"resourceGroup": testResourceGroup,
+// 			},
+// 			expectedError: nil,
+// 		},
+// 		{
+// 			description: "[Failure] Returns an error for existing disk when different a different size is requested",
+// 			diskName:    testDiskName0,
+// 			capacity: &azdiskv1beta2.CapacityRange{
+// 				RequiredBytes: util.GiBToBytes(int64(testDiskSizeGiB * 2)),
+// 				LimitBytes:    util.GiBToBytes(int64(testDiskSizeGiB * 2)),
+// 			},
+// 			parameter: map[string]string{
+// 				"resourceGroup": testResourceGroup,
+// 			},
+// 			expectedError: status.Errorf(codes.AlreadyExists, "the request volume already exists, but its capacity(%d) is different from (%d)", testDiskSizeGiB, testDiskSizeGiB*2),
+// 		},
+// 		{
+// 			description: "[Failure] Returns an error when requested size is larger than limit",
+// 			diskName:    "disk-with-invalid-capacity",
+// 			capacity: &azdiskv1beta2.CapacityRange{
+// 				RequiredBytes: util.GiBToBytes(100),
+// 				LimitBytes:    util.GiBToBytes(10),
+// 			},
+// 			expectedError: status.Error(codes.InvalidArgument, "After round-up, volume size exceeds the limit specified"),
+// 		},
+// 		{
+// 			description: "[Failure] Returns an error when maxShares is not a number",
+// 			diskName:    "disk-with-invalid-max-shares",
+// 			parameter: map[string]string{
+// 				"maxShares": "NaN",
+// 			},
+// 			expectedError: status.Error(codes.InvalidArgument, "Failed parsing disk parameters: parse NaN failed with error: strconv.Atoi: parsing \"NaN\": invalid syntax"),
+// 		},
+// 		{
+// 			description: "[Failure] Returns an error when an unsupported storage account type is specified",
+// 			diskName:    "disk-with-invalid-storage-account-type",
+// 			parameter: map[string]string{
+// 				"storageAccountType": "SuperPremiumSSD_URS",
+// 			},
+// 			expectedError: status.Error(codes.InvalidArgument, "azureDisk - SuperPremiumSSD_URS is not supported sku/storageaccounttype. Supported values are [Premium_LRS Premium_ZRS Standard_LRS StandardSSD_LRS StandardSSD_ZRS UltraSSD_LRS PremiumV2_LRS]"),
+// 		},
+// 		{
+// 			description: "[Failure] Returns an error when an unsupported caching mode is specified",
+// 			diskName:    "disk-with-invalid-caching-mode",
+// 			parameter: map[string]string{
+// 				"cachingmode": "InvalidCachingMode",
+// 			},
+// 			expectedError: status.Error(codes.InvalidArgument, "azureDisk - InvalidCachingMode is not supported cachingmode. Supported values are [None ReadOnly ReadWrite]"),
+// 		},
+// 	}
 
-	for _, test := range tests {
-		if test.disabled {
-			continue
-		}
-		tt := test
-		t.Run(test.description, func(t *testing.T) {
-			if tt.diskName != testDiskName0 {
-				provisioner.cloud.DisksClient.(*mockdiskclient.MockInterface).EXPECT().
-					Get(gomock.Any(), gomock.Any(), gomock.Any(), tt.diskName).
-					Return(compute.Disk{}, notFoundError).
-					MaxTimes(1)
-			}
+// 	for _, test := range tests {
+// 		if test.disabled {
+// 			continue
+// 		}
+// 		tt := test
+// 		t.Run(test.description, func(t *testing.T) {
+// 			if tt.diskName != testDiskName0 {
+// 				provisioner.cloud.DisksClient.(*mockdiskclient.MockInterface).EXPECT().
+// 					Get(gomock.Any(), gomock.Any(), gomock.Any(), tt.diskName).
+// 					Return(compute.Disk{}, notFoundError).
+// 					MaxTimes(1)
+// 			}
 
 // 			volume, err := provisioner.CreateVolume(
 // 				context.TODO(),
@@ -745,11 +743,11 @@ func mockUpdateVM(provisioner *CloudProvisioner) {
 // 	defer mockCtrl.Finish()
 // 	provisioner := NewTestCloudProvisioner(mockCtrl)
 
-	mockExistingDisk(provisioner)
-	provisioner.cloud.DisksClient.(*mockdiskclient.MockInterface).EXPECT().
-		Delete(gomock.Any(), testSubscription, testResourceGroup, testDiskName0).
-		Return(nil).
-		MaxTimes(1)
+// 	mockExistingDisk(provisioner)
+// 	provisioner.cloud.DisksClient.(*mockdiskclient.MockInterface).EXPECT().
+// 		Delete(gomock.Any(), testSubscription, testResourceGroup, testDiskName0).
+// 		Return(nil).
+// 		MaxTimes(1)
 
 // 	mockMissingDisk(provisioner)
 
@@ -788,10 +786,10 @@ func mockUpdateVM(provisioner *CloudProvisioner) {
 // 	mockMissingDisk(provisioner)
 // 	mockUpdateVM(provisioner)
 
-	provisioner.cloud.VirtualMachinesClient.(*mockvmclient.MockInterface).EXPECT().
-		Get(gomock.Any(), testResourceGroup, missingVMName, gomock.Any()).
-		Return(compute.VirtualMachine{}, notFoundError).
-		AnyTimes()
+// 	provisioner.cloud.VirtualMachinesClient.(*mockvmclient.MockInterface).EXPECT().
+// 		Get(gomock.Any(), testResourceGroup, missingVMName, gomock.Any()).
+// 		Return(compute.VirtualMachine{}, notFoundError).
+// 		AnyTimes()
 
 // 	tests := []struct {
 // 		description        string
@@ -854,15 +852,15 @@ func mockUpdateVM(provisioner *CloudProvisioner) {
 // 	testVMWithAttachedDisk := testVM
 // 	testVMWithAttachedDisk.StorageProfile.DataDisks = &attachedDisks
 
-	provisioner.cloud.VirtualMachinesClient.(*mockvmclient.MockInterface).EXPECT().
-		Get(gomock.Any(), testResourceGroup, testVMName, gomock.Any()).
-		Return(testVMWithAttachedDisk, nil).
-		AnyTimes()
+// 	provisioner.cloud.VirtualMachinesClient.(*mockvmclient.MockInterface).EXPECT().
+// 		Get(gomock.Any(), testResourceGroup, testVMName, gomock.Any()).
+// 		Return(testVMWithAttachedDisk, nil).
+// 		AnyTimes()
 
-	provisioner.cloud.VirtualMachinesClient.(*mockvmclient.MockInterface).EXPECT().
-		Get(gomock.Any(), testResourceGroup, missingVMName, gomock.Any()).
-		Return(compute.VirtualMachine{}, notFoundError).
-		AnyTimes()
+// 	provisioner.cloud.VirtualMachinesClient.(*mockvmclient.MockInterface).EXPECT().
+// 		Get(gomock.Any(), testResourceGroup, missingVMName, gomock.Any()).
+// 		Return(compute.VirtualMachine{}, notFoundError).
+// 		AnyTimes()
 
 // 	tests := []struct {
 // 		description   string
@@ -904,12 +902,12 @@ func mockUpdateVM(provisioner *CloudProvisioner) {
 // 	defer mockCtrl.Finish()
 // 	provisioner := NewTestCloudProvisioner(mockCtrl)
 
-	mockExistingDisk(provisioner)
-	provisioner.cloud.DisksClient.(*mockdiskclient.MockInterface).EXPECT().
-		Update(gomock.Any(), testSubscription, testResourceGroup, testDiskName0, gomock.Any()).
-		Return(nil).
-		AnyTimes()
-	mockMissingDisk(provisioner)
+// 	mockExistingDisk(provisioner)
+// 	provisioner.cloud.DisksClient.(*mockdiskclient.MockInterface).EXPECT().
+// 		Update(gomock.Any(), testSubscription, testResourceGroup, testDiskName0, gomock.Any()).
+// 		Return(nil).
+// 		AnyTimes()
+// 	mockMissingDisk(provisioner)
 
 // 	tests := []struct {
 // 		description   string
@@ -967,14 +965,14 @@ func mockUpdateVM(provisioner *CloudProvisioner) {
 // 	mockExistingDisk(provisioner)
 // 	mockMissingDisk(provisioner)
 
-	provisioner.cloud.SnapshotsClient.(*mocksnapshotclient.MockInterface).EXPECT().
-		CreateOrUpdate(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
-		DoAndReturn(func(ctx context.Context, subscriptionID, resourceGroupName, snapshotName string, snapshot compute.Snapshot) *retry.Error {
-			if resourceGroupName == testResourceGroup && snapshotName == testSnapshotName {
-				return existingDiskError
-			} else if *snapshot.CreationData.SourceURI == missingDiskURI {
-				return notFoundError
-			}
+// 	provisioner.cloud.SnapshotsClient.(*mocksnapshotclient.MockInterface).EXPECT().
+// 		CreateOrUpdate(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+// 		DoAndReturn(func(ctx context.Context, subscriptionID, resourceGroupName, snapshotName string, snapshot compute.Snapshot) *retry.Error {
+// 			if resourceGroupName == testResourceGroup && snapshotName == testSnapshotName {
+// 				return existingDiskError
+// 			} else if *snapshot.CreationData.SourceURI == missingDiskURI {
+// 				return notFoundError
+// 			}
 
 // 			snapshotURI := fmt.Sprintf(computeSnapshotURIFormat, testSubscription, resourceGroupName, snapshotName)
 // 			timeCreated := date.Time{Time: time.Now()}
@@ -986,10 +984,10 @@ func mockUpdateVM(provisioner *CloudProvisioner) {
 // 			mockedSnapshot.ProvisioningState = &provisioningStateSucceeded
 // 			mockedSnapshot.TimeCreated = &timeCreated
 
-			provisioner.cloud.SnapshotsClient.(*mocksnapshotclient.MockInterface).EXPECT().
-				Get(gomock.Any(), subscriptionID, resourceGroupName, snapshotName).
-				Return(mockedSnapshot, nil).
-				AnyTimes()
+// 			provisioner.cloud.SnapshotsClient.(*mocksnapshotclient.MockInterface).EXPECT().
+// 				Get(gomock.Any(), subscriptionID, resourceGroupName, snapshotName).
+// 				Return(mockedSnapshot, nil).
+// 				AnyTimes()
 
 // 			return nil
 // 		}).
@@ -1048,14 +1046,14 @@ func mockUpdateVM(provisioner *CloudProvisioner) {
 // 	defer mockCtrl.Finish()
 // 	provisioner := NewTestCloudProvisioner(mockCtrl)
 
-	provisioner.cloud.SnapshotsClient.(*mocksnapshotclient.MockInterface).EXPECT().
-		Delete(gomock.Any(), testSubscription, testResourceGroup, testSnapshotName).
-		Return(nil).
-		MaxTimes(1)
-	provisioner.cloud.SnapshotsClient.(*mocksnapshotclient.MockInterface).EXPECT().
-		Delete(gomock.Any(), testSubscription, testResourceGroup, missingSnapshotName).
-		Return(notFoundError).
-		MaxTimes(1)
+// 	provisioner.cloud.SnapshotsClient.(*mocksnapshotclient.MockInterface).EXPECT().
+// 		Delete(gomock.Any(), testSubscription, testResourceGroup, testSnapshotName).
+// 		Return(nil).
+// 		MaxTimes(1)
+// 	provisioner.cloud.SnapshotsClient.(*mocksnapshotclient.MockInterface).EXPECT().
+// 		Delete(gomock.Any(), testSubscription, testResourceGroup, missingSnapshotName).
+// 		Return(notFoundError).
+// 		MaxTimes(1)
 
 // 	tests := []struct {
 // 		description   string
@@ -1124,14 +1122,14 @@ func mockUpdateVM(provisioner *CloudProvisioner) {
 // 		},
 // 	}
 
-	for _, test := range tests {
-		tt := test
-		t.Run(test.description, func(t *testing.T) {
-			if tt.useNodeResourceGroup {
-				savedKubeClient := provisioner.cloud.KubeClient
-				defer func() { provisioner.cloud.KubeClient = savedKubeClient }()
-				provisioner.cloud.KubeClient = nil
-			}
+// 	for _, test := range tests {
+// 		tt := test
+// 		t.Run(test.description, func(t *testing.T) {
+// 			if tt.useNodeResourceGroup {
+// 				savedKubeClient := provisioner.cloud.KubeClient
+// 				defer func() { provisioner.cloud.KubeClient = savedKubeClient }()
+// 				provisioner.cloud.KubeClient = nil
+// 			}
 
 // 			startToken := ""
 // 			volumeCount := int32(0)

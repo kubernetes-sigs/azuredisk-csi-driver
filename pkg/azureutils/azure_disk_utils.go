@@ -55,6 +55,7 @@ import (
 	azdisk "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned"
 	azdiskinformers "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/informers/externalversions"
 
+	azureto "github.com/Azure/azure-sdk-for-go/sdk/azcore/to"
 	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/optimization"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/util"
@@ -581,14 +582,14 @@ func GetCloudProviderFromClient(
 	ctx context.Context,
 	kubeClient kubernetes.Interface,
 	azdiskConfig *azdiskv1beta2.AzDiskDriverConfiguration,
-	userAgent string) (*azure.Cloud, error) {
-	var config *azure.Config
+	userAgent string) (*Cloud, error) {
+	var config *Config
 	var fromSecret bool
 	var err error
 
 	cloudConfig := &azdiskConfig.CloudConfig
-	az := &azure.Cloud{
-		InitSecretConfig: azure.InitSecretConfig{
+	az := &Cloud{
+		InitSecretConfig: InitSecretConfig{
 			SecretName:      cloudConfig.SecretName,
 			SecretNamespace: cloudConfig.SecretNamespace,
 			CloudConfigKey:  "cloud-config",
@@ -737,7 +738,7 @@ func GetCloudProvider(
 	trafficManagerPort int64,
 	disableUpdateCache bool,
 	vmssCacheTTLInSeconds int64,
-) (*azure.Cloud, error) {
+) (*Cloud, error) {
 	kubeClient, err := GetKubeClient(kubeConfig)
 	if err != nil {
 		klog.Warningf("get kubeconfig(%s) failed with error: %v", kubeConfig, err)
@@ -817,7 +818,7 @@ func GetResourceGroupFromURI(diskURI string) (string, error) {
 	return fields[4], nil
 }
 
-func GetCachingMode(attributes map[string]string) (compute.CachingTypes, error) {
+func GetCachingMode(attributes map[string]string) (armcompute.CachingTypes, error) {
 	var (
 		cachingMode v1.AzureDataDiskCachingMode
 		maxShares   int
@@ -839,7 +840,7 @@ func GetCachingMode(attributes map[string]string) (compute.CachingTypes, error) 
 	}
 
 	cachingMode, err = NormalizeCachingMode(cachingMode, maxShares)
-	return compute.CachingTypes(cachingMode), err
+	return armcompute.CachingTypes(cachingMode), err
 }
 
 // isARMResourceID check whether resourceID is an ARM ResourceID
@@ -848,10 +849,10 @@ func IsARMResourceID(resourceID string) bool {
 	return strings.Contains(id, "/subscriptions/")
 }
 
-func GetValidCreationData(subscriptionID, resourceGroup, sourceResourceID, sourceType string) (compute.CreationData, error) {
+func GetValidCreationData(subscriptionID, resourceGroup, sourceResourceID, sourceType string) (armcompute.CreationData, error) {
 	if sourceResourceID == "" {
-		return compute.CreationData{
-			CreateOption: compute.Empty,
+		return armcompute.CreationData{
+			CreateOption: azureto.Ptr(armcompute.DiskCreateOptionCopy),
 		}, nil
 	}
 
@@ -866,21 +867,21 @@ func GetValidCreationData(subscriptionID, resourceGroup, sourceResourceID, sourc
 			sourceResourceID = fmt.Sprintf(consts.ManagedDiskPath, subscriptionID, resourceGroup, sourceResourceID)
 		}
 	default:
-		return compute.CreationData{
-			CreateOption: compute.Empty,
+		return armcompute.CreationData{
+			CreateOption: azureto.Ptr(armcompute.DiskCreateOptionEmpty),
 		}, nil
 	}
 
 	splits := strings.Split(sourceResourceID, "/")
 	if len(splits) > 9 {
 		if sourceType == consts.SourceSnapshot {
-			return compute.CreationData{}, fmt.Errorf("sourceResourceID(%s) is invalid, correct format: %s", sourceResourceID, consts.DiskSnapshotPathRE)
+			return armcompute.CreationData{}, fmt.Errorf("sourceResourceID(%s) is invalid, correct format: %s", sourceResourceID, consts.DiskSnapshotPathRE)
 		}
 
-		return compute.CreationData{}, fmt.Errorf("sourceResourceID(%s) is invalid, correct format: %s", sourceResourceID, consts.ManagedDiskPathRE)
+		return armcompute.CreationData{}, fmt.Errorf("sourceResourceID(%s) is invalid, correct format: %s", sourceResourceID, consts.ManagedDiskPathRE)
 	}
-	return compute.CreationData{
-		CreateOption:     compute.Copy,
+	return armcompute.CreationData{
+		CreateOption:     azureto.Ptr(armcompute.DiskCreateOptionCopy),
 		SourceResourceID: &sourceResourceID,
 	}, nil
 }
@@ -1427,17 +1428,17 @@ func ExitOnNetError(err error, force bool) {
 }
 
 // InsertDiskProperties: insert disk properties to map
-func InsertDiskProperties(disk *compute.Disk, publishConext map[string]string) {
+func InsertDiskProperties(disk *armcompute.Disk, publishConext map[string]string) {
 	if disk == nil || publishConext == nil {
 		return
 	}
 
-	if disk.Sku != nil {
-		publishConext[consts.SkuNameField] = string(disk.Sku.Name)
+	if disk.SKU != nil {
+		publishConext[consts.SkuNameField] = string(*disk.SKU.Name)
 	}
-	prop := disk.DiskProperties
+	prop := disk.Properties
 	if prop != nil {
-		publishConext[consts.NetworkAccessPolicyField] = string(prop.NetworkAccessPolicy)
+		publishConext[consts.NetworkAccessPolicyField] = string(*prop.NetworkAccessPolicy)
 		if prop.DiskIOPSReadWrite != nil {
 			publishConext[consts.DiskIOPSReadWriteField] = strconv.Itoa(int(*prop.DiskIOPSReadWrite))
 		}

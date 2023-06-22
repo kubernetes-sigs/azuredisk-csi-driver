@@ -144,7 +144,7 @@ type CloudProvisioner interface {
 	CreateSnapshot(ctx context.Context, sourceVolumeID string, snapshotName string, secrets map[string]string, parameters map[string]string) (*azdiskv1beta2.Snapshot, error)
 	ListSnapshots(ctx context.Context, maxEntries int32, startingToken string, sourceVolumeID string, snapshotID string, secrets map[string]string) (*azdiskv1beta2.ListSnapshotsResult, error)
 	DeleteSnapshot(ctx context.Context, snapshotID string, secrets map[string]string) error
-	CheckDiskExists(ctx context.Context, diskURI string) (*compute.Disk, error)
+	CheckDiskExists(ctx context.Context, diskURI string) (*armcompute.Disk, error)
 }
 
 type replicaOperation struct {

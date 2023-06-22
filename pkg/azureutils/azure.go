@@ -16,6 +16,8 @@ import (
 	"github.com/Azure/go-autorest/autorest/adal"
 	"github.com/Azure/go-autorest/autorest/azure"
 
+	"k8s.io/apimachinery/pkg/api/resource"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/apimachinery/pkg/util/wait"
 	clientset "k8s.io/client-go/kubernetes"
@@ -97,7 +99,7 @@ type Cloud struct {
 	DisksClient                   *armcompute.DisksClient
 	KubeClient                    clientset.Interface
 	VMClient                      *armcompute.VirtualMachinesClient
-	SnapshotsClient               string // placeholder
+	SnapshotsClient               *armcompute.SnapshotsClient // placeholder
 	VirtualMachineScaleSetsClient *armcompute.VirtualMachineScaleSetsClient
 	AvailabilitySetsClient        *armcompute.AvailabilitySetsClient
 	LoadBalancerClient            *armnetwork.LoadBalancersClient
@@ -930,3 +932,18 @@ func (az *Cloud) Routes() (cloudprovider.Routes, bool) { return nil, false }
 // ProviderName returns the cloud provider ID.
 // HasClusterID returns true if a ClusterID is required and set
 func (az *Cloud) HasClusterID() bool { return false }
+
+func (az *Cloud) DeleteManagedDisk(ctx context.Context, diskURI string) error { return nil }
+func (az *Cloud) GetDiskLun(diskName, diskURI string, nodeName types.NodeName) (int32, *string, error) {
+	return -1, nil, nil
+}
+func (az *Cloud) UpdateVM(ctx context.Context, nodeName types.NodeName) error { return nil }
+func (az *Cloud) AttachDisk(ctx context.Context, async bool, diskName, diskURI string, nodeName types.NodeName, cachingMode armcompute.CachingTypes, disk *armcompute.Disk) (int32, error) {
+	return -1, nil
+}
+func (az *Cloud) DetachDisk(ctx context.Context, diskName, diskURI string, nodeName types.NodeName) error {
+	return nil
+}
+func (az *Cloud) ResizeDisk(ctx context.Context, diskURI string, oldSize resource.Quantity, requestSize resource.Quantity, enable bool) (resource.Quantity, error) {
+	return resource.Quantity{}, nil
+}

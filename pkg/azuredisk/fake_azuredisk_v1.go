@@ -1,3 +1,4 @@
+// go:build !azurediskv2
 //go:build !azurediskv2
 // +build !azurediskv2
 
@@ -35,10 +36,10 @@ func NewFakeDriverWithConfig(t *testing.T, config *azdiskv1beta2.AzDiskDriverCon
 	return newFakeDriverV1(t, config)
 }
 
-// func skipIfTestingDriverV2(t *testing.T) {
+func skipIfTestingDriverV2(t *testing.T) {
 
-// }
+}
 
-// func isTestingDriverV2() bool {
-// 	return false
-// }
+func isTestingDriverV2() bool {
+	return false
+}

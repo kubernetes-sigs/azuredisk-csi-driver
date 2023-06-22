@@ -21,7 +21,8 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2022-03-01/compute"
+	//"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2022-03-01/compute"
+	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute/v5"
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -37,7 +38,7 @@ import (
 // 2. StartingToken is null, and MaxEntries is not null. Return `MaxEntries` snapshots from zero.
 // 3. StartingToken is not null, and MaxEntries is null. Return all snapshots from `StartingToken`.
 // 4. StartingToken is not null, and MaxEntries is not null. Return `MaxEntries` snapshots from `StartingToken`.
-func GetEntriesAndNextToken(req *csi.ListSnapshotsRequest, snapshots []compute.Snapshot) (*csi.ListSnapshotsResponse, error) {
+func GetEntriesAndNextToken(req *csi.ListSnapshotsRequest, snapshots []armcompute.Snapshot) (*csi.ListSnapshotsResponse, error) {
 	if req == nil {
 		return nil, status.Errorf(codes.Aborted, "request is nil")
 	}
@@ -106,24 +107,24 @@ func GetSnapshotNameFromURI(snapshotURI string) (string, error) {
 	return matches[1], nil
 }
 
-func NewAzureDiskSnapshot(sourceVolumeID string, snapshot *compute.Snapshot) (*azdiskv1beta2.Snapshot, error) {
-	if snapshot == nil || snapshot.SnapshotProperties == nil {
+func NewAzureDiskSnapshot(sourceVolumeID string, snapshot *armcompute.Snapshot) (*azdiskv1beta2.Snapshot, error) {
+	if snapshot == nil || snapshot.Properties == nil {
 		return nil, fmt.Errorf("snapshot property is nil")
 	}
 
-	if snapshot.SnapshotProperties.TimeCreated == nil {
+	if snapshot.Properties.TimeCreated == nil {
 		return nil, fmt.Errorf("timeCreated of snapshot property is nil")
 	}
 
-	creationTime := metav1.NewTime(snapshot.SnapshotProperties.TimeCreated.ToTime())
+	creationTime := metav1.NewTime(*snapshot.Properties.TimeCreated)
 
-	if snapshot.SnapshotProperties.ProvisioningState == nil {
+	if snapshot.Properties.ProvisioningState == nil {
 		return nil, fmt.Errorf("provisioningState of snapshot property is nil")
 	}
 
-	ready, _ := isSnapshotReady(*snapshot.SnapshotProperties.ProvisioningState)
+	ready, _ := isSnapshotReady(*snapshot.Properties.ProvisioningState)
 
-	if snapshot.SnapshotProperties.DiskSizeGB == nil {
+	if snapshot.Properties.DiskSizeGB == nil {
 		return nil, fmt.Errorf("diskSizeGB of snapshot property is nil")
 	}
 
@@ -132,7 +133,7 @@ func NewAzureDiskSnapshot(sourceVolumeID string, snapshot *compute.Snapshot) (*a
 	}
 
 	return &azdiskv1beta2.Snapshot{
-		SizeBytes:      volumehelper.GiBToBytes(int64(*snapshot.SnapshotProperties.DiskSizeGB)),
+		SizeBytes:      volumehelper.GiBToBytes(int64(*snapshot.Properties.DiskSizeGB)),
 		SnapshotID:     *snapshot.ID,
 		SourceVolumeID: sourceVolumeID,
 		CreationTime:   creationTime,
@@ -140,18 +141,18 @@ func NewAzureDiskSnapshot(sourceVolumeID string, snapshot *compute.Snapshot) (*a
 	}, nil
 }
 
-func GenerateCSISnapshot(sourceVolumeID string, snapshot *compute.Snapshot) (*csi.Snapshot, error) {
-	if snapshot == nil || snapshot.SnapshotProperties == nil {
+func GenerateCSISnapshot(sourceVolumeID string, snapshot *armcompute.Snapshot) (*csi.Snapshot, error) {
+	if snapshot == nil || snapshot.Properties == nil {
 		return nil, fmt.Errorf("snapshot property is nil")
 	}
 
-	tp := timestamppb.New(snapshot.SnapshotProperties.TimeCreated.ToTime())
+	tp := timestamppb.New(*snapshot.Properties.TimeCreated)
 	if tp == nil {
-		return nil, fmt.Errorf("failed to convert timestamp(%v)", snapshot.SnapshotProperties.TimeCreated.ToTime())
+		return nil, fmt.Errorf("failed to convert timestamp(%v)", snapshot.Properties.TimeCreated)
 	}
-	ready, _ := isSnapshotReady(*snapshot.SnapshotProperties.ProvisioningState)
+	ready, _ := isSnapshotReady(*snapshot.Properties.ProvisioningState)
 
-	if snapshot.SnapshotProperties.DiskSizeGB == nil {
+	if snapshot.Properties.DiskSizeGB == nil {
 		return nil, fmt.Errorf("diskSizeGB of snapshot property is nil")
 	}
 
@@ -160,7 +161,7 @@ func GenerateCSISnapshot(sourceVolumeID string, snapshot *compute.Snapshot) (*cs
 	}
 
 	return &csi.Snapshot{
-		SizeBytes:      volumehelper.GiBToBytes(int64(*snapshot.SnapshotProperties.DiskSizeGB)),
+		SizeBytes:      volumehelper.GiBToBytes(int64(*snapshot.Properties.DiskSizeGB)),
 		SnapshotId:     *snapshot.ID,
 		SourceVolumeId: sourceVolumeID,
 		CreationTime:   tp,
@@ -168,12 +169,12 @@ func GenerateCSISnapshot(sourceVolumeID string, snapshot *compute.Snapshot) (*cs
 	}, nil
 }
 
-func GetSourceVolumeID(snapshot *compute.Snapshot) string {
+func GetSourceVolumeID(snapshot *armcompute.Snapshot) string {
 	if snapshot != nil &&
-		snapshot.SnapshotProperties != nil &&
-		snapshot.SnapshotProperties.CreationData != nil &&
-		snapshot.SnapshotProperties.CreationData.SourceResourceID != nil {
-		return *snapshot.SnapshotProperties.CreationData.SourceResourceID
+		snapshot.Properties != nil &&
+		snapshot.Properties.CreationData != nil &&
+		snapshot.Properties.CreationData.SourceResourceID != nil {
+		return *snapshot.Properties.CreationData.SourceResourceID
 	}
 	return ""
 }

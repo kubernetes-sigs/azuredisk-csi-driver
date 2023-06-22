@@ -44,7 +44,7 @@ import (
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/optimization"
 	volumehelper "sigs.k8s.io/azuredisk-csi-driver/pkg/util"
 	azcache "sigs.k8s.io/cloud-provider-azure/pkg/cache"
-	azure "sigs.k8s.io/cloud-provider-azure/pkg/provider"
+	// azure "sigs.k8s.io/cloud-provider-azure/pkg/provider"
 )
 
 // CSIDriver defines the interface for a CSI driver.
