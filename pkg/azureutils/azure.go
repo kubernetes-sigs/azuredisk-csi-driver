@@ -16,6 +16,7 @@ import (
 	"github.com/Azure/go-autorest/autorest/adal"
 	"github.com/Azure/go-autorest/autorest/azure"
 
+	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/sets"
@@ -36,6 +37,10 @@ var (
 	defaultDisableOutboundSNAT = false
 	// RouteUpdateWaitingInSeconds is 30 seconds by default.
 	defaultRouteUpdateWaitingInSeconds = 30
+)
+
+var (
+	_ cloudprovider.Instances = (*Cloud)(nil)
 )
 
 // azure cloud config
@@ -910,7 +915,7 @@ func (az *Cloud) Initialize(clientBuilder cloudprovider.ControllerClientBuilder,
 func (az *Cloud) LoadBalancer() (cloudprovider.LoadBalancer, bool) { return nil, false }
 
 // Instances returns an instances interface. Also returns true if the interface is supported, false otherwise.
-func (az *Cloud) Instances() (cloudprovider.Instances, bool) { return nil, false }
+func (az *Cloud) Instances() (cloudprovider.Instances, bool) { return az, true }
 
 // InstancesV2 is an implementation for instances and should only be implemented by external cloud providers.
 // Implementing InstancesV2 is behaviorally identical to Instances but is optimized to significantly reduce
@@ -946,4 +951,59 @@ func (az *Cloud) DetachDisk(ctx context.Context, diskName, diskURI string, nodeN
 }
 func (az *Cloud) ResizeDisk(ctx context.Context, diskURI string, oldSize resource.Quantity, requestSize resource.Quantity, enable bool) (resource.Quantity, error) {
 	return resource.Quantity{}, nil
+}
+
+// NodeAddresses returns the addresses of the specified instance.
+func (az *Cloud) NodeAddresses(ctx context.Context, name types.NodeName) ([]v1.NodeAddress, error) {
+	return []v1.NodeAddress{}, nil
+}
+
+// NodeAddressesByProviderID returns the addresses of the specified instance.
+// The instance is specified using the providerID of the node. The
+// ProviderID is a unique identifier of the node. This will not be called
+// from the node whose nodeaddresses are being queried. i.e. local metadata
+// services cannot be used in this method to obtain nodeaddresses
+func (az *Cloud) NodeAddressesByProviderID(ctx context.Context, providerID string) ([]v1.NodeAddress, error) {
+	return []v1.NodeAddress{}, nil
+}
+
+// InstanceID returns the cloud provider ID of the node with the specified NodeName.
+// Note that if the instance does not exist, we must return ("", cloudprovider.InstanceNotFound)
+// cloudprovider.InstanceNotFound should NOT be returned for instances that exist but are stopped/sleeping
+func (az *Cloud) InstanceID(ctx context.Context, nodeName types.NodeName) (string, error) {
+	return "", nil
+}
+
+// InstanceType returns the type of the specified instance.
+func (az *Cloud) InstanceType(ctx context.Context, name types.NodeName) (string, error) {
+	return "", nil
+}
+
+// InstanceTypeByProviderID returns the type of the specified instance.
+func (az *Cloud) InstanceTypeByProviderID(ctx context.Context, providerID string) (string, error) {
+	return "", nil
+}
+
+// AddSSHKeyToAllInstances adds an SSH public key as a legal identity for all instances
+// expected format for the key is standard ssh-keygen format: <protocol> <blob>
+func (az *Cloud) AddSSHKeyToAllInstances(ctx context.Context, user string, keyData []byte) error {
+	return nil
+}
+
+// CurrentNodeName returns the name of the node we are currently running on
+// On most clouds (e.g. GCE) this is the hostname, so we provide the hostname
+func (az *Cloud) CurrentNodeName(ctx context.Context, hostname string) (types.NodeName, error) {
+	return types.NodeName(""), nil
+}
+
+// InstanceExistsByProviderID returns true if the instance for the given provider exists.
+// If false is returned with no error, the instance will be immediately deleted by the cloud controller manager.
+// This method should still return true for instances that exist but are stopped/sleeping.
+func (az *Cloud) InstanceExistsByProviderID(ctx context.Context, providerID string) (bool, error) {
+	return false, nil
+}
+
+// InstanceShutdownByProviderID returns true if the instance is shutdown in cloudprovider
+func (az *Cloud) InstanceShutdownByProviderID(ctx context.Context, providerID string) (bool, error) {
+	return false, nil
 }
