@@ -41,11 +41,9 @@ import (
 	csicommon "sigs.k8s.io/azuredisk-csi-driver/pkg/csi-common"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/mounter"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/optimization"
-	"sigs.k8s.io/azuredisk-csi-driver/pkg/util"
 	volumehelper "sigs.k8s.io/azuredisk-csi-driver/pkg/util"
 	azcache "sigs.k8s.io/cloud-provider-azure/pkg/cache"
 	azurecloudconsts "sigs.k8s.io/cloud-provider-azure/pkg/consts"
-	"sigs.k8s.io/cloud-provider-azure/pkg/provider"
 	azure "sigs.k8s.io/cloud-provider-azure/pkg/provider"
 )
 
@@ -374,12 +372,12 @@ func (d *DriverCore) setVersion(version string) {
 }
 
 // getCloud returns the value of the cloud field. It is intended for use with unit tests.
-func (d *DriverCore) getCloud() *provider.Cloud {
+func (d *DriverCore) getCloud() *azure.Cloud {
 	return d.cloud
 }
 
 // setCloud sets the cloud field. It is intended for use with unit tests.
-func (d *DriverCore) setCloud(cloud *provider.Cloud) {
+func (d *DriverCore) setCloud(cloud *azure.Cloud) {
 	d.cloud = cloud
 }
 
@@ -480,10 +478,10 @@ func getDefaultDiskMBPSReadWrite(requestGiB int) int {
 	bandwidth := azurecloudconsts.DefaultDiskMBpsReadWrite
 	iops := getDefaultDiskIOPSReadWrite(requestGiB)
 	if iops/256 > bandwidth {
-		bandwidth = int(util.RoundUpSize(int64(iops), 256))
+		bandwidth = int(volumehelper.RoundUpSize(int64(iops), 256))
 	}
 	if bandwidth > iops/4 {
-		bandwidth = int(util.RoundUpSize(int64(iops), 4))
+		bandwidth = int(volumehelper.RoundUpSize(int64(iops), 4))
 	}
 	if bandwidth > 4000 {
 		bandwidth = 4000

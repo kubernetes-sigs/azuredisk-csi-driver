@@ -35,7 +35,6 @@ import (
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/optimization/mockoptimization"
 	volumehelper "sigs.k8s.io/azuredisk-csi-driver/pkg/util"
 	azcache "sigs.k8s.io/cloud-provider-azure/pkg/cache"
-	"sigs.k8s.io/cloud-provider-azure/pkg/provider"
 	azure "sigs.k8s.io/cloud-provider-azure/pkg/provider"
 )
 
@@ -77,8 +76,8 @@ type FakeDriver interface {
 	setName(string)
 	setNodeID(string)
 	setVersion(version string)
-	getCloud() *provider.Cloud
-	setCloud(*provider.Cloud)
+	getCloud() *azure.Cloud
+	setCloud(*azure.Cloud)
 	getMounter() *mount.SafeFormatAndMount
 	setMounter(*mount.SafeFormatAndMount)
 	setPerfOptimizationEnabled(bool)

@@ -23,7 +23,6 @@ import (
 	gomock "github.com/golang/mock/gomock"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	v10 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	types "k8s.io/apimachinery/pkg/types"
 	watch "k8s.io/apimachinery/pkg/watch"
 	corev1 "k8s.io/client-go/applyconfigurations/core/v1"
@@ -92,7 +91,7 @@ func (m *MockInterface) EXPECT() *MockInterfaceMockRecorder {
 }
 
 // Create mocks base method
-func (m *MockInterface) Create(ctx context.Context, persistentVolume *v1.PersistentVolume, opts v10.CreateOptions) (*v1.PersistentVolume, error) {
+func (m *MockInterface) Create(ctx context.Context, persistentVolume *v1.PersistentVolume, opts metav1.CreateOptions) (*v1.PersistentVolume, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "Create", ctx, persistentVolume, opts)
 	ret0, _ := ret[0].(*v1.PersistentVolume)
@@ -107,7 +106,7 @@ func (mr *MockInterfaceMockRecorder) Create(ctx, persistentVolume, opts interfac
 }
 
 // Update mocks base method
-func (m *MockInterface) Update(ctx context.Context, persistentVolume *v1.PersistentVolume, opts v10.UpdateOptions) (*v1.PersistentVolume, error) {
+func (m *MockInterface) Update(ctx context.Context, persistentVolume *v1.PersistentVolume, opts metav1.UpdateOptions) (*v1.PersistentVolume, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "Update", ctx, persistentVolume, opts)
 	ret0, _ := ret[0].(*v1.PersistentVolume)
@@ -122,7 +121,7 @@ func (mr *MockInterfaceMockRecorder) Update(ctx, persistentVolume, opts interfac
 }
 
 // UpdateStatus mocks base method
-func (m *MockInterface) UpdateStatus(ctx context.Context, persistentVolume *v1.PersistentVolume, opts v10.UpdateOptions) (*v1.PersistentVolume, error) {
+func (m *MockInterface) UpdateStatus(ctx context.Context, persistentVolume *v1.PersistentVolume, opts metav1.UpdateOptions) (*v1.PersistentVolume, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "UpdateStatus", ctx, persistentVolume, opts)
 	ret0, _ := ret[0].(*v1.PersistentVolume)
@@ -137,7 +136,7 @@ func (mr *MockInterfaceMockRecorder) UpdateStatus(ctx, persistentVolume, opts in
 }
 
 // Delete mocks base method
-func (m *MockInterface) Delete(ctx context.Context, name string, opts v10.DeleteOptions) error {
+func (m *MockInterface) Delete(ctx context.Context, name string, opts metav1.DeleteOptions) error {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "Delete", ctx, name, opts)
 	ret0, _ := ret[0].(error)
@@ -151,7 +150,7 @@ func (mr *MockInterfaceMockRecorder) Delete(ctx, name, opts interface{}) *gomock
 }
 
 // DeleteCollection mocks base method
-func (m *MockInterface) DeleteCollection(ctx context.Context, opts v10.DeleteOptions, listOpts v10.ListOptions) error {
+func (m *MockInterface) DeleteCollection(ctx context.Context, opts metav1.DeleteOptions, listOpts metav1.ListOptions) error {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "DeleteCollection", ctx, opts, listOpts)
 	ret0, _ := ret[0].(error)
@@ -165,7 +164,7 @@ func (mr *MockInterfaceMockRecorder) DeleteCollection(ctx, opts, listOpts interf
 }
 
 // Get mocks base method
-func (m *MockInterface) Get(ctx context.Context, name string, opts v10.GetOptions) (*v1.PersistentVolume, error) {
+func (m *MockInterface) Get(ctx context.Context, name string, opts metav1.GetOptions) (*v1.PersistentVolume, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "Get", ctx, name, opts)
 	ret0, _ := ret[0].(*v1.PersistentVolume)
@@ -180,7 +179,7 @@ func (mr *MockInterfaceMockRecorder) Get(ctx, name, opts interface{}) *gomock.Ca
 }
 
 // List mocks base method
-func (m *MockInterface) List(ctx context.Context, opts v10.ListOptions) (*v1.PersistentVolumeList, error) {
+func (m *MockInterface) List(ctx context.Context, opts metav1.ListOptions) (*v1.PersistentVolumeList, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "List", ctx, opts)
 	ret0, _ := ret[0].(*v1.PersistentVolumeList)
@@ -195,7 +194,7 @@ func (mr *MockInterfaceMockRecorder) List(ctx, opts interface{}) *gomock.Call {
 }
 
 // Watch mocks base method
-func (m *MockInterface) Watch(ctx context.Context, opts v10.ListOptions) (watch.Interface, error) {
+func (m *MockInterface) Watch(ctx context.Context, opts metav1.ListOptions) (watch.Interface, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "Watch", ctx, opts)
 	ret0, _ := ret[0].(watch.Interface)
@@ -210,7 +209,7 @@ func (mr *MockInterfaceMockRecorder) Watch(ctx, opts interface{}) *gomock.Call {
 }
 
 // Patch mocks base method
-func (m *MockInterface) Patch(ctx context.Context, name string, pt types.PatchType, data []byte, opts v10.PatchOptions, subresources ...string) (*v1.PersistentVolume, error) {
+func (m *MockInterface) Patch(ctx context.Context, name string, pt types.PatchType, data []byte, opts metav1.PatchOptions, subresources ...string) (*v1.PersistentVolume, error) {
 	m.ctrl.T.Helper()
 	varargs := []interface{}{ctx, name, pt, data, opts}
 	for _, a := range subresources {
