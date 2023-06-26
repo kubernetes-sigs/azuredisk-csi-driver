@@ -340,46 +340,9 @@ func (c *CloudProvisioner) CreateVolume(
 	}
 
 	diskParams.VolumeContext[azureconstants.RequestedSizeGib] = strconv.Itoa(requestGiB)
-	// volumeOptions := &azure.ManagedDiskOptions{
-	// 	DiskName:            diskParams.DiskName,
-	// 	StorageAccountType:  skuName,
-	// 	ResourceGroup:       diskParams.ResourceGroup,
-	// 	PVCName:             "",
-	// 	SizeGB:              requestGiB,
-	// 	Tags:                diskParams.Tags,
-	// 	AvailabilityZone:    selectedAvailabilityZone,
-	// 	DiskIOPSReadWrite:   diskParams.DiskIOPSReadWrite,
-	// 	DiskMBpsReadWrite:   diskParams.DiskMBPSReadWrite,
-	// 	SourceResourceID:    sourceID,
-	// 	SourceType:          sourceType,
-	// 	DiskEncryptionSetID: diskParams.DiskEncryptionSetID,
-	// 	DiskEncryptionType:  diskParams.DiskEncryptionType,
-	// 	MaxShares:           int32(diskParams.MaxShares),
-	// 	LogicalSectorSize:   int32(diskParams.LogicalSectorSize),
-	// 	BurstingEnabled:     diskParams.EnableBursting,
-	// }
 
 	diskThrottled := c.isGetDiskThrottled()
 
-	// // Azure Stack Cloud does not support NetworkAccessPolicy
-	// if !azureutils.IsAzureStackCloud(localCloud.Config.Cloud, localCloud.Config.DisableAzureStackCloud) {
-	// 	volumeOptions.NetworkAccessPolicy = networkAccessPolicy
-	// 	if diskParams.DiskAccessID != "" {
-	// 		volumeOptions.DiskAccessID = &diskParams.DiskAccessID
-	// 	}
-	// }
-
-	// var diskURI string
-	// diskURI, err = localCloud.CreateManagedDisk(ctx, volumeOptions)
-	// if err != nil {
-	// 	if strings.Contains(err.Error(), "NotFound") {
-	// 		err = status.Error(codes.NotFound, err.Error())
-	// 		return nil, err
-	// 	}
-	// 	return nil, status.Error(codes.Internal, err.Error())
-	// }
-
-	/////////////////////////////////////////////////
 	cred, err := azidentity.NewDefaultAzureCredential(nil)
 	if err != nil {
 		klog.Fatalf("failed to obtain new credential: %v", err)
@@ -393,14 +356,22 @@ func (c *CloudProvisioner) CreateVolume(
 	diskSizeGB := int32(requestGiB)
 	maxShares := int32(diskParams.MaxShares)
 
-	iops, err := strconv.Atoi(diskParams.DiskIOPSReadWrite)
-	if err != nil {
-		klog.Fatalf("failed to parse DiskIOPSReadWrite: %v", err)
+	iops := 0
+	if diskParams.DiskIOPSReadWrite != "" {
+		iops, err = strconv.Atoi(diskParams.DiskIOPSReadWrite)
+		if err != nil {
+			klog.Fatalf("failed to parse DiskIOPSReadWrite: %v", err)
+		}
+
 	}
 
-	mbps, err := strconv.Atoi(diskParams.DiskMBPSReadWrite)
-	if err != nil {
-		klog.Fatalf("failed to parse DiskMBPSReadWrite: %v", err)
+	mbps := 0
+	if diskParams.DiskMBPSReadWrite != "" {
+		mbps, err = strconv.Atoi(diskParams.DiskMBPSReadWrite)
+		if err != nil {
+			klog.Fatalf("failed to parse DiskMBPSReadWrite: %v", err)
+		}
+
 	}
 
 	tags := make(map[string]*string)
@@ -486,8 +457,6 @@ func (c *CloudProvisioner) CreateVolume(
 		}
 	}
 
-	/////////////////////////////////////////////////
-
 	w.Logger().V(2).Infof("create disk(%s) account type(%s) rg(%s) location(%s) size(%d) tags(%s) successfully", diskParams.DiskName, skuName, diskParams.ResourceGroup, diskParams.Location, requestGiB, diskParams.Tags)
 
 	return &azdiskv1beta2.AzVolumeStatusDetail{
@@ -549,7 +518,6 @@ func (c *CloudProvisioner) ListVolumes(
 }
 
 // PublishVolume calls AttachDisk asynchronously and returns early lun assignment value and a channel for the async attach results.
-// WORK IN PROGRESS
 func (c *CloudProvisioner) PublishVolume(
 	ctx context.Context,
 	volumeID string,
@@ -592,7 +560,6 @@ func (c *CloudProvisioner) PublishVolume(
 	// 	return
 	// }
 
-	/////////////////////////////////////////////////////////////////
 	cred, err := azidentity.NewDefaultAzureCredential(nil)
 	if err != nil {
 		klog.Fatalf("failed to obtain new credential: %v", err)
@@ -673,8 +640,6 @@ func (c *CloudProvisioner) PublishVolume(
 		klog.Fatalf("failed to find disk lun: %v", err)
 		return
 	}
-
-	/////////////////////////////////////////////////////////////////
 
 	w.Logger().V(2).Infof("Initiating attaching volume %q to node %q.", volumeID, nodeName)
 
