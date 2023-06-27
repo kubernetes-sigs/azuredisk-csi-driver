@@ -852,7 +852,7 @@ func IsARMResourceID(resourceID string) bool {
 func GetValidCreationData(subscriptionID, resourceGroup, sourceResourceID, sourceType string) (armcompute.CreationData, error) {
 	if sourceResourceID == "" {
 		return armcompute.CreationData{
-			CreateOption: azureto.Ptr(armcompute.DiskCreateOptionCopy),
+			CreateOption: azureto.Ptr(armcompute.DiskCreateOptionEmpty),
 		}, nil
 	}
 

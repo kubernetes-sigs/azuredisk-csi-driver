@@ -213,6 +213,10 @@ func (c *CloudProvisioner) CreateVolume(
 		return nil, err
 	}
 
+	if diskParams.Location == "" {
+		diskParams.Location = c.cloud.Location
+	}
+
 	localCloud := c.cloud
 	isAdvancedPerfProfile := strings.EqualFold(diskParams.PerfProfile, azureconstants.PerfProfileAdvanced)
 	// If perfProfile is set to advanced and no/invalid device settings are provided, fail the request
@@ -348,6 +352,8 @@ func (c *CloudProvisioner) CreateVolume(
 		klog.Fatalf("failed to obtain new credential: %v", err)
 	}
 
+	klog.Infof("source id: %+v, source type: %+v", sourceID, sourceType)
+
 	creationData, err := azureutils.GetValidCreationData(c.cloud.SubscriptionID, diskParams.ResourceGroup, sourceID, sourceType)
 	if err != nil {
 		klog.Warningf("failed to get creation data: %v", err)
@@ -403,16 +409,22 @@ func (c *CloudProvisioner) CreateVolume(
 			BurstingEnabled:   diskParams.EnableBursting,
 			DiskIOPSReadWrite: pointer.Int64(int64(iops)),
 			DiskMBpsReadWrite: pointer.Int64(int64(mbps)),
-			Encryption: &armcompute.Encryption{
-				DiskEncryptionSetID: &diskParams.DiskEncryptionSetID,
-				Type:                &encryptionType, // custom types used like functions?
-			},
-			MaxShares: &maxShares,
 		},
 		SKU: &armcompute.DiskSKU{
 			Name: &skuName,
 		},
 		Tags: tags,
+	}
+
+	if diskParams.DiskEncryptionSetID != "" {
+		disk.Properties.Encryption = &armcompute.Encryption{
+			DiskEncryptionSetID: &diskParams.DiskEncryptionSetID,
+			Type:                &encryptionType,
+		}
+	}
+
+	if maxShares > 1 {
+		disk.Properties.MaxShares = &maxShares
 	}
 
 	if len(createZones) > 0 {
@@ -433,6 +445,7 @@ func (c *CloudProvisioner) CreateVolume(
 	}
 
 	// c.cloud.DisksClient = disksClient
+	klog.Infof("disk object: %+v", disk)
 	poller, err := disksClient.BeginCreateOrUpdate(ctx, diskParams.ResourceGroup, diskParams.DiskName, disk, nil)
 
 	if err != nil {
@@ -565,19 +578,24 @@ func (c *CloudProvisioner) PublishVolume(
 		klog.Fatalf("failed to obtain new credential: %v", err)
 	}
 
-	diskClient, err := armcompute.NewDisksClient(c.cloud.SubscriptionID, cred, nil)
-	if err != nil {
-		klog.Fatalf("failed to get client: %v", err)
-	}
-	res, err := diskClient.Get(ctx, c.cloud.ResourceGroup, diskName, nil)
-	if err != nil {
-		klog.Fatalf("failed to finish request: %v", err)
+	// diskClient, err := armcompute.NewDisksClient(c.cloud.SubscriptionID, cred, nil)
+	// if err != nil {
+	// 	klog.Fatalf("failed to get client: %v", err)
+	// }
+	//res, err := diskClient.Get(ctx, c.cloud.ResourceGroup, diskName, nil)
+	// if err != nil {
+	// 	klog.Fatalf("failed to finish request: %v", err)
+	// }
+
+	providerID := ""
+	if disk.ManagedBy != nil {
+		providerID = *disk.ManagedBy
 	}
 
-	providerID := *res.Disk.ManagedBy
+	klog.Infof("providerID: %+v", providerID)
 
 	scaleSetNameRE := regexp.MustCompile(`.*/subscriptions/(?:.*)/Microsoft.Compute/virtualMachineScaleSets/(.+)/virtualMachines(?:.*)`)
-	matches := scaleSetNameRE.FindStringSubmatch(*res.Disk.ManagedBy)
+	matches := scaleSetNameRE.FindStringSubmatch(providerID)
 	if len(matches) != 2 {
 		klog.Fatalf("failed to get vmss name: %v", err)
 	}
@@ -1397,6 +1415,10 @@ func (c *CloudProvisioner) validateCreateVolumeRequestParams(
 		if diskParams.MaxShares > 1 {
 			return status.Error(codes.InvalidArgument, fmt.Sprintf("Invalid maxShares value: %d as Azure Stack does not support shared disk.", diskParams.MaxShares))
 		}
+	}
+
+	if diskParams.Location == "" {
+		diskParams.Location = c.cloud.Location
 	}
 
 	return nil
