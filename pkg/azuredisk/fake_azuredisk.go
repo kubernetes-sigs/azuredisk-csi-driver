@@ -125,9 +125,9 @@ func newFakeDriverV1(t *testing.T) (*fakeDriverV1, error) {
 
 	driver.mounter = mounter
 
-	cache, err := azcache.NewTimedcache(time.Minute, func(key string) (interface{}, error) {
+	cache, err := azcache.NewTimedCache(time.Minute, func(key string) (interface{}, error) {
 		return nil, nil
-	})
+	}, false)
 	if err != nil {
 		return nil, err
 	}
