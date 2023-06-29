@@ -17,12 +17,14 @@ limitations under the License.
 package provider
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
 	"regexp"
 	"strings"
+	"time"
 
 	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2022-08-01/compute"
 	"github.com/Azure/azure-sdk-for-go/services/network/mgmt/2022-07-01/network"
@@ -334,36 +336,47 @@ func (az *Cloud) ListManagedLBs(service *v1.Service, nodes []*v1.Node, clusterNa
 		return nil, nil
 	}
 
-	// return early if wantLb=false
-	if nodes == nil {
-		klog.V(4).Infof("ListManagedLBs: return all LBs in the resource group %s, including unmanaged LBs", az.getLoadBalancerResourceGroup())
-		return allLBs, nil
+	managedLBNames := sets.New[string](strings.ToLower(clusterName))
+	managedLBs := make([]network.LoadBalancer, 0)
+	if strings.EqualFold(az.LoadBalancerSku, consts.LoadBalancerSkuBasic) {
+		// return early if wantLb=false
+		if nodes == nil {
+			klog.V(4).Infof("ListManagedLBs: return all LBs in the resource group %s, including unmanaged LBs", az.getLoadBalancerResourceGroup())
+			return allLBs, nil
+		}
+
+		agentPoolVMSetNamesMap := make(map[string]bool)
+		agentPoolVMSetNames, err := az.VMSet.GetAgentPoolVMSetNames(nodes)
+		if err != nil {
+			return nil, fmt.Errorf("ListManagedLBs: failed to get agent pool vmSet names: %w", err)
+		}
+
+		if agentPoolVMSetNames != nil && len(*agentPoolVMSetNames) > 0 {
+			for _, vmSetName := range *agentPoolVMSetNames {
+				klog.V(6).Infof("ListManagedLBs: found agent pool vmSet name %s", vmSetName)
+				agentPoolVMSetNamesMap[strings.ToLower(vmSetName)] = true
+			}
+		}
+
+		for agentPoolVMSetName := range agentPoolVMSetNamesMap {
+			managedLBNames.Insert(az.mapVMSetNameToLoadBalancerName(agentPoolVMSetName, clusterName))
+		}
 	}
 
-	agentPoolLBs := make([]network.LoadBalancer, 0)
-	agentPoolVMSetNames, err := az.VMSet.GetAgentPoolVMSetNames(nodes)
-	if err != nil {
-		return nil, fmt.Errorf("ListManagedLBs: failed to get agent pool vmSet names: %w", err)
-	}
-
-	agentPoolVMSetNamesSet := sets.New[string]()
-	if agentPoolVMSetNames != nil && len(*agentPoolVMSetNames) > 0 {
-		for _, vmSetName := range *agentPoolVMSetNames {
-			klog.V(6).Infof("ListManagedLBs: found agent pool vmSet name %s", vmSetName)
-			agentPoolVMSetNamesSet.Insert(strings.ToLower(vmSetName))
+	if az.useMultipleStandardLoadBalancers() {
+		for _, multiSLBConfig := range az.MultipleStandardLoadBalancerConfigurations {
+			managedLBNames.Insert(multiSLBConfig.Name, fmt.Sprintf("%s%s", multiSLBConfig.Name, consts.InternalLoadBalancerNameSuffix))
 		}
 	}
 
 	for _, lb := range allLBs {
-		vmSetNameFromLBName := az.mapLoadBalancerNameToVMSet(pointer.StringDeref(lb.Name, ""), clusterName)
-		if strings.EqualFold(strings.TrimSuffix(pointer.StringDeref(lb.Name, ""), consts.InternalLoadBalancerNameSuffix), clusterName) ||
-			agentPoolVMSetNamesSet.Has(strings.ToLower(vmSetNameFromLBName)) {
-			agentPoolLBs = append(agentPoolLBs, lb)
-			klog.V(4).Infof("ListManagedLBs: found agent pool LB %s", pointer.StringDeref(lb.Name, ""))
+		if managedLBNames.Has(strings.ToLower(strings.TrimSuffix(pointer.StringDeref(lb.Name, ""), consts.InternalLoadBalancerNameSuffix))) {
+			managedLBs = append(managedLBs, lb)
+			klog.V(4).Infof("ListManagedLBs: found managed LB %s", pointer.StringDeref(lb.Name, ""))
 		}
 	}
 
-	return agentPoolLBs, nil
+	return managedLBs, nil
 }
 
 // ListLB invokes az.LoadBalancerClient.List with exponential backoff retry
@@ -648,6 +661,57 @@ func (az *Cloud) CreateOrUpdateSubnet(service *v1.Service, subnet network.Subnet
 		klog.Errorf("SubnetClient.CreateOrUpdate(%s) failed: %s", *subnet.Name, rerr.Error().Error())
 		az.Event(service, v1.EventTypeWarning, "CreateOrUpdateSubnet", rerr.Error().Error())
 		return rerr.Error()
+	}
+
+	return nil
+}
+
+// MigrateToIPBasedBackendPoolAndWaitForCompletion use the migration API to migrate from
+// NIC-based to IP-based LB backend pools. It also makes sure the number of IP addresses
+// in the backend pools is expected.
+func (az *Cloud) MigrateToIPBasedBackendPoolAndWaitForCompletion(
+	lbName string, backendPoolNames []string, nicsCountMap map[string]int,
+) error {
+	if rerr := az.LoadBalancerClient.MigrateToIPBasedBackendPool(context.Background(), az.ResourceGroup, lbName, backendPoolNames); rerr != nil {
+		backendPoolNamesStr := strings.Join(backendPoolNames, ",")
+		klog.Errorf("MigrateToIPBasedBackendPoolAndWaitForCompletion: Failed to migrate to IP based backend pool for lb %s, backend pool %s: %s", lbName, backendPoolNamesStr, rerr.Error().Error())
+		return rerr.Error()
+	}
+
+	succeeded := make(map[string]bool)
+	for bpName := range nicsCountMap {
+		succeeded[bpName] = false
+	}
+
+	err := wait.PollImmediate(5*time.Second, 10*time.Minute, func() (done bool, err error) {
+		for bpName, nicsCount := range nicsCountMap {
+			if succeeded[bpName] {
+				continue
+			}
+
+			bp, rerr := az.LoadBalancerClient.GetLBBackendPool(context.Background(), az.ResourceGroup, lbName, bpName, "")
+			if rerr != nil {
+				klog.Errorf("MigrateToIPBasedBackendPoolAndWaitForCompletion: Failed to get backend pool %s for lb %s: %s", bpName, lbName, rerr.Error().Error())
+				return false, rerr.Error()
+			}
+
+			if countIPsOnBackendPool(bp) != nicsCount {
+				klog.V(4).Infof("MigrateToIPBasedBackendPoolAndWaitForCompletion: Expected IPs %s, current IPs %d, will retry in 5s", nicsCount, countIPsOnBackendPool(bp))
+				return false, nil
+			}
+			succeeded[bpName] = true
+		}
+		return true, nil
+	})
+
+	if err != nil {
+		if errors.Is(err, wait.ErrWaitTimeout) {
+			klog.Warningf("MigrateToIPBasedBackendPoolAndWaitForCompletion: Timeout waiting for migration to IP based backend pool for lb %s, backend pool %s", lbName, strings.Join(backendPoolNames, ","))
+			return nil
+		}
+
+		klog.Errorf("MigrateToIPBasedBackendPoolAndWaitForCompletion: Failed to wait for migration to IP based backend pool for lb %s, backend pool %s: %s", lbName, strings.Join(backendPoolNames, ","), err.Error())
+		return err
 	}
 
 	return nil

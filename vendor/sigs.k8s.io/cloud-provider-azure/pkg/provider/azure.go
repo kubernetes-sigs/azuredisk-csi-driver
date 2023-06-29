@@ -34,6 +34,7 @@ import (
 	"github.com/Azure/go-autorest/autorest/azure"
 
 	v1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/informers"
@@ -185,16 +186,6 @@ type Config struct {
 	// Use instance metadata service where possible
 	UseInstanceMetadata bool `json:"useInstanceMetadata,omitempty" yaml:"useInstanceMetadata,omitempty"`
 
-	// EnableMultipleStandardLoadBalancers determines the behavior of the standard load balancer. If set to true
-	// there would be one standard load balancer per VMAS or VMSS, which is similar with the behavior of the basic
-	// load balancer. Users could select the specific standard load balancer for their service by the service
-	// annotation `service.beta.kubernetes.io/azure-load-balancer-mode`, If set to false, the same standard load balancer
-	// would be shared by all services in the cluster. In this case, the mode selection annotation would be ignored.
-	EnableMultipleStandardLoadBalancers bool `json:"enableMultipleStandardLoadBalancers,omitempty" yaml:"enableMultipleStandardLoadBalancers,omitempty"`
-	// NodePoolsWithoutDedicatedSLB stores the VMAS/VMSS names that share the primary standard load balancer instead
-	// of having a dedicated one. This is useful only when EnableMultipleStandardLoadBalancers is set to true.
-	NodePoolsWithoutDedicatedSLB string `json:"nodePoolsWithoutDedicatedSLB,omitempty" yaml:"nodePoolsWithoutDedicatedSLB,omitempty"`
-
 	// Backoff exponent
 	CloudProviderBackoffExponent float64 `json:"cloudProviderBackoffExponent,omitempty" yaml:"cloudProviderBackoffExponent,omitempty"`
 	// Backoff jitter
@@ -259,6 +250,66 @@ type Config struct {
 	PutVMSSVMBatchSize int `json:"putVMSSVMBatchSize" yaml:"putVMSSVMBatchSize"`
 	// PrivateLinkServiceResourceGroup determines the specific resource group of the private link services user want to use
 	PrivateLinkServiceResourceGroup string `json:"privateLinkServiceResourceGroup,omitempty" yaml:"privateLinkServiceResourceGroup,omitempty"`
+
+	// EnableMigrateToIPBasedBackendPoolAPI uses the migration API to migrate from NIC-based to IP-based backend pool.
+	// The migration API can provide a migration from NIC-based to IP-based backend pool without service downtime.
+	// If the API is not used, the migration will be done by decoupling all nodes on the backend pool and then re-attaching
+	// node IPs, which will introduce service downtime. The downtime increases with the number of nodes in the backend pool.
+	EnableMigrateToIPBasedBackendPoolAPI bool `json:"enableMigrateToIPBasedBackendPoolAPI" yaml:"enableMigrateToIPBasedBackendPoolAPI"`
+
+	// MultipleStandardLoadBalancerConfigurations stores the properties regarding multiple standard load balancers.
+	// It will be ignored if LoadBalancerBackendPoolConfigurationType is nodeIPConfiguration.
+	// If the length is not 0, it is assumed the multiple standard load balancers mode is on. In this case,
+	// there must be one configuration named “<clustername>” or an error will be reported.
+	MultipleStandardLoadBalancerConfigurations []MultipleStandardLoadBalancerConfiguration `json:"multipleStandardLoadBalancerConfigurations,omitempty" yaml:"multipleStandardLoadBalancerConfigurations,omitempty"`
+
+	// DisableAPICallCache disables the cache for Azure API calls. It is for ARG support and not all resources will be disabled.
+	DisableAPICallCache bool `json:"disableAPICallCache,omitempty" yaml:"disableAPICallCache,omitempty"`
+}
+
+// MultipleStandardLoadBalancerConfiguration stores the properties regarding multiple standard load balancers.
+type MultipleStandardLoadBalancerConfiguration struct {
+	// Name of the public load balancer. There will be an internal load balancer
+	// created if needed, and the name will be `<name>-internal`. The internal lb
+	// shares the same configurations as the external one. The internal lbs
+	// are not needed to be included in `MultipleStandardLoadBalancerConfigurations`.
+	// There must be a name of “<clustername>” in the load balancer configuration list.
+	Name string `json:"name" yaml:"name"`
+
+	MultipleStandardLoadBalancerConfigurationSpec
+
+	MultipleStandardLoadBalancerConfigurationStatus
+}
+
+// MultipleStandardLoadBalancerConfigurationSpec stores the properties regarding multiple standard load balancers.
+type MultipleStandardLoadBalancerConfigurationSpec struct {
+	// This load balancer can have services placed on it. Defaults to true,
+	// can be set to false to drain and eventually remove a load balancer.
+	// This only affects services that will be using the LB. For services
+	// that is currently using the LB, they will not be affected.
+	AllowServicePlacement *bool `json:"allowServicePlacement" yaml:"allowServicePlacement"`
+
+	// A string value that must specify the name of an existing vmSet.
+	// All nodes in the given vmSet will always be added to this load balancer.
+	// A vmSet can only be the primary vmSet for a single load balancer.
+	PrimaryVMSet string `json:"primaryVMSet" yaml:"primaryVMSet"`
+
+	// Services that must match this selector can be placed on this load balancer. If not supplied,
+	// services with any labels can be created on the load balancer.
+	ServiceLabelSelector *metav1.LabelSelector `json:"serviceLabelSelector" yaml:"serviceLabelSelector"`
+
+	// Services created in namespaces with the supplied label will be allowed to select that load balancer.
+	// If not supplied, services created in any namespaces can be created on that load balancer.
+	ServiceNamespaceSelector *metav1.LabelSelector `json:"serviceNamespaceSelector" yaml:"serviceNamespaceSelector"`
+
+	// Nodes matching this selector will be preferentially added to the load balancers that
+	// they match selectors for. NodeSelector does not override primaryAgentPool for node allocation.
+	NodeSelector *metav1.LabelSelector `json:"nodeSelector" yaml:"nodeSelector"`
+}
+
+// MultipleStandardLoadBalancerConfigurationStatus stores the properties regarding multiple standard load balancers.
+type MultipleStandardLoadBalancerConfigurationStatus struct {
+	ActiveServices sets.Set[string] `json:"activeServices" yaml:"activeServices"`
 }
 
 type InitSecretConfig struct {
@@ -320,8 +371,6 @@ type Cloud struct {
 
 	// ipv6DualStack allows overriding for unit testing.  It's normally initialized from featuregates
 	ipv6DualStackEnabled bool
-	// isSHaredLoadBalancerSynced indicates if the reconcileSharedLoadBalancer has been run
-	isSharedLoadBalancerSynced bool
 	// Lock for access to node caches, includes nodeZones, nodeResourceGroups, and unmanagedNodes.
 	nodeCachesLock sync.RWMutex
 	// nodeNames holds current nodes for tracking added nodes in VM caches.
@@ -353,16 +402,16 @@ type Cloud struct {
 	eventRecorder    record.EventRecorder
 	routeUpdater     *delayedRouteUpdater
 
-	vmCache  *azcache.TimedCache
-	lbCache  *azcache.TimedCache
-	nsgCache *azcache.TimedCache
-	rtCache  *azcache.TimedCache
+	vmCache  azcache.Resource
+	lbCache  azcache.Resource
+	nsgCache azcache.Resource
+	rtCache  azcache.Resource
 	// public ip cache
 	// key: [resourceGroupName]
 	// Value: sync.Map of [pipName]*PublicIPAddress
-	pipCache *azcache.TimedCache
+	pipCache azcache.Resource
 	// use LB frontEndIpConfiguration ID as the key and search for PLS attached to the frontEnd
-	plsCache *azcache.TimedCache
+	plsCache azcache.Resource
 
 	// Add service lister to always get latest service
 	serviceLister corelisters.ServiceLister
@@ -371,6 +420,8 @@ type Cloud struct {
 
 	*ManagedDiskController
 	*controllerCommon
+
+	multipleStandardLoadBalancerConfigurationsSynced bool
 }
 
 // NewCloud returns a Cloud with initialized clients
@@ -544,6 +595,12 @@ func (az *Cloud) InitializeCloudFromConfig(ctx context.Context, config *Config, 
 		}
 	}
 
+	if az.useMultipleStandardLoadBalancers() {
+		if err := az.checkEnableMultipleStandardLoadBalancers(); err != nil {
+			return err
+		}
+	}
+
 	env, err := ratelimitconfig.ParseAzureEnvironment(config.Cloud, config.ResourceManagerEndpoint, config.IdentitySystem)
 	if err != nil {
 		return err
@@ -659,6 +716,22 @@ func (az *Cloud) InitializeCloudFromConfig(ctx context.Context, config *Config, 
 	return nil
 }
 
+func (az *Cloud) useMultipleStandardLoadBalancers() bool {
+	return az.useStandardLoadBalancer() && len(az.MultipleStandardLoadBalancerConfigurations) > 0
+}
+
+func (az *Cloud) useSingleStandardLoadBalancer() bool {
+	return az.useStandardLoadBalancer() && len(az.MultipleStandardLoadBalancerConfigurations) == 0
+}
+
+// Multiple standard load balancer mode only supports IP-based load balancers.
+func (az *Cloud) checkEnableMultipleStandardLoadBalancers() error {
+	if az.isLBBackendPoolTypeNodeIPConfig() {
+		return fmt.Errorf("multiple standard load balancers cannot be used with backend pool type %s", consts.LoadBalancerBackendPoolConfigurationTypeNodeIPConfiguration)
+	}
+	return nil
+}
+
 func (az *Cloud) isLBBackendPoolTypeNodeIPConfig() bool {
 	return strings.EqualFold(az.LoadBalancerBackendPoolConfigurationType, consts.LoadBalancerBackendPoolConfigurationTypeNodeIPConfiguration)
 }
@@ -672,6 +745,10 @@ func (az *Cloud) getPutVMSSVMBatchSize() int {
 }
 
 func (az *Cloud) initCaches() (err error) {
+	if az.Config.DisableAPICallCache {
+		klog.Infof("API call cache is disabled, ignore logs about cache operations")
+	}
+
 	az.vmCache, err = az.newVMCache()
 	if err != nil {
 		return err
@@ -1083,7 +1160,7 @@ func (az *Cloud) updateNodeCaches(prevNode, newNode *v1.Node) {
 		az.nodeNames.Delete(prevNode.ObjectMeta.Name)
 
 		// Remove from nodeZones cache.
-		prevZone, ok := prevNode.ObjectMeta.Labels[consts.LabelFailureDomainBetaZone]
+		prevZone, ok := prevNode.ObjectMeta.Labels[v1.LabelTopologyZone]
 		if ok && az.isAvailabilityZone(prevZone) {
 			az.nodeZones[prevZone].Delete(prevNode.ObjectMeta.Name)
 			if az.nodeZones[prevZone].Len() == 0 {
@@ -1125,7 +1202,7 @@ func (az *Cloud) updateNodeCaches(prevNode, newNode *v1.Node) {
 		az.nodeNames.Insert(newNode.ObjectMeta.Name)
 
 		// Add to nodeZones cache.
-		newZone, ok := newNode.ObjectMeta.Labels[consts.LabelFailureDomainBetaZone]
+		newZone, ok := newNode.ObjectMeta.Labels[v1.LabelTopologyZone]
 		if ok && az.isAvailabilityZone(newZone) {
 			if az.nodeZones[newZone] == nil {
 				az.nodeZones[newZone] = sets.New[string]()

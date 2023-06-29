@@ -128,7 +128,7 @@ type Driver struct {
 	DriverCore
 	volumeLocks *volumehelper.VolumeLocks
 	// a timed cache GetDisk throttling
-	getDiskThrottlingCache *azcache.TimedCache
+	getDiskThrottlingCache azcache.Resource
 }
 
 // newDriverV1 Creates a NewCSIDriver object. Assumes vendor version is equal to driver version &
@@ -167,9 +167,9 @@ func newDriverV1(options *DriverOptions) *Driver {
 
 	topologyKey = fmt.Sprintf("topology.%s/zone", driver.Name)
 
-	cache, err := azcache.NewTimedcache(5*time.Minute, func(key string) (interface{}, error) {
+	cache, err := azcache.NewTimedCache(5*time.Minute, func(key string) (interface{}, error) {
 		return nil, nil
-	})
+	}, false)
 	if err != nil {
 		klog.Fatalf("%v", err)
 	}
