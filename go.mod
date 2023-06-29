@@ -15,10 +15,10 @@ require (
 	github.com/kubernetes-csi/csi-lib-utils v0.13.0
 	github.com/kubernetes-csi/csi-proxy/client v1.0.1
 	github.com/kubernetes-csi/external-snapshotter/client/v4 v4.1.0
-	github.com/onsi/gomega v1.27.6
+	github.com/onsi/gomega v1.27.8
 	github.com/pborman/uuid v1.2.0
 	github.com/pelletier/go-toml v1.9.4
-	github.com/stretchr/testify v1.8.2
+	github.com/stretchr/testify v1.8.4
 	golang.org/x/net v0.10.0
 	google.golang.org/grpc v1.51.0
 	google.golang.org/protobuf v1.28.1
@@ -30,7 +30,7 @@ require (
 	k8s.io/kubernetes v1.27.3
 	k8s.io/mount-utils v0.0.0
 	k8s.io/utils v0.0.0-20230209194617-a36077c30491
-	sigs.k8s.io/cloud-provider-azure v1.27.1-0.20230516073337-2f0c4c289f73
+	sigs.k8s.io/cloud-provider-azure v1.27.1-0.20230629023444-76504759ed59
 	sigs.k8s.io/yaml v1.3.0
 )
 
@@ -38,7 +38,7 @@ require (
 	github.com/Azure/azure-sdk-for-go/sdk/azcore v1.2.0
 	github.com/Azure/azure-sdk-for-go/sdk/azidentity v1.2.0
 	github.com/jongio/azidext/go/azidext v0.4.0
-	github.com/onsi/ginkgo/v2 v2.9.5
+	github.com/onsi/ginkgo/v2 v2.11.0
 	k8s.io/client-go v0.27.3
 	k8s.io/pod-security-admission v0.27.3
 )
@@ -124,14 +124,14 @@ require (
 	go.uber.org/atomic v1.7.0 // indirect
 	go.uber.org/multierr v1.6.0 // indirect
 	go.uber.org/zap v1.19.0 // indirect
-	golang.org/x/crypto v0.9.0 // indirect
+	golang.org/x/crypto v0.10.0 // indirect
 	golang.org/x/oauth2 v0.0.0-20220223155221-ee480838109b // indirect
-	golang.org/x/sync v0.2.0 // indirect
-	golang.org/x/sys v0.8.0 // indirect
-	golang.org/x/term v0.8.0 // indirect
-	golang.org/x/text v0.9.0 // indirect
+	golang.org/x/sync v0.3.0 // indirect
+	golang.org/x/sys v0.9.0 // indirect
+	golang.org/x/term v0.9.0 // indirect
+	golang.org/x/text v0.10.0 // indirect
 	golang.org/x/time v0.0.0-20220210224613-90d013bbcef8 // indirect
-	golang.org/x/tools v0.9.1 // indirect
+	golang.org/x/tools v0.9.3 // indirect
 	google.golang.org/appengine v1.6.7 // indirect
 	google.golang.org/genproto v0.0.0-20220502173005-c8bf987b8c21 // indirect
 	gopkg.in/inf.v0 v0.9.1 // indirect
