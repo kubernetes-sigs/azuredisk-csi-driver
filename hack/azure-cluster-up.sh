@@ -362,7 +362,7 @@ chmod +x "$CLEANUP_FILE"
 trap_push "print_cleanup_command \"${CLEANUP_FILE}\"" exit
 
 #
-# Create an Azure Key Vault to hold the cluster service principal credentails
+# Create an Azure Key Vault to hold the cluster service principal credentials
 #
 AZURE_KEYVAULT_NAME="$AZURE_CLUSTER_DNS_NAME-kv"
 if [[ -z "$( (az keyvault show --name "$AZURE_KEYVAULT_NAME" --resource-group "$AZURE_CLUSTER_RESOURCE_GROUP" --output tsv --query name || true) 2> /dev/null)" ]]; then

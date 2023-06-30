@@ -542,6 +542,8 @@ type AzDiskDriverConfiguration struct {
 	DriverName string `json:"driverName,omitempty"`
 	// The address to expose profiling data from the pprof package. If empty, no profiler server is started.
 	ProfilerAddress string `json:"profilerAddress,omitempty"`
+	// The duration for which events are retained by kube-apiserver
+	EventTTLInSec int `json:"eventTTLInSec,omitempty"`
 }
 
 type ControllerConfiguration struct {

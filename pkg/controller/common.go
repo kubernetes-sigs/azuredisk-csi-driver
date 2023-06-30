@@ -1188,3 +1188,53 @@ func WatchObject(mgr manager.Manager, objKind source.Kind) error {
 	})
 	return err
 }
+
+type eventRefresherList struct {
+	curr *eventRefresherNode
+}
+
+type eventRefresherNode struct {
+	prev    *eventRefresherNode
+	next    *eventRefresherNode
+	message string
+	delay   time.Duration
+	objects []runtime.Object
+}
+
+func (events eventRefresherList) isEmpty() bool {
+	return events.curr == nil
+}
+
+func (events *eventRefresherList) clear() {
+	events.curr = nil
+}
+
+func (events *eventRefresherList) add(newEvent *eventRefresherNode) {
+	if events.curr == nil {
+		events.curr = newEvent
+	} else {
+		events.curr.prev.next = newEvent
+		events.curr.delay -= newEvent.delay
+	}
+	newEvent.next = events.curr
+	events.curr.prev = newEvent
+}
+
+// Moves to the next event in the list and retrieves it.
+func (events *eventRefresherList) next() *eventRefresherNode {
+	nextEvent := events.curr.next
+	events.curr = nextEvent
+	return nextEvent
+}
+
+func (oldEvent *eventRefresherNode) remove() {
+	oldEvent.prev.next = oldEvent.next
+	oldEvent.next.prev = oldEvent.prev
+	oldEvent.next.delay += oldEvent.delay
+}
+
+func (oldEvent *eventRefresherNode) tryRemove() {
+	if oldEvent == nil {
+		oldEvent.remove()
+	}
+}

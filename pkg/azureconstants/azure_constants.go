@@ -219,6 +219,7 @@ const (
 	DefaultAzureClientAttachDetachRateLimiterBucket = int(DefaultAzureClientAttachDetachRateLimiterQPS * 60.0) // Allow for a burst of a minutes worth of quota
 	DefaultAzureClientAttachDetachBatchInitialDelay = 1 * time.Second                                          // Wait 1s before processing a batch of attach or detach disk requests
 	DefaultReplicaVolumeAttachRetryLimit            = 2
+	DefaultEventTTL                                 = time.Hour
 )
 
 // CommandLineParams is a list of deprecated command-line parameters

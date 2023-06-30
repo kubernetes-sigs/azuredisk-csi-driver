@@ -158,6 +158,7 @@ func NewDefaultDriverConfig() *azdiskv1beta2.AzDiskDriverConfiguration {
 		MetricsAddress:  consts.DefaultMetricsAddress,
 		DriverName:      consts.DefaultDriverName,
 		ProfilerAddress: consts.DefaultProfilerAddress,
+		EventTTLInSec:   int(consts.DefaultEventTTL.Seconds()),
 	}
 }
 
