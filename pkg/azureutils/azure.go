@@ -157,6 +157,8 @@ type Cloud struct {
 	// use LB frontEndIpConfiguration ID as the key and search for PLS attached to the frontEnd
 	plsCache *TimedCache
 
+	VMSSVMStorageProfileCache *VMSSVMStorageProfileCache
+
 	*controllerCommon
 	*ManagedDiskController
 }

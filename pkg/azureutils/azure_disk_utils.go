@@ -717,6 +717,8 @@ func GetCloudProviderFromClient(
 		az.DisableUpdateCache = cloudConfig.DisableUpdateCache
 	}
 
+	az.VMSSVMStorageProfileCache = NewCache()
+
 	return az, nil
 }
 
