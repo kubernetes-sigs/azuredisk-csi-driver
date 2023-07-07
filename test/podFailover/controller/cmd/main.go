@@ -114,6 +114,7 @@ func deleteAndRestartPods(ctx context.Context, clientset *kubernetes.Clientset, 
 	if unscheduleNode {
 		nodeName = pod.Spec.NodeName
 		makeNodeUnschedulable(ctx, nodeName, true, clientset)
+		defer makeNodeUnschedulable(ctx, nodeName, false, clientset)
 	}
 
 	klog.Infof("Deleting pod %s", pod.Name)
@@ -142,10 +143,6 @@ func deleteAndRestartPods(ctx context.Context, clientset *kubernetes.Clientset, 
 	}
 
 	klog.Infof("Pod %s ready.", pod.Name)
-
-	if unscheduleNode {
-		makeNodeUnschedulable(ctx, nodeName, false, clientset)
-	}
 }
 
 func sameNodeFailover(ctx context.Context, clientset *kubernetes.Clientset, podFailoverClient *podfailure.Clientset, pods []v1.Pod, failureType string) {
@@ -153,6 +150,7 @@ func sameNodeFailover(ctx context.Context, clientset *kubernetes.Clientset, podF
 	if len(pods) > 0 {
 		nodeName = pods[0].Spec.NodeName
 		makeNodeUnschedulable(ctx, nodeName, true, clientset)
+		defer makeNodeUnschedulable(ctx, nodeName, false, clientset)
 	}
 
 	// Reschedule the 1st deployment as it doesn't have any associated pod affinity rules
@@ -174,8 +172,6 @@ func sameNodeFailover(ctx context.Context, clientset *kubernetes.Clientset, podF
 
 	}
 	wg.Wait()
-
-	makeNodeUnschedulable(ctx, nodeName, false, clientset)
 }
 
 func makeNodeUnschedulable(ctx context.Context, nodeName string, unschedulable bool, clientset *kubernetes.Clientset) {
@@ -190,6 +186,7 @@ func makeNodeUnschedulable(ctx context.Context, nodeName string, unschedulable b
 		nodeTobeCordoned.Spec.Unschedulable = unschedulable
 
 		// Cordon off the node
+		klog.Infof("Setting schedulability of node %s; unschedule: %t", nodeName, unschedulable)
 		_, err = clientset.CoreV1().Nodes().Update(ctx, nodeTobeCordoned, metav1.UpdateOptions{})
 		if err != nil {
 			return err
