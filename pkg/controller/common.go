@@ -1189,16 +1189,17 @@ func WatchObject(mgr manager.Manager, objKind source.Kind) error {
 	return err
 }
 
+// circular linked list with simple accessibility to the current event, etc.
 type eventRefresherList struct {
 	curr *eventRefresherNode
 }
 
 type eventRefresherNode struct {
-	prev    *eventRefresherNode
-	next    *eventRefresherNode
-	message string
-	delay   time.Duration
-	objects []runtime.Object
+	prev      *eventRefresherNode
+	next      *eventRefresherNode
+	message   string
+	timestamp time.Time
+	objects   []runtime.Object
 }
 
 func (events eventRefresherList) isEmpty() bool {
@@ -1214,7 +1215,6 @@ func (events *eventRefresherList) add(newEvent *eventRefresherNode) {
 		events.curr = newEvent
 	} else {
 		events.curr.prev.next = newEvent
-		events.curr.delay -= newEvent.delay
 	}
 	newEvent.next = events.curr
 	events.curr.prev = newEvent
@@ -1230,11 +1230,10 @@ func (events *eventRefresherList) next() *eventRefresherNode {
 func (oldEvent *eventRefresherNode) remove() {
 	oldEvent.prev.next = oldEvent.next
 	oldEvent.next.prev = oldEvent.prev
-	oldEvent.next.delay += oldEvent.delay
 }
 
 func (oldEvent *eventRefresherNode) tryRemove() {
-	if oldEvent == nil {
+	if oldEvent != nil {
 		oldEvent.remove()
 	}
 }

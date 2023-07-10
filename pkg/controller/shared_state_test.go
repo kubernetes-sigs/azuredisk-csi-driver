@@ -21,6 +21,7 @@ import (
 	"strconv"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/require"
@@ -1119,6 +1120,61 @@ func TestVolumeVisitedFlow(t *testing.T) {
 			sharedState := tt.setupFunc(t, mockCtl)
 			isVolumeVisited := sharedState.isVolumeVisited(tt.azVolumeName)
 			tt.verifyFunc(t, isVolumeVisited)
+		})
+	}
+}
+
+func TestReplicaAttachmentFailures(t *testing.T) {
+	tests := []struct {
+		description string
+		volumeNames []string
+		setupFunc   func(*testing.T, *gomock.Controller) *SharedState
+		verifyFunc  func(*testing.T, error)
+	}{
+		{
+			description: "[Success] Volume requesting additional replicas beyond the current capacity should not return an error",
+			volumeNames: []string{testPersistentVolume0Name},
+			setupFunc: func(t *testing.T, mockCtl *gomock.Controller) *SharedState {
+				newVolume0 := testAzVolume0.DeepCopy()
+				newVolume0.Status.Detail = &azdiskv1beta2.AzVolumeStatusDetail{
+					VolumeID: testManagedDiskURI0,
+				}
+				newVolume0.Spec.MaxMountReplicaCount = 2
+
+				testSharedState := NewTestSharedState(
+					mockCtl,
+					testNamespace,
+					newVolume0,
+					&testPersistentVolume0,
+					&testNode0,
+					&testNode1,
+					&testPod0,
+					&testReplicaAzVolumeAttachment,
+				)
+
+				mockClients(testSharedState.cachedClient.(*mockclient.MockClient), testSharedState.azClient, testSharedState.kubeClient)
+				return testSharedState
+			},
+			verifyFunc: func(t *testing.T, err error) {
+				require.NoError(t, err)
+			},
+		},
+	}
+	for _, test := range tests {
+		tt := test
+		t.Run(tt.description, func(t *testing.T) {
+			mockCtl := gomock.NewController(t)
+			defer mockCtl.Finish()
+			sharedState := tt.setupFunc(t, mockCtl)
+			ctx := context.TODO()
+			startTime := time.Now()
+			for i, volumeName := range tt.volumeNames {
+				err := sharedState.manageReplicas(ctx, volumeName)
+				tt.verifyFunc(t, err)
+				time.Sleep(time.Duration(testEventTTLInSec*i/2) * time.Second)
+			}
+			time.Sleep(time.Duration(testEventTTLInSec*2)*time.Second - time.Since(startTime)) // wait for at least two event refresh cycles
+			// events := s.eventRecorder.(*record.FakeRecorder).Events
 		})
 	}
 }

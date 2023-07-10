@@ -101,13 +101,15 @@ type ReplicaAttachmentFailureInfo struct {
 }
 
 const (
+	// persistent event and their refreshes should overlap by this amount of time
+	eventOverlapDuration = time.Millisecond
+	// allow persistent events to overlap by up to this additional amount of time for batched reporting etc.
+	eventOverlapVariance = time.Millisecond
 	// the maximum number of event persist requests that can be made before waiting on the event refresher to consume them
-	maxPersistEventConcurrency int = 4
+	maxPersistEventConcurrency int = 128
 	// the maximum number of event un-persist requests that can be made before waiting on the event refresher to consume them
 	// (if the event refresher is active, un-persists will be more frequent than persist requests)
 	maxUnpersistEventConcurrency int = maxPersistEventConcurrency * 4 // the event refresher may spend some time reporting a batch of events
-	// persistent events may overlap by up to this amount of time, but several other factors would increase the actual time between an event and its next refresh
-	maxEventOverlapDuration = time.Millisecond
 )
 
 func NewSharedState(config *azdiskv1beta2.AzDiskDriverConfiguration, topologyKey string, eventRecorder record.EventRecorder, cachedClient client.Client, crdClient crdClientset.Interface, kubeClient kubernetes.Interface, driverLifecycle DriverLifecycle) *SharedState {
@@ -1406,34 +1408,24 @@ func (c *SharedState) _eventRefresherRoutine() {
 	var eventTTL = time.Duration(c.config.EventTTLInSec) * time.Second
 	eventMap := map[string]*eventRefresherNode{}
 	newFailureInfo := <-c.eventsToPersistQueue
-	klog.V(2).Infof("Starting the event refresher") // should this be logged via workflow instead?
+	klog.V(2).Infof("Starting the event refresher")
 	var events eventRefresherList
 	var alarm *time.Timer
-	var lastTime time.Time         // the time at which the previous event was inserted / refreshed
-	var timeVariance time.Duration // shifts the time at which every event is refreshed to mitigate the alarm's inaccuracy while maintainting the sum of all delays (as the event life span) to prevent drift
+	var lastTime time.Time
+	var delay time.Duration            // how long the alarm was last set to wait for
+	expLatency := eventOverlapVariance // we request the alarm to wake us up earlier by this amount, to negate latency due to other operations and timer imprecision
 	for {
 		// add the new failure
-		currTime := time.Now()
 		newEvent := &eventRefresherNode{
-			message: newFailureInfo.message,
-			objects: newFailureInfo.pods,
+			message:   newFailureInfo.message,
+			objects:   newFailureInfo.pods,
+			timestamp: newFailureInfo.timestamp.Add(eventTTL - eventOverlapDuration),
 		}
-		newEventTimeVariance := currTime.Sub(newFailureInfo.timestamp) + maxEventOverlapDuration
 
 		if events.isEmpty() {
-			newEvent.delay = eventTTL
-			timeVariance = newEventTimeVariance
-			alarm = time.NewTimer(eventTTL - timeVariance)
-			lastTime = currTime
-		} else {
-			newEvent.delay = newFailureInfo.timestamp.Sub(lastTime) + (timeVariance - newEventTimeVariance)
-			// the new event's delay is relative to the last event inserted / refreshed,
-			// because a non-empty circular linked list takes a total of 1 hour to traverse
-			// add the global time variance back into the new event's delay because its subtracted from each delay
-			// and subtract the new event's local time variance from its delay because we want to use its local time variance without affecting the global one
-
-			lastTime = lastTime.Add(newEvent.delay) // the sum of lastTime and currentEvent.delay should remain the same
-			// the values of current event delay and last time are now both relative to the new event
+			lastTime = time.Now()
+			delay = newEvent.timestamp.Sub(lastTime) - expLatency
+			alarm = time.NewTimer(delay)
 		}
 
 		events.add(newEvent)
@@ -1479,22 +1471,24 @@ func (c *SharedState) _eventRefresherRoutine() {
 					oldEvent.remove()
 				}
 			case <-alarm.C:
+				currTime := time.Now()
+				currLatency := expLatency + currTime.Sub(lastTime) - delay
+				expLatency = (expLatency*3 + currLatency) / 4 // update the expected latency with a 25% expontially-weighted moving average
+				lastTime = currTime
 				for {
 					for _, object := range events.curr.objects { // can we keep this as is? or do we need to check / keep track of whether each pod is still relevant
 						c.eventRecorder.Event(object, v1.EventTypeWarning, consts.ReplicaAttachmentFailedEvent, events.curr.message)
 					}
-					currTime = time.Now()
-					timeVariance += currTime.Sub(lastTime) - events.curr.delay // self-correct so the average time of an event refresh cycle continues to be the event TTL
+					events.curr.timestamp = events.curr.timestamp.Add(eventTTL)
 					events.next()
-					lastTime = currTime
-					if events.curr.delay-timeVariance >= maxEventOverlapDuration {
+					delay = time.Until(events.curr.timestamp) - expLatency
+					if delay >= eventOverlapVariance {
 						break
 					}
 					// events which are really close together will be processed at the same, preventing the overuse of sleep()
-					// self-correction will ensure that this optimization doesn't have an impact on overall event firing accuracy
 					// event refresher's responsiviness may be more variable, so we'll increase its channel buffers as needed
 				}
-				alarm.Reset(events.curr.delay - timeVariance)
+				alarm.Reset(delay)
 			}
 		}
 	}
