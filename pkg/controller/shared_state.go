@@ -1183,7 +1183,7 @@ func (c *SharedState) createReplicaRequestsQueue() {
 }
 
 // Removes replica requests from the priority queue and adds to operation queue.
-func (c *SharedState) tryCreateFailedReplicas(ctx context.Context, requestor operationRequester) {
+func (c *SharedState) tryCreateFailedReplicas(ctx context.Context, requester operationRequester) {
 	if atomic.SwapInt32(&c.processingReplicaRequestQueue, 1) == 0 {
 		ctx, w := workflow.New(ctx)
 		defer w.Finish(nil)
@@ -1192,7 +1192,7 @@ func (c *SharedState) tryCreateFailedReplicas(ctx context.Context, requestor ope
 			replicaRequest := requests[i]
 			c.addToOperationQueue(ctx,
 				replicaRequest.VolumeName,
-				requestor,
+				requester,
 				func(ctx context.Context) error {
 					return c.manageReplicas(ctx, replicaRequest.VolumeName)
 				},
