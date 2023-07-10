@@ -15,7 +15,6 @@ type VMSSCacheEntry struct {
 	VMStorageProfileCache *sync.Map
 	Name                  *string
 	ResourceGroup         *string
-	sync.Mutex
 }
 
 type VMCacheEntry struct {
@@ -29,7 +28,6 @@ type VMCacheEntry struct {
 
 type VMSSVMStorageProfileCache struct {
 	VMSSCache *sync.Map
-	sync.Mutex
 }
 
 func NewCache() *VMSSVMStorageProfileCache {
@@ -39,8 +37,6 @@ func NewCache() *VMSSVMStorageProfileCache {
 }
 
 func (v *VMSSVMStorageProfileCache) VmssGetter(vmssName string) (*VMSSCacheEntry, bool) {
-	v.Lock()
-	defer v.Unlock()
 	entry, found := v.VMSSCache.Load(vmssName)
 	klog.Infof("vmssgetter entry: %+v found: %+v vmssName: %+v", entry, found, vmssName)
 
@@ -105,8 +101,6 @@ func (c *Cloud) Get(ctx context.Context, vmssName, vmName, instanceID string) (*
 }
 
 func (v *VMSSCacheEntry) VmGetter(vmName string) (*VMCacheEntry, bool) {
-	v.Lock()
-	defer v.Unlock()
 	entry, found := v.VMStorageProfileCache.Load(vmName)
 
 	if !found {
@@ -119,30 +113,28 @@ func (v *VMSSCacheEntry) VmGetter(vmName string) (*VMCacheEntry, bool) {
 }
 
 func (v *VMSSVMStorageProfileCache) SetVMSSAndVM(vmssName, vmName, instanceID, resourceGroup, state string, storageProfile *armcompute.StorageProfile) *VMCacheEntry {
-	v.Lock()
-	if _, found := v.VmssGetter(vmssName); found {
-		klog.Warningf("failed to set vmss in cache: vmss already present")
-		return nil
+	var vmss *VMSSCacheEntry
+	if result, found := v.VmssGetter(vmssName); found {
+		vmss = result
+		klog.Infof("vmss already present: getting vmss from cache")
+	} else {
+		vmss = &VMSSCacheEntry{
+			VMStorageProfileCache: &sync.Map{},
+			Name:                  &vmssName,
+			ResourceGroup:         &resourceGroup,
+		}
+		v.VMSSCache.Store(vmssName, vmss)
 	}
-	vmss := &VMSSCacheEntry{
-		VMStorageProfileCache: &sync.Map{},
-		Name:                  &vmssName,
-		ResourceGroup:         &resourceGroup,
-	}
-	v.VMSSCache.Store(vmssName, vmss)
-	v.Unlock()
 
 	return vmss.SetVM(vmssName, vmName, instanceID, resourceGroup, state, storageProfile)
 }
 
 func (v *VMSSCacheEntry) SetVM(vmssName, vmName, instanceID, resourceGroup, state string, storageProfile *armcompute.StorageProfile) *VMCacheEntry {
-	v.Lock()
-	defer v.Unlock()
+	var vm *VMCacheEntry
 	if _, found := v.VmGetter(vmName); found {
-		klog.Warningf("failed to set vm in cache: vm already present")
-		return nil
+		klog.Infof("vm already present: updating vm")
 	}
-	vm := &VMCacheEntry{
+	vm = &VMCacheEntry{
 		StorageProfile:    storageProfile,
 		VMSSName:          &vmssName,
 		Name:              &vmName,
@@ -151,6 +143,7 @@ func (v *VMSSCacheEntry) SetVM(vmssName, vmName, instanceID, resourceGroup, stat
 		ProvisioningState: &state,
 	}
 	v.VMStorageProfileCache.Store(vmName, vm)
+
 	return vm
 }
 

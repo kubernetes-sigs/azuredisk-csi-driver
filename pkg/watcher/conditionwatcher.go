@@ -133,6 +133,8 @@ func (c *ConditionWatcher) onDelete(obj interface{}) {
 
 func (c *ConditionWatcher) handleEvent(obj interface{}, eventType eventType) {
 	metaObj, err := meta.Accessor(obj)
+	klog.Infof("conditionwatcher handleEvent 136 metaobject: %+v", metaObj)
+	klog.Infof("conditionwatcher handleEvent 136 object: %+v", obj)
 	if err != nil {
 		// this line should not be reached
 		klog.Errorf("object (%v) has not implemented meta object interface.")
