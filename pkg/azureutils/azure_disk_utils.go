@@ -1246,6 +1246,7 @@ func UpdateCRIWithRetry(ctx context.Context, informerFactory azdiskinformers.Sha
 				updatedObj, err = azDiskClient.DiskV1beta2().AzVolumes(target.Namespace).Update(ctx, target, metav1.UpdateOptions{})
 			}
 		case *azdiskv1beta2.AzVolumeAttachment:
+			klog.Infof("line 1249 original status: %+v object status: %+v", originalObj.(*azdiskv1beta2.AzVolumeAttachment).Status, target.Status)
 			if (updateMode&UpdateCRIStatus) != 0 && !reflect.DeepEqual(originalObj.(*azdiskv1beta2.AzVolumeAttachment).Status, target.Status) {
 				if updatedObj, err = azDiskClient.DiskV1beta2().AzVolumeAttachments(target.Namespace).UpdateStatus(ctx, target, metav1.UpdateOptions{}); err != nil {
 					return err

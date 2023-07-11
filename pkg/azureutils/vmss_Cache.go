@@ -37,6 +37,7 @@ func NewCache() *VMSSVMStorageProfileCache {
 }
 
 func (v *VMSSVMStorageProfileCache) VmssGetter(vmssName string) (*VMSSCacheEntry, bool) {
+	klog.Infof("VmssGetter line 40 vmName: %+v", vmssName)
 	entry, found := v.VMSSCache.Load(vmssName)
 	klog.Infof("vmssgetter entry: %+v found: %+v vmssName: %+v", entry, found, vmssName)
 
@@ -46,6 +47,8 @@ func (v *VMSSVMStorageProfileCache) VmssGetter(vmssName string) (*VMSSCacheEntry
 	}
 
 	vmssEntry := entry.(*VMSSCacheEntry)
+
+	klog.Infof("VmssGetter line 51 vmName: %+v", vmssName)
 
 	return vmssEntry, true
 }
@@ -101,6 +104,7 @@ func (c *Cloud) Get(ctx context.Context, vmssName, vmName, instanceID string) (*
 }
 
 func (v *VMSSCacheEntry) VmGetter(vmName string) (*VMCacheEntry, bool) {
+	klog.Infof("vmgetter line 104 vmName: %+v", vmName)
 	entry, found := v.VMStorageProfileCache.Load(vmName)
 
 	if !found {
@@ -109,10 +113,13 @@ func (v *VMSSCacheEntry) VmGetter(vmName string) (*VMCacheEntry, bool) {
 
 	vmEntry := entry.(*VMCacheEntry)
 
+	klog.Infof("vmgetter line 113 vmName: %+v", vmName)
+
 	return vmEntry, true
 }
 
 func (v *VMSSVMStorageProfileCache) SetVMSSAndVM(vmssName, vmName, instanceID, resourceGroup, state string, storageProfile *armcompute.StorageProfile) *VMCacheEntry {
+	klog.Infof("SetVMSSAndVM line 119 vmName: %+v", vmName)
 	var vmss *VMSSCacheEntry
 	if result, found := v.VmssGetter(vmssName); found {
 		vmss = result
@@ -126,10 +133,13 @@ func (v *VMSSVMStorageProfileCache) SetVMSSAndVM(vmssName, vmName, instanceID, r
 		v.VMSSCache.Store(vmssName, vmss)
 	}
 
+	klog.Infof("SetVMSSAndVM line 133 vmName: %+v", vmName)
+
 	return vmss.SetVM(vmssName, vmName, instanceID, resourceGroup, state, storageProfile)
 }
 
 func (v *VMSSCacheEntry) SetVM(vmssName, vmName, instanceID, resourceGroup, state string, storageProfile *armcompute.StorageProfile) *VMCacheEntry {
+	klog.Infof("SetVM line 139 vmName: %+v", vmName)
 	var vm *VMCacheEntry
 	if _, found := v.VmGetter(vmName); found {
 		klog.Infof("vm already present: updating vm")
@@ -143,6 +153,8 @@ func (v *VMSSCacheEntry) SetVM(vmssName, vmName, instanceID, resourceGroup, stat
 		ProvisioningState: &state,
 	}
 	v.VMStorageProfileCache.Store(vmName, vm)
+
+	klog.Infof("SetVM line 154 vmName: %+v", vmName)
 
 	return vm
 }
