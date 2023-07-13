@@ -72,7 +72,7 @@ func (c *Cloud) Get(ctx context.Context, vmssName, vmName, instanceID string) (*
 		// set the vmss and vm in the cache, if the storage profile is not nil
 		if vm != nil && vm.Properties != nil && vm.Properties.StorageProfile != nil {
 			klog.Infof("attempting to add vmss %+v to cache: current cache is %+v", vmssName, c.VMSSVMStorageProfileCache.VMSSCache)
-			result := c.cloud.VMSSVMStorageProfileCache.SetVMSSAndVM(vmssName, vmName, instanceID, c.ResourceGroup, *vm.Properties.ProvisioningState, vm.Properties.StorageProfile)
+			result := c.VMSSVMStorageProfileCache.SetVMSSAndVM(vmssName, vmName, instanceID, c.ResourceGroup, *vm.Properties.ProvisioningState, vm.Properties.StorageProfile)
 			return result, nil
 		} else {
 			return nil, fmt.Errorf("storage profile not found")
@@ -179,7 +179,7 @@ func (c *Cloud) getVMFromClient(ctx context.Context, scaleSetName, instanceID st
 		klog.Fatalf("failed to get client: %v", err)
 	}
 
-	resVM, err := vmssVMClient.Get(ctx, c.cloud.ResourceGroup, scaleSetName, instanceID, nil)
+	resVM, err := vmssVMClient.Get(ctx, c.ResourceGroup, scaleSetName, instanceID, nil)
 	if err != nil {
 		klog.Fatalf("failed to finish the request: %v", err)
 	}

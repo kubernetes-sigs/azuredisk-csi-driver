@@ -56,8 +56,6 @@ type AzureAuthConfig struct {
 	ResourceManagerEndpoint string `json:"resourceManagerEndpoint,omitempty" yaml:"resourceManagerEndpoint,omitempty"`
 	// The AAD Tenant ID for the Subscription that the network resources are deployed in
 	NetworkResourceTenantID string `json:"networkResourceTenantID,omitempty" yaml:"networkResourceTenantID,omitempty"`
-	// The ID of the Azure Subscription that the network resources are deployed in
-	NetworkResourceSubscriptionID string `json:"networkResourceSubscriptionID,omitempty" yaml:"networkResourceSubscriptionID,omitempty"`
 	// The AAD federated token file
 	AADFederatedTokenFile string `json:"aadFederatedTokenFile,omitempty" yaml:"aadFederatedTokenFile,omitempty"`
 	// Use workload identity federation for the virtual machine to access Azure ARM APIs

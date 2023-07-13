@@ -105,6 +105,13 @@ func (t *TimedCache) getInternal(key string) (*AzureCacheEntry, error) {
 	return newEntry, nil
 }
 
+// Delete removes an item from the cache.
+func (t *TimedCache) Delete(key string) error {
+	return t.Store.Delete(&AzureCacheEntry{
+		Key: key,
+	})
+}
+
 // Get returns the requested item by key.
 func (t *TimedCache) Get(key string, crt AzureCacheReadType) (interface{}, error) {
 	return t.get(key, crt)

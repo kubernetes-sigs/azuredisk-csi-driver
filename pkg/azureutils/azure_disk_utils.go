@@ -640,24 +640,10 @@ func GetCloudProviderFromClient(
 			return nil, fmt.Errorf("no cloud config provided, error: %v", err)
 		}
 	} else {
-		// configure client rate limit
-		config.AttachDetachDiskRateLimit = &RateLimitConfig{
-			CloudProviderRateLimit:            cloudConfig.EnableAzureClientAttachDetachRateLimiter,
-			CloudProviderRateLimitQPSWrite:    cloudConfig.AzureClientAttachDetachRateLimiterQPS,
-			CloudProviderRateLimitBucketWrite: cloudConfig.AzureClientAttachDetachRateLimiterBucket,
-		}
-
 		// configure batching parameters
 		// I cannot find this field even in the original azure.Config type
 		// config.AttachDetachBatchInitialDelayInMillis = cloudConfig.AzureClientAttachDetachBatchInitialDelayInMillis
 
-		// disable disk related rate limit
-		config.DiskRateLimit = &RateLimitConfig{
-			CloudProviderRateLimit: false,
-		}
-		config.SnapshotRateLimit = &RateLimitConfig{
-			CloudProviderRateLimit: false,
-		}
 		config.UserAgent = userAgent
 
 		if cloudConfig.EnableTrafficManager && cloudConfig.TrafficManagerPort > 0 {
@@ -705,16 +691,6 @@ func GetCloudProviderFromClient(
 			}
 		}
 		klog.V(2).Infof("cloud: %s, location: %s, rg: %s, VMType: %s, PrimaryScaleSetName: %s, PrimaryAvailabilitySetName: %s, DisableAvailabilitySetNodes: %v", az.Cloud, az.Location, az.ResourceGroup, az.VMType, az.PrimaryScaleSetName, az.PrimaryAvailabilitySetName, az.DisableAvailabilitySetNodes)
-	}
-
-	if cloudConfig.VMSSCacheTTLInSeconds > 0 {
-		klog.V(2).Infof("reset vmssCacheTTLInSeconds as %d", cloudConfig.VMSSCacheTTLInSeconds)
-		az.VMCacheTTLInSeconds = int(cloudConfig.VMSSCacheTTLInSeconds)
-		az.VmssCacheTTLInSeconds = int(cloudConfig.VMSSCacheTTLInSeconds)
-	}
-
-	if az.ManagedDiskController != nil {
-		az.DisableUpdateCache = cloudConfig.DisableUpdateCache
 	}
 
 	az.VMSSVMStorageProfileCache = NewCache()
