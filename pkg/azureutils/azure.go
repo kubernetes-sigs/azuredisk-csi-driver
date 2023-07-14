@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strconv"
 	"strings"
 
 	// "sync"
@@ -109,13 +110,12 @@ type Cloud struct {
 	SnapshotsClient               *armcompute.SnapshotsClient // placeholder
 	VirtualMachineScaleSetsClient *armcompute.VirtualMachineScaleSetsClient
 
-	VMSet    VMSet
 	Metadata *InstanceMetadataService
 
 	// nodeInformerSynced is for determining if the informer has synced.
 	nodeInformerSynced cache.InformerSynced
 
-	VMSSVMStorageProfileCache *VMSSVMStorageProfileCache
+	VMSSVMCache *VMSSVMCache
 }
 
 type InitSecretConfig struct {
@@ -395,6 +395,26 @@ func (az *Cloud) configAzureClients(
 	if err != nil {
 		klog.Fatalf("failed to create client: %v", err)
 	}
+}
+
+func (az *Cloud) GetZoneByNodeName(ctx context.Context, nodeName string) (cloudprovider.Zone, error) {
+	entry, err := az.GetVMSSVM(ctx, nodeName)
+	if err != nil {
+		return cloudprovider.Zone{}, fmt.Errorf("failed to get zone from nodename: %v", err)
+	}
+	zones := entry.VM.Zones
+
+	zoneID, err := strconv.Atoi(*zones[0])
+	if err != nil {
+		return cloudprovider.Zone{}, fmt.Errorf("failed to parse zone %v", err)
+	}
+
+	failureDomain := fmt.Sprintf("%s-%d", strings.ToLower(*entry.VM.Location), zoneID)
+
+	return cloudprovider.Zone{
+		FailureDomain: strings.ToLower(failureDomain),
+		Region:        strings.ToLower(*entry.VM.Location),
+	}, nil
 }
 
 // PLACEHOLDER

@@ -148,7 +148,7 @@ func (c *CloudProvisioner) GetFailureDomain(ctx context.Context, nodeID string) 
 	var err error
 
 	if runtime.GOOS == "windows" && (!c.cloud.UseInstanceMetadata || c.cloud.Metadata == nil) {
-		zone, err = c.cloud.VMSet.GetZoneByNodeName(nodeID)
+		zone, err = c.cloud.GetZoneByNodeName(ctx, nodeID)
 	} else {
 		zone, err = c.cloud.GetZone(ctx)
 	}
@@ -163,11 +163,20 @@ func (c *CloudProvisioner) GetFailureDomain(ctx context.Context, nodeID string) 
 func (c *CloudProvisioner) GetInstanceType(ctx context.Context, nodeID string) (string, error) {
 	var err error
 
-	if runtime.GOOS == "windows" && c.cloud.UseInstanceMetadata && c.cloud.Metadata != nil {
-		var metadata *azureutils.InstanceMetadata
-		metadata, err = c.cloud.Metadata.GetMetadata(azureutils.CacheReadTypeDefault)
-		if err == nil && metadata.Compute != nil {
-			return metadata.Compute.VMSize, nil
+	if runtime.GOOS == "windows" {
+		// var metadata *azureutils.InstanceMetadata
+		// metadata, err = c.cloud.Metadata.GetMetadata(azureutils.CacheReadTypeDefault)
+		// if err == nil && metadata.Compute != nil {
+		// 	return metadata.Compute.VMSize, nil
+		// }
+
+		entry, err := c.cloud.GetVMSSVM(ctx, nodeID)
+		if err != nil {
+			return "", err
+		}
+
+		if entry.VM != nil && entry.VM.Properties != nil && entry.VM.Properties.HardwareProfile != nil && entry.VM.Properties.HardwareProfile.VMSize != nil {
+			return *entry.VM.Properties.HardwareProfile.VMSize, nil
 		}
 
 		klog.Warningf("failed to get instance type from metadata for node %s: %v", nodeID, err)
@@ -645,10 +654,10 @@ func (c *CloudProvisioner) PublishVolume(
 			klog.Fatalf("failed to extract scaleset name: %v", err)
 		}
 
-		vmEntry, err := c.cloud.Get(ctx, fullScaleSetName, attachedNode, instanceID)
+		vmEntry, err := c.cloud.GetVMSSVM(ctx, attachedNode)
 		klog.Infof("vmEntry: %+v", vmEntry)
-		storageProfile := vmEntry.StorageProfile
-		vmState = vmEntry.ProvisioningState
+		storageProfile := vmEntry.VM.Properties.StorageProfile
+		vmState = vmEntry.VM.Properties.ProvisioningState
 
 		if err != nil {
 			klog.Fatalf("failed to get storage profile: %v", err)
@@ -765,9 +774,10 @@ func (c *CloudProvisioner) PublishVolume(
 			// }
 			// storageProfile := resp.VirtualMachineScaleSetVM.Properties.StorageProfile
 
-			vmEntry, err := c.cloud.Get(ctx, fullScaleSetName, string(nodeName), instanceID)
+			vmEntry, err := c.cloud.GetVMSSVM(ctx, string(nodeName))
 			klog.Infof("original vmss: %+v vm: %+v id: %+v vs returned vmss: %+v vm: %+v id: %+v", fullScaleSetName, string(nodeName), instanceID, *vmEntry.VMSSName, *vmEntry.Name, *vmEntry.InstanceID)
-			storageProfile := vmEntry.StorageProfile
+			klog.Infof("vm:")
+			storageProfile := vmEntry.VM.Properties.StorageProfile
 			if err != nil {
 				klog.Fatalf("failed to get storage profile: %v", err)
 			}
@@ -916,7 +926,7 @@ func (c *CloudProvisioner) UnpublishVolume(
 		klog.Fatalf("failed to get instance id and vmss name from node name: %v", err)
 	}
 
-	fullScaleSetName := fmt.Sprintf("/subscriptions/%s/resourceGroups/%s/providers/Microsoft.Compute/virtualMachineScaleSets/%s", c.cloud.SubscriptionID, c.cloud.ResourceGroup, scaleSetName)
+	// fullScaleSetName := fmt.Sprintf("/subscriptions/%s/resourceGroups/%s/providers/Microsoft.Compute/virtualMachineScaleSets/%s", c.cloud.SubscriptionID, c.cloud.ResourceGroup, scaleSetName)
 
 	klog.Infof("scaleset: %+v node name: %+v instanceID: %+v", scaleSetName, nodeName, instanceID)
 
@@ -929,8 +939,8 @@ func (c *CloudProvisioner) UnpublishVolume(
 	if err != nil {
 		klog.Fatalf("failed to get client: %v", err)
 	}
-	vmEntry, err := c.cloud.Get(ctx, fullScaleSetName, string(nodeName), instanceID)
-	storageProfile := vmEntry.StorageProfile
+	vmEntry, err := c.cloud.GetVMSSVM(ctx, string(nodeName))
+	storageProfile := vmEntry.VM.Properties.StorageProfile
 	var disks []*armcompute.DataDisk
 	disks = make([]*armcompute.DataDisk, len(storageProfile.DataDisks))
 	copy(disks, storageProfile.DataDisks)
@@ -1790,7 +1800,7 @@ func (c *CloudProvisioner) GetNodeNameFromProviderID(ctx context.Context, provid
 
 	klog.Infof("line 1773 instanceID: %+v vmss name: %+v", instanceID, scaleSetName)
 
-	vmss, found := c.cloud.VMSSVMStorageProfileCache.VmssGetter(scaleSetName)
+	vmss, found := c.cloud.VMSSVMCache.VmssGetter(scaleSetName)
 	if !found {
 		scaleSetName, err = GetLastSegment(scaleSetName, "/")
 		if err != nil {
@@ -1817,7 +1827,7 @@ func (c *CloudProvisioner) GetNodeNameFromProviderID(ctx context.Context, provid
 		return *nodeName, nil
 	} else {
 		nodeName := ""
-		vmss.VMStorageProfileCache.Range(func(key, value interface{}) bool {
+		vmss.VMCache.Range(func(key, value interface{}) bool {
 			vmEntry := value.(*azureutils.VMCacheEntry)
 			if *vmEntry.InstanceID == instanceID {
 				nodeName = *vmEntry.Name

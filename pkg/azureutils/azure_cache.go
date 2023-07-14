@@ -1,8 +1,6 @@
 package azureutils
 
 import (
-	"fmt"
-	"reflect"
 	"sync"
 	"time"
 
@@ -53,22 +51,6 @@ type TimedCache struct {
 	TTL    time.Duration
 }
 
-// NewTimedcache creates a new TimedCache.
-func NewTimedcache(ttl time.Duration, getter GetFunc) (*TimedCache, error) {
-	if getter == nil {
-		return nil, fmt.Errorf("getter is not provided")
-	}
-
-	return &TimedCache{
-		Getter: getter,
-		// switch to using NewStore instead of NewTTLStore so that we can
-		// reuse entries for calls that are fine with reading expired/stalled data.
-		// with NewTTLStore, entries are not returned if they have already expired.
-		Store: cache.NewStore(cacheKeyFunc),
-		TTL:   ttl,
-	}, nil
-}
-
 // getInternal returns AzureCacheEntry by key. If the key is not cached yet,
 // it returns a AzureCacheEntry with nil data.
 func (t *TimedCache) getInternal(key string) (*AzureCacheEntry, error) {
@@ -105,23 +87,9 @@ func (t *TimedCache) getInternal(key string) (*AzureCacheEntry, error) {
 	return newEntry, nil
 }
 
-// Delete removes an item from the cache.
-func (t *TimedCache) Delete(key string) error {
-	return t.Store.Delete(&AzureCacheEntry{
-		Key: key,
-	})
-}
-
 // Get returns the requested item by key.
 func (t *TimedCache) Get(key string, crt AzureCacheReadType) (interface{}, error) {
 	return t.get(key, crt)
-}
-
-// Get returns the requested item by key with deep copy.
-func (t *TimedCache) GetWithDeepCopy(key string, crt AzureCacheReadType) (interface{}, error) {
-	data, err := t.get(key, crt)
-	copied := Copy(data)
-	return copied, err
 }
 
 func (t *TimedCache) get(key string, crt AzureCacheReadType) (interface{}, error) {
@@ -158,121 +126,4 @@ func (t *TimedCache) get(key string, crt AzureCacheReadType) (interface{}, error
 	entry.CreatedOn = time.Now().UTC()
 
 	return entry.Data, nil
-}
-
-type deepCopyInterface interface {
-	DeepCopy() interface{}
-}
-
-// Copy deepcopies from v.
-func Copy(src interface{}) interface{} {
-	if src == nil {
-		return nil
-	}
-
-	if fromSyncMap, ok := src.(*sync.Map); ok {
-		to := copySyncMap(fromSyncMap)
-		return to
-	}
-
-	return copyNormal(src)
-}
-
-// copySyncMap copies with sync.Map but not nested
-// Targets are vmssVMCache, vmssFlexVMCache, etc.
-func copySyncMap(from *sync.Map) *sync.Map {
-	to := &sync.Map{}
-
-	from.Range(func(k, v interface{}) bool {
-		vm, ok := v.(*sync.Map)
-		if ok {
-			to.Store(k, copySyncMap(vm))
-		} else {
-			to.Store(k, copyNormal(v))
-		}
-		return true
-	})
-
-	return to
-}
-
-func copyNormal(src interface{}) interface{} {
-	if src == nil {
-		return nil
-	}
-
-	from := reflect.ValueOf(src)
-
-	to := reflect.New(from.Type()).Elem()
-
-	copy(from, to)
-
-	return to.Interface()
-}
-
-func copy(from, to reflect.Value) {
-	// Check if DeepCopy() is already implemented for the interface
-	if from.CanInterface() {
-		if deepcopy, ok := from.Interface().(deepCopyInterface); ok {
-			to.Set(reflect.ValueOf(deepcopy.DeepCopy()))
-			return
-		}
-	}
-
-	switch from.Kind() {
-	case reflect.Pointer:
-		fromValue := from.Elem()
-		if !fromValue.IsValid() {
-			return
-		}
-
-		to.Set(reflect.New(fromValue.Type()))
-		copy(fromValue, to.Elem())
-
-	case reflect.Interface:
-		if from.IsNil() {
-			return
-		}
-
-		fromValue := from.Elem()
-		toValue := reflect.New(fromValue.Type()).Elem()
-		copy(fromValue, toValue)
-		to.Set(toValue)
-
-	case reflect.Struct:
-		for i := 0; i < from.NumField(); i++ {
-			if from.Type().Field(i).PkgPath != "" {
-				// It is an unexported field.
-				continue
-			}
-			copy(from.Field(i), to.Field(i))
-		}
-
-	case reflect.Slice:
-		if from.IsNil() {
-			return
-		}
-
-		to.Set(reflect.MakeSlice(from.Type(), from.Len(), from.Cap()))
-		for i := 0; i < from.Len(); i++ {
-			copy(from.Index(i), to.Index(i))
-		}
-
-	case reflect.Map:
-		if from.IsNil() {
-			return
-		}
-
-		to.Set(reflect.MakeMap(from.Type()))
-		for _, key := range from.MapKeys() {
-			fromValue := from.MapIndex(key)
-			toValue := reflect.New(fromValue.Type()).Elem()
-			copy(fromValue, toValue)
-			copiedKey := Copy(key.Interface())
-			to.SetMapIndex(reflect.ValueOf(copiedKey), toValue)
-		}
-
-	default:
-		to.Set(from)
-	}
 }

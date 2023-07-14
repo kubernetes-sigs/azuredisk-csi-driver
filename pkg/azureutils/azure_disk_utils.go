@@ -693,7 +693,7 @@ func GetCloudProviderFromClient(
 		klog.V(2).Infof("cloud: %s, location: %s, rg: %s, VMType: %s, PrimaryScaleSetName: %s, PrimaryAvailabilitySetName: %s, DisableAvailabilitySetNodes: %v", az.Cloud, az.Location, az.ResourceGroup, az.VMType, az.PrimaryScaleSetName, az.PrimaryAvailabilitySetName, az.DisableAvailabilitySetNodes)
 	}
 
-	az.VMSSVMStorageProfileCache = NewCache()
+	az.VMSSVMCache = NewCache()
 
 	return az, nil
 }

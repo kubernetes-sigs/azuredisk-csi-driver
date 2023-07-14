@@ -330,7 +330,7 @@ func (d *Driver) NodeGetInfo(ctx context.Context, req *csi.NodeGetInfoRequest) (
 			failureDomainFromLabels, instanceTypeFromLabels, err = getNodeInfoFromLabels(ctx, d.NodeID, d.cloud.KubeClient)
 		} else {
 			if runtime.GOOS == "windows" && (!d.cloud.UseInstanceMetadata || d.cloud.Metadata == nil) {
-				zone, err = d.cloud.VMSet.GetZoneByNodeName(d.NodeID)
+				zone, err = d.cloud.GetZoneByNodeName(ctx, d.NodeID)
 			} else {
 				zone, err = d.cloud.GetZone(ctx)
 			}
