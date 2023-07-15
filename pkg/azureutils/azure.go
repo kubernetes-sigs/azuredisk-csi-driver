@@ -110,8 +110,6 @@ type Cloud struct {
 	SnapshotsClient               *armcompute.SnapshotsClient // placeholder
 	VirtualMachineScaleSetsClient *armcompute.VirtualMachineScaleSetsClient
 
-	Metadata *InstanceMetadataService
-
 	// nodeInformerSynced is for determining if the informer has synced.
 	nodeInformerSynced cache.InformerSynced
 
@@ -162,9 +160,6 @@ type Config struct {
 	// when setting AzureAuthConfig.Cloud with "AZURESTACKCLOUD" to customize ARM endpoints
 	// while the cluster is not running on AzureStack.
 	DisableAzureStackCloud bool `json:"disableAzureStackCloud,omitempty" yaml:"disableAzureStackCloud,omitempty"`
-
-	// Use instance metadata service where possible
-	UseInstanceMetadata bool `json:"useInstanceMetadata,omitempty" yaml:"useInstanceMetadata,omitempty"`
 
 	// The user agent for Azure customer usage attribution
 	UserAgent string `json:"userAgent,omitempty" yaml:"userAgent,omitempty"`
@@ -241,20 +236,6 @@ func (az *Cloud) InitializeCloudFromConfig(ctx context.Context, config *Config, 
 		}
 	}
 
-	// if config.LoadBalancerBackendPoolConfigurationType == "" ||
-	// 	// TODO(nilo19): support pod IP mode in the future
-	// 	strings.EqualFold(config.LoadBalancerBackendPoolConfigurationType, LoadBalancerBackendPoolConfigurationTypePODIP) {
-	// 	config.LoadBalancerBackendPoolConfigurationType = LoadBalancerBackendPoolConfigurationTypeNodeIPConfiguration
-	// } else {
-	// 	supportedLoadBalancerBackendPoolConfigurationTypes := sets.New(
-	// 		strings.ToLower(LoadBalancerBackendPoolConfigurationTypeNodeIPConfiguration),
-	// 		strings.ToLower(LoadBalancerBackendPoolConfigurationTypeNodeIP),
-	// 		strings.ToLower(LoadBalancerBackendPoolConfigurationTypePODIP))
-	// 	if !supportedLoadBalancerBackendPoolConfigurationTypes.Has(strings.ToLower(config.LoadBalancerBackendPoolConfigurationType)) {
-	// 		return fmt.Errorf("loadBalancerBackendPoolConfigurationType %s is not supported, supported values are %v", config.LoadBalancerBackendPoolConfigurationType, supportedLoadBalancerBackendPoolConfigurationTypes.UnsortedList())
-	// 	}
-	// }
-
 	env, err := ParseAzureEnvironment(config.Cloud, config.ResourceManagerEndpoint, config.IdentitySystem)
 	if err != nil {
 		return err
@@ -273,26 +254,19 @@ func (az *Cloud) InitializeCloudFromConfig(ctx context.Context, config *Config, 
 		// No credentials provided, useInstanceMetadata should be enabled for Kubelet.
 		// TODO(feiskyer): print different error message for Kubelet and controller-manager, as they're
 		// requiring different credential settings.
-		if !config.UseInstanceMetadata && config.CloudConfigType == cloudConfigTypeFile {
-			return fmt.Errorf("useInstanceMetadata must be enabled without Azure credentials")
-		}
+
+		// if !config.UseInstanceMetadata && config.CloudConfigType == cloudConfigTypeFile {
+		// 	return fmt.Errorf("useInstanceMetadata must be enabled without Azure credentials")
+		// }
 
 		klog.V(2).Infof("Azure cloud provider is starting without credentials")
 	} else if err != nil {
 		return err
 	}
 
-	// resourceRequestBackoff := az.setCloudProviderBackoffDefaults(config)
-
-	// err = az.setLBDefaults(config)
-	// if err != nil {
-	// 	return err
-	// }
-
 	az.Config = *config
 	az.Environment = *env
-	// az.ResourceRequestBackoff = resourceRequestBackoff
-	// az.Metadata, err = NewInstanceMetadataService(ImdsServer)
+
 	if err != nil {
 		return err
 	}
@@ -309,23 +283,7 @@ func (az *Cloud) InitializeCloudFromConfig(ctx context.Context, config *Config, 
 		return err
 	}
 
-	// if az.MaximumLoadBalancerRuleCount == 0 {
-	// 	az.MaximumLoadBalancerRuleCount = MaximumLoadBalancerRuleCount
-	// }
-
 	return nil
-}
-
-// func (az *Cloud) isLBBackendPoolTypeNodeIPConfig() bool {
-// 	return strings.EqualFold(az.LoadBalancerBackendPoolConfigurationType, LoadBalancerBackendPoolConfigurationTypeNodeIPConfiguration)
-// }
-
-// func (az *Cloud) isLBBackendPoolTypeNodeIP() bool {
-// 	return strings.EqualFold(az.LoadBalancerBackendPoolConfigurationType, LoadBalancerBackendPoolConfigurationTypeNodeIP)
-// }
-
-func (az *Cloud) isStackCloud() bool {
-	return strings.EqualFold(az.Config.Cloud, AzureStackCloudName) && !az.Config.DisableAzureStackCloud
 }
 
 func (az *Cloud) configureMultiTenantClients(servicePrincipalToken *adal.ServicePrincipalToken) error {
@@ -345,31 +303,6 @@ func (az *Cloud) configureMultiTenantClients(servicePrincipalToken *adal.Service
 
 	az.configAzureClients(servicePrincipalToken, multiTenantServicePrincipalToken, networkResourceServicePrincipalToken)
 	return nil
-}
-
-// ListVirtualMachines invokes az.VirtualMachinesClient.List with exponential backoff retry
-func (az *Cloud) ListVirtualMachines(resourceGroup string) ([]armcompute.VirtualMachine, error) {
-	ctx, cancel := getContextWithCancel()
-	defer cancel()
-
-	pager := az.VMClient.NewListPager(resourceGroup, nil)
-	var allNodes []armcompute.VirtualMachine
-	for pager.More() {
-		page, err := pager.NextPage(ctx)
-		if err != nil {
-			klog.Fatalf("failed to advance page: %v", err)
-		}
-		for _, node := range page.Value {
-			allNodes = append(allNodes, *node)
-		}
-	}
-	klog.V(6).Infof("VirtualMachinesClient.List(%v) success", resourceGroup)
-	return allNodes, nil
-}
-
-// ProviderName returns the cloud provider ID.
-func (az *Cloud) ProviderName() string {
-	return CloudProviderName
 }
 
 func (az *Cloud) configAzureClients(

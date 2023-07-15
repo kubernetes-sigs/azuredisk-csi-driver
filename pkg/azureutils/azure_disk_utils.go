@@ -674,8 +674,6 @@ func GetCloudProviderFromClient(
 	if azdiskConfig.NodeConfig.NodeID == "" {
 		// Disable UseInstanceMetadata for controller to mitigate a timeout issue using IMDS
 		// https://github.com/kubernetes-sigs/azuredisk-csi-driver/issues/168
-		klog.V(2).Infof("disable UseInstanceMetadata for controller")
-		az.Config.UseInstanceMetadata = false
 
 		if az.VMType == cloudproviderconsts.VMTypeStandard && az.DisableAvailabilitySetNodes {
 			klog.V(2).Infof("set DisableAvailabilitySetNodes as false since VMType is %s", az.VMType)

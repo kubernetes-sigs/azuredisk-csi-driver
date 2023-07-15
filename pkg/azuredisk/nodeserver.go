@@ -329,10 +329,16 @@ func (d *Driver) NodeGetInfo(ctx context.Context, req *csi.NodeGetInfoRequest) (
 		if d.getNodeInfoFromLabels {
 			failureDomainFromLabels, instanceTypeFromLabels, err = getNodeInfoFromLabels(ctx, d.NodeID, d.cloud.KubeClient)
 		} else {
-			if runtime.GOOS == "windows" && (!d.cloud.UseInstanceMetadata || d.cloud.Metadata == nil) {
+			if runtime.GOOS == "windows" {
 				zone, err = d.cloud.GetZoneByNodeName(ctx, d.NodeID)
 			} else {
-				zone, err = d.cloud.GetZone(ctx)
+				hostname, err := os.Hostname()
+				if err != nil {
+					zone = cloudprovider.Zone{}
+					err = fmt.Errorf("failure getting hostname from kernel")
+				} else {
+					zone, err = d.cloud.GetZoneByNodeName(ctx, strings.ToLower(hostname))
+				}
 			}
 			if err != nil {
 				klog.Warningf("get zone(%s) failed with: %v, fall back to get zone from node labels", d.NodeID, err)
@@ -361,10 +367,11 @@ func (d *Driver) NodeGetInfo(ctx context.Context, req *csi.NodeGetInfoRequest) (
 				_, instanceTypeFromLabels, err = getNodeInfoFromLabels(ctx, d.NodeID, d.cloud.KubeClient)
 			}
 		} else {
-			if runtime.GOOS == "windows" && d.cloud.UseInstanceMetadata && d.cloud.Metadata != nil {
-				metadata, err := d.cloud.Metadata.GetMetadata(azureutils.CacheReadTypeDefault)
-				if err == nil && metadata.Compute != nil {
-					instanceType = metadata.Compute.VMSize
+			if runtime.GOOS == "windows" {
+				entry, err := d.cloud.GetVMSSVM(ctx, d.NodeID)
+				if err == nil && entry.VM != nil && entry.VM.Properties != nil && entry.VM.Properties.HardwareProfile != nil &&
+					entry.VM.Properties.HardwareProfile.VMSize != nil {
+					instanceType = string(*entry.VM.Properties.HardwareProfile.VMSize)
 					klog.V(5).Infof("NodeGetInfo: nodeName(%s), VM Size(%s)", d.NodeID, instanceType)
 				} else {
 					klog.Warningf("get instance type(%s) failed with: %v", d.NodeID, err)

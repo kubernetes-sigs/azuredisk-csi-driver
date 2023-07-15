@@ -19,6 +19,7 @@ package provisioner
 import (
 	"context"
 	"fmt"
+	"os"
 	"path"
 	"reflect"
 	"runtime"
@@ -147,10 +148,16 @@ func (c *CloudProvisioner) GetFailureDomain(ctx context.Context, nodeID string) 
 	var zone cloudprovider.Zone
 	var err error
 
-	if runtime.GOOS == "windows" && (!c.cloud.UseInstanceMetadata || c.cloud.Metadata == nil) {
+	if runtime.GOOS == "windows" {
 		zone, err = c.cloud.GetZoneByNodeName(ctx, nodeID)
 	} else {
-		zone, err = c.cloud.GetZone(ctx)
+		hostname, err := os.Hostname()
+		if err != nil {
+			zone = cloudprovider.Zone{}
+			err = fmt.Errorf("failure getting hostname from kernel")
+		} else {
+			zone, err = c.cloud.GetZoneByNodeName(ctx, strings.ToLower(hostname))
+		}
 	}
 
 	if err != nil {
@@ -164,30 +171,26 @@ func (c *CloudProvisioner) GetInstanceType(ctx context.Context, nodeID string) (
 	var err error
 
 	if runtime.GOOS == "windows" {
-		// var metadata *azureutils.InstanceMetadata
-		// metadata, err = c.cloud.Metadata.GetMetadata(azureutils.CacheReadTypeDefault)
-		// if err == nil && metadata.Compute != nil {
-		// 	return metadata.Compute.VMSize, nil
-		// }
+		entry, err := c.cloud.GetVMSSVM(ctx, nodeID)
 
+		if err == nil && entry.VM != nil && entry.VM.Properties != nil && entry.VM.Properties.HardwareProfile != nil &&
+			entry.VM.Properties.HardwareProfile.VMSize != nil {
+			return string(*entry.VM.Properties.HardwareProfile.VMSize), nil
+		}
+
+		klog.Warningf("failed to get instance type from metadata for node %s: %v", nodeID, err)
+	} else {
+		klog.Infof("value for instance: %+v, %b", c, true)
 		entry, err := c.cloud.GetVMSSVM(ctx, nodeID)
 		if err != nil {
 			return "", err
 		}
 
-		if entry.VM != nil && entry.VM.Properties != nil && entry.VM.Properties.HardwareProfile != nil && entry.VM.Properties.HardwareProfile.VMSize != nil {
-			return *entry.VM.Properties.HardwareProfile.VMSize, nil
+		if entry.VM != nil && entry.VM.SKU != nil && entry.VM.SKU.Name != nil {
+			return *entry.VM.SKU.Name, nil
 		}
 
-		klog.Warningf("failed to get instance type from metadata for node %s: %v", nodeID, err)
-	} else {
-		instances, ok := c.cloud.Instances()
-		klog.Infof("value for instance: %+v, %b", instances, ok)
-		if ok {
-			return instances.InstanceType(ctx, types.NodeName(nodeID))
-		}
-
-		klog.Warningf("failed to get instances from cloud provider: %b, %b", instances == nil, ok)
+		klog.Warningf("failed to get instances from cloud provider: %b, %b", c == nil, true)
 	}
 
 	if err == nil {
