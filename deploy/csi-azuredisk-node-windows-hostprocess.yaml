@@ -84,7 +84,6 @@ spec:
             - --v=5
             - --endpoint=$(CSI_ENDPOINT)
             - --nodeid=$(KUBE_NODE_NAME)
-            - --kubeconfig=C:\\k\\config
             - --allow-empty-cloud-config=true
             - --enable-windows-host-process=true
           env:
