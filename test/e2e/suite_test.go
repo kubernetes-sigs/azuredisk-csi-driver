@@ -39,7 +39,7 @@ import (
 	"sigs.k8s.io/azuredisk-csi-driver/test/utils/azure"
 	"sigs.k8s.io/azuredisk-csi-driver/test/utils/credentials"
 	"sigs.k8s.io/azuredisk-csi-driver/test/utils/testutil"
-	"sigs.k8s.io/cloud-provider-azure/pkg/provider"
+	// "sigs.k8s.io/cloud-provider-azure/pkg/provider"
 )
 
 const (
@@ -49,7 +49,7 @@ const (
 
 var (
 	skipClusterBootstrap = flag.Bool("skip-cluster-bootstrap", false, "flag to indicate that we can skip cluster bootstrap.")
-	azureCloud           *provider.Cloud
+	azureCloud           *azureutils.Cloud
 	location             string
 )
 
@@ -99,8 +99,8 @@ var _ = ginkgo.BeforeSuite(func() {
 		}
 
 		os.Setenv("AZURE_CREDENTIAL_FILE", testconsts.TempAzureCredentialFilePath)
-		// kubeconfig := os.Getenv(testconsts.KubeconfigEnvVar)
-		// kubeclient, err := azureutils.GetKubeClient(kubeconfig)
+		kubeconfig := os.Getenv(testconsts.KubeconfigEnvVar)
+		kubeclient, err := azureutils.GetKubeClient(kubeconfig)
 		gomega.Expect(err).NotTo(gomega.HaveOccurred())
 		azdiskConfig := azuredisk.NewDefaultDriverConfig()
 		azureCloud, err = azureutils.GetCloudProviderFromClient(

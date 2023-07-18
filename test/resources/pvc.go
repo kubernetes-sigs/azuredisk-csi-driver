@@ -23,7 +23,8 @@ import (
 
 	"github.com/onsi/ginkgo/v2"
 	"github.com/onsi/gomega"
-	"sigs.k8s.io/cloud-provider-azure/pkg/provider"
+	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
+	// "sigs.k8s.io/cloud-provider-azure/pkg/provider"
 
 	v1 "k8s.io/api/core/v1"
 	storagev1 "k8s.io/api/storage/v1"
@@ -192,7 +193,7 @@ func (t *TestPersistentVolumeClaim) DeleteBoundPersistentVolume() {
 	framework.ExpectNoError(err)
 }
 
-func (t *TestPersistentVolumeClaim) DeleteBackingVolume(azureCloud *provider.Cloud) {
+func (t *TestPersistentVolumeClaim) DeleteBackingVolume(azureCloud *azureutils.Cloud) {
 	diskURI := t.PersistentVolume.Spec.CSI.VolumeHandle
 	ginkgo.By(fmt.Sprintf("deleting azuredisk volume %q", diskURI))
 	err := azureCloud.DeleteManagedDisk(context.Background(), diskURI)

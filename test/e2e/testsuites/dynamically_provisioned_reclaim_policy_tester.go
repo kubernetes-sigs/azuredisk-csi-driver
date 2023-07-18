@@ -17,10 +17,11 @@ limitations under the License.
 package testsuites
 
 import (
+	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
 	"sigs.k8s.io/azuredisk-csi-driver/test/e2e/driver"
 	"sigs.k8s.io/azuredisk-csi-driver/test/resources"
 
-	"sigs.k8s.io/cloud-provider-azure/pkg/provider"
+	// "sigs.k8s.io/cloud-provider-azure/pkg/provider"
 
 	v1 "k8s.io/api/core/v1"
 	storagev1 "k8s.io/api/storage/v1"
@@ -32,7 +33,7 @@ import (
 type DynamicallyProvisionedReclaimPolicyTest struct {
 	CSIDriver              driver.DynamicPVTestDriver
 	Volumes                []resources.VolumeDetails
-	AzureCloud             *provider.Cloud
+	AzureCloud             *azureutils.Cloud
 	StorageClassParameters map[string]string
 }
 
