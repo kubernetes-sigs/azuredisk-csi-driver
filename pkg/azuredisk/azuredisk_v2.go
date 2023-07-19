@@ -75,6 +75,7 @@ func newDriverV2(options *DriverOptions) *DriverV2 {
 	driver.customUserAgent = options.CustomUserAgent
 	driver.userAgentSuffix = options.UserAgentSuffix
 	driver.useCSIProxyGAInterface = options.UseCSIProxyGAInterface
+	driver.enableOtelTracing = options.EnableOtelTracing
 	driver.ioHandler = azureutils.NewOSIOHandler()
 	driver.hostUtil = hostutil.NewHostUtil()
 
@@ -167,7 +168,7 @@ func (d *DriverV2) Run(endpoint, kubeconfig string, disableAVSetNodes, testingMo
 
 	s := csicommon.NewNonBlockingGRPCServer()
 	// Driver d act as IdentityServer, ControllerServer and NodeServer
-	s.Start(endpoint, d, d, d, testingMock)
+	s.Start(endpoint, d, d, d, testingMock, d.enableOtelTracing)
 	s.Wait()
 }
 

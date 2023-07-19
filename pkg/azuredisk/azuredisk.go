@@ -74,6 +74,7 @@ type DriverOptions struct {
 	VMType                       string
 	EnableWindowsHostProcess     bool
 	GetNodeIDFromIMDS            bool
+	EnableOtelTracing            bool
 }
 
 // CSIDriver defines the interface for a CSI driver.
@@ -121,6 +122,7 @@ type DriverCore struct {
 	vmType                       string
 	enableWindowsHostProcess     bool
 	getNodeIDFromIMDS            bool
+	enableOtelTracing            bool
 }
 
 // Driver is the v1 implementation of the Azure Disk CSI Driver.
@@ -161,6 +163,7 @@ func newDriverV1(options *DriverOptions) *Driver {
 	driver.vmType = options.VMType
 	driver.enableWindowsHostProcess = options.EnableWindowsHostProcess
 	driver.getNodeIDFromIMDS = options.GetNodeIDFromIMDS
+	driver.enableOtelTracing = options.EnableOtelTracing
 	driver.volumeLocks = volumehelper.NewVolumeLocks()
 	driver.ioHandler = azureutils.NewOSIOHandler()
 	driver.hostUtil = hostutil.NewHostUtil()
@@ -278,7 +281,7 @@ func (d *Driver) Run(endpoint, kubeconfig string, disableAVSetNodes, testingMock
 
 	s := csicommon.NewNonBlockingGRPCServer()
 	// Driver d act as IdentityServer, ControllerServer and NodeServer
-	s.Start(endpoint, d, d, d, testingMock)
+	s.Start(endpoint, d, d, d, testingMock, d.enableOtelTracing)
 	s.Wait()
 }
 
