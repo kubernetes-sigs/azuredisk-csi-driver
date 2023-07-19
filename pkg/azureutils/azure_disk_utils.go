@@ -1220,15 +1220,19 @@ func UpdateCRIWithRetry(ctx context.Context, informerFactory azdiskinformers.Sha
 				updatedObj, err = azDiskClient.DiskV1beta2().AzVolumes(target.Namespace).Update(ctx, target, metav1.UpdateOptions{})
 			}
 		case *azdiskv1beta2.AzVolumeAttachment:
-			klog.Infof("line 1249 original status: %+v object status: %+v", originalObj.(*azdiskv1beta2.AzVolumeAttachment).Status, target.Status)
+			klog.Infof("line 1223 original status: %+v object status: %+v", originalObj.(*azdiskv1beta2.AzVolumeAttachment).Status, target.Status)
 			if (updateMode&UpdateCRIStatus) != 0 && !reflect.DeepEqual(originalObj.(*azdiskv1beta2.AzVolumeAttachment).Status, target.Status) {
+				klog.Infof("line 1225 original status: %+v object status: %+v", originalObj.(*azdiskv1beta2.AzVolumeAttachment).Status, target.Status)
 				if updatedObj, err = azDiskClient.DiskV1beta2().AzVolumeAttachments(target.Namespace).UpdateStatus(ctx, target, metav1.UpdateOptions{}); err != nil {
 					return err
 				}
 			}
+			klog.Infof("line 1229 original status: %+v object status: %+v", originalObj.(*azdiskv1beta2.AzVolumeAttachment).Status, target.Status)
 			if (updateMode & UpdateCRI) != 0 {
+				klog.Infof("line 1232 original status: %+v object status: %+v", originalObj.(*azdiskv1beta2.AzVolumeAttachment).Status, target.Status)
 				updatedObj, err = azDiskClient.DiskV1beta2().AzVolumeAttachments(target.Namespace).Update(ctx, target, metav1.UpdateOptions{})
 			}
+			klog.Infof("line 1235 original status: %+v object status: %+v", originalObj.(*azdiskv1beta2.AzVolumeAttachment).Status, target.Status)
 		case *azdiskv1beta2.AzDriverNode:
 			if (updateMode&UpdateCRIStatus) != 0 && !reflect.DeepEqual(originalObj.(*azdiskv1beta2.AzDriverNode).Status, target.Status) {
 				if updatedObj, err = azDiskClient.DiskV1beta2().AzDriverNodes(target.Namespace).UpdateStatus(ctx, target, metav1.UpdateOptions{}); err != nil {

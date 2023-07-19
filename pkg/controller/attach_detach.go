@@ -323,7 +323,6 @@ func (r *ReconcileAttachDetach) triggerAttach(ctx context.Context, azVolumeAttac
 			updatedObj, _ = azureutils.UpdateCRIWithRetry(goCtx, nil, r.cachedClient, r.azClient, azVolumeAttachment, updateFunc, consts.ForcedUpdateMaxNetRetry, azureutils.UpdateCRIStatus)
 			azVolumeAttachment = updatedObj.(*azdiskv1beta2.AzVolumeAttachment)
 			klog.Infof("attach_detach line 316 azvolumeattachment: %+v", azVolumeAttachment)
-			klog.Infof("returning from handle success")
 		}
 
 		attachAndUpdate()

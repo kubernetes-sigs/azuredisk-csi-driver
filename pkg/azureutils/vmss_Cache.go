@@ -181,6 +181,16 @@ func (c *Cloud) getVMFromClient(ctx context.Context, scaleSetName, instanceID st
 	return &resVM.VirtualMachineScaleSetVM
 }
 
+func (c *Cloud) DeleteVMFromCache(nodeName string) {
+	_, vmssEntry, found := c.getVMSSFromNodeName(nodeName)
+	if !found {
+		klog.Infof("node's scaleset not found")
+		return
+	}
+
+	vmssEntry.VMCache.Delete(nodeName)
+}
+
 func (c *Cloud) getVMSSFromNodeName(nodeName string) (string, *VMSSCacheEntry, bool) {
 	scaleSetName := nodeName[:(len(nodeName) - 6)]
 

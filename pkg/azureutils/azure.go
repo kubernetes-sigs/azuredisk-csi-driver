@@ -337,12 +337,31 @@ func (az *Cloud) GetZoneByNodeName(ctx context.Context, nodeName string) (cloudp
 	}
 	zones := entry.VM.Zones
 
-	zoneID, err := strconv.Atoi(*zones[0])
-	if err != nil {
-		return cloudprovider.Zone{}, fmt.Errorf("failed to parse zone %v", err)
-	}
+	// zoneID, err := strconv.Atoi(*zones[0])
+	// if err != nil {
+	// 	return cloudprovider.Zone{}, fmt.Errorf("failed to parse zone %v", err)
+	// }
 
-	failureDomain := fmt.Sprintf("%s-%d", strings.ToLower(*entry.VM.Location), zoneID)
+	// failureDomain := fmt.Sprintf("%s-%d", strings.ToLower(*entry.VM.Location), zoneID)
+
+	var failureDomain string
+	if zones != nil && len(zones) > 0 {
+		zoneID, err := strconv.Atoi(*zones[0])
+		if err != nil {
+			return cloudprovider.Zone{}, fmt.Errorf("failed to parse zone %v", err)
+		}
+
+		failureDomain = fmt.Sprintf("%s-%d", strings.ToLower(*entry.VM.Location), zoneID)
+	} else if entry.VM.Properties.InstanceView != nil &&
+		entry.VM.Properties.InstanceView.PlatformFaultDomain != nil {
+		// Availability zone is not used for the node, falling back to fault domain.
+		failureDomain = strconv.Itoa(int(*entry.VM.Properties.InstanceView.PlatformFaultDomain))
+	} else {
+		err = fmt.Errorf("failed to get zone info")
+		klog.Errorf("GetZoneByNodeName: got unexpected error %v", err)
+		az.DeleteVMFromCache(nodeName)
+		return cloudprovider.Zone{}, err
+	}
 
 	return cloudprovider.Zone{
 		FailureDomain: strings.ToLower(failureDomain),

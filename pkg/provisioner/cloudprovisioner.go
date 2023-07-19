@@ -712,7 +712,7 @@ func (c *CloudProvisioner) PublishVolume(
 		var cachingMode armcompute.CachingTypes
 		if cachingMode, err = azureutils.GetCachingMode(volumeContext); err != nil {
 			err = status.Error(codes.Internal, err.Error())
-			return
+			return 
 		}
 
 		if disk.Properties.DiskSizeGB != nil && *disk.Properties.DiskSizeGB >= int32(diskCachingLimit) && cachingMode != armcompute.CachingTypesNone {
@@ -731,7 +731,12 @@ func (c *CloudProvisioner) PublishVolume(
 			var resultErr error
 			var resultLun int32
 			ctx, w := workflow.New(ctx)
-			defer func() { w.Finish(resultErr) }()
+			defer func() { 
+				attachResult.ResultChannel() <- resultErr
+				close(attachResult.ResultChannel())
+
+				w.Finish(resultErr) 
+			}()
 
 			// resultLun, resultErr = c.cloud.AttachDisk(ctx, asyncAttach, diskName, volumeID, nodeName, cachingMode, disk)
 			// attachResult.ResultChannel() <- resultErr
@@ -755,8 +760,8 @@ func (c *CloudProvisioner) PublishVolume(
 			// }
 			// instanceID := fmt.Sprintf("%d", id)
 
-			scaleSetName, instanceID, err := GetInstanceIDAndScaleSetNameFromNodeName(string(nodeName))
-			if err != nil {
+			scaleSetName, instanceID, resultErr := GetInstanceIDAndScaleSetNameFromNodeName(string(nodeName))
+			if resultErr != nil {
 				klog.Fatalf("failed to get instance id and vmss name from node name: %v", err)
 			}
 
@@ -777,13 +782,13 @@ func (c *CloudProvisioner) PublishVolume(
 			// }
 			// storageProfile := resp.VirtualMachineScaleSetVM.Properties.StorageProfile
 
-			vmEntry, err := c.cloud.GetVMSSVM(ctx, string(nodeName))
+			vmEntry, resultErr := c.cloud.GetVMSSVM(ctx, string(nodeName))
 			klog.Infof("original vmss: %+v vm: %+v id: %+v vs returned vmss: %+v vm: %+v id: %+v", fullScaleSetName, string(nodeName), instanceID, *vmEntry.VMSSName, *vmEntry.Name, *vmEntry.InstanceID)
 			klog.Infof("vm:")
-			storageProfile := vmEntry.VM.Properties.StorageProfile
-			if err != nil {
+			if resultErr != nil {
 				klog.Fatalf("failed to get storage profile: %v", err)
 			}
+			storageProfile := vmEntry.VM.Properties.StorageProfile
 			disks := storageProfile.DataDisks
 
 			klog.Infof("line 766 scaleSetName: %+v fullSSName: %+v instanceID: %+v nodeName: %+v", scaleSetName, fullScaleSetName, instanceID, nodeName)
@@ -802,7 +807,7 @@ func (c *CloudProvisioner) PublishVolume(
 						attached = true
 						break
 					} else {
-						klog.Fatalf("disk(%s) already attached to node(%s) on LUN(%d), but target LUN is %d", volumeID, nodeName, *disk.Lun, lun)
+						resultErr = fmt.Errorf("disk(%s) already attached to node(%s) on LUN(%d), but target LUN is %d", volumeID, nodeName, *disk.Lun, lun)
 					}
 				}
 				usedLuns[*disk.Lun] = true
@@ -875,22 +880,22 @@ func (c *CloudProvisioner) PublishVolume(
 			klog.Infof("new VM: %+v", newVM)
 
 			klog.Infof("line 852 client: %+v", vmssVMClient)
-			poller, err := vmssVMClient.BeginUpdate(ctx, c.cloud.ResourceGroup, scaleSetName, instanceID, newVM, nil)
-			if err != nil {
+			poller, resultErr := vmssVMClient.BeginUpdate(ctx, c.cloud.ResourceGroup, scaleSetName, instanceID, newVM, nil)
+			if resultErr != nil {
 				klog.Fatalf("failed to finish the request: %v", err)
 			}
-			_, err = poller.PollUntilDone(ctx, nil)
-			if err != nil {
+			_, resultErr = poller.PollUntilDone(ctx, nil)
+			if resultErr != nil {
 				klog.Fatalf("failed to pull the result: %v", err)
 			} else {
 				w.Logger().V(2).Infof("attach operation successful: volume %q attached to node %q.", volumeID, nodeName)
 			}
 
-			resultLun, err = GetDiskLun(diskName, volumeID, disks)
-			if err != nil {
+			resultLun, resultErr = GetDiskLun(diskName, volumeID, disks)
+			if resultErr != nil {
 				klog.Fatalf("failed to find disk lun: %v", err)
-				return
 			}
+
 			resultLunCh <- resultLun
 			close(resultLunCh)
 		}()
