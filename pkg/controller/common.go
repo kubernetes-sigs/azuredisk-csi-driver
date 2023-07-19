@@ -160,9 +160,13 @@ type operationQueue struct {
 	isActive        bool
 }
 
-func (q *operationQueue) remove(element *list.Element) {
-	// operationQueue might have been cleared before the lock was acquired
-	// so always check if the list is empty or not before removing object from the queue, otherwise it would set the underlying length of the queue to be < 0, causing issues
+// Remove the element from the queue if the queue is not empty and the element
+// is in the list.
+//
+// Because the queue may have been cleared while the element is in use, this
+// function checks if the queue is empty before removing the element to prevent
+// underflow of the queue length.
+func (q *operationQueue) safeRemove(element *list.Element) {
 	if q.Front() != nil {
 		_ = q.Remove(element)
 	}
