@@ -545,24 +545,24 @@ func Minor(dev uint64) uint32 {
  * Expose the ioctl function
  */
 
-//sys	ioctlRet(fd int, req int, arg uintptr) (ret int, err error) = libc.ioctl
-//sys	ioctlPtrRet(fd int, req int, arg unsafe.Pointer) (ret int, err error) = libc.ioctl
+//sys	ioctlRet(fd int, req uint, arg uintptr) (ret int, err error) = libc.ioctl
+//sys	ioctlPtrRet(fd int, req uint, arg unsafe.Pointer) (ret int, err error) = libc.ioctl
 
 func ioctl(fd int, req int, arg uintptr) (err error) {
 	_, err = ioctlRet(fd, req, arg)
 	return err
 }
 
-func ioctlPtr(fd int, req int, arg unsafe.Pointer) (err error) {
+func ioctlPtr(fd int, req uint, arg unsafe.Pointer) (err error) {
 	_, err = ioctlPtrRet(fd, req, arg)
 	return err
 }
 
-func IoctlSetTermio(fd int, req int, value *Termio) error {
+func IoctlSetTermio(fd int, req uint, value *Termio) error {
 	return ioctlPtr(fd, req, unsafe.Pointer(value))
 }
 
-func IoctlGetTermio(fd int, req int) (*Termio, error) {
+func IoctlGetTermio(fd int, req uint) (*Termio, error) {
 	var value Termio
 	err := ioctlPtr(fd, req, unsafe.Pointer(&value))
 	return &value, err
@@ -1119,7 +1119,7 @@ func (l *Lifreq) GetLifruUint() uint {
 	return *(*uint)(unsafe.Pointer(&l.Lifru[0]))
 }
 
-func IoctlLifreq(fd int, req int, l *Lifreq) error {
+func IoctlLifreq(fd int, req uint, l *Lifreq) error {
 	return ioctlPtr(fd, req, unsafe.Pointer(l))
 }
 
@@ -1130,6 +1130,6 @@ func (s *Strioctl) SetInt(i int) {
 	s.Dp = (*int8)(unsafe.Pointer(&i))
 }
 
-func IoctlSetStrioctlRetInt(fd int, req int, s *Strioctl) (int, error) {
+func IoctlSetStrioctlRetInt(fd int, req uint, s *Strioctl) (int, error) {
 	return ioctlPtrRet(fd, req, unsafe.Pointer(s))
 }

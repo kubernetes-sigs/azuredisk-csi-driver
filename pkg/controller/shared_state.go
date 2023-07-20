@@ -205,35 +205,41 @@ func (c *SharedState) addToOperationQueue(ctx context.Context, volumeName string
 	})
 	lockable.Unlock()
 
-	// if first operation, start goroutine
+	// If this is the first operation, start the goroutine
 	if isFirst {
 		go func() {
 			lockable.Lock()
 			defer lockable.Unlock()
+			operationQueue := lockable.entry.(*operationQueue)
+
 			for {
-				operationQueue := lockable.entry.(*operationQueue)
-				// pop the first operation
+				// Get the first operation exiting the loop if the queue is empty.
 				front := operationQueue.Front()
+				if front == nil {
+					break
+				}
+
 				operation := front.Value.(*replicaOperation)
 
-				// only run the operation if the operation requester is not enlisted in blacklist
+				// Only run the operation if the operation requester is not enlisted in blacklist
 				if !operationQueue.gcExclusionList.has(operation.requester) {
+
+					// Release the lock while executing the operation to avoid deadlocks.
 					lockable.Unlock()
 					err := operation.operationFunc(operation.ctx)
 					lockable.Lock()
+
 					if shouldRequeueReplicaOperation(operation.isReplicaGarbageCollection, err) {
-						// if operation failed, push it to the end of the queue
+						// If operation failed, push it to the end of the queue if the queue is
+						// still active.
 						if operationQueue.isActive {
 							operationQueue.PushBack(operation)
 						}
 					}
 				}
 
-				operationQueue.remove(front)
-				// there is no entry remaining, exit the loop
-				if operationQueue.Front() == nil {
-					break
-				}
+				// Remove the operation from the queue.
+				operationQueue.safeRemove(front)
 			}
 		}()
 	}
@@ -301,7 +307,7 @@ func (c *SharedState) dequeueGarbageCollection(volumeName string) {
 	for cur := queue.Front(); cur != nil; cur = next {
 		next = cur.Next()
 		if cur.Value.(*replicaOperation).isReplicaGarbageCollection {
-			queue.remove(cur)
+			queue.safeRemove(cur)
 		}
 	}
 }
@@ -1183,7 +1189,7 @@ func (c *SharedState) createReplicaRequestsQueue() {
 }
 
 // Removes replica requests from the priority queue and adds to operation queue.
-func (c *SharedState) tryCreateFailedReplicas(ctx context.Context, requestor operationRequester) {
+func (c *SharedState) tryCreateFailedReplicas(ctx context.Context, requester operationRequester) {
 	if atomic.SwapInt32(&c.processingReplicaRequestQueue, 1) == 0 {
 		ctx, w := workflow.New(ctx)
 		defer w.Finish(nil)
@@ -1192,7 +1198,7 @@ func (c *SharedState) tryCreateFailedReplicas(ctx context.Context, requestor ope
 			replicaRequest := requests[i]
 			c.addToOperationQueue(ctx,
 				replicaRequest.VolumeName,
-				requestor,
+				requester,
 				func(ctx context.Context) error {
 					return c.manageReplicas(ctx, replicaRequest.VolumeName)
 				},
