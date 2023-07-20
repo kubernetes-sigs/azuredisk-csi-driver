@@ -394,7 +394,7 @@ func (az *Cloud) AttachDiskBatchToNode(ctx context.Context, toBeAttachedDisks []
 					attached = true
 					break
 				} else {
-					klog.Fatalf("disk(%s) already attached to node(%s) on LUN(%d), but target LUN is %d", *tbaDisk.DiskURI, *entry.Name, *disk.Lun, *tbaDisk.Lun)
+					return fmt.Errorf("disk(%s) already attached to node(%s) on LUN(%d), but target LUN is %d", *tbaDisk.DiskURI, *entry.Name, *disk.Lun, *tbaDisk.Lun)
 				}
 			}
 			if *disk.Lun == *tbaDisk.Lun {
@@ -451,26 +451,16 @@ func (az *Cloud) AttachDiskBatchToNode(ctx context.Context, toBeAttachedDisks []
 		},
 	}
 
-	cred, err := azidentity.NewDefaultAzureCredential(nil)
+	poller, err := az.VMSSVMClient.BeginUpdate(ctx, az.ResourceGroup, *entry.VMSSName, *entry.InstanceID, newVM, nil)
 	if err != nil {
-		klog.Fatalf("failed to get new credential: %v", err)
-	}
-
-	vmssVmClient, err := armcompute.NewVirtualMachineScaleSetVMsClient(az.SubscriptionID, cred, nil)
-	if err != nil {
-		klog.Fatalf("failed to get client: %v", err)
-	}
-
-	poller, err := vmssVmClient.BeginUpdate(ctx, az.ResourceGroup, *entry.VMSSName, *entry.InstanceID, newVM, nil)
-	if err != nil {
-		klog.Fatalf("failed to finish request: %v", err)
+		return fmt.Errorf("failed to finish request: %v", err)
 	}
 
 	_, err = poller.PollUntilDone(ctx, nil)
 	if err != nil {
-		klog.Fatalf("failed to pull result: %v", err)
+		return fmt.Errorf("failed to pull result: %v", err)
 	} else {
-		klog.Infof("attach operation successful: volumes attached to node %q.", *entry.Name)
+		return fmt.Errorf("attach operation successful: volumes attached to node %q.", *entry.Name)
 	}
 }
 
