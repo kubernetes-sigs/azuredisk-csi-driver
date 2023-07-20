@@ -144,6 +144,20 @@ type ManagedDiskParameters struct {
 	Zoned                   string
 }
 
+type DiskOperationParams struct {
+	Name						*string
+	CachingType                 *armcompute.CachingTypes
+	CreateOption            	*armcompute.DiskCreateOptionTypes
+	DiskEncryptionSetID			*string
+	WriteAcceleratorEnabled 	*bool
+	DiskURI						*string
+	Lun							*int32
+	// update Lun is default to false, and will only be tru
+	// when the current lun is invalid (invalid lun or duplicate lun)
+	UpdateLun 					*bool
+}
+
+
 const (
 	Cached ClientOperationMode = iota
 	Uncached

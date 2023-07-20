@@ -1575,7 +1575,7 @@ func (c *CloudProvisioner) listVolumesInNodeResourceGroup(ctx context.Context, s
 		NextToken: nextTokenString,
 	}
 
-	return listVolumesResp, nil
+	return listVolumesResp, nil 
 }
 
 // listVolumesByResourceGroup is a helper function that updates the ListVolumeResponse_Entry slice and returns number of total visited volumes, number of volumes that needs to be visited and an error if found
@@ -1694,7 +1694,7 @@ func pickAvailabilityZone(requirement *azdiskv1beta2.TopologyRequirement, region
 }
 
 func (c *CloudProvisioner) isPerfOptimizationEnabled() bool {
-	return c.config.NodeConfig.EnablePerfOptimization
+	return c.config.NodeConfig.EnablePerfOptimization 
 }
 
 func GetLastSegment(ID, separator string) (string, error) {

@@ -8,12 +8,16 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"sync"
 
 	// "sync"
 	"time"
 
+	"github.com/Azure/azure-sdk-for-go/sdk/azcore/to"
 	"github.com/Azure/azure-sdk-for-go/sdk/azidentity"
 	armcompute "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute/v5"
+
+	"github.com/edreed/go-batch"
 
 	// armnetwork "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/network/armnetwork/v2"
 	"github.com/Azure/go-autorest/autorest/azure"
@@ -22,6 +26,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/resource"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/sets"
+	"k8s.io/utils/pointer"
 
 	// "k8s.io/apimachinery/pkg/util/wait"
 	clientset "k8s.io/client-go/kubernetes"
@@ -31,6 +36,12 @@ import (
 
 	"sigs.k8s.io/yaml"
 )
+
+type DiskOperationBatchProcessor struct {
+	toBeAttachedDisksMap		  *sync.Map
+	attachDiskProcessor			  *batch.Processor
+	detachDiskProcessor			  *batch.Processor
+}
 
 var (
 	// Master nodes are not added to standard load balancer by default.
@@ -114,6 +125,8 @@ type Cloud struct {
 	nodeInformerSynced cache.InformerSynced
 
 	VMSSVMCache *VMSSVMCache
+
+	DiskOperationBatchProcessor	  *DiskOperationBatchProcessor
 }
 
 type InitSecretConfig struct {
@@ -348,6 +361,184 @@ func (az *Cloud) GetZoneByNodeName(ctx context.Context, nodeName string) (cloudp
 		Region:        strings.ToLower(*entry.VM.Location),
 	}, nil
 }
+
+func NewDiskOperationBatchProcessor(az *Cloud) error {
+	attachBatch := func(ctx context.Context, key string, values []interface{}) ([]interface{}, error) {
+
+	}
+
+	detachBatch := func(ctx context.Context, key string, values []interface{}) ([]interface{}, error) {
+
+	}
+
+	az.DiskOperationBatchProcessor.attachDiskProcessor = batch.NewProcessor(attachBatch, nil)
+	az.DiskOperationBatchProcessor.detachDiskProcessor = batch.NewProcessor(detachBatch, nil)
+}
+
+func (az *Cloud) AttachDiskBatchToNode(ctx context.Context, toBeAttachedDisks []DiskOperationParams, entry *VMCacheEntry) (error){
+	var disks []*armcompute.DataDisk
+	if entry != nil && entry.VM != nil && entry.VM.Properties != nil && entry.VM.Properties.StorageProfile != nil && entry.VM.Properties.StorageProfile.DataDisks != nil {
+		disks = entry.VM.Properties.StorageProfile.DataDisks
+	} else {
+		return fmt.Errorf("failed to get vm's disks")
+	}
+
+	attached := false
+	usedLuns := make([]bool, len(disks)+1)
+	count := 0
+	for _, tbaDisk := range toBeAttachedDisks {
+		for _, disk := range disks {
+			count++
+			if disk.ManagedDisk != nil && strings.EqualFold(*disk.ManagedDisk.ID, strings.ToLower(*tbaDisk.DiskURI)) && disk.Lun != nil {
+				if *disk.Lun == *tbaDisk.Lun {
+					attached = true
+					break
+				} else {
+					klog.Fatalf("disk(%s) already attached to node(%s) on LUN(%d), but target LUN is %d", *tbaDisk.DiskURI, *entry.Name, *disk.Lun, *tbaDisk.Lun)
+				}
+			}
+			if *disk.Lun == *tbaDisk.Lun {
+				tbaDisk.UpdateLun = pointer.Bool(true)
+			}
+
+			usedLuns[*disk.Lun] = true
+		}
+
+		if attached {
+			klog.V(2).Infof("azureDisk - disk(%s) already attached to node(%s) on LUN(%d)", *tbaDisk.DiskURI, entry.Name, *tbaDisk.Lun)
+		} else {
+			storageProfile := entry.VM.Properties.StorageProfile
+			managedDisk := &armcompute.ManagedDiskParameters{ID: tbaDisk.DiskURI}
+			if *tbaDisk.DiskEncryptionSetID == "" {
+				if storageProfile.OSDisk != nil &&
+					storageProfile.OSDisk.ManagedDisk != nil &&
+					storageProfile.OSDisk.ManagedDisk.DiskEncryptionSet != nil &&
+					storageProfile.OSDisk.ManagedDisk.DiskEncryptionSet.ID != nil {
+					// set diskEncryptionSet as value of os disk by default
+					tbaDisk.DiskEncryptionSetID = storageProfile.OSDisk.ManagedDisk.DiskEncryptionSet.ID
+				}
+			}
+			if *tbaDisk.DiskEncryptionSetID != "" {
+				managedDisk.DiskEncryptionSet = &armcompute.DiskEncryptionSetParameters{ID: tbaDisk.DiskEncryptionSetID}
+			}
+			newDisk := &armcompute.DataDisk{
+				Name:                    tbaDisk.Name,
+				Caching:                 tbaDisk.CachingType,
+				CreateOption:            tbaDisk.CreateOption,
+				ManagedDisk:             managedDisk,
+				WriteAcceleratorEnabled: tbaDisk.WriteAcceleratorEnabled,
+			}
+			if *tbaDisk.Lun != -1 && *tbaDisk.UpdateLun != true {
+				newDisk.Lun = tbaDisk.Lun
+			} else {
+				for index, used := range usedLuns {
+					if !used {
+						newDisk.Lun = to.Ptr(int32(index))
+						klog.Infof("lun is -1 or duplicate, new lun is: %+v", index)
+						break
+					}
+				}
+			}
+			disks = append(disks, newDisk)
+		}
+	}
+
+	newVM := armcompute.VirtualMachineScaleSetVM{
+		Properties: &armcompute.VirtualMachineScaleSetVMProperties{
+			StorageProfile: &armcompute.StorageProfile{
+				DataDisks: disks,
+			},
+		},
+	}
+
+	cred, err := azidentity.NewDefaultAzureCredential(nil)
+	if err != nil {
+		klog.Fatalf("failed to get new credential: %v", err)
+	}
+
+	vmssVmClient, err := armcompute.NewVirtualMachineScaleSetVMsClient(az.SubscriptionID, cred, nil)
+	if err != nil {
+		klog.Fatalf("failed to get client: %v", err)
+	}
+
+	poller, err := vmssVmClient.BeginUpdate(ctx, az.ResourceGroup, *entry.VMSSName, *entry.InstanceID, newVM, nil)
+	if err != nil {
+		klog.Fatalf("failed to finish request: %v", err)
+	}
+
+	_, err = poller.PollUntilDone(ctx, nil)
+	if err != nil {
+		klog.Fatalf("failed to pull result: %v", err)
+	} else {
+		klog.Infof("attach operation successful: volumes attached to node %q.", *entry.Name)
+	}
+}
+
+func (az *Cloud) DetachDiskBatchFromNode(ctx context.Context, toBeDetachDisks []DiskOperationParams, entry *VMCacheEntry) (error) {
+	var disks []*armcompute.DataDisk
+	if entry != nil && entry.VM != nil && entry.VM.Properties != nil && entry.VM.Properties.StorageProfile != nil && entry.VM.Properties.StorageProfile.DataDisks != nil {
+		disks = entry.VM.Properties.StorageProfile.DataDisks
+	} else {
+		return fmt.Errorf("failed to get vm's disks")
+	}
+
+	var newDisks []*armcompute.DataDisk
+	var found bool
+
+	for _, tbdDisk := range toBeDetachDisks {
+		for i, disk := range disks {
+			if disk.Lun != nil && (disk.Name != nil && *tbdDisk.Name != "" && strings.EqualFold(*disk.Name, *tbdDisk.Name)) ||
+				(disk.Vhd != nil && disk.Vhd.URI != nil && *tbdDisk.DiskURI != "" && strings.EqualFold(*disk.Vhd.URI, *tbdDisk.DiskURI)) ||
+				(disk.ManagedDisk != nil && *tbdDisk.DiskURI != "" && strings.EqualFold(*disk.ManagedDisk.ID, *tbdDisk.DiskURI)) {
+				// found the disk
+				klog.V(2).Infof("azureDisk - detach disk: name %s uri %s", *tbdDisk.Name, *tbdDisk.DiskURI)
+				disks[i].ToBeDetached = pointer.Bool(true)
+				found = true
+			}
+		}
+
+		if !found {
+			klog.Warningf("to be detached disk(%s) on node(%s) not found", *tbdDisk.Name, *entry.Name)
+		} else {
+			for _, disk := range disks {
+				// if disk.ToBeDetached is true
+				if !pointer.BoolDeref(disk.ToBeDetached, false) {
+					newDisks = append(newDisks, disk)
+				}
+			}
+		}
+	}
+
+	newVM := armcompute.VirtualMachineScaleSetVM{
+		Properties: &armcompute.VirtualMachineScaleSetVMProperties{
+			StorageProfile: &armcompute.StorageProfile{
+				DataDisks: newDisks,
+			},
+		},
+	}
+
+	cred, err := azidentity.NewDefaultAzureCredential(nil)
+	if err != nil {
+		klog.Fatalf("failed to get new credential: %v", err)
+	}
+
+	vmssVmClient, err := armcompute.NewVirtualMachineScaleSetVMsClient(az.SubscriptionID, cred, nil)
+	if err != nil {
+		klog.Fatalf("failed to get client: %v", err)
+	}
+
+	poller, err := vmssVmClient.BeginUpdate(ctx, az.ResourceGroup, *entry.VMSSName, *entry.InstanceID, newVM, nil)
+	if err != nil {
+		klog.Fatalf("failed to finish request: %v", err)
+	}
+
+	_, err = poller.PollUntilDone(ctx, nil)
+	if err != nil {
+		klog.Fatalf("failed to pull result: %v", err)
+		return fmt.Errorf("could not detach volumes from node %q: %v", *entry.InstanceID, err)
+	}
+}
+
 
 // PLACEHOLDER
 // Initialize provides the cloud with a kubernetes client builder and may spawn goroutines
