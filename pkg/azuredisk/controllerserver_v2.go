@@ -1,8 +1,9 @@
+/*
 // go:build azurediskv2
 // go:build azurediskv2
-//go:build azurediskv2
+// go:build azurediskv2
 // +build azurediskv2
-
+*/
 /*
 Copyright 2017 The Kubernetes Authors.
 
