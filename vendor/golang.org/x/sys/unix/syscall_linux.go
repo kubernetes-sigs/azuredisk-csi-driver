@@ -1699,11 +1699,6 @@ func PtracePokeUser(pid int, addr uintptr, data []byte) (count int, err error) {
 	return ptracePoke(PTRACE_POKEUSR, PTRACE_PEEKUSR, pid, addr, data)
 }
 
-// elfNT_PRSTATUS is a copy of the debug/elf.NT_PRSTATUS constant so
-// x/sys/unix doesn't need to depend on debug/elf and thus
-// compress/zlib, debug/dwarf, and other packages.
-const elfNT_PRSTATUS = 1
-
 func PtraceGetRegs(pid int, regsout *PtraceRegs) (err error) {
 	return ptracePtr(PTRACE_GETREGS, pid, 0, unsafe.Pointer(regsout))
 }
@@ -1878,6 +1873,7 @@ func Getpgrp() (pid int) {
 //sys	OpenTree(dfd int, fileName string, flags uint) (r int, err error)
 //sys	PerfEventOpen(attr *PerfEventAttr, pid int, cpu int, groupFd int, flags int) (fd int, err error)
 //sys	PivotRoot(newroot string, putold string) (err error) = SYS_PIVOT_ROOT
+//sysnb	Prlimit(pid int, resource int, newlimit *Rlimit, old *Rlimit) (err error) = SYS_PRLIMIT64
 //sys	Prctl(option int, arg2 uintptr, arg3 uintptr, arg4 uintptr, arg5 uintptr) (err error)
 //sys	Pselect(nfd int, r *FdSet, w *FdSet, e *FdSet, timeout *Timespec, sigmask *Sigset_t) (n int, err error) = SYS_PSELECT6
 //sys	read(fd int, p []byte) (n int, err error)
@@ -1890,15 +1886,6 @@ func Getpgrp() (pid int) {
 //sysnb	Setsid() (pid int, err error)
 //sysnb	Settimeofday(tv *Timeval) (err error)
 //sys	Setns(fd int, nstype int) (err error)
-
-//go:linkname syscall_prlimit syscall.prlimit
-func syscall_prlimit(pid, resource int, newlimit, old *syscall.Rlimit) error
-
-func Prlimit(pid, resource int, newlimit, old *Rlimit) error {
-	// Just call the syscall version, because as of Go 1.21
-	// it will affect starting a new process.
-	return syscall_prlimit(pid, resource, (*syscall.Rlimit)(newlimit), (*syscall.Rlimit)(old))
-}
 
 // PrctlRetInt performs a prctl operation specified by option and further
 // optional arguments arg2 through arg5 depending on option. It returns a
@@ -2423,21 +2410,6 @@ func PthreadSigmask(how int, set, oldset *Sigset_t) error {
 		*oldset = Sigset_t{}
 	}
 	return rtSigprocmask(how, set, oldset, _C__NSIG/8)
-}
-
-//sysnb	getresuid(ruid *_C_int, euid *_C_int, suid *_C_int)
-//sysnb	getresgid(rgid *_C_int, egid *_C_int, sgid *_C_int)
-
-func Getresuid() (ruid, euid, suid int) {
-	var r, e, s _C_int
-	getresuid(&r, &e, &s)
-	return int(r), int(e), int(s)
-}
-
-func Getresgid() (rgid, egid, sgid int) {
-	var r, e, s _C_int
-	getresgid(&r, &e, &s)
-	return int(r), int(e), int(s)
 }
 
 /*
