@@ -187,7 +187,12 @@ func (c *CloudProvisioner) GetInstanceType(ctx context.Context, nodeID string) (
 		}
 
 		if resp.VirtualMachine.Properties != nil && resp.VirtualMachine.Properties.AvailabilitySet != nil {
-			resp, err := c.cloud.ASClient.Get(ctx, c.cloud.ResourceGroup, *resp.VirtualMachine.Properties.AvailabilitySet.ID, nil)
+			asName, err := GetLastSegment(*resp.VirtualMachine.Properties.AvailabilitySet.ID, "/")
+			if err != nil {
+				return "", fmt.Errorf("failed to get asName from availability set ID: %v", err)
+			}
+
+			resp, err := c.cloud.ASClient.Get(ctx, c.cloud.ResourceGroup, asName, nil)
 			if err != nil {
 				return "", err
 			}
@@ -197,7 +202,12 @@ func (c *CloudProvisioner) GetInstanceType(ctx context.Context, nodeID string) (
 			}
 
 		} else if resp.VirtualMachine.Properties != nil && resp.VirtualMachine.Properties.VirtualMachineScaleSet != nil {
-			resp, err := c.cloud.VMSSClient.Get(ctx, c.cloud.ResourceGroup, *resp.VirtualMachine.Properties.VirtualMachineScaleSet.ID, nil)
+			ssName, err := GetLastSegment(*resp.VirtualMachine.Properties.VirtualMachineScaleSet.ID, "/")
+			if err != nil {
+				return "", fmt.Errorf("failed to get ssName from scale set ID: %v", err)
+			}
+
+			resp, err := c.cloud.VMSSClient.Get(ctx, c.cloud.ResourceGroup, ssName, nil)
 			if err != nil {
 				return "", err
 			}
