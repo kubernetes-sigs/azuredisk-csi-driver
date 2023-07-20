@@ -54,6 +54,10 @@ controller:
   attacherWorkerThreads: 1000
   vmssCacheTTLInSeconds: -1
   logLevel: 5
+  otelTracing:
+    enabled: false
+    otelServiceName: csi-azuredisk-controller
+    otelExporterEndpoint: "http://localhost:4317"
   tolerations:
     - key: "node-role.kubernetes.io/master"
       operator: "Exists"
@@ -177,6 +181,10 @@ linux:
   distro: debian # available values: debian, fedora
   enablePerfOptimization: true
   enableRegistrationProbe: true
+  otelTracing:
+    enabled: false
+    otelServiceName: csi-azuredisk-node
+    otelExporterEndpoint: "http://localhost:4317"
   tolerations:
     - operator: "Exists"
   hostNetwork: true # this setting could be disabled if perfProfile is `none`
@@ -222,6 +230,10 @@ windows:
   kubelet: 'C:\var\lib\kubelet'
   getNodeInfoFromLabels: false # get node info from node labels instead of IMDS
   enableRegistrationProbe: true
+  otelTracing:
+    enabled: false
+    otelServiceName: csi-azuredisk-node-win
+    otelExporterEndpoint: "http://localhost:4317"
   tolerations:
     - key: "node.kubernetes.io/os"
       operator: "Exists"
