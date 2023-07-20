@@ -16,7 +16,6 @@ import (
 	armcompute "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute/v5"
 
 	// armnetwork "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/network/armnetwork/v2"
-	"github.com/Azure/go-autorest/autorest/adal"
 	"github.com/Azure/go-autorest/autorest/azure"
 
 	v1 "k8s.io/api/core/v1"
@@ -109,6 +108,7 @@ type Cloud struct {
 	VMClient                      *armcompute.VirtualMachinesClient
 	SnapshotsClient               *armcompute.SnapshotsClient // placeholder
 	VirtualMachineScaleSetsClient *armcompute.VirtualMachineScaleSetsClient
+	VMSSVMClient				  *armcompute.VirtualMachineScaleSetVMsClient
 
 	// nodeInformerSynced is for determining if the informer has synced.
 	nodeInformerSynced cache.InformerSynced
@@ -277,38 +277,10 @@ func (az *Cloud) InitializeCloudFromConfig(ctx context.Context, config *Config, 
 		return nil
 	}
 
-	// If uses network resources in different AAD Tenant, then prepare corresponding Service Principal Token for VM/VMSS client and network resources client
-	err = az.configureMultiTenantClients(servicePrincipalToken)
-	if err != nil {
-		return err
-	}
-
 	return nil
 }
 
-func (az *Cloud) configureMultiTenantClients(servicePrincipalToken *adal.ServicePrincipalToken) error {
-	var err error
-	var multiTenantServicePrincipalToken *adal.MultiTenantServicePrincipalToken
-	var networkResourceServicePrincipalToken *adal.ServicePrincipalToken
-	if az.Config.UsesNetworkResourceInDifferentTenant() {
-		multiTenantServicePrincipalToken, err = GetMultiTenantServicePrincipalToken(&az.Config.AzureAuthConfig, &az.Environment)
-		if err != nil {
-			return err
-		}
-		networkResourceServicePrincipalToken, err = GetNetworkResourceServicePrincipalToken(&az.Config.AzureAuthConfig, &az.Environment)
-		if err != nil {
-			return err
-		}
-	}
-
-	az.configAzureClients(servicePrincipalToken, multiTenantServicePrincipalToken, networkResourceServicePrincipalToken)
-	return nil
-}
-
-func (az *Cloud) configAzureClients(
-	servicePrincipalToken *adal.ServicePrincipalToken,
-	multiTenantServicePrincipalToken *adal.MultiTenantServicePrincipalToken,
-	networkResourceServicePrincipalToken *adal.ServicePrincipalToken) {
+func (az *Cloud) configAzureClients() {
 
 	cred, err := azidentity.NewDefaultAzureCredential(nil)
 	if err != nil {
@@ -324,7 +296,15 @@ func (az *Cloud) configAzureClients(
 	if err != nil {
 		klog.Fatalf("failed to create client: %v", err)
 	}
+	az.SnapshotsClient, err = armcompute.NewSnapshotsClient(az.SubscriptionID, cred, nil)
+	if err != nil {
+		klog.Fatalf("failed to create client: %v", err)
+	}
 	az.VirtualMachineScaleSetsClient, err = armcompute.NewVirtualMachineScaleSetsClient(az.SubscriptionID, cred, nil)
+	if err != nil {
+		klog.Fatalf("failed to create client: %v", err)
+	}
+	az.VMSSVMClient, err = armcompute.NewVirtualMachineScaleSetVMsClient(az.SubscriptionID, cred, nil)
 	if err != nil {
 		klog.Fatalf("failed to create client: %v", err)
 	}

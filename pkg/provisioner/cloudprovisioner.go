@@ -19,6 +19,7 @@ package provisioner
 import (
 	"context"
 	"fmt"
+	"net/http"
 	"os"
 	"path"
 	"reflect"
@@ -31,8 +32,8 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
+	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/to"
-	"github.com/Azure/azure-sdk-for-go/sdk/azidentity"
 	armcompute "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute/v5"
 	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2022-03-01/compute"
 	"k8s.io/apimachinery/pkg/api/resource"
@@ -358,11 +359,6 @@ func (c *CloudProvisioner) CreateVolume(
 
 	diskThrottled := c.isGetDiskThrottled()
 
-	cred, err := azidentity.NewDefaultAzureCredential(nil)
-	if err != nil {
-		klog.Fatalf("failed to obtain new credential: %v", err)
-	}
-
 	klog.Infof("source id: %+v, source type: %+v", sourceID, sourceType)
 
 	creationData, err := azureutils.GetValidCreationData(c.cloud.SubscriptionID, diskParams.ResourceGroup, sourceID, sourceType)
@@ -450,14 +446,10 @@ func (c *CloudProvisioner) CreateVolume(
 		}
 	}
 
-	disksClient, err := armcompute.NewDisksClient(c.cloud.SubscriptionID, cred, nil)
-	if err != nil {
-		klog.Fatalf("failed to create client: %v", err)
-	}
-
 	// c.cloud.DisksClient = disksClient
 	klog.Infof("disk object: %+v", disk)
-	poller, err := disksClient.BeginCreateOrUpdate(ctx, diskParams.ResourceGroup, diskParams.DiskName, disk, nil)
+	klog.Infof("createvolume disk client: %+v", c.cloud.DisksClient)
+	poller, err := c.cloud.DisksClient.BeginCreateOrUpdate(ctx, diskParams.ResourceGroup, diskParams.DiskName, disk, nil)
 
 	if err != nil {
 		klog.Fatalf("failed to finish the request: %v", err)
@@ -506,14 +498,23 @@ func (c *CloudProvisioner) DeleteVolume(
 	}
 
 	disksClient := c.cloud.DisksClient
+	klog.Infof("deletevolume disk client: %+v", disksClient)
 	diskName := path.Base(volumeID)
-	fields := strings.Split(volumeID, "/")
-	if len(fields) != 9 || strings.ToLower(fields[3]) != "resourcegroups" {
-		return fmt.Errorf("invalid disk URI: %s", volumeID)
-	}
-	resourceGroup := fields[4]
 
-	poller, err := disksClient.BeginDelete(ctx, resourceGroup, diskName, nil)
+	resp, err := disksClient.Get(ctx, c.cloud.ResourceGroup, diskName, nil)
+	if err != nil {
+		rerr := err.(*azcore.ResponseError)
+		if rerr.StatusCode == http.StatusNotFound {
+			klog.Infof("disk %+v is already deleted", volumeID)
+			return nil
+		}
+	}
+
+	if resp.Disk.ManagedBy != nil {
+		return fmt.Errorf("disk %+v is in attached state", volumeID)
+	}
+
+	poller, err := disksClient.BeginDelete(ctx, c.cloud.ResourceGroup, diskName, nil)
 	if err != nil {
 		klog.Fatalf("failed to finish the request: %v", err)
 	}
@@ -592,15 +593,8 @@ func (c *CloudProvisioner) PublishVolume(
 	// if err != nil {
 	// 	klog.Fatalf("failed to finish request: %v", err)
 	// }
-
-	cred, err := azidentity.NewDefaultAzureCredential(nil)
-	if err != nil {
-		klog.Fatalf("failed to get new credential: %v", err)
-	}
-	vmssVMClient, err := armcompute.NewVirtualMachineScaleSetVMsClient(c.cloud.SubscriptionID, cred, nil)
-	if err != nil {
-		klog.Fatalf("failed to get client: %v", err)
-	}
+	vmssVMClient := c.cloud.VMSSVMClient
+	klog.Info("publishvolume vmssvm client: %+v", vmssVMClient)
 
 	providerID := ""
 	if disk.ManagedBy != nil {
@@ -762,7 +756,7 @@ func (c *CloudProvisioner) PublishVolume(
 
 			scaleSetName, instanceID, resultErr := GetInstanceIDAndScaleSetNameFromNodeName(string(nodeName))
 			if resultErr != nil {
-				klog.Fatalf("failed to get instance id and vmss name from node name: %v", err)
+				klog.Fatalf("failed to get instance id and vmss name from node name: %v", resultErr)
 			}
 
 			fullScaleSetName := fmt.Sprintf("/subscriptions/%s/resourceGroups/%s/providers/Microsoft.Compute/virtualMachineScaleSets/%s", c.cloud.SubscriptionID, c.cloud.ResourceGroup, scaleSetName)
@@ -786,7 +780,7 @@ func (c *CloudProvisioner) PublishVolume(
 			klog.Infof("original vmss: %+v vm: %+v id: %+v vs returned vmss: %+v vm: %+v id: %+v", fullScaleSetName, string(nodeName), instanceID, *vmEntry.VMSSName, *vmEntry.Name, *vmEntry.InstanceID)
 			klog.Infof("vm:")
 			if resultErr != nil {
-				klog.Fatalf("failed to get storage profile: %v", err)
+				klog.Fatalf("failed to get storage profile: %v", resultErr)
 			}
 			storageProfile := vmEntry.VM.Properties.StorageProfile
 			disks := storageProfile.DataDisks
@@ -869,6 +863,8 @@ func (c *CloudProvisioner) PublishVolume(
 				klog.Infof("disk: %+v", disk)
 			}
 
+			klog.Infof("number of disks publish: %+v", len(disks))
+
 			newVM := armcompute.VirtualMachineScaleSetVM{
 				Properties: &armcompute.VirtualMachineScaleSetVMProperties{
 					StorageProfile: &armcompute.StorageProfile{
@@ -882,19 +878,27 @@ func (c *CloudProvisioner) PublishVolume(
 			klog.Infof("line 852 client: %+v", vmssVMClient)
 			poller, resultErr := vmssVMClient.BeginUpdate(ctx, c.cloud.ResourceGroup, scaleSetName, instanceID, newVM, nil)
 			if resultErr != nil {
-				klog.Fatalf("failed to finish the request: %v", err)
+				klog.Fatalf("failed to finish the request: %v", resultErr)
 			}
 			_, resultErr = poller.PollUntilDone(ctx, nil)
 			if resultErr != nil {
-				klog.Fatalf("failed to pull the result: %v", err)
+				klog.Fatalf("failed to pull the result: %v", resultErr)
 			} else {
 				w.Logger().V(2).Infof("attach operation successful: volume %q attached to node %q.", volumeID, nodeName)
 			}
 
 			resultLun, resultErr = GetDiskLun(diskName, volumeID, disks)
 			if resultErr != nil {
-				klog.Fatalf("failed to find disk lun: %v", err)
+				klog.Fatalf("failed to find disk lun: %v", resultErr)
 			}
+
+			resp, err := vmssVMClient.Get(ctx, c.cloud.ResourceGroup, scaleSetName, instanceID, nil)
+			if err != nil {
+				klog.Fatalf("failed to get vm: %v", resultErr)
+			}
+
+			// update the cache
+			c.cloud.VMSSVMCache.SetVMSSAndVM(*vmEntry.VMSSName, *vmEntry.Name, *vmEntry.InstanceID, *vmEntry.ResourceGroup, &resp.VirtualMachineScaleSetVM)
 
 			resultLunCh <- resultLun
 			close(resultLunCh)
@@ -938,15 +942,8 @@ func (c *CloudProvisioner) UnpublishVolume(
 
 	klog.Infof("scaleset: %+v node name: %+v instanceID: %+v", scaleSetName, nodeName, instanceID)
 
-	cred, err := azidentity.NewDefaultAzureCredential(nil)
-	if err != nil {
-		klog.Fatalf("failed to get new credential: %v", err)
-	}
-
-	vmssVmClient, err := armcompute.NewVirtualMachineScaleSetVMsClient(c.cloud.SubscriptionID, cred, nil)
-	if err != nil {
-		klog.Fatalf("failed to get client: %v", err)
-	}
+	vmssVmClient := c.cloud.VMSSVMClient
+	klog.Infof("unpublishvolume vmssvm client: %+v", vmssVmClient)
 	vmEntry, err := c.cloud.GetVMSSVM(ctx, string(nodeName))
 	storageProfile := vmEntry.VM.Properties.StorageProfile
 	var disks []*armcompute.DataDisk
@@ -955,7 +952,11 @@ func (c *CloudProvisioner) UnpublishVolume(
 
 	found := false
 
+	klog.Infof("number of disks: %+v", len(disks))
+
 	for i, disk := range disks {
+		klog.Infof("diskName: %+v volumeID: %+v", diskName, volumeID)
+		klog.Infof("disk,Name: %+v disk.ManagedDisk.ID %+v", *disk.Name, *disk.ManagedDisk.ID)
 		if disk.Lun != nil && (disk.Name != nil && diskName != "" && strings.EqualFold(*disk.Name, diskName)) ||
 			(disk.Vhd != nil && disk.Vhd.URI != nil && volumeID != "" && strings.EqualFold(*disk.Vhd.URI, volumeID)) ||
 			(disk.ManagedDisk != nil && volumeID != "" && strings.EqualFold(*disk.ManagedDisk.ID, volumeID)) {
@@ -973,7 +974,7 @@ func (c *CloudProvisioner) UnpublishVolume(
 	} else {
 		for _, disk := range disks {
 			// if disk.ToBeDetached is true
-			if !pointer.BoolDeref(disk.ToBeDetached, false) {
+			if disk.ToBeDetached == nil || (disk.ToBeDetached != nil && *disk.ToBeDetached == false) {
 				newDisks = append(newDisks, disk)
 			}
 		}
@@ -1000,6 +1001,14 @@ func (c *CloudProvisioner) UnpublishVolume(
 		err = status.Errorf(codes.Internal, "could not detach volume %q from node %q: %v", volumeID, nodeID, err)
 		return err
 	}
+
+	resp, err := vmssVmClient.Get(ctx, c.cloud.ResourceGroup, scaleSetName, instanceID, nil)
+	if err != nil {
+		klog.Fatalf("failed to get vm: %v", err)
+	}
+
+	// update the cache
+	c.cloud.VMSSVMCache.SetVMSSAndVM(*vmEntry.VMSSName, *vmEntry.Name, *vmEntry.InstanceID, *vmEntry.ResourceGroup, &resp.VirtualMachineScaleSetVM)
 
 	// if err = c.cloud.DetachDisk(ctx, diskName, volumeID, nodeName); err != nil {
 	// 	if strings.Contains(err.Error(), azureconstants.ErrDiskNotFound) {
@@ -1815,14 +1824,9 @@ func (c *CloudProvisioner) GetNodeNameFromProviderID(ctx context.Context, provid
 			klog.Fatalf("failed to get scaleSetName from full scaleSetName: %v", err)
 		}
 		klog.Infof("scaleset line 1777: %+v", scaleSetName)
-		cred, err := azidentity.NewDefaultAzureCredential(nil)
-		if err != nil {
-			klog.Fatalf("failed to get new credential: %v", err)
-		}
-		vmssVMClient, err := armcompute.NewVirtualMachineScaleSetVMsClient(c.cloud.SubscriptionID, cred, nil)
-		if err != nil {
-			klog.Fatalf("failed to get client: %v", err)
-		}
+
+		vmssVMClient := c.cloud.VMSSVMClient
+		klog.Infof("getnodename vmssvm client: %+v", vmssVMClient)
 		resVM, err := vmssVMClient.Get(ctx, c.cloud.ResourceGroup, scaleSetName, instanceID, nil)
 		if err != nil {
 			klog.Fatalf("failed to finish the request: %v", err)
