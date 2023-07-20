@@ -109,6 +109,8 @@ type Cloud struct {
 	SnapshotsClient               *armcompute.SnapshotsClient // placeholder
 	VirtualMachineScaleSetsClient *armcompute.VirtualMachineScaleSetsClient
 	VMSSVMClient				  *armcompute.VirtualMachineScaleSetVMsClient
+	VMSSClient					  *armcompute.VirtualMachineScaleSetsClient
+	ASClient					  *armcompute.AvailabilitySetsClient
 
 	// nodeInformerSynced is for determining if the informer has synced.
 	nodeInformerSynced cache.InformerSynced
@@ -305,6 +307,14 @@ func (az *Cloud) configAzureClients() {
 		klog.Fatalf("failed to create client: %v", err)
 	}
 	az.VMSSVMClient, err = armcompute.NewVirtualMachineScaleSetVMsClient(az.SubscriptionID, cred, nil)
+	if err != nil {
+		klog.Fatalf("failed to create client: %v", err)
+	}
+	az.VMSSClient, err = armcompute.NewVirtualMachineScaleSetsClient(az.SubscriptionID, cred, nil)
+	if err != nil {
+		klog.Fatalf("failed to create client: %v", err)
+	}
+	az.ASClient, err = armcompute.NewAvailabilitySetsClient(az.SubscriptionID, cred, nil)
 	if err != nil {
 		klog.Fatalf("failed to create client: %v", err)
 	}

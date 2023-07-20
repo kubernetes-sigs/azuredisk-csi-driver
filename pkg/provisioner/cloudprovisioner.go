@@ -172,23 +172,40 @@ func (c *CloudProvisioner) GetInstanceType(ctx context.Context, nodeID string) (
 	var err error
 
 	if runtime.GOOS == "windows" {
-		entry, err := c.cloud.GetVMSSVM(ctx, nodeID)
-
-		if err == nil && entry.VM != nil && entry.VM.Properties != nil && entry.VM.Properties.HardwareProfile != nil &&
-			entry.VM.Properties.HardwareProfile.VMSize != nil {
-			return string(*entry.VM.Properties.HardwareProfile.VMSize), nil
+		resp, err := c.cloud.VMClient.Get(ctx, c.cloud.ResourceGroup, nodeID, nil)
+		if err == nil && resp.VirtualMachine.Properties != nil && resp.VirtualMachine.Properties.HardwareProfile != nil &&
+		resp.VirtualMachine.Properties.HardwareProfile.VMSize != nil {
+			return string(*resp.VirtualMachine.Properties.HardwareProfile.VMSize), nil
 		}
 
 		klog.Warningf("failed to get instance type from metadata for node %s: %v", nodeID, err)
 	} else {
 		klog.Infof("value for instance: %+v, %b", c, true)
-		entry, err := c.cloud.GetVMSSVM(ctx, nodeID)
+		resp, err := c.cloud.VMClient.Get(ctx, c.cloud.ResourceGroup, nodeID, nil)
 		if err != nil {
 			return "", err
 		}
 
-		if entry.VM != nil && entry.VM.SKU != nil && entry.VM.SKU.Name != nil {
-			return *entry.VM.SKU.Name, nil
+		if resp.VirtualMachine.Properties != nil && resp.VirtualMachine.Properties.AvailabilitySet != nil {
+			resp, err := c.cloud.ASClient.Get(ctx, c.cloud.ResourceGroup, *resp.VirtualMachine.Properties.AvailabilitySet.ID, nil)
+			if err != nil {
+				return "", err
+			}
+
+			if resp.AvailabilitySet.SKU != nil && resp.AvailabilitySet.SKU.Name != nil {
+				return *resp.AvailabilitySet.SKU.Name, nil
+			}
+
+		} else if resp.VirtualMachine.Properties != nil && resp.VirtualMachine.Properties.VirtualMachineScaleSet != nil {
+			resp, err := c.cloud.VMSSClient.Get(ctx, c.cloud.ResourceGroup, *resp.VirtualMachine.Properties.VirtualMachineScaleSet.ID, nil)
+			if err != nil {
+				return "", err
+			}
+
+			if resp.VirtualMachineScaleSet.SKU != nil && resp.VirtualMachineScaleSet.SKU.Name != nil {
+				return *resp.VirtualMachineScaleSet.SKU.Name, nil
+			}
+
 		}
 
 		klog.Warningf("failed to get instances from cloud provider: %b, %b", c == nil, true)
