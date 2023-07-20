@@ -1,5 +1,5 @@
 /*
-Copyright 2020 The logr Authors.
+Copyright 2021 The Kubernetes Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -14,11 +14,27 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package logr
+package batch
 
-// Discard returns a Logger that discards all messages logged to it.  It can be
-// used whenever the caller is not interested in the logs.  Logger instances
-// produced by this function always compare as equal.
-func Discard() Logger {
-	return New(nil)
+import "time"
+
+type nullMetricsRecorder struct {
+}
+
+var (
+	nullRecorder                          = nullMetricsRecorder{}
+	_            ProcessorMetricsRecorder = &nullRecorder
+	_            MetricsRecorder          = &nullRecorder
+)
+
+func (n *nullMetricsRecorder) RecordBatchStart(key string) MetricsRecorder {
+	return n
+}
+
+func (n *nullMetricsRecorder) RecordRateLimitDelay(delay time.Duration) {
+
+}
+
+func (n *nullMetricsRecorder) RecordBatchCompletion(size int, err error) {
+
 }
