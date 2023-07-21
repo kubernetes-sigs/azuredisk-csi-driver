@@ -30,6 +30,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Azure/azure-sdk-for-go/sdk/azcore/to"
+	armcompute "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute/v5"
 	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2022-03-01/compute"
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	"github.com/golang/mock/gomock"
@@ -149,42 +151,42 @@ func TestCheckDiskName(t *testing.T) {
 func TestGetCachingMode(t *testing.T) {
 	tests := []struct {
 		options             map[string]string
-		expectedCachingMode compute.CachingTypes
+		expectedCachingMode armcompute.CachingTypes
 		expectedError       bool
 	}{
 		{
 			nil,
-			compute.CachingTypes(defaultAzureDataDiskCachingMode),
+			armcompute.CachingTypes(defaultAzureDataDiskCachingMode),
 			false,
 		},
 		{
 			map[string]string{},
-			compute.CachingTypes(defaultAzureDataDiskCachingMode),
+			armcompute.CachingTypes(defaultAzureDataDiskCachingMode),
 			false,
 		},
 		{
 			map[string]string{consts.CachingModeField: ""},
-			compute.CachingTypes(defaultAzureDataDiskCachingMode),
+			armcompute.CachingTypes(defaultAzureDataDiskCachingMode),
 			false,
 		},
 		{
 			map[string]string{consts.CachingModeField: "None"},
-			compute.CachingTypes("None"),
+			armcompute.CachingTypes("None"),
 			false,
 		},
 		{
 			map[string]string{consts.CachingModeField: "ReadOnly"},
-			compute.CachingTypes("ReadOnly"),
+			armcompute.CachingTypes("ReadOnly"),
 			false,
 		},
 		{
 			map[string]string{consts.CachingModeField: "ReadWrite"},
-			compute.CachingTypes("ReadWrite"),
+			armcompute.CachingTypes("ReadWrite"),
 			false,
 		},
 		{
 			map[string]string{consts.CachingModeField: "WriteOnly"},
-			compute.CachingTypes(""),
+			armcompute.CachingTypes(""),
 			true,
 		},
 	}
@@ -416,8 +418,6 @@ users:
 		}
 		if cloud != nil {
 			assert.Equal(t, cloud.UserAgent, test.userAgent)
-			assert.Equal(t, cloud.DiskRateLimit != nil && cloud.DiskRateLimit.CloudProviderRateLimit, false)
-			assert.Equal(t, cloud.SnapshotRateLimit != nil && cloud.SnapshotRateLimit.CloudProviderRateLimit, false)
 		}
 	}
 }
@@ -696,13 +696,13 @@ func TestGetSourceVolumeID(t *testing.T) {
 	SourceResourceID := "test"
 
 	tests := []struct {
-		snapshot *compute.Snapshot
+		snapshot *armcompute.Snapshot
 		expected string
 	}{
 		{
-			snapshot: &compute.Snapshot{
-				SnapshotProperties: &compute.SnapshotProperties{
-					CreationData: &compute.CreationData{
+			snapshot: &armcompute.Snapshot{
+				Properties: &armcompute.SnapshotProperties{
+					CreationData: &armcompute.CreationData{
 						SourceResourceID: &SourceResourceID,
 					},
 				},
@@ -710,21 +710,21 @@ func TestGetSourceVolumeID(t *testing.T) {
 			expected: "test",
 		},
 		{
-			snapshot: &compute.Snapshot{
-				SnapshotProperties: &compute.SnapshotProperties{
-					CreationData: &compute.CreationData{},
+			snapshot: &armcompute.Snapshot{
+				Properties: &armcompute.SnapshotProperties{
+					CreationData: &armcompute.CreationData{},
 				},
 			},
 			expected: "",
 		},
 		{
-			snapshot: &compute.Snapshot{
-				SnapshotProperties: &compute.SnapshotProperties{},
+			snapshot: &armcompute.Snapshot{
+				Properties: &armcompute.SnapshotProperties{},
 			},
 			expected: "",
 		},
 		{
-			snapshot: &compute.Snapshot{},
+			snapshot: &armcompute.Snapshot{},
 			expected: "",
 		},
 		{
@@ -1755,7 +1755,7 @@ func skipIfTestingOnWindows(t *testing.T) {
 func TestInsertDiskProperties(t *testing.T) {
 	tests := []struct {
 		desc        string
-		disk        *compute.Disk
+		disk        *armcompute.Disk
 		inputMap    map[string]string
 		expectedMap map[string]string
 	}{
@@ -1764,30 +1764,30 @@ func TestInsertDiskProperties(t *testing.T) {
 		},
 		{
 			desc:        "empty",
-			disk:        &compute.Disk{},
+			disk:        &armcompute.Disk{},
 			inputMap:    map[string]string{},
 			expectedMap: map[string]string{},
 		},
 		{
 			desc: "skuName",
-			disk: &compute.Disk{
-				Sku: &compute.DiskSku{Name: compute.PremiumLRS},
+			disk: &armcompute.Disk{
+				SKU: &armcompute.DiskSKU{Name: to.Ptr(armcompute.DiskStorageAccountTypesPremiumLRS)},
 			},
 			inputMap:    map[string]string{},
 			expectedMap: map[string]string{"skuname": string(compute.PremiumLRS)},
 		},
 		{
 			desc: "DiskProperties",
-			disk: &compute.Disk{
-				Sku: &compute.DiskSku{Name: compute.StandardSSDLRS},
-				DiskProperties: &compute.DiskProperties{
-					NetworkAccessPolicy: compute.AllowPrivate,
+			disk: &armcompute.Disk{
+				SKU: &armcompute.DiskSKU{Name: to.Ptr(armcompute.DiskStorageAccountTypesStandardSSDLRS)},
+				Properties: &armcompute.DiskProperties{
+					NetworkAccessPolicy: to.Ptr(armcompute.NetworkAccessPolicyAllowPrivate),
 					DiskIOPSReadWrite:   pointer.Int64(6400),
 					DiskMBpsReadWrite:   pointer.Int64(100),
-					CreationData: &compute.CreationData{
+					CreationData: &armcompute.CreationData{
 						LogicalSectorSize: pointer.Int32(512),
 					},
-					Encryption: &compute.Encryption{DiskEncryptionSetID: pointer.String("/subs/DiskEncryptionSetID")},
+					Encryption: &armcompute.Encryption{DiskEncryptionSetID: pointer.String("/subs/DiskEncryptionSetID")},
 					MaxShares:  pointer.Int32(3),
 				},
 			},

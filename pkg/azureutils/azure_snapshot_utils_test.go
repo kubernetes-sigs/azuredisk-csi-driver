@@ -20,9 +20,9 @@ import (
 	"fmt"
 	"reflect"
 	"testing"
+	"time"
 
-	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2022-03-01/compute"
-	"github.com/Azure/go-autorest/autorest/date"
+	armcompute "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute/v5"
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	"github.com/stretchr/testify/assert"
 	"google.golang.org/grpc/codes"
@@ -40,7 +40,7 @@ func TestGenerateCSISnapshot(t *testing.T) {
 		{
 			name: "snap shot property not exist",
 			testFunc: func(t *testing.T) {
-				snapshot := compute.Snapshot{}
+				snapshot := armcompute.Snapshot{}
 				sourceVolumeID := "unit-test"
 				_, err := GenerateCSISnapshot(sourceVolumeID, &snapshot)
 				expectedErr := fmt.Errorf("snapshot property is nil")
@@ -53,9 +53,9 @@ func TestGenerateCSISnapshot(t *testing.T) {
 			name: "diskSizeGB of snapshot property is nil",
 			testFunc: func(t *testing.T) {
 				provisioningState := "true"
-				snapshot := compute.Snapshot{
-					SnapshotProperties: &compute.SnapshotProperties{
-						TimeCreated:       &date.Time{},
+				snapshot := armcompute.Snapshot{
+					Properties: &armcompute.SnapshotProperties{
+						TimeCreated:       &time.Time{},
 						ProvisioningState: &provisioningState,
 					},
 				}
@@ -73,9 +73,9 @@ func TestGenerateCSISnapshot(t *testing.T) {
 				provisioningState := "succeeded"
 				DiskSize := int32(10)
 				snapshotID := "test"
-				snapshot := compute.Snapshot{
-					SnapshotProperties: &compute.SnapshotProperties{
-						TimeCreated:       &date.Time{},
+				snapshot := armcompute.Snapshot{
+					Properties: &armcompute.SnapshotProperties{
+						TimeCreated:       &time.Time{},
 						ProvisioningState: &provisioningState,
 						DiskSizeGB:        &DiskSize,
 					},
@@ -83,10 +83,10 @@ func TestGenerateCSISnapshot(t *testing.T) {
 				}
 				sourceVolumeID := "unit-test"
 				response, err := GenerateCSISnapshot(sourceVolumeID, &snapshot)
-				tp := timestamppb.New(snapshot.SnapshotProperties.TimeCreated.ToTime())
+				tp := timestamppb.New(*snapshot.Properties.TimeCreated)
 				ready := true
 				expectedresponse := &csi.Snapshot{
-					SizeBytes:      volumehelper.GiBToBytes(int64(*snapshot.SnapshotProperties.DiskSizeGB)),
+					SizeBytes:      volumehelper.GiBToBytes(int64(*snapshot.Properties.DiskSizeGB)),
 					SnapshotId:     *snapshot.ID,
 					SourceVolumeId: sourceVolumeID,
 					CreationTime:   tp,
@@ -105,12 +105,12 @@ func TestGenerateCSISnapshot(t *testing.T) {
 				DiskSize := int32(10)
 				snapshotID := "test"
 				sourceResourceID := "unit test"
-				snapshot := compute.Snapshot{
-					SnapshotProperties: &compute.SnapshotProperties{
-						TimeCreated:       &date.Time{},
+				snapshot := armcompute.Snapshot{
+					Properties: &armcompute.SnapshotProperties{
+						TimeCreated:       &time.Time{},
 						ProvisioningState: &provisioningState,
 						DiskSizeGB:        &DiskSize,
-						CreationData: &compute.CreationData{
+						CreationData: &armcompute.CreationData{
 							SourceResourceID: &sourceResourceID,
 						},
 					},
@@ -118,10 +118,10 @@ func TestGenerateCSISnapshot(t *testing.T) {
 				}
 				sourceVolumeID := ""
 				response, err := GenerateCSISnapshot(sourceVolumeID, &snapshot)
-				tp := timestamppb.New(snapshot.SnapshotProperties.TimeCreated.ToTime())
+				tp := timestamppb.New(*snapshot.Properties.TimeCreated)
 				ready := true
 				expectedresponse := &csi.Snapshot{
-					SizeBytes:      volumehelper.GiBToBytes(int64(*snapshot.SnapshotProperties.DiskSizeGB)),
+					SizeBytes:      volumehelper.GiBToBytes(int64(*snapshot.Properties.DiskSizeGB)),
 					SnapshotId:     *snapshot.ID,
 					SourceVolumeId: sourceResourceID,
 					CreationTime:   tp,
@@ -146,32 +146,32 @@ func TestGetEntriesAndNextToken(t *testing.T) {
 	DiskSize := int32(10)
 	snapshotID := "test"
 	sourceVolumeID := "unit-test"
-	creationdate := compute.CreationData{
+	creationdate := armcompute.CreationData{
 		SourceResourceID: &sourceVolumeID,
 	}
-	snapshot := compute.Snapshot{
-		SnapshotProperties: &compute.SnapshotProperties{
-			TimeCreated:       &date.Time{},
+	snapshot := armcompute.Snapshot{
+		Properties: &armcompute.SnapshotProperties{
+			TimeCreated:       &time.Time{},
 			ProvisioningState: &provisioningState,
 			DiskSizeGB:        &DiskSize,
 			CreationData:      &creationdate,
 		},
 		ID: &snapshotID,
 	}
-	snapshots := []compute.Snapshot{}
+	snapshots := []armcompute.Snapshot{}
 	snapshots = append(snapshots, snapshot)
 	entries := []*csi.ListSnapshotsResponse_Entry{}
 	csiSnapshot, _ := GenerateCSISnapshot(sourceVolumeID, &snapshot)
 	entries = append(entries, &csi.ListSnapshotsResponse_Entry{Snapshot: csiSnapshot})
 	tests := []struct {
 		request          *csi.ListSnapshotsRequest
-		snapshots        []compute.Snapshot
+		snapshots        []armcompute.Snapshot
 		expectedResponse *csi.ListSnapshotsResponse
 		expectedError    error
 	}{
 		{
 			nil,
-			[]compute.Snapshot{},
+			[]armcompute.Snapshot{},
 			nil,
 			status.Errorf(codes.Aborted, "request is nil"),
 		},
@@ -180,7 +180,7 @@ func TestGetEntriesAndNextToken(t *testing.T) {
 				MaxEntries:    2,
 				StartingToken: "a",
 			},
-			[]compute.Snapshot{},
+			[]armcompute.Snapshot{},
 			nil,
 			status.Errorf(codes.Aborted, "ListSnapshots starting token(a) parsing with error: strconv.Atoi: parsing \"a\": invalid syntax"),
 		},
@@ -189,7 +189,7 @@ func TestGetEntriesAndNextToken(t *testing.T) {
 				MaxEntries:    2,
 				StartingToken: "01",
 			},
-			[]compute.Snapshot{},
+			[]armcompute.Snapshot{},
 			nil,
 			status.Errorf(codes.Aborted, "ListSnapshots starting token(1) is greater than total number of snapshots"),
 		},
@@ -198,7 +198,7 @@ func TestGetEntriesAndNextToken(t *testing.T) {
 				MaxEntries:    2,
 				StartingToken: "0",
 			},
-			[]compute.Snapshot{},
+			[]armcompute.Snapshot{},
 			nil,
 			status.Errorf(codes.Aborted, "ListSnapshots starting token(0) is greater than total number of snapshots"),
 		},
@@ -207,7 +207,7 @@ func TestGetEntriesAndNextToken(t *testing.T) {
 				MaxEntries:    2,
 				StartingToken: "-1",
 			},
-			[]compute.Snapshot{},
+			[]armcompute.Snapshot{},
 			nil,
 			status.Errorf(codes.Aborted, "ListSnapshots starting token(-1) can not be negative"),
 		},
@@ -216,7 +216,7 @@ func TestGetEntriesAndNextToken(t *testing.T) {
 				MaxEntries:    2,
 				StartingToken: "0",
 			},
-			append([]compute.Snapshot{}, compute.Snapshot{}),
+			append([]armcompute.Snapshot{}, armcompute.Snapshot{}),
 			nil,
 			fmt.Errorf("failed to generate snapshot entry: %v", fmt.Errorf("snapshot property is nil")),
 		},
