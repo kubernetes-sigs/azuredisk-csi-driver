@@ -218,6 +218,7 @@ func NewCloudWithoutFeatureGatesFromConfig(ctx context.Context, config *Config, 
 
 // InitializeCloudFromConfig initializes the Cloud from config.
 func (az *Cloud) InitializeCloudFromConfig(ctx context.Context, config *Config, fromSecret, callFromCCM bool) error {
+	klog.Infof("fromSecret 1: %+v", fromSecret)
 	if config == nil {
 		// should not reach here
 		return fmt.Errorf("InitializeCloudFromConfig: cannot initialize from nil config")
@@ -227,6 +228,8 @@ func (az *Cloud) InitializeCloudFromConfig(ctx context.Context, config *Config, 
 		// default to standard vmType if not set.
 		config.VMType = VMTypeStandard
 	}
+
+	klog.Infof("fromSecret 4: %+v", fromSecret)
 
 	if config.CloudConfigType == "" {
 		// The default cloud config type is cloudConfigTypeMerge.
@@ -241,15 +244,20 @@ func (az *Cloud) InitializeCloudFromConfig(ctx context.Context, config *Config, 
 		}
 	}
 
+	klog.Infof("fromSecret 2: %+v", fromSecret)
+
 	env, err := ParseAzureEnvironment(config.Cloud, config.ResourceManagerEndpoint, config.IdentitySystem)
 	if err != nil {
 		return err
 	}
 
+	klog.Infof("fromSecret 3: %+v", fromSecret)
+
 	servicePrincipalToken, err := GetServicePrincipalToken(&config.AzureAuthConfig, env, env.ServiceManagementEndpoint)
 	if errors.Is(err, ErrorNoAuth) {
 		// Only controller-manager would lazy-initialize from secret, and credentials are required for such case.
 		if fromSecret {
+			klog.Infof("fromSecret: %+v", fromSecret)
 			err := fmt.Errorf("no credentials provided for Azure cloud provider")
 			klog.Fatal(err)
 			return err
