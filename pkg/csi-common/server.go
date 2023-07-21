@@ -23,6 +23,7 @@ import (
 	"sync"
 	"time"
 
+	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 	"google.golang.org/grpc"
 	"k8s.io/klog/v2"
 
@@ -32,7 +33,7 @@ import (
 // Defines Non blocking GRPC server interfaces
 type NonBlockingGRPCServer interface {
 	// Start services at the endpoint
-	Start(endpoint string, ids csi.IdentityServer, cs csi.ControllerServer, ns csi.NodeServer, testMode bool)
+	Start(endpoint string, ids csi.IdentityServer, cs csi.ControllerServer, ns csi.NodeServer, testMode, enableOtelTracing bool)
 	// Waits for the service to stop
 	Wait()
 	// Stops the service gracefully
@@ -51,9 +52,9 @@ type nonBlockingGRPCServer struct {
 	server *grpc.Server
 }
 
-func (s *nonBlockingGRPCServer) Start(endpoint string, ids csi.IdentityServer, cs csi.ControllerServer, ns csi.NodeServer, testMode bool) {
+func (s *nonBlockingGRPCServer) Start(endpoint string, ids csi.IdentityServer, cs csi.ControllerServer, ns csi.NodeServer, testMode, enableOtelTracing bool) {
 	s.wg.Add(1)
-	go s.serve(endpoint, ids, cs, ns, testMode)
+	go s.serve(endpoint, ids, cs, ns, testMode, enableOtelTracing)
 }
 
 func (s *nonBlockingGRPCServer) Wait() {
@@ -68,7 +69,7 @@ func (s *nonBlockingGRPCServer) ForceStop() {
 	s.server.Stop()
 }
 
-func (s *nonBlockingGRPCServer) serve(endpoint string, ids csi.IdentityServer, cs csi.ControllerServer, ns csi.NodeServer, testMode bool) {
+func (s *nonBlockingGRPCServer) serve(endpoint string, ids csi.IdentityServer, cs csi.ControllerServer, ns csi.NodeServer, testMode, enableOtelTracing bool) {
 	proto, addr, err := ParseEndpoint(endpoint)
 	if err != nil {
 		klog.Fatal(err.Error())
@@ -88,9 +89,15 @@ func (s *nonBlockingGRPCServer) serve(endpoint string, ids csi.IdentityServer, c
 		klog.Fatalf("Failed to listen: %v", err)
 	}
 
-	opts := []grpc.ServerOption{
-		grpc.UnaryInterceptor(logGRPC),
+	grpcInterceptor := grpc.UnaryInterceptor(logGRPC)
+	if enableOtelTracing {
+		grpcInterceptor = grpc.ChainUnaryInterceptor(logGRPC, otelgrpc.UnaryServerInterceptor())
 	}
+
+	opts := []grpc.ServerOption{
+		grpcInterceptor,
+	}
+
 	server := grpc.NewServer(opts...)
 	s.server = server
 

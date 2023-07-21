@@ -32,7 +32,8 @@
 - [add the Chart repository](#add-the-helm-chart-repository)
 
 ### Tips
- - schedule controller running on control plane node: `--set controller.runOnControlPlane=true`
+
+- schedule controller running on control plane node: `--set controller.runOnControlPlane=true`
 - set replica of controller as `1`: `--set controller.replicas=1`
 - specify different cloud config secret for the driver:
   - `--set controller.cloudConfigSecretName`
@@ -155,6 +156,9 @@ The following table lists the configurable parameters of the latest Azure Disk C
 | `controller.cloudConfigSecretNamespace`           | cloud config secret namespace of controller driver         | `kube-system`
 | `controller.allowEmptyCloudConfig`                | Whether allow running controller driver without cloud config          | `false`
 | `controller.enableTrafficManager`                 | Whether enable [traffic manager proxy](https://github.com/Azure/aks-traffic-manager) sidecar          | `false`
+| `controller.otelTracing.enabled`                  | whether enable opentelemetry tracing                       | `false`                                                        |
+| `controller.otelTracing.otelServiceName`          | name of the service associated with the produced traces          | `csi-azuredisk-controller`                               |
+| `controller.otelTracing.otelExporterEndpoint`     | opentelemetry-compatible endpoint where traces are sent          | `"http://localhost:4317"`                                |
 | `controller.trafficManagerPort`                   | default [traffic manager proxy](https://github.com/Azure/aks-traffic-manager) port number          | `7788`
 | `controller.replicas`                             | the replicas of csi-azuredisk-controller                   | `2`                                                            |
 | `controller.metricsPort`                          | metrics port of csi-azuredisk-controller                   | `29604`                                                        |
@@ -226,6 +230,9 @@ The following table lists the configurable parameters of the latest Azure Disk C
 | `linux.hostNetwork`                               | `hostNetwork` setting on linux node driver(could be disabled if perfProfile is `none`)                            | `true`                                                            | `true`, `false`
 | `linux.labels`                                    | linux node daemonset extra labels                     | `{}`
 | `linux.annotations`                               | linux node daemonset extra annotations                | `{}`
+| `linux.otelTracing.enabled`                       | whether enable opentelemetry tracing                  | `false`                                                   |
+| `linux.otelTracing.otelServiceName`               | name of the service associated with the produced traces      | `csi-azuredisk-node`                               |
+| `linux.otelTracing.otelExporterEndpoint`          | opentelemetry-compatible endpoint where traces are sent      | `"http://localhost:4317"`                          |
 | `linux.podLabels`                                 | linux node pods extra labels                          | `{}`
 | `linux.podAnnotations`                            | linux node pods extra annotations                     | `{}`
 | `linux.resources.livenessProbe.limits.memory`          | liveness-probe memory limits                          | 100Mi                                                          |
@@ -247,6 +254,9 @@ The following table lists the configurable parameters of the latest Azure Disk C
 | `windows.nodeSelector`                            | windows node pod node selector                                | `{}`                                                             |
 | `windows.labels`                                  | windows node daemonset extra labels                     | `{}`
 | `windows.annotations`                             | windows node daemonset extra annotations                | `{}`
+| `windows.otelTracing.enabled`                     | whether enable opentelemetry tracing                    | `false`                                                      |
+| `windows.otelTracing.otelServiceName`             | name of the service associated with the produced traces          | `csi-azuredisk-node-win`                            |
+| `windows.otelTracing.otelExporterEndpoint`        | opentelemetry-compatible endpoint where traces are sent          | `"http://localhost:4317"`                           |
 | `windows.podLabels`                               | windows node pods extra labels                          | `{}`
 | `windows.podAnnotations`                          | windows node pods extra annotations                     | `{}`
 | `windows.resources.livenessProbe.limits.memory`          | liveness-probe memory limits                          | 150Mi                                                          |

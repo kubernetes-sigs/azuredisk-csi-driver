@@ -118,6 +118,7 @@ spec:
             - "--support-zone={{ .Values.node.supportZone }}"
             - "--enable-windows-host-process=true"
             - "--get-nodeid-from-imds={{ .Values.node.getNodeIDFromIMDS }}"
+            - "--enable-otel-tracing={{ .Values.windows.otelTracing.enabled }}"
           env:
             - name: AZURE_CREDENTIAL_FILE
               valueFrom:
@@ -149,6 +150,12 @@ spec:
             {{- if eq .Values.cloud "AzureStackCloud" }}
             - name: AZURE_ENVIRONMENT_FILEPATH
               value: C:\k\azurestackcloud.json
+            {{- end }}
+            {{- if .Values.windows.otelTracing.enabled }}
+            - name: OTEL_SERVICE_NAME
+              value: {{ .Values.windows.otelTracing.otelServiceName }}
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              value: {{ .Values.windows.otelTracing.otelExporterEndpoint }}
             {{- end }}
           imagePullPolicy: {{ .Values.image.azuredisk.pullPolicy }}
 {{- end -}}

@@ -196,6 +196,7 @@ spec:
             - "--vmss-cache-ttl-seconds={{ .Values.controller.vmssCacheTTLInSeconds }}"
             - "--enable-traffic-manager={{ .Values.controller.enableTrafficManager }}"
             - "--traffic-manager-port={{ .Values.controller.trafficManagerPort }}"
+            - "--enable-otel-tracing={{ .Values.controller.otelTracing.enabled }}"
           ports:
             - containerPort: {{ .Values.controller.livenessProbe.healthPort }}
               name: healthz
@@ -237,6 +238,12 @@ spec:
             {{- if eq .Values.cloud "AzureStackCloud" }}
             - name: AZURE_ENVIRONMENT_FILEPATH
               value: /etc/kubernetes/azurestackcloud.json
+            {{- end }}
+            {{- if .Values.controller.otelTracing.enabled }}
+            - name: OTEL_SERVICE_NAME
+              value: {{ .Values.controller.otelTracing.otelServiceName }}
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              value: {{ .Values.controller.otelTracing.otelExporterEndpoint }}
             {{- end }}
           imagePullPolicy: {{ .Values.image.azuredisk.pullPolicy }}
           volumeMounts:

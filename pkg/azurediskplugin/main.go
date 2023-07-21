@@ -67,6 +67,7 @@ var (
 	enableTrafficManager         = flag.Bool("enable-traffic-manager", false, "boolean flag to enable traffic manager")
 	trafficManagerPort           = flag.Int64("traffic-manager-port", 7788, "default traffic manager port")
 	enableWindowsHostProcess     = flag.Bool("enable-windows-host-process", false, "enable windows host process")
+	enableOtelTracing            = flag.Bool("enable-otel-tracing", false, "If set, enable opentelemetry tracing for the driver. The tracing is disabled by default. Configure the exporter endpoint with OTEL_EXPORTER_OTLP_ENDPOINT and other env variables, see https://opentelemetry.io/docs/specs/otel/configuration/sdk-environment-variables/#general-sdk-configuration.")
 )
 
 func main() {
@@ -91,6 +92,20 @@ func main() {
 }
 
 func handle() {
+	// Start tracing as soon as possible
+	if *enableOtelTracing {
+		exporter, err := azuredisk.InitOtelTracing()
+		if err != nil {
+			klog.Fatalf("Failed to initialize otel tracing: %v", err)
+		}
+		// Exporter will flush traces on shutdown
+		defer func() {
+			if err := exporter.Shutdown(context.Background()); err != nil {
+				klog.Errorf("Could not shutdown otel exporter: %v", err)
+			}
+		}()
+	}
+
 	driverOptions := azuredisk.DriverOptions{
 		NodeID:                       *nodeID,
 		DriverName:                   *driverName,
@@ -117,6 +132,7 @@ func handle() {
 		VMType:                       *vmType,
 		EnableWindowsHostProcess:     *enableWindowsHostProcess,
 		GetNodeIDFromIMDS:            *getNodeIDFromIMDS,
+		EnableOtelTracing:            *enableOtelTracing,
 	}
 	driver := azuredisk.NewDriver(&driverOptions)
 	if driver == nil {

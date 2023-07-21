@@ -130,6 +130,7 @@ spec:
             - "--support-zone={{ .Values.node.supportZone }}"
             - "--get-node-info-from-labels={{ .Values.linux.getNodeInfoFromLabels }}"
             - "--get-nodeid-from-imds={{ .Values.node.getNodeIDFromIMDS }}"
+            - "--enable-otel-tracing={{ .Values.linux.otelTracing.enabled }}"
           ports:
             - containerPort: {{ .Values.node.livenessProbe.healthPort }}
               name: healthz
@@ -173,6 +174,12 @@ spec:
             {{- if eq .Values.cloud "AzureStackCloud" }}
             - name: AZURE_ENVIRONMENT_FILEPATH
               value: /etc/kubernetes/azurestackcloud.json
+            {{- end }}
+            {{- if .Values.linux.otelTracing.enabled }}
+            - name: OTEL_SERVICE_NAME
+              value: {{ .Values.linux.otelTracing.otelServiceName }}
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              value: {{ .Values.linux.otelTracing.otelExporterEndpoint }}
             {{- end }}
           imagePullPolicy: {{ .Values.image.azuredisk.pullPolicy }}
           securityContext:
