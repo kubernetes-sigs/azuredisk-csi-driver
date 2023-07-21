@@ -5,7 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"os"
+	// "os"
 	"strconv"
 	"strings"
 
@@ -279,9 +279,7 @@ func (az *Cloud) InitializeCloudFromConfig(ctx context.Context, config *Config, 
 
 func (az *Cloud) configAzureClients() {
 
-	cred, err := azidentity.NewDefaultAzureCredential(&azidentity.DefaultAzureCredentialOptions{
-		TenantID: az.TenantID,
-	})
+	cred, err := azidentity.NewDefaultAzureCredential(nil)
 	if err != nil {
 		klog.Fatalf("failed to obtain new credential: %v", err)
 	}
