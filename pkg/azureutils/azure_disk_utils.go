@@ -600,7 +600,7 @@ func GetCloudProviderFromClient(
 		az.KubeClient = kubeClient
 		config, err = az.GetConfigFromSecret()
 
-		klog.Infof("GetCloudProviderFromClient config: %+v fromSecret: %+v err: %v", *config, fromSecret, err)
+		klog.Infof("GetCloudProviderFromClient config: %+v fromSecret: %+v err: %v", config, fromSecret, err)
 
 		if err == nil && config != nil {
 			fromSecret = true
