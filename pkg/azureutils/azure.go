@@ -191,13 +191,13 @@ func ParseConfig(configReader io.Reader) (*Config, error) {
 	// See more context at https://github.com/kubernetes/kubernetes/issues/71994.
 	config.ResourceGroup = strings.ToLower(config.ResourceGroup)
 
-	// these environment variables are injected by workload identity webhook
-	if tenantID := os.Getenv("AZURE_TENANT_ID"); tenantID != "" {
-		config.TenantID = tenantID
-	}
-	if clientID := os.Getenv("AZURE_CLIENT_ID"); clientID != "" {
-		config.AADClientID = clientID
-	}
+	// // these environment variables are injected by workload identity webhook
+	// if tenantID := os.Getenv("AZURE_TENANT_ID"); tenantID != "" {
+	// 	config.TenantID = tenantID
+	// }
+	// if clientID := os.Getenv("AZURE_CLIENT_ID"); clientID != "" {
+	// 	config.AADClientID = clientID
+	// }
 
 	return &config, nil
 }
