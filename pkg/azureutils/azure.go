@@ -243,7 +243,6 @@ func (az *Cloud) InitializeCloudFromConfig(ctx context.Context, config *Config, 
 		return err
 	}
 
-	// HERE
 	servicePrincipalToken, err := GetServicePrincipalToken(&config.AzureAuthConfig, env, env.ServiceManagementEndpoint)
 	if errors.Is(err, ErrorNoAuth) {
 		// Only controller-manager would lazy-initialize from secret, and credentials are required for such case.
@@ -256,10 +255,6 @@ func (az *Cloud) InitializeCloudFromConfig(ctx context.Context, config *Config, 
 		// No credentials provided, useInstanceMetadata should be enabled for Kubelet.
 		// TODO(feiskyer): print different error message for Kubelet and controller-manager, as they're
 		// requiring different credential settings.
-
-		// if !config.UseInstanceMetadata && config.CloudConfigType == cloudConfigTypeFile {
-		// 	return fmt.Errorf("useInstanceMetadata must be enabled without Azure credentials")
-		// }
 
 		klog.V(2).Infof("Azure cloud provider is starting without credentials")
 	} else if err != nil {
@@ -325,14 +320,11 @@ func (az *Cloud) GetZoneByNodeName(ctx context.Context, nodeName string) (cloudp
 	if err != nil {
 		return cloudprovider.Zone{}, fmt.Errorf("failed to get zone from nodename: %v", err)
 	}
-	zones := entry.VM.Zones
 
-	// zoneID, err := strconv.Atoi(*zones[0])
-	// if err != nil {
-	// 	return cloudprovider.Zone{}, fmt.Errorf("failed to parse zone %v", err)
-	// }
-
-	// failureDomain := fmt.Sprintf("%s-%d", strings.ToLower(*entry.VM.Location), zoneID)
+	var zones []*string
+	if entry != nil && entry.VM != nil && entry.VM.Zones != nil {
+		zones = entry.VM.Zones
+	}
 
 	var failureDomain string
 	if zones != nil && len(zones) > 0 {

@@ -209,7 +209,7 @@ func TestEnsureMountPoint(t *testing.T) {
 		},
 	}
 
-	Setup
+	// Setup
 	_ = makeDir(alreadyExistTarget)
 	d, _ := NewFakeDriver(t)
 	fakeMounter, err := mounter.NewFakeSafeMounter()
@@ -711,7 +711,7 @@ func TestNodeStageVolume(t *testing.T) {
 					test.cleanupFunc(t, d)
 				}
 
-				Clean up
+				// Clean up
 				err = os.RemoveAll(sourceTest)
 				assert.NoError(t, err)
 
@@ -805,7 +805,7 @@ func TestNodeUnstageVolume(t *testing.T) {
 		}
 	}
 
-	Clean up
+	// Clean up
 	err = os.RemoveAll(errorTarget)
 	assert.NoError(t, err)
 }
@@ -1009,7 +1009,7 @@ func TestNodePublishVolume(t *testing.T) {
 		}
 	}
 
-	Clean up
+	// Clean up
 	err = os.RemoveAll(targetTest)
 	assert.NoError(t, err)
 	err = os.RemoveAll(alreadyMountedTarget)
@@ -1085,7 +1085,7 @@ func TestNodeUnpublishVolume(t *testing.T) {
 		}
 	}
 
-	Clean up
+	// Clean up
 	err = os.RemoveAll(errorTarget)
 	assert.NoError(t, err)
 }
@@ -1305,10 +1305,10 @@ func TestNodeExpandVolume(t *testing.T) {
 }
 
 func TestEnsureBlockTargetFile(t *testing.T) {
-	This functionality has moved to the provisioner package in DriverV2.
+	// This functionality has moved to the provisioner package in DriverV2.
 	skipIfTestingDriverV2(t)
 
-	Skip this test because `util/mount` not supported on darwin
+	// Skip this test because `util/mount` not supported on darwin
 	if runtime.GOOS == "darwin" {
 		t.Skip("Skipping tests on darwin")
 	}
@@ -1359,18 +1359,18 @@ func makeDir(pathname string) error {
 }
 
 func TestMakeDir(t *testing.T) {
-	Successfully create directory
+	// Successfully create directory
 	err := makeDir(targetTest)
 	assert.NoError(t, err)
 
-	Failed case
+	// Failed case
 	err = makeDir("./azuredisk.go")
 	var e *os.PathError
 	if !errors.As(err, &e) {
 		t.Errorf("Unexpected Error: %v", err)
 	}
 
-	Remove the directory created
+	// Remove the directory created
 	err = os.RemoveAll(targetTest)
 	assert.NoError(t, err)
 }

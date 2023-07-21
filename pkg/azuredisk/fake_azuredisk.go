@@ -21,7 +21,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2022-03-01/compute"
+	armcompute "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute/v5"
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/assert"
@@ -91,7 +91,7 @@ type FakeDriver interface {
 	setPathIsDeviceResult(path string, isDevice bool, err error)
 
 	checkDiskCapacity(context.Context, string, string, string, int) (bool, error)
-	checkDiskExists(ctx context.Context, diskURI string) (*compute.Disk, error)
+	checkDiskExists(ctx context.Context, diskURI string) (*armcompute.Disk, error)
 	getSnapshotInfo(string) (string, string, string, error)
 
 	getSnapshotByID(context.Context, string, string, string, string) (*csi.Snapshot, error)

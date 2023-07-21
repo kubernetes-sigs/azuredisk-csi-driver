@@ -32,7 +32,6 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	utilfeature "k8s.io/apiserver/pkg/util/feature"
-	"k8s.io/klog/v2"
 	"k8s.io/kubernetes/pkg/features"
 	azdiskv1beta2 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1beta2"
 	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
@@ -221,16 +220,12 @@ func (r *ReconcileAttachDetach) triggerAttach(ctx context.Context, azVolumeAttac
 		attachAndUpdate := func() {
 			attachResult := r.attachVolume(cloudCtx, azVolumeAttachment.Spec.VolumeID, azVolumeAttachment.Spec.NodeName, azVolumeAttachment.Spec.VolumeContext)
 			if publishCtx = attachResult.PublishContext(); publishCtx != nil {
-				klog.Infof("attach_detach line 224: handleSuccess(false)")
 				handleSuccess(false)
-				klog.Infof("attach_detach line 226")
 			}
 			var ok bool
 			if attachErr, ok = <-attachResult.ResultChannel(); !ok || attachErr != nil {
-				klog.Infof("attach_detach line 228 ok: %+v attachError: %v", attachErr, ok)
 				handleError()
 			} else {
-				klog.Infof("attach_detach line 231: success")
 				handleSuccess(true)
 			}
 
@@ -305,14 +300,11 @@ func (r *ReconcileAttachDetach) triggerAttach(ctx context.Context, azVolumeAttac
 			}
 
 			updateFunc := func(obj client.Object) error {
-				klog.Infof("updateFunc line 307 + asyncComplete: %+v", asyncComplete)
 				azv := obj.(*azdiskv1beta2.AzVolumeAttachment)
 				azv = updateStatusDetail(azv, publishCtx)
 				var uerr error
 				if asyncComplete {
-					var v *azdiskv1beta2.AzVolumeAttachment
-					v, uerr = updateState(azv, azdiskv1beta2.Attached, forceUpdate)
-					klog.Infof("updateFunc state: %+v", v.Status)
+					_, uerr = updateState(azv, azdiskv1beta2.Attached, forceUpdate)
 				}
 				return uerr
 			}
@@ -322,7 +314,6 @@ func (r *ReconcileAttachDetach) triggerAttach(ctx context.Context, azVolumeAttac
 			}
 			updatedObj, _ = azureutils.UpdateCRIWithRetry(goCtx, nil, r.cachedClient, r.azClient, azVolumeAttachment, updateFunc, consts.ForcedUpdateMaxNetRetry, azureutils.UpdateCRIStatus)
 			azVolumeAttachment = updatedObj.(*azdiskv1beta2.AzVolumeAttachment)
-			klog.Infof("attach_detach line 316 azvolumeattachment: %+v", azVolumeAttachment)
 		}
 
 		attachAndUpdate()
