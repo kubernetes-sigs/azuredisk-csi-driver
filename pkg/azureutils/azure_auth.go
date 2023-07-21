@@ -72,6 +72,7 @@ type AzureAuthConfig struct {
 // For tokens for VM/VMSS and network resource ones, please check GetMultiTenantServicePrincipalToken and GetNetworkResourceServicePrincipalToken.
 func GetServicePrincipalToken(config *AzureAuthConfig, env *azure.Environment, resource string) (*adal.ServicePrincipalToken, error) {
 	var tenantID string
+	klog.Infof("GetServicePrincipalToken: config.IdentitySystem: %+v config.TenantID: %+v", config.IdentitySystem, config.TenantID)
 	if strings.EqualFold(config.IdentitySystem, ADFSIdentitySystem) {
 		tenantID = ADFSIdentitySystem
 	} else {
@@ -116,6 +117,7 @@ func GetServicePrincipalToken(config *AzureAuthConfig, env *azure.Environment, r
 		return nil, fmt.Errorf("error creating the OAuth config: %w", err)
 	}
 
+	klog.Infof("GetServicePrincipalToken: config.AADClientSecret: %+v", config.AADClientSecret)
 	if len(config.AADClientSecret) > 0 {
 		klog.V(2).Infoln("azure: using client_id+client_secret to retrieve access token")
 		return adal.NewServicePrincipalToken(
@@ -124,6 +126,8 @@ func GetServicePrincipalToken(config *AzureAuthConfig, env *azure.Environment, r
 			config.AADClientSecret,
 			resource)
 	}
+
+	klog.Infof("GetServicePrincipalToken: config.AADClientCertPath: %+v config.AADClientCertPassword: %+v", config.AADClientCertPath, config.AADClientCertPassword)
 
 	if len(config.AADClientCertPath) > 0 && len(config.AADClientCertPassword) > 0 {
 		klog.V(2).Infoln("azure: using jwt client_assertion (client_cert+client_private_key) to retrieve access token")
