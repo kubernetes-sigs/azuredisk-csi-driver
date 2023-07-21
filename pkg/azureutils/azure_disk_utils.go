@@ -653,7 +653,7 @@ func GetCloudProviderFromClient(
 		}
 
 		// Create a new cloud provider
-		klog.Infof("GetCloudProviderFromClient config: %+v", *config)
+		klog.Infof("GetCloudProviderFromClient config: %+v fromSecret: %+v", *config, fromSecret)
 		az, err = NewCloudWithoutFeatureGatesFromConfig(ctx, config, fromSecret, false)
 		if err != nil {
 			err = fmt.Errorf("failed to create cloud: %v", err)
