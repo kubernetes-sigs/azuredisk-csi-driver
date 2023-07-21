@@ -195,6 +195,7 @@ func ParseConfig(configReader io.Reader) (*Config, error) {
 
 	// these environment variables are injected by workload identity webhook
 	if tenantID := os.Getenv("AZURE_TENANT_ID"); tenantID != "" {
+		klog.Infof("tenantID : %+v", tenantID)
 		config.TenantID = tenantID
 	}
 	if clientID := os.Getenv("AZURE_CLIENT_ID"); clientID != "" {
