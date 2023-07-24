@@ -153,6 +153,12 @@ func (mounter *winMounter) FormatAndMount(source, target, fstype string, options
 		return fmt.Errorf("parse %s failed with error: %v", source, err)
 	}
 
+	// set disk as online and clear readonly flag if there is any.
+	if err := disk.SetDiskState(uint32(diskNum), true); err != nil {
+		// only log the error since SetDiskState is only needed in cloned volume
+		klog.Errorf("SetDiskState on disk(%d) failed with %v", diskNum, err)
+	}
+
 	// Call PartitionDisk CSI proxy call to partition the disk and return the volume id
 	if err := disk.PartitionDisk(uint32(diskNum)); err != nil {
 		return err
