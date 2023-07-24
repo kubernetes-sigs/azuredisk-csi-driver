@@ -58,6 +58,7 @@ var (
 	isWindowsCluster          = os.Getenv(testWindowsEnvVar) != ""
 	winServerVer              = os.Getenv(testWinServerVerEnvVar)
 	isAzureStackCloud         = strings.EqualFold(os.Getenv(cloudNameEnvVar), "AZURESTACKCLOUD")
+	isWindowsHPCDeployment    = strings.EqualFold(os.Getenv("WINDOWS_USE_HOST_PROCESS_CONTAINERS"), "true")
 	location                  string
 	supportsZRS               bool
 	supportsDynamicResize     bool
@@ -346,6 +347,8 @@ func convertToPowershellorCmdCommandIfNecessary(command string) string {
 		return "echo 'overwrite' | Out-File -FilePath C:\\mnt\\test-1\\data.txt; Start-Sleep 3600"
 	case "grep 'hello world' /mnt/test-1/data":
 		return "Get-Content C:\\mnt\\test-1\\data.txt | findstr 'hello world'"
+	case "df -h | grep /mnt/test- | awk '{print $2}' | grep 20.0G":
+		return "fsutil volume diskfree C:\\mnt\\ | Select-String 'Total bytes' | Select-String '19.9 GB'"
 	}
 
 	return command

@@ -539,11 +539,12 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 	})
 
 	ginkgo.It("should clone a volume from an existing volume and read from it [disk.csi.azure.com]", func(ctx ginkgo.SpecContext) {
-		skipIfTestingInWindowsCluster()
 		skipIfUsingInTreeVolumePlugin()
-
+		if isWindowsCluster && !isWindowsHPCDeployment {
+			ginkgo.Skip("test case not supported by Windows clusters with non host process deployment drivers")
+		}
 		pod := testsuites.PodDetails{
-			Cmd: "echo 'hello world' > /mnt/test-1/data",
+			Cmd: convertToPowershellorCmdCommandIfNecessary("echo 'hello world' > /mnt/test-1/data"),
 			Volumes: t.normalizeVolumes([]testsuites.VolumeDetails{
 				{
 					FSType:    "ext4",
@@ -555,9 +556,13 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 					VolumeAccessMode: v1.ReadWriteOnce,
 				},
 			}, isMultiZone),
+			IsWindows:    isWindowsCluster,
+			WinServerVer: winServerVer,
 		}
 		podWithClonedVolume := testsuites.PodDetails{
-			Cmd: "grep 'hello world' /mnt/test-1/data",
+			Cmd:          convertToPowershellorCmdCommandIfNecessary("grep 'hello world' /mnt/test-1/data"),
+			IsWindows:    isWindowsCluster,
+			WinServerVer: winServerVer,
 		}
 		test := testsuites.DynamicallyProvisionedVolumeCloningTest{
 			CSIDriver:           testDriver,
@@ -572,8 +577,10 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 	})
 
 	ginkgo.It("should clone a volume of larger size than the source volume and make sure the filesystem is appropriately adjusted [disk.csi.azure.com]", func(ctx ginkgo.SpecContext) {
-		skipIfTestingInWindowsCluster()
 		skipIfUsingInTreeVolumePlugin()
+		if isWindowsCluster && !isWindowsHPCDeployment {
+			ginkgo.Skip("test case not supported by Windows clusters with non host process deployment drivers")
+		}
 
 		pod := testsuites.PodDetails{
 			Volumes: t.normalizeVolumes([]testsuites.VolumeDetails{
@@ -587,11 +594,15 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 					VolumeAccessMode: v1.ReadWriteOnce,
 				},
 			}, isMultiZone),
+			IsWindows:    isWindowsCluster,
+			WinServerVer: winServerVer,
 		}
 		clonedVolumeSize := "20Gi"
 
 		podWithClonedVolume := testsuites.PodDetails{
-			Cmd: "df -h | grep /mnt/test- | awk '{print $2}' | grep 20.0G",
+			Cmd:          convertToPowershellorCmdCommandIfNecessary("df -h | grep /mnt/test- | awk '{print $2}' | grep 20.0G"),
+			IsWindows:    isWindowsCluster,
+			WinServerVer: winServerVer,
 		}
 
 		test := testsuites.DynamicallyProvisionedVolumeCloningTest{
