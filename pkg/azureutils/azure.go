@@ -290,9 +290,7 @@ func (az *Cloud) InitializeCloudFromConfig(ctx context.Context, config *Config, 
 
 func (az *Cloud) ConfigAzureClients() {
 
-	cred, err := azidentity.NewDefaultAzureCredential(&azidentity.DefaultAzureCredentialOptions{
-		
-	})
+	cred, err := azidentity.NewDefaultAzureCredential(nil)
 	if err != nil {
 		klog.Fatalf("failed to obtain new credential: %v", err)
 	}
