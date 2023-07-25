@@ -523,6 +523,7 @@ func (c *CloudProvisioner) DeleteVolume(
 
 	resp, err := disksClient.Get(ctx, c.cloud.ResourceGroup, diskName, nil)
 	if err != nil {
+		klog.Infof("error: %+v", err)
 		rerr := err.(*azcore.ResponseError)
 		if rerr.StatusCode == http.StatusNotFound {
 			klog.Infof("disk %+v is already deleted", volumeID)
