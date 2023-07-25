@@ -415,6 +415,9 @@ users:
 			false,
 			-1)
 		klog.Infof("line 416: test %+v %+v", test, err)
+		if test.expectedErr != nil {
+			klog.Infof("line 419 expected %+v", test.expectedErr)
+		}
 		if !reflect.DeepEqual(err, test.expectedErr) && (err == nil || !strings.Contains(err.Error(), test.expectedErr.Error())) {
 			t.Errorf("desc: %s,\n input: %q, GetCloudProvider err: %v, expectedErr: %v", test.desc, test.kubeconfig, err, test.expectedErr)
 		}
