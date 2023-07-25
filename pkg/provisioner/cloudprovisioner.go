@@ -1287,6 +1287,8 @@ func (c *CloudProvisioner) CheckDiskCapacity(ctx context.Context, resourceGroup,
 		return true, nil
 	}
 
+	klog.Infof("line 1290 ctx: %+v rg: %+v disk: %+v", ctx, resourceGroup, diskName)
+
 	disk, rerr := c.cloud.DisksClient.Get(ctx, resourceGroup, diskName, nil)
 	// Because we can not judge the reason of the error. Maybe the disk does not exist.
 	// So here we do not handle the error.
