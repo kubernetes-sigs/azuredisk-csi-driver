@@ -862,8 +862,7 @@ func TestCreateVolume(t *testing.T) {
 					return resp, errResp
 				}
 		
-				client := provisioner.cloud.CreateDisksClientWithFunction(provisioner.cloud.SubscriptionID, fget, nil, nil, nil, nil)
-				client.Get(context.Background(), "", tt.diskName, nil)
+				provisioner.cloud.CreateDisksClientWithFunction(provisioner.cloud.SubscriptionID, fget, nil, nil, nil, nil)
 			}
 
 			volume, err := provisioner.CreateVolume(
