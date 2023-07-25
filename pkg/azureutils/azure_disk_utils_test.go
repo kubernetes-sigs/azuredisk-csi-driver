@@ -1342,37 +1342,37 @@ func TestValidateDataAccessAuthMode(t *testing.T) {
 func TestNormalizeNetworkAccessPolicy(t *testing.T) {
 	tests := []struct {
 		networkAccessPolicy         string
-		expectedNetworkAccessPolicy compute.NetworkAccessPolicy
+		expectedNetworkAccessPolicy armcompute.NetworkAccessPolicy
 		expectError                 bool
 	}{
 		{
 			networkAccessPolicy:         "",
-			expectedNetworkAccessPolicy: compute.AllowAll,
+			expectedNetworkAccessPolicy: armcompute.NetworkAccessPolicyAllowAll,
 			expectError:                 false,
 		},
 		{
 			networkAccessPolicy:         "AllowAll",
-			expectedNetworkAccessPolicy: compute.AllowAll,
+			expectedNetworkAccessPolicy: armcompute.NetworkAccessPolicyAllowAll,
 			expectError:                 false,
 		},
 		{
 			networkAccessPolicy:         "DenyAll",
-			expectedNetworkAccessPolicy: compute.DenyAll,
+			expectedNetworkAccessPolicy: armcompute.NetworkAccessPolicyDenyAll,
 			expectError:                 false,
 		},
 		{
 			networkAccessPolicy:         "AllowPrivate",
-			expectedNetworkAccessPolicy: compute.AllowPrivate,
+			expectedNetworkAccessPolicy: armcompute.NetworkAccessPolicyAllowPrivate,
 			expectError:                 false,
 		},
 		{
 			networkAccessPolicy:         "allowAll",
-			expectedNetworkAccessPolicy: compute.NetworkAccessPolicy(""),
+			expectedNetworkAccessPolicy: armcompute.NetworkAccessPolicy(""),
 			expectError:                 true,
 		},
 		{
 			networkAccessPolicy:         "invalid",
-			expectedNetworkAccessPolicy: compute.NetworkAccessPolicy(""),
+			expectedNetworkAccessPolicy: armcompute.NetworkAccessPolicy(""),
 			expectError:                 true,
 		},
 	}
@@ -1390,21 +1390,21 @@ func TestNormalizeStorageAccountType(t *testing.T) {
 		cloud                  string
 		storageAccountType     string
 		disableAzureStackCloud bool
-		expectedAccountType    compute.DiskStorageAccountTypes
+		expectedAccountType    armcompute.DiskStorageAccountTypes
 		expectError            bool
 	}{
 		{
 			cloud:                  azurePublicCloud,
 			storageAccountType:     "",
 			disableAzureStackCloud: false,
-			expectedAccountType:    compute.StandardSSDLRS,
+			expectedAccountType:    armcompute.DiskStorageAccountTypesStandardSSDLRS,
 			expectError:            false,
 		},
 		{
 			cloud:                  azureStackCloud,
 			storageAccountType:     "",
 			disableAzureStackCloud: false,
-			expectedAccountType:    compute.StandardLRS,
+			expectedAccountType:    armcompute.DiskStorageAccountTypesStandardLRS,
 			expectError:            false,
 		},
 		{
@@ -1418,28 +1418,28 @@ func TestNormalizeStorageAccountType(t *testing.T) {
 			cloud:                  azurePublicCloud,
 			storageAccountType:     "Standard_LRS",
 			disableAzureStackCloud: false,
-			expectedAccountType:    compute.StandardLRS,
+			expectedAccountType:    armcompute.DiskStorageAccountTypesStandardLRS,
 			expectError:            false,
 		},
 		{
 			cloud:                  azurePublicCloud,
 			storageAccountType:     "Premium_LRS",
 			disableAzureStackCloud: false,
-			expectedAccountType:    compute.PremiumLRS,
+			expectedAccountType:    armcompute.DiskStorageAccountTypesPremiumLRS,
 			expectError:            false,
 		},
 		{
 			cloud:                  azurePublicCloud,
 			storageAccountType:     "StandardSSD_LRS",
 			disableAzureStackCloud: false,
-			expectedAccountType:    compute.StandardSSDLRS,
+			expectedAccountType:    armcompute.DiskStorageAccountTypesStandardSSDLRS,
 			expectError:            false,
 		},
 		{
 			cloud:                  azurePublicCloud,
 			storageAccountType:     "UltraSSD_LRS",
 			disableAzureStackCloud: false,
-			expectedAccountType:    compute.UltraSSDLRS,
+			expectedAccountType:    armcompute.DiskStorageAccountTypesUltraSSDLRS,
 			expectError:            false,
 		},
 		{
@@ -1453,7 +1453,7 @@ func TestNormalizeStorageAccountType(t *testing.T) {
 			cloud:                  azureStackCloud,
 			storageAccountType:     "UltraSSD_LRS",
 			disableAzureStackCloud: true,
-			expectedAccountType:    compute.UltraSSDLRS,
+			expectedAccountType:    armcompute.DiskStorageAccountTypesUltraSSDLRS,
 			expectError:            false,
 		},
 	}
