@@ -22,17 +22,17 @@ package azuredisk
 
 import (
 	"context"
+	"net/http"
 	"testing"
 
-	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2022-03-01/compute"
-	"github.com/golang/mock/gomock"
+	armcompute "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute/v5"
+	azfake "github.com/Azure/azure-sdk-for-go/sdk/azcore/fake"
 	"github.com/stretchr/testify/assert"
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
 	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
-	"sigs.k8s.io/cloud-provider-azure/pkg/azureclients/diskclient/mockdiskclient"
 )
 
 func TestCheckDiskCapacity_V1(t *testing.T) {
@@ -41,12 +41,23 @@ func TestCheckDiskCapacity_V1(t *testing.T) {
 	diskName := "unit-test"
 	resourceGroup := "unit-test"
 	subID := "unit-test"
-	disk := compute.Disk{
-		DiskProperties: &compute.DiskProperties{
+	disk := armcompute.Disk{
+		Properties: &armcompute.DiskProperties{
 			DiskSizeGB: &size,
 		},
 	}
-	d.getCloud().DisksClient.(*mockdiskclient.MockInterface).EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(disk, nil).AnyTimes()
+
+	fget := func(ctx context.Context, resourceGroupName string, diskName string, options *armcompute.DisksClientGetOptions) (resp azfake.Responder[armcompute.DisksClientGetResponse], errResp azfake.ErrorResponder) {
+		resp.SetResponse(http.StatusOK, armcompute.DisksClientGetResponse{
+			Disk:	disk,
+		}, nil)
+		errResp.SetError(nil)
+		return resp, errResp
+	}
+
+	client := d.getCloud().CreateDisksClientWithFunction(d.getCloud().SubscriptionID, fget, nil, nil, nil, nil)
+	client.Get(nil, "", "", nil)
+
 
 	flag, err := d.checkDiskCapacity(context.TODO(), subID, resourceGroup, diskName, 10)
 

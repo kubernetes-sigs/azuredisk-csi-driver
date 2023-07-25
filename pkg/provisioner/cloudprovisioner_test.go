@@ -18,19 +18,15 @@ package provisioner
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
 	"testing"
 	"time"
 
+	"github.com/Azure/azure-sdk-for-go/sdk/azcore/to"
+	azfake "github.com/Azure/azure-sdk-for-go/sdk/azcore/fake"
 	armcompute "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute/v5"
-	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2022-03-01/compute"
-	"github.com/Azure/go-autorest/autorest"
-	"github.com/Azure/go-autorest/autorest/azure"
-	"github.com/Azure/go-autorest/autorest/date"
-	autorestmocks "github.com/Azure/go-autorest/autorest/mocks"
 	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/assert"
 	"google.golang.org/grpc/codes"
@@ -44,9 +40,6 @@ import (
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/util"
-	"sigs.k8s.io/cloud-provider-azure/pkg/azureclients/diskclient/mockdiskclient"
-	"sigs.k8s.io/cloud-provider-azure/pkg/azureclients/snapshotclient/mocksnapshotclient"
-	"sigs.k8s.io/cloud-provider-azure/pkg/azureclients/vmclient/mockvmclient"
 	azcache "sigs.k8s.io/cloud-provider-azure/pkg/cache"
 	"sigs.k8s.io/cloud-provider-azure/pkg/retry"
 )
@@ -77,14 +70,14 @@ var (
 	testDiskName1             = "test-disk-1"
 	testDiskURI1              = fmt.Sprintf(computeDiskURIFormat, testSubscription, testResourceGroup, testDiskName1)
 	testDiskSizeGiB     int32 = 10
-	testDiskTimeCreated       = date.Time{Time: time.Now()}
+	testDiskTimeCreated       = time.Now()
 
-	testDisk = compute.Disk{
+	testDisk = armcompute.Disk{
 		Name: &testDiskName0,
 		ID:   &testDiskURI0,
-		DiskProperties: &compute.DiskProperties{
+		Properties: &armcompute.DiskProperties{
 			DiskSizeGB:        &testDiskSizeGiB,
-			DiskState:         compute.Unattached,
+			DiskState:         to.Ptr(armcompute.DiskStateUnattached),
 			ProvisioningState: &provisioningStateSucceeded,
 			TimeCreated:       &testDiskTimeCreated,
 		},
@@ -97,16 +90,16 @@ var (
 	clonedDiskURI           = fmt.Sprintf(computeDiskURIFormat, testSubscription, testResourceGroup, clonedDiskName)
 	clonedDiskSizeGiB int32 = 100
 
-	clonedDisk = compute.Disk{
+	clonedDisk = armcompute.Disk{
 		Name: &clonedDiskName,
 		ID:   &clonedDiskURI,
-		DiskProperties: &compute.DiskProperties{
-			CreationData: &compute.CreationData{
-				CreateOption:     compute.Copy,
+		Properties: &armcompute.DiskProperties{
+			CreationData: &armcompute.CreationData{
+				CreateOption:     to.Ptr(armcompute.DiskCreateOptionCopy),
 				SourceResourceID: &testDiskURI0,
 			},
 			DiskSizeGB:        &clonedDiskSizeGiB,
-			DiskState:         compute.Unattached,
+			DiskState:         to.Ptr(armcompute.DiskStateUnattached),
 			ProvisioningState: &provisioningStateSucceeded,
 			TimeCreated:       &testDiskTimeCreated,
 		},
@@ -115,7 +108,7 @@ var (
 	invalidDiskWithMissingPropertiesName = "disk-missing-properties"
 	invalidDiskWithMissingPropertiesURI  = fmt.Sprintf(computeDiskURIFormat, testSubscription, testResourceGroup, invalidDiskWithMissingPropertiesName)
 
-	invalidDiskWithMissingProperties = compute.Disk{
+	invalidDiskWithMissingProperties = armcompute.Disk{
 		Name: &invalidDiskWithMissingPropertiesName,
 		ID:   &invalidDiskWithMissingPropertiesURI,
 	}
@@ -123,10 +116,10 @@ var (
 	invalidDiskWithEmptyPropertiesName = "disk-empty-properties"
 	invalidDiskWithEmptyPropertiesURI  = fmt.Sprintf(computeDiskURIFormat, testSubscription, testResourceGroup, invalidDiskWithEmptyPropertiesName)
 
-	invalidDiskWithEmptyProperties = compute.Disk{
+	invalidDiskWithEmptyProperties = armcompute.Disk{
 		Name:           &invalidDiskWithEmptyPropertiesName,
 		ID:             &invalidDiskWithEmptyPropertiesURI,
-		DiskProperties: &compute.DiskProperties{},
+		Properties: &armcompute.DiskProperties{},
 	}
 
 	testSnapshotName        = "test-snapshot"
@@ -155,7 +148,7 @@ var (
 	invalidSnapshotWithMissingPropertiesName = "snapshot-missing-properties"
 	invalidSnapshotWithMissingPropertiesURI  = fmt.Sprintf(computeSnapshotURIFormat, testSubscription, testResourceGroup, invalidSnapshotWithMissingPropertiesName)
 
-	invalidSnapshotWithMissingProperties = compute.Snapshot{
+	invalidSnapshotWithMissingProperties = armcompute.Snapshot{
 		Name: &invalidSnapshotWithMissingPropertiesName,
 		ID:   &invalidSnapshotWithMissingPropertiesURI,
 	}
@@ -163,22 +156,22 @@ var (
 	invalidSnapshotWithEmptyPropertiesName = "snapshot-empty-properties"
 	invalidSnapshotWithEmptyPropertiesURI  = fmt.Sprintf(computeSnapshotURIFormat, testSubscription, testResourceGroup, invalidSnapshotWithEmptyPropertiesName)
 
-	invalidSnapshotWithEmptyProperties = compute.Snapshot{
+	invalidSnapshotWithEmptyProperties = armcompute.Snapshot{
 		Name:               &invalidSnapshotWithEmptyPropertiesName,
 		ID:                 &invalidSnapshotWithEmptyPropertiesURI,
-		SnapshotProperties: &compute.SnapshotProperties{},
+		Properties:			&armcompute.SnapshotProperties{},
 	}
 
 	testVMName = "test-vm"
 	testVMID   = fmt.Sprint(virtualMachineURIFormat, testSubscription, testResourceGroup, "deadbeef-eded-eded-eded-0123456789abcd")
 	testVMURI  = fmt.Sprint(virtualMachineURIFormat, testSubscription, testResourceGroup, testVMName)
-	testVM     = compute.VirtualMachine{
+	testVM     = armcompute.VirtualMachine{
 		Name: &testVMName,
 		ID:   &testVMURI,
-		VirtualMachineProperties: &compute.VirtualMachineProperties{
+		Properties: &armcompute.VirtualMachineProperties{
 			ProvisioningState: &provisioningStateSucceeded,
-			StorageProfile: &compute.StorageProfile{
-				DataDisks: new([]compute.DataDisk),
+			StorageProfile: &armcompute.StorageProfile{
+				DataDisks: []*armcompute.DataDisk{},
 			},
 		},
 	}
@@ -221,133 +214,216 @@ func NewTestCloudProvisioner(controller *gomock.Controller) *CloudProvisioner {
 	}
 }
 
-func mockExistingDisk(provisioner *CloudProvisioner) {
-	provisioner.cloud.DisksClient.(*mockdiskclient.MockInterface).EXPECT().
-		Get(gomock.Any(), testSubscription, testResourceGroup, testDiskName0).
-		Return(testDisk, nil).
-		AnyTimes()
+func mockExistingDisk(provisioner *CloudProvisioner) {		
+	fget := func(ctx context.Context, resourceGroupName string, diskName string, options *armcompute.DisksClientGetOptions) (resp azfake.Responder[armcompute.DisksClientGetResponse], errResp azfake.ErrorResponder) {
+		if (resourceGroupName == testResourceGroup && diskName == testDiskName0) {
+			resp.SetResponse(http.StatusOK, armcompute.DisksClientGetResponse{
+				Disk:	testDisk,
+			}, nil)
+			errResp.SetError(nil)
+			return resp, errResp
+		}
+
+		resp.SetResponse(http.StatusNotFound, armcompute.DisksClientGetResponse{}, nil)
+		errResp.SetError(nil)
+		return resp, errResp
+	}
+
+	client := provisioner.cloud.CreateDisksClientWithFunction(testSubscription, fget, nil, nil, nil, nil)
+	client.Get(context.Background(), testResourceGroup, testDiskName0, nil)
 }
 
 func mockClonedDisk(provisioner *CloudProvisioner) {
-	provisioner.cloud.DisksClient.(*mockdiskclient.MockInterface).EXPECT().
-		Get(gomock.Any(), testSubscription, testResourceGroup, clonedDiskName).
-		Return(clonedDisk, nil).
-		AnyTimes()
+	fget := func(ctx context.Context, resourceGroupName string, diskName string, options *armcompute.DisksClientGetOptions) (resp azfake.Responder[armcompute.DisksClientGetResponse], errResp azfake.ErrorResponder) {
+		if (resourceGroupName == testResourceGroup && diskName == clonedDiskName) {
+			resp.SetResponse(http.StatusOK, armcompute.DisksClientGetResponse{
+				Disk:	clonedDisk,
+			}, nil)
+			errResp.SetError(nil)
+			return resp, errResp
+		}
+
+		resp.SetResponse(http.StatusNotFound, armcompute.DisksClientGetResponse{}, nil)
+		errResp.SetError(nil)
+		return resp, errResp
+	}
+
+	client := provisioner.cloud.CreateDisksClientWithFunction(testSubscription, fget, nil, nil, nil, nil)
+	client.Get(context.Background(), testResourceGroup, clonedDiskName, nil)
 }
 
 func mockMissingDisk(provisioner *CloudProvisioner) {
-	provisioner.cloud.DisksClient.(*mockdiskclient.MockInterface).EXPECT().
-		Get(gomock.Any(), testSubscription, testResourceGroup, missingDiskName).
-		Return(compute.Disk{}, notFoundError).
-		AnyTimes()
+	fget := func(ctx context.Context, resourceGroupName string, diskName string, options *armcompute.DisksClientGetOptions) (resp azfake.Responder[armcompute.DisksClientGetResponse], errResp azfake.ErrorResponder) {
+		if (resourceGroupName == testResourceGroup && diskName == missingDiskName) {
+			resp.SetResponse(http.StatusNotFound, armcompute.DisksClientGetResponse{
+				Disk:	armcompute.Disk{},
+			}, nil)
+			errResp.SetError(notFoundError.RawError)
+			return resp, errResp
+		}
+
+		resp.SetResponse(http.StatusNotFound, armcompute.DisksClientGetResponse{}, nil)
+		errResp.SetError(nil)
+		return resp, errResp
+	}
+
+	client := provisioner.cloud.CreateDisksClientWithFunction(testSubscription, fget, nil, nil, nil, nil)
+	client.Get(context.Background(), testResourceGroup, missingDiskName, nil)
 }
 
 func mockInvalidDisks(provisioner *CloudProvisioner) {
-	provisioner.cloud.DisksClient.(*mockdiskclient.MockInterface).EXPECT().
-		Get(gomock.Any(), testSubscription, testResourceGroup, invalidDiskWithMissingPropertiesName).
-		Return(invalidDiskWithMissingProperties, nil).
-		AnyTimes()
-	provisioner.cloud.DisksClient.(*mockdiskclient.MockInterface).EXPECT().
-		Get(gomock.Any(), testSubscription, testResourceGroup, invalidDiskWithEmptyPropertiesName).
-		Return(invalidDiskWithEmptyProperties, nil).
-		AnyTimes()
+	fget1 := func(ctx context.Context, resourceGroupName string, diskName string, options *armcompute.DisksClientGetOptions) (resp azfake.Responder[armcompute.DisksClientGetResponse], errResp azfake.ErrorResponder) {
+		if (resourceGroupName == testResourceGroup && diskName == invalidDiskWithMissingPropertiesName) {
+			resp.SetResponse(http.StatusNotFound, armcompute.DisksClientGetResponse{
+				Disk:	invalidDiskWithMissingProperties,
+			}, nil)
+			errResp.SetError(nil)
+			return resp, errResp
+		}
+
+		resp.SetResponse(http.StatusNotFound, armcompute.DisksClientGetResponse{}, nil)
+		errResp.SetError(nil)
+		return resp, errResp
+	}
+
+	client1 := provisioner.cloud.CreateDisksClientWithFunction(testSubscription, fget1, nil, nil, nil, nil)
+	client1.Get(context.Background(), testResourceGroup, invalidDiskWithMissingPropertiesName, nil)
+
+	fget2 := func(ctx context.Context, resourceGroupName string, diskName string, options *armcompute.DisksClientGetOptions) (resp azfake.Responder[armcompute.DisksClientGetResponse], errResp azfake.ErrorResponder) {
+		if (resourceGroupName == testResourceGroup && diskName == invalidDiskWithEmptyPropertiesName) {
+			resp.SetResponse(http.StatusOK, armcompute.DisksClientGetResponse{
+				Disk:	invalidDiskWithEmptyProperties,
+			}, nil)
+			errResp.SetError(nil)
+			return resp, errResp
+		}
+
+		resp.SetResponse(http.StatusOK, armcompute.DisksClientGetResponse{}, nil)
+		errResp.SetError(nil)
+		return resp, errResp
+	}
+
+	client2 := provisioner.cloud.CreateDisksClientWithFunction(testSubscription, fget2, nil, nil, nil, nil)
+	client2.Get(context.Background(), testResourceGroup, invalidDiskWithEmptyPropertiesName, nil)
 }
 
 func mockExistingSnapshot(provisioner *CloudProvisioner) {
-	provisioner.cloud.SnapshotsClient.(*mocksnapshotclient.MockInterface).EXPECT().
-		Get(gomock.Any(), testSubscription, testResourceGroup, testSnapshotName).
-		Return(testSnapshot, nil).
-		AnyTimes()
+	fget := func(ctx context.Context, resourceGroupName string, snapshotName string, options *armcompute.SnapshotsClientGetOptions) (resp azfake.Responder[armcompute.SnapshotsClientGetResponse], errResp azfake.ErrorResponder) {
+		if resourceGroupName == testResourceGroup && snapshotName == testSnapshotName {
+			resp.SetResponse(http.StatusOK, armcompute.SnapshotsClientGetResponse {
+				Snapshot:	testSnapshot,
+			}, nil)
+			errResp.SetError(nil)
+			return resp, errResp
+		}
+
+		resp.SetResponse(http.StatusNotFound, armcompute.SnapshotsClientGetResponse{}, nil)
+		errResp.SetError(nil)
+		return resp, errResp
+	}
+
+	client := provisioner.cloud.CreateSnapshotsClientWithFunction(testSubscription, fget, nil, nil, nil)
+	client.Get(context.Background(), testResourceGroup, testSnapshotName, nil)
 }
 
 func mockMissingSnapshot(provisioner *CloudProvisioner) {
-	provisioner.cloud.SnapshotsClient.(*mocksnapshotclient.MockInterface).EXPECT().
-		Get(gomock.Any(), testSubscription, testResourceGroup, missingSnapshotName).
-		Return(compute.Snapshot{}, notFoundError).
-		AnyTimes()
+	fget := func(ctx context.Context, resourceGroupName string, snapshotName string, options *armcompute.SnapshotsClientGetOptions) (resp azfake.Responder[armcompute.SnapshotsClientGetResponse], errResp azfake.ErrorResponder) {
+		if resourceGroupName == testResourceGroup && snapshotName == missingSnapshotName {
+			resp.SetResponse(http.StatusNotFound, armcompute.SnapshotsClientGetResponse {
+				Snapshot:	armcompute.Snapshot{},
+			}, nil)
+			errResp.SetError(notFoundError.RawError)
+			return resp, errResp
+		}
+
+		resp.SetResponse(http.StatusNotFound, armcompute.SnapshotsClientGetResponse{}, nil)
+		errResp.SetError(nil)
+		return resp, errResp
+	}
+
+	client := provisioner.cloud.CreateSnapshotsClientWithFunction(testSubscription, fget, nil, nil, nil)
+	client.Get(context.Background(), testResourceGroup, missingSnapshotName, nil)
 }
 
 func mockInvalidSnapshots(provisioner *CloudProvisioner) {
-	provisioner.cloud.SnapshotsClient.(*mocksnapshotclient.MockInterface).EXPECT().
-		Get(gomock.Any(), testSubscription, testResourceGroup, invalidSnapshotWithMissingPropertiesName).
-		Return(invalidSnapshotWithMissingProperties, nil).
-		AnyTimes()
-	provisioner.cloud.SnapshotsClient.(*mocksnapshotclient.MockInterface).EXPECT().
-		Get(gomock.Any(), testSubscription, testResourceGroup, invalidSnapshotWithEmptyPropertiesName).
-		Return(invalidSnapshotWithEmptyProperties, nil).
-		AnyTimes()
+	fget1 := func(ctx context.Context, resourceGroupName string, snapshotName string, options *armcompute.SnapshotsClientGetOptions) (resp azfake.Responder[armcompute.SnapshotsClientGetResponse], errResp azfake.ErrorResponder) {
+		if resourceGroupName == testResourceGroup && snapshotName == invalidSnapshotWithMissingPropertiesName {
+			resp.SetResponse(http.StatusOK, armcompute.SnapshotsClientGetResponse {
+				Snapshot:	invalidSnapshotWithMissingProperties,
+			}, nil)
+			errResp.SetError(nil)
+			return resp, errResp
+		}
+
+		resp.SetResponse(http.StatusNotFound, armcompute.SnapshotsClientGetResponse{}, nil)
+		errResp.SetError(nil)
+		return resp, errResp
+	}
+	client1 := provisioner.cloud.CreateSnapshotsClientWithFunction(testSubscription, fget1, nil, nil, nil)
+	client1.Get(context.Background(), testResourceGroup, invalidSnapshotWithMissingPropertiesName, nil)
+
+	fget2 := func(ctx context.Context, resourceGroupName string, snapshotName string, options *armcompute.SnapshotsClientGetOptions) (resp azfake.Responder[armcompute.SnapshotsClientGetResponse], errResp azfake.ErrorResponder) {
+		if resourceGroupName == testResourceGroup && snapshotName == invalidSnapshotWithEmptyPropertiesName {
+			resp.SetResponse(http.StatusOK, armcompute.SnapshotsClientGetResponse {
+				Snapshot:	invalidSnapshotWithEmptyProperties,
+			}, nil)
+			errResp.SetError(nil)
+			return resp, errResp
+		}
+
+		resp.SetResponse(http.StatusNotFound, armcompute.SnapshotsClientGetResponse{}, nil)
+		errResp.SetError(nil)
+		return resp, errResp
+	}
+	client2 := provisioner.cloud.CreateSnapshotsClientWithFunction(testSubscription, fget2, nil, nil, nil)
+	client2.Get(context.Background(), testResourceGroup, invalidSnapshotWithEmptyPropertiesName, nil)
 }
 
 func mockUpdateVM(provisioner *CloudProvisioner) {
-	provisioner.cloud.VirtualMachinesClient.(*mockvmclient.MockInterface).EXPECT().
-		Get(gomock.Any(), testResourceGroup, testVMName, gomock.Any()).
-		Return(testVM, nil).
-		AnyTimes()
-	provisioner.cloud.VirtualMachinesClient.(*mockvmclient.MockInterface).EXPECT().
-		Update(gomock.Any(), testResourceGroup, testVMName, gomock.Any(), gomock.Any()).
-		DoAndReturn(func(ctx context.Context, resourceGroupName string, nodeName string, parameters compute.VirtualMachineUpdate, source string) (*compute.VirtualMachine, *retry.Error) {
-			vm := &compute.VirtualMachine{
-				Name:                     &nodeName,
+	fget := func(ctx context.Context, resourceGroupName string, vmName string, options *armcompute.VirtualMachinesClientGetOptions) (resp azfake.Responder[armcompute.VirtualMachinesClientGetResponse], errResp azfake.ErrorResponder) {
+		if resourceGroupName == testResourceGroup && vmName == testVMName {
+			resp.SetResponse(http.StatusOK, armcompute.VirtualMachinesClientGetResponse{
+				VirtualMachine:	testVM,
+			}, nil)
+			errResp.SetError(nil)
+			return resp, errResp
+		}
+		resp.SetResponse(http.StatusNotFound, armcompute.VirtualMachinesClientGetResponse{}, nil)
+		errResp.SetError(nil)
+		return resp, errResp
+	}
+
+	fupdate := func(ctx context.Context, resourceGroupName string, vmName string, parameters armcompute.VirtualMachineUpdate, options *armcompute.VirtualMachinesClientBeginUpdateOptions) (resp azfake.PollerResponder[armcompute.VirtualMachinesClientUpdateResponse], errResp azfake.ErrorResponder) {
+		if resourceGroupName == testResourceGroup && vmName == testVMName {
+			vm := &armcompute.VirtualMachine{
+				Name:                     &vmName,
 				Plan:                     parameters.Plan,
-				VirtualMachineProperties: parameters.VirtualMachineProperties,
+				Properties: 			  parameters.Properties,
 				Identity:                 parameters.Identity,
 				Zones:                    parameters.Zones,
 				Tags:                     parameters.Tags,
 				ID:                       &testVMID,
 			}
-
-			return vm, nil
-		}).
-		AnyTimes()
-	provisioner.cloud.VirtualMachinesClient.(*mockvmclient.MockInterface).EXPECT().
-		UpdateAsync(gomock.Any(), testResourceGroup, testVMName, gomock.Any(), gomock.Any()).
-		DoAndReturn(func(ctx context.Context, resourceGroup, nodeName string, parameters compute.VirtualMachineUpdate, source string) (*azure.Future, *retry.Error) {
-			vm := &compute.VirtualMachine{
-				Name:                     &nodeName,
-				Plan:                     parameters.Plan,
-				VirtualMachineProperties: parameters.VirtualMachineProperties,
-				Identity:                 parameters.Identity,
-				Zones:                    parameters.Zones,
-				Tags:                     parameters.Tags,
-				ID:                       &testVMID,
-			}
-			c, err := json.Marshal(vm)
-			if err != nil {
-				return nil, retry.NewError(false, err)
-			}
-
-			r := autorestmocks.NewResponseWithContent(string(c))
-			defer r.Body.Close()
-			r.Request.Method = http.MethodPut
-
-			f, err := azure.NewFutureFromResponse(r)
-			if err != nil {
-				return nil, retry.NewError(false, err)
-			}
-
-			return &f, nil
-		}).
-		AnyTimes()
-	provisioner.cloud.VirtualMachinesClient.(*mockvmclient.MockInterface).EXPECT().
-		WaitForUpdateResult(gomock.Any(), gomock.Any(), testResourceGroup, gomock.Any()).
-		DoAndReturn(func(ctx context.Context, future *azure.Future, resourceGroupName, source string) (*compute.VirtualMachine, *retry.Error) {
-			result := &compute.VirtualMachine{}
-			resp, _ := future.GetResult(autorestmocks.NewSender())
-			defer resp.Body.Close()
-			err := autorest.Respond(
-				resp,
-				azure.WithErrorUnlessStatusCode(http.StatusOK, http.StatusCreated),
-				autorest.ByUnmarshallingJSON(&result),
-				autorest.ByClosing())
-			result.Response = autorest.Response{Response: resp}
-			return result, retry.GetError(resp, err)
-		}).
-		AnyTimes()
+			resp.SetTerminalResponse(http.StatusOK, armcompute.VirtualMachinesClientUpdateResponse{
+				VirtualMachine:		*vm,
+			}, nil)
+			errResp.SetError(nil)
+			return resp, errResp
+		}
+		resp.SetTerminalResponse(http.StatusNotFound, armcompute.VirtualMachinesClientUpdateResponse{}, nil)
+		errResp.SetError(nil)
+		return resp, errResp
+	}
+	client := provisioner.cloud.CreateVMClientWithFunction(provisioner.cloud.SubscriptionID, fget, fupdate)
+	client.Get(context.Background(), testResourceGroup, testVMName, nil)
+	client.BeginUpdate(context.Background(), testResourceGroup, testVMName, armcompute.VirtualMachineUpdate{
+		Properties:	testVM.Properties,
+	}, nil)
 }
 
 func mockPeristentVolumesList(provisioner *CloudProvisioner, pvCount int32) {
 	var pvList = make([]runtime.Object, pvCount)
-	var diskList = make([]compute.Disk, pvCount)
+	var diskList = make([]*armcompute.Disk, pvCount)
 
 	for i := int32(0); i < pvCount; i++ {
 		diskName := fmt.Sprintf("pvc-%d", i+1)
@@ -368,35 +444,58 @@ func mockPeristentVolumesList(provisioner *CloudProvisioner, pvCount int32) {
 			},
 		}
 
-		timeCreated := date.Time{Time: time.Now()}
-		diskList[i] = compute.Disk{
+		timeCreated := time.Now()
+		diskList[i] = &armcompute.Disk{
 			Name: &diskName,
 			ID:   &diskURI,
-			DiskProperties: &compute.DiskProperties{
+			Properties: &armcompute.DiskProperties{
 				DiskSizeGB:        &testDiskSizeGiB,
-				DiskState:         compute.Unattached,
+				DiskState:         to.Ptr(armcompute.DiskStateUnattached),
 				ProvisioningState: &provisioningStateSucceeded,
 				TimeCreated:       &timeCreated,
 			},
 		}
 
-		provisioner.cloud.DisksClient.(*mockdiskclient.MockInterface).EXPECT().
-			Get(gomock.Any(), testSubscription, testResourceGroup, diskName).
-			Return(diskList[i], nil).
-			AnyTimes()
+		fget := func(ctx context.Context, resourceGroupName string, name string, options *armcompute.DisksClientGetOptions) (resp azfake.Responder[armcompute.DisksClientGetResponse], errResp azfake.ErrorResponder) {
+			if (resourceGroupName == testResourceGroup && name == diskName) {
+				resp.SetResponse(http.StatusOK, armcompute.DisksClientGetResponse{
+					Disk:	*diskList[i],
+				}, nil)
+				errResp.SetError(nil)
+				return resp, errResp
+			}
+
+			resp.SetResponse(http.StatusNotFound, armcompute.DisksClientGetResponse{}, nil)
+			errResp.SetError(nil)
+			return resp, errResp
+		}
+
+		client := provisioner.cloud.CreateDisksClientWithFunction(testSubscription, fget, nil, nil, nil, nil)
+		client.Get(context.Background(), testResourceGroup, diskName, nil)
 	}
 
-	provisioner.cloud.DisksClient.(*mockdiskclient.MockInterface).EXPECT().
-		ListByResourceGroup(gomock.Any(), testSubscription, testResourceGroup).
-		Return(diskList, nil).
-		AnyTimes()
+	flist := func(resourceGroupName string, options *armcompute.DisksClientListByResourceGroupOptions) (resp azfake.PagerResponder[armcompute.DisksClientListByResourceGroupResponse]) {
+		if resourceGroupName == testResourceGroup {
+			resp.AddPage(http.StatusOK, armcompute.DisksClientListByResourceGroupResponse{
+				DiskList: armcompute.DiskList{
+					Value: diskList,
+				},
+			}, nil)
+			resp.AddError(nil)
+			return resp
+		}
+		resp.AddError(notFoundError.RawError)
+		return resp
+	}
+	client := provisioner.cloud.CreateDisksClientWithFunction(testSubscription, nil, nil, nil, flist, nil)
+	client.NewListByResourceGroupPager(testResourceGroup, nil)
 
 	provisioner.cloud.KubeClient = kfake.NewSimpleClientset(pvList...)
 }
 
 func mockSnapshotsList(provisioner *CloudProvisioner, disk1Count, disk2Count int32) {
 	totalCount := disk1Count + disk2Count
-	azssList := make([]compute.Snapshot, totalCount)
+	azssList := make([]*armcompute.Snapshot, totalCount)
 	sourceDiskURIs := [2]string{
 		testDiskURI0,
 		fmt.Sprintf(computeDiskURIFormat, testSubscription, testResourceGroup, "test-disk-2"),
@@ -414,12 +513,12 @@ func mockSnapshotsList(provisioner *CloudProvisioner, disk1Count, disk2Count int
 			sourceDiskURI = sourceDiskURIs[1]
 		}
 
-		timeCreated := date.Time{Time: time.Now()}
-		azssList[i] = compute.Snapshot{
+		timeCreated := time.Now()
+		azssList[i] = &armcompute.Snapshot{
 			Name: &ssName,
 			ID:   &ssURI,
-			SnapshotProperties: &compute.SnapshotProperties{
-				CreationData: &compute.CreationData{
+			Properties: &armcompute.SnapshotProperties{
+				CreationData: &armcompute.CreationData{
 					SourceResourceID: &sourceDiskURI,
 				},
 				DiskSizeGB:        &testDiskSizeGiB,
@@ -428,16 +527,37 @@ func mockSnapshotsList(provisioner *CloudProvisioner, disk1Count, disk2Count int
 			},
 		}
 
-		provisioner.cloud.SnapshotsClient.(*mocksnapshotclient.MockInterface).EXPECT().
-			Get(gomock.Any(), testSubscription, testResourceGroup, ssName).
-			Return(azssList[i], nil).
-			AnyTimes()
+		fget := func(ctx context.Context, resourceGroupName string, snapshotName string, options *armcompute.SnapshotsClientGetOptions) (resp azfake.Responder[armcompute.SnapshotsClientGetResponse], errResp azfake.ErrorResponder) {
+			if resourceGroupName == testResourceGroup && snapshotName == ssName {
+				resp.SetResponse(http.StatusOK, armcompute.SnapshotsClientGetResponse{
+					Snapshot: *azssList[i],
+				}, nil)
+				errResp.SetError(nil)
+				return resp, errResp
+			}
+			
+			resp.SetResponse(http.StatusNotFound, armcompute.SnapshotsClientGetResponse{}, nil)
+			errResp.SetError(nil)
+			return resp, errResp
+		}
+
+		client := provisioner.cloud.CreateSnapshotsClientWithFunction(testSubscription, fget, nil, nil, nil)
+		client.Get(nil, testResourceGroup, ssName, nil)
+		
 	}
 
-	provisioner.cloud.SnapshotsClient.(*mocksnapshotclient.MockInterface).EXPECT().
-		ListByResourceGroup(gomock.Any(), testSubscription, testResourceGroup).
-		Return(azssList, nil).
-		AnyTimes()
+	flist := func(resourceGroupName string, options *armcompute.SnapshotsClientListByResourceGroupOptions) (resp azfake.PagerResponder[armcompute.SnapshotsClientListByResourceGroupResponse]) {
+		resp.AddPage(http.StatusOK, armcompute.SnapshotsClientListByResourceGroupResponse{
+			SnapshotList: armcompute.SnapshotList{
+				Value: azssList,
+			},
+		}, nil)
+		resp.AddError(nil)
+		return resp
+	}
+
+	client := provisioner.cloud.CreateSnapshotsClientWithFunction(testSubscription, nil, nil, nil, flist)
+	client.NewListByResourceGroupPager(testResourceGroup, nil)
 }
 
 func TestCreateVolume(t *testing.T) {
@@ -446,32 +566,47 @@ func TestCreateVolume(t *testing.T) {
 	provisioner := NewTestCloudProvisioner(mockCtrl)
 
 	mockExistingDisk(provisioner)
-	provisioner.cloud.DisksClient.(*mockdiskclient.MockInterface).EXPECT().
-		CreateOrUpdate(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
-		DoAndReturn(func(ctx context.Context, subscriptionID, resourceGroupName, diskName string, disk compute.Disk) *retry.Error {
-			var mockedDisk compute.Disk
 
-			if resourceGroupName == testResourceGroup && diskName == testDiskName0 {
-				mockedDisk = testDisk
-			} else {
-				mockedDisk = disk
-				diskID := fmt.Sprintf(computeDiskURIFormat, testSubscription, resourceGroupName, diskName)
-				timeCreated := date.Time{Time: time.Now()}
+	fcreate := func(ctx context.Context, resourceGroupName string, diskName string, disk armcompute.Disk, options *armcompute.DisksClientBeginCreateOrUpdateOptions) (resp azfake.PollerResponder[armcompute.DisksClientCreateOrUpdateResponse], errResp azfake.ErrorResponder) {
+		var mockedDisk armcompute.Disk
 
-				mockedDisk.ID = &diskID
-				mockedDisk.Name = &diskName
-				mockedDisk.TimeCreated = &timeCreated
-				mockedDisk.ProvisioningState = &provisioningStateSucceeded
+		if resourceGroupName == testResourceGroup && diskName == testDiskName0 {
+			mockedDisk = testDisk
+		} else {
+			mockedDisk = disk
+			diskID := fmt.Sprintf(computeDiskURIFormat, testSubscription, resourceGroupName, diskName)
+			timeCreated := time.Now()
+
+			mockedDisk.ID = &diskID
+			mockedDisk.Name = &diskName
+			mockedDisk.Properties.TimeCreated = &timeCreated
+			mockedDisk.Properties.ProvisioningState = &provisioningStateSucceeded
+		}
+
+		fget := func(ctx context.Context, rg string, name string, options *armcompute.DisksClientGetOptions) (resp azfake.Responder[armcompute.DisksClientGetResponse], errResp azfake.ErrorResponder) {
+			if rg == resourceGroupName && name == diskName {
+				resp.SetResponse(http.StatusOK, armcompute.DisksClientGetResponse{
+					Disk:	mockedDisk,
+				}, nil)
+				errResp.SetError(nil)
+				return resp, errResp
 			}
+			resp.SetResponse(http.StatusNotFound, armcompute.DisksClientGetResponse{}, nil)
+			errResp.SetError(nil)
+			return resp, errResp
+		}
+		
+		client := provisioner.cloud.CreateDisksClientWithFunction(provisioner.cloud.SubscriptionID, fget, nil, nil, nil, nil)
+		client.Get(context.Background(), resourceGroupName, diskName, nil) 
 
-			provisioner.cloud.DisksClient.(*mockdiskclient.MockInterface).EXPECT().
-				Get(gomock.Any(), subscriptionID, resourceGroupName, diskName).
-				Return(mockedDisk, nil).
-				AnyTimes()
-
-			return nil
-		}).
-		AnyTimes()
+		resp.SetTerminalResponse(http.StatusOK, armcompute.DisksClientCreateOrUpdateResponse{
+			Disk:	mockedDisk,
+		}, nil)
+		errResp.SetError(nil)
+		return resp, errResp
+	}
+	client := provisioner.cloud.CreateDisksClientWithFunction(provisioner.cloud.SubscriptionID, nil, fcreate, nil, nil, nil)
+	client.BeginCreateOrUpdate(context.Background(), "", "", armcompute.Disk{}, nil)
 
 	tests := []struct {
 		description   string
@@ -714,10 +849,21 @@ func TestCreateVolume(t *testing.T) {
 		tt := test
 		t.Run(test.description, func(t *testing.T) {
 			if tt.diskName != testDiskName0 {
-				provisioner.cloud.DisksClient.(*mockdiskclient.MockInterface).EXPECT().
-					Get(gomock.Any(), gomock.Any(), gomock.Any(), tt.diskName).
-					Return(compute.Disk{}, notFoundError).
-					MaxTimes(1)
+				fget := func(ctx context.Context, resourceGroupName string, diskName string, options *armcompute.DisksClientGetOptions) (resp azfake.Responder[armcompute.DisksClientGetResponse], errResp azfake.ErrorResponder) {
+					if diskName == tt.diskName {
+						resp.SetResponse(http.StatusNotFound, armcompute.DisksClientGetResponse{
+							Disk:	armcompute.Disk{},
+						}, nil)
+						errResp.SetError(notFoundError.RawError)
+						return resp, errResp
+					}
+					resp.SetResponse(http.StatusNotFound, armcompute.DisksClientGetResponse{}, nil)
+					errResp.SetError(nil)
+					return resp, errResp
+				}
+		
+				client := provisioner.cloud.CreateDisksClientWithFunction(provisioner.cloud.SubscriptionID, fget, nil, nil, nil, nil)
+				client.Get(context.Background(), "", tt.diskName, nil)
 			}
 
 			volume, err := provisioner.CreateVolume(
@@ -744,10 +890,20 @@ func TestDeleteVolume(t *testing.T) {
 	provisioner := NewTestCloudProvisioner(mockCtrl)
 
 	mockExistingDisk(provisioner)
-	provisioner.cloud.DisksClient.(*mockdiskclient.MockInterface).EXPECT().
-		Delete(gomock.Any(), testSubscription, testResourceGroup, testDiskName0).
-		Return(nil).
-		MaxTimes(1)
+
+	fdelete := func(ctx context.Context, resourceGroupName string, diskName string, options *armcompute.DisksClientBeginDeleteOptions) (resp azfake.PollerResponder[armcompute.DisksClientDeleteResponse], errResp azfake.ErrorResponder) {
+		if resourceGroupName == testResourceGroup && diskName == testDiskName0 {
+			resp.SetTerminalResponse(http.StatusOK, armcompute.DisksClientDeleteResponse{}, nil)
+			errResp.SetError(nil)
+			return resp, errResp
+		}
+		resp.AddNonTerminalResponse(http.StatusNotFound, nil)
+		errResp.SetError(nil)
+		return resp, errResp
+	}
+
+	client := provisioner.cloud.CreateDisksClientWithFunction(testSubscription, nil, nil, fdelete, nil, nil)
+	client.BeginDelete(context.Background(), testResourceGroup, testDiskName0, nil)
 
 	mockMissingDisk(provisioner)
 
@@ -786,10 +942,21 @@ func TestPublishVolume(t *testing.T) {
 	mockMissingDisk(provisioner)
 	mockUpdateVM(provisioner)
 
-	provisioner.cloud.VirtualMachinesClient.(*mockvmclient.MockInterface).EXPECT().
-		Get(gomock.Any(), testResourceGroup, missingVMName, gomock.Any()).
-		Return(compute.VirtualMachine{}, notFoundError).
-		AnyTimes()
+	fget := func(ctx context.Context, rg, vmName string, option *armcompute.VirtualMachinesClientGetOptions) (resp azfake.Responder[armcompute.VirtualMachinesClientGetResponse], errResp azfake.ErrorResponder) {
+		if rg == testResourceGroup && vmName == missingVMName {
+			resp.SetResponse(http.StatusNotFound, armcompute.VirtualMachinesClientGetResponse{
+				VirtualMachine:	armcompute.VirtualMachine{},
+			}, nil) 
+			errResp.SetError(notFoundError.RawError)
+			return resp, errResp
+		}
+					
+		resp.SetResponse(http.StatusNotFound, armcompute.VirtualMachinesClientGetResponse{}, nil)
+		errResp.SetError(nil)
+		return resp, errResp
+	}
+	client := provisioner.cloud.CreateVMClientWithFunction(provisioner.cloud.SubscriptionID, fget, nil)
+	client.Get(context.Background(), testResourceGroup, missingVMName, nil)
 
 	tests := []struct {
 		description        string
@@ -842,7 +1009,7 @@ func TestUnpublishVolume(t *testing.T) {
 	mockUpdateVM(provisioner)
 
 	lun := int32(1)
-	attachedDisks := []compute.DataDisk{
+	attachedDisks := []*armcompute.DataDisk{
 		{
 			Lun:  &lun,
 			Name: &testDiskName0,
@@ -850,17 +1017,39 @@ func TestUnpublishVolume(t *testing.T) {
 	}
 
 	testVMWithAttachedDisk := testVM
-	testVMWithAttachedDisk.StorageProfile.DataDisks = &attachedDisks
+	testVMWithAttachedDisk.Properties.StorageProfile.DataDisks = attachedDisks
 
-	provisioner.cloud.VirtualMachinesClient.(*mockvmclient.MockInterface).EXPECT().
-		Get(gomock.Any(), testResourceGroup, testVMName, gomock.Any()).
-		Return(testVMWithAttachedDisk, nil).
-		AnyTimes()
+	fn1 := func(ctx context.Context, rg, vmName string, option *armcompute.VirtualMachinesClientGetOptions) (resp azfake.Responder[armcompute.VirtualMachinesClientGetResponse], errResp azfake.ErrorResponder) {
+		if rg == testResourceGroup && vmName == testVMName {
+			resp.SetResponse(http.StatusOK, armcompute.VirtualMachinesClientGetResponse{
+				VirtualMachine:	testVMWithAttachedDisk,
+			}, nil) 
+			errResp.SetError(nil)
+			return resp, errResp
+		}
+					
+		resp.SetResponse(http.StatusNotFound, armcompute.VirtualMachinesClientGetResponse{}, nil)
+		errResp.SetError(nil)
+		return resp, errResp
+	}
+	client1 := provisioner.cloud.CreateVMClientWithFunction(provisioner.cloud.SubscriptionID, fn1, nil)
+	client1.Get(context.Background(), testResourceGroup, testVMName, nil)
 
-	provisioner.cloud.VirtualMachinesClient.(*mockvmclient.MockInterface).EXPECT().
-		Get(gomock.Any(), testResourceGroup, missingVMName, gomock.Any()).
-		Return(compute.VirtualMachine{}, notFoundError).
-		AnyTimes()
+	fn2 := func(ctx context.Context, rg, vmName string, option *armcompute.VirtualMachinesClientGetOptions) (resp azfake.Responder[armcompute.VirtualMachinesClientGetResponse], errResp azfake.ErrorResponder) {
+		if rg == testResourceGroup && vmName == missingVMName {
+			resp.SetResponse(http.StatusNotFound, armcompute.VirtualMachinesClientGetResponse{
+				VirtualMachine:	armcompute.VirtualMachine{},
+			}, nil) 
+			errResp.SetError(notFoundError.RawError)
+			return resp, errResp
+		}
+					
+		resp.SetResponse(http.StatusNotFound, armcompute.VirtualMachinesClientGetResponse{}, nil)
+		errResp.SetError(nil)
+		return resp, errResp
+	}
+	client2 := provisioner.cloud.CreateVMClientWithFunction(provisioner.cloud.SubscriptionID, fn2, nil)
+	client2.Get(context.Background(), testResourceGroup, missingVMName, nil)
 
 	tests := []struct {
 		description   string
@@ -903,10 +1092,21 @@ func TestExpandVolume(t *testing.T) {
 	provisioner := NewTestCloudProvisioner(mockCtrl)
 
 	mockExistingDisk(provisioner)
-	provisioner.cloud.DisksClient.(*mockdiskclient.MockInterface).EXPECT().
-		Update(gomock.Any(), testSubscription, testResourceGroup, testDiskName0, gomock.Any()).
-		Return(nil).
-		AnyTimes()
+
+	fupdate := func(ctx context.Context, resourceGroupName string, diskName string, disk armcompute.DiskUpdate, options *armcompute.DisksClientBeginUpdateOptions) (resp azfake.PollerResponder[armcompute.DisksClientUpdateResponse], errResp azfake.ErrorResponder) {
+		if resourceGroupName == testResourceGroup && diskName == testDiskName0 {
+			resp.SetTerminalResponse(http.StatusOK, armcompute.DisksClientUpdateResponse{
+				Disk:	testDisk,
+			}, nil)
+			errResp.SetError(nil)
+			return resp, errResp
+		}
+		resp.AddNonTerminalResponse(http.StatusNotFound, nil)
+		errResp.SetError(nil)
+		return resp, errResp
+	}
+	client := provisioner.cloud.CreateDisksClientWithFunction(testSubscription, nil, nil, nil, nil, fupdate)
+	client.BeginUpdate(context.Background(), testResourceGroup, testDiskName0, armcompute.DiskUpdate{}, nil)
 	mockMissingDisk(provisioner)
 
 	tests := []struct {
@@ -965,33 +1165,53 @@ func TestCreateSnapshot(t *testing.T) {
 	mockExistingDisk(provisioner)
 	mockMissingDisk(provisioner)
 
-	provisioner.cloud.SnapshotsClient.(*mocksnapshotclient.MockInterface).EXPECT().
-		CreateOrUpdate(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
-		DoAndReturn(func(ctx context.Context, subscriptionID, resourceGroupName, snapshotName string, snapshot compute.Snapshot) *retry.Error {
-			if resourceGroupName == testResourceGroup && snapshotName == testSnapshotName {
-				return existingDiskError
-			} else if *snapshot.CreationData.SourceURI == missingDiskURI {
-				return notFoundError
+	fcreate := func(ctx context.Context, resourceGroupName string, snapshotName string, snapshot armcompute.Snapshot, options *armcompute.SnapshotsClientBeginCreateOrUpdateOptions) (resp azfake.PollerResponder[armcompute.SnapshotsClientCreateOrUpdateResponse], errResp azfake.ErrorResponder) {
+		if resourceGroupName == testResourceGroup && snapshotName == testSnapshotName {
+			resp.AddNonTerminalResponse(existingDiskError.HTTPStatusCode, nil)
+			errResp.SetError(existingDiskError.RawError)
+			return resp, errResp
+		} else if *snapshot.Properties.CreationData.SourceURI == missingDiskURI {
+			resp.AddNonTerminalResponse(notFoundError.HTTPStatusCode, nil)
+			errResp.SetError(notFoundError.RawError)
+			return resp, errResp
+		}
+
+		snapshotURI := fmt.Sprintf(computeSnapshotURIFormat, testSubscription, resourceGroupName, snapshotName)
+		timeCreated := time.Now()
+
+		mockedSnapshot := snapshot
+		mockedSnapshot.Name = &snapshotName
+		mockedSnapshot.ID = &snapshotURI
+		mockedSnapshot.Properties.DiskSizeGB = &testSnapshotSizeGiB
+		mockedSnapshot.Properties.ProvisioningState = &provisioningStateSucceeded
+		mockedSnapshot.Properties.TimeCreated = &timeCreated
+
+		fget := func(ctx context.Context, rg string, ssName string, options *armcompute.SnapshotsClientGetOptions) (resp azfake.Responder[armcompute.SnapshotsClientGetResponse], errResp azfake.ErrorResponder) {
+			if rg == resourceGroupName && ssName == snapshotName {
+				resp.SetResponse(http.StatusNotFound, armcompute.SnapshotsClientGetResponse {
+					Snapshot:	mockedSnapshot,
+				}, nil)
+				errResp.SetError(nil)
+				return resp, errResp
 			}
 
-			snapshotURI := fmt.Sprintf(computeSnapshotURIFormat, testSubscription, resourceGroupName, snapshotName)
-			timeCreated := date.Time{Time: time.Now()}
+			resp.SetResponse(http.StatusNotFound, armcompute.SnapshotsClientGetResponse{}, nil)
+			errResp.SetError(nil)
+			return resp, errResp
+		}
 
-			mockedSnapshot := snapshot
-			mockedSnapshot.Name = &snapshotName
-			mockedSnapshot.ID = &snapshotURI
-			mockedSnapshot.DiskSizeGB = &testSnapshotSizeGiB
-			mockedSnapshot.ProvisioningState = &provisioningStateSucceeded
-			mockedSnapshot.TimeCreated = &timeCreated
+		client := provisioner.cloud.CreateSnapshotsClientWithFunction(testSubscription, fget, nil, nil, nil)
+		client.Get(context.Background(), testResourceGroup, snapshotName, nil)
 
-			provisioner.cloud.SnapshotsClient.(*mocksnapshotclient.MockInterface).EXPECT().
-				Get(gomock.Any(), subscriptionID, resourceGroupName, snapshotName).
-				Return(mockedSnapshot, nil).
-				AnyTimes()
+		resp.SetTerminalResponse(http.StatusOK, armcompute.SnapshotsClientCreateOrUpdateResponse{
+			Snapshot: mockedSnapshot,
+		}, nil)
+		errResp.SetError(nil)
+		return resp, errResp
+	}
 
-			return nil
-		}).
-		AnyTimes()
+	client := provisioner.cloud.CreateSnapshotsClientWithFunction(provisioner.cloud.SubscriptionID, nil, fcreate, nil, nil)
+	client.BeginCreateOrUpdate(context.Background(), "", "", armcompute.Snapshot{}, nil)
 
 	tests := []struct {
 		description   string
@@ -1046,14 +1266,31 @@ func TestDeleteSnapshot(t *testing.T) {
 	defer mockCtrl.Finish()
 	provisioner := NewTestCloudProvisioner(mockCtrl)
 
-	provisioner.cloud.SnapshotsClient.(*mocksnapshotclient.MockInterface).EXPECT().
-		Delete(gomock.Any(), testSubscription, testResourceGroup, testSnapshotName).
-		Return(nil).
-		MaxTimes(1)
-	provisioner.cloud.SnapshotsClient.(*mocksnapshotclient.MockInterface).EXPECT().
-		Delete(gomock.Any(), testSubscription, testResourceGroup, missingSnapshotName).
-		Return(notFoundError).
-		MaxTimes(1)
+	fdelete1 := func(ctx context.Context, resourceGroupName string, snapshotName string, options *armcompute.SnapshotsClientBeginDeleteOptions) (resp azfake.PollerResponder[armcompute.SnapshotsClientDeleteResponse], errResp azfake.ErrorResponder) {
+		if resourceGroupName == testResourceGroup && snapshotName == testSnapshotName {
+			resp.SetTerminalResponse(http.StatusOK, armcompute.SnapshotsClientDeleteResponse {}, nil)
+			errResp.SetError(nil)
+			return resp, errResp
+		}
+		resp.AddNonTerminalResponse(http.StatusNotFound, nil)
+		errResp.SetError(nil)
+		return resp, errResp
+	}
+	client1 := provisioner.cloud.CreateSnapshotsClientWithFunction(testSubscription, nil, nil, fdelete1, nil)
+	client1.BeginDelete(context.Background(), testResourceGroup, testSnapshotName, nil)
+	
+	fdelete2 := func(ctx context.Context, resourceGroupName string, snapshotName string, options *armcompute.SnapshotsClientBeginDeleteOptions) (resp azfake.PollerResponder[armcompute.SnapshotsClientDeleteResponse], errResp azfake.ErrorResponder) {
+		if resourceGroupName == testResourceGroup && snapshotName == missingSnapshotName {
+			resp.AddNonTerminalResponse(http.StatusNotFound, nil)
+			errResp.SetError(notFoundError.RawError)
+			return resp, errResp
+		}
+		resp.AddNonTerminalResponse(http.StatusNotFound, nil)
+		errResp.SetError(nil)
+		return resp, errResp
+	}
+	client2 := provisioner.cloud.CreateSnapshotsClientWithFunction(testSubscription, nil, nil, fdelete2, nil)
+	client2.BeginDelete(context.Background(), testResourceGroup, missingSnapshotName, nil)
 
 	tests := []struct {
 		description   string

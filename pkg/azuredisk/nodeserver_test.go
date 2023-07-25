@@ -28,7 +28,10 @@ import (
 	"syscall"
 	"testing"
 
-	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2022-03-01/compute"
+	azfake "github.com/Azure/azure-sdk-for-go/sdk/azcore/fake"
+
+	"github.com/Azure/azure-sdk-for-go/sdk/azcore/to"
+	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute/v5"
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/assert"
@@ -45,8 +48,6 @@ import (
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/optimization/mockoptimization"
 	volumehelper "sigs.k8s.io/azuredisk-csi-driver/pkg/util"
 	"sigs.k8s.io/azuredisk-csi-driver/test/utils/testutil"
-	"sigs.k8s.io/cloud-provider-azure/pkg/azureclients/vmclient/mockvmclient"
-	"sigs.k8s.io/cloud-provider-azure/pkg/retry"
 )
 
 const (
@@ -64,21 +65,21 @@ var (
 
 	testVMName     = fakeNodeID
 	testVMURI      = fmt.Sprintf(virtualMachineURIFormat, testSubscription, testResourceGroup, testVMName)
-	testVMSize     = compute.StandardD3V2
+	testVMSize     = armcompute.VirtualMachineSizeTypesStandardD3V2
 	testVMLocation = "westus"
-	testVMZones    = []string{"1"}
-	testVM         = compute.VirtualMachine{
+	testVMZones    = []*string{to.Ptr("1")}
+	testVM         = armcompute.VirtualMachine{
 		Name:     &testVMName,
 		ID:       &testVMURI,
 		Location: &testVMLocation,
-		Zones:    &testVMZones,
-		VirtualMachineProperties: &compute.VirtualMachineProperties{
+		Zones:    testVMZones,
+		Properties: &armcompute.VirtualMachineProperties{
 			ProvisioningState: &provisioningStateSucceeded,
-			HardwareProfile: &compute.HardwareProfile{
-				VMSize: testVMSize,
+			HardwareProfile: &armcompute.HardwareProfile{
+				VMSize: &testVMSize,
 			},
-			StorageProfile: &compute.StorageProfile{
-				DataDisks: new([]compute.DataDisk),
+			StorageProfile: &armcompute.StorageProfile{
+				DataDisks: *new([]*armcompute.DataDisk),
 			},
 		},
 	}
@@ -236,11 +237,6 @@ func TestEnsureMountPoint(t *testing.T) {
 }
 
 func TestNodeGetInfo(t *testing.T) {
-	notFoundErr := &retry.Error{
-		HTTPStatusCode: http.StatusNotFound,
-		RawError:       errors.New("not found"),
-	}
-
 	tests := []struct {
 		desc         string
 		expectedErr  error
@@ -253,11 +249,21 @@ func TestNodeGetInfo(t *testing.T) {
 			expectedErr:  nil,
 			skipOnDarwin: true,
 			setupFunc: func(t *testing.T, d FakeDriver) {
-				d.getCloud().VirtualMachinesClient.(*mockvmclient.MockInterface).EXPECT().
-					Get(gomock.Any(), testResourceGroup, testVMName, gomock.Any()).
-					Return(testVM, nil).
-					AnyTimes()
-
+				fn1 := func(ctx context.Context, rg, vmName string, option *armcompute.VirtualMachinesClientGetOptions) (resp azfake.Responder[armcompute.VirtualMachinesClientGetResponse], errResp azfake.ErrorResponder) {
+					if rg == testResourceGroup && vmName == testVMName {
+						resp.SetResponse(http.StatusOK, armcompute.VirtualMachinesClientGetResponse{
+							VirtualMachine:	testVM,
+					  	}, nil) 
+						errResp.SetError(nil)
+						return resp, errResp
+					}
+					
+					resp.SetResponse(http.StatusNotFound, armcompute.VirtualMachinesClientGetResponse{}, nil)
+					errResp.SetError(nil)
+					return resp, errResp
+				}
+				client1 := d.getCloud().CreateVMClientWithFunction(testSubscription, fn1, nil)
+				client1.Get(context.Background(), testResourceGroup, testVMName, nil)
 				// cloud-provider-azure's GetZone function assumes the host is a VM and returns it zones.
 				// We therefore mock a return of the testVM if the hostname is used.
 				hostname, err := os.Hostname()
@@ -266,14 +272,29 @@ func TestNodeGetInfo(t *testing.T) {
 				// cloud-provider-azure's GetZone function always deals with lower case.
 				hostname = strings.ToLower(hostname)
 
-				d.getCloud().VirtualMachinesClient.(*mockvmclient.MockInterface).EXPECT().
-					Get(gomock.Any(), testResourceGroup, hostname, gomock.Any()).
-					Return(testVM, nil).
-					AnyTimes()
-				d.getCloud().VirtualMachinesClient.(*mockvmclient.MockInterface).EXPECT().
-					Get(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
-					Return(compute.VirtualMachine{}, notFoundErr).
-					AnyTimes()
+				fn2 := func(ctx context.Context, rg, vmName string, option *armcompute.VirtualMachinesClientGetOptions) (resp azfake.Responder[armcompute.VirtualMachinesClientGetResponse], errResp azfake.ErrorResponder) {
+					if rg == testResourceGroup && vmName == hostname {
+						resp.SetResponse(http.StatusOK, armcompute.VirtualMachinesClientGetResponse{
+							VirtualMachine:	testVM,
+					  	}, nil) 
+						errResp.SetError(nil)
+						return resp, errResp
+					}
+					
+					resp.SetResponse(http.StatusNotFound, armcompute.VirtualMachinesClientGetResponse{}, nil)
+					errResp.SetError(nil)
+					return resp, errResp
+				}
+				client2 := d.getCloud().CreateVMClientWithFunction(testSubscription, fn2, nil)
+				client2.Get(context.Background(), testResourceGroup, hostname, nil)
+
+				fn3 := func(ctx context.Context, rg, vmName string, option *armcompute.VirtualMachinesClientGetOptions) (resp azfake.Responder[armcompute.VirtualMachinesClientGetResponse], errResp azfake.ErrorResponder) {
+					resp.SetResponse(http.StatusNotFound, armcompute.VirtualMachinesClientGetResponse{}, nil)
+					errResp.SetResponseError(http.StatusNotFound, "ErrorNotFound")
+					return resp, errResp
+				}
+				client3 := d.getCloud().CreateVMClientWithFunction(testSubscription, fn3, nil)
+				client3.Get(context.Background(), "", "", nil)
 			},
 			validateFunc: func(t *testing.T, resp *csi.NodeGetInfoResponse) {
 				assert.Equal(t, testVMName, resp.NodeId)
@@ -285,10 +306,13 @@ func TestNodeGetInfo(t *testing.T) {
 			desc:        "[Failure] Get node information for non-existing VM",
 			expectedErr: status.Error(codes.Internal, fmt.Sprintf("getNodeInfoFromLabels on node(%s) failed with %s", "fakeNodeID", "kubeClient is nil")),
 			setupFunc: func(t *testing.T, d FakeDriver) {
-				d.getCloud().VirtualMachinesClient.(*mockvmclient.MockInterface).EXPECT().
-					Get(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
-					Return(compute.VirtualMachine{}, notFoundErr).
-					AnyTimes()
+				fn2 := func(ctx context.Context, rg, vmName string, option *armcompute.VirtualMachinesClientGetOptions) (resp azfake.Responder[armcompute.VirtualMachinesClientGetResponse], errResp azfake.ErrorResponder) {
+					resp.SetResponse(http.StatusNotFound, armcompute.VirtualMachinesClientGetResponse{}, nil)
+					errResp.SetResponseError(http.StatusNotFound, "ErrorNotFound")
+					return resp, errResp
+				}
+				client := d.getCloud().CreateVMClientWithFunction(testSubscription, fn2, nil)
+				client.Get(context.Background(), "", "", nil)
 			},
 			validateFunc: func(t *testing.T, resp *csi.NodeGetInfoResponse) {
 				assert.Equal(t, testVMName, resp.NodeId)
@@ -379,7 +403,7 @@ func TestNodeGetVolumeStats(t *testing.T) {
 		},
 	}
 
-	Setup
+	// Setup
 	_ = makeDir(fakePath)
 	_ = makeDir(blockVolumePath)
 
@@ -682,7 +706,7 @@ func TestNodeStageVolume(t *testing.T) {
 		test := test
 		t.Run(test.desc, func(t *testing.T) {
 			if !(test.skipOnDarwin && runtime.GOOS == "darwin") && !(test.skipOnWindows && runtime.GOOS == "windows") {
-				Setup
+				// Setup
 				d, err := NewFakeDriver(t)
 
 				ctrl := gomock.NewController(t)
@@ -783,7 +807,7 @@ func TestNodeUnstageVolume(t *testing.T) {
 		},
 	}
 
-	Setup
+	// Setup
 	_ = makeDir(errorTarget)
 	fakeMounter, err := mounter.NewFakeSafeMounter()
 	assert.NoError(t, err)
@@ -833,7 +857,7 @@ func TestNodePublishVolume(t *testing.T) {
 
 	azurediskPath := "azuredisk.go"
 
-	".\azuredisk.go will get deleted on Windows"
+	// ".\azuredisk.go will get deleted on Windows"
 	if runtime.GOOS == "windows" {
 		azurediskPath = "testfiles\\azuredisk.go"
 	}
@@ -986,7 +1010,7 @@ func TestNodePublishVolume(t *testing.T) {
 		},
 	}
 
-	Setup
+	// Setup
 	_ = makeDir(alreadyMountedTarget)
 	assert.NoError(t, err)
 	fakeMounter, err := mounter.NewFakeSafeMounter()
@@ -1063,7 +1087,7 @@ func TestNodeUnpublishVolume(t *testing.T) {
 		},
 	}
 
-	Setup
+	// Setup
 	_ = makeDir(errorTarget)
 	fakeMounter, err := mounter.NewFakeSafeMounter()
 	assert.NoError(t, err)
