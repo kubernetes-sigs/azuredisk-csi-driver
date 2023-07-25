@@ -5,7 +5,5 @@ import (
 )
 
 func GetTestCloud(ctrl *gomock.Controller) (*Cloud) {
-	c := Cloud{}
-	c.configAzureClients()
-	return &c
+	return &Cloud{}
 }

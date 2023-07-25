@@ -697,7 +697,7 @@ func GetCloudProviderFromClient(
 
 	az.VMSSVMCache = NewCache()
 
-	az.configAzureClients()
+	az.ConfigAzureClients()
 
 	return az, nil
 }

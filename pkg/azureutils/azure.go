@@ -288,7 +288,7 @@ func (az *Cloud) InitializeCloudFromConfig(ctx context.Context, config *Config, 
 	return nil
 }
 
-func (az *Cloud) configAzureClients() {
+func (az *Cloud) ConfigAzureClients() {
 
 	cred, err := azidentity.NewDefaultAzureCredential(&azidentity.DefaultAzureCredentialOptions{
 		

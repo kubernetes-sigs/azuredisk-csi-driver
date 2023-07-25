@@ -199,6 +199,8 @@ func NewTestCloudProvisioner(controller *gomock.Controller) *CloudProvisioner {
 		panic(err)
 	}
 
+	cloud.ConfigAzureClients()
+
 	return &CloudProvisioner{
 		cloud: cloud,
 		config: &azdiskv1beta2.AzDiskDriverConfiguration{
