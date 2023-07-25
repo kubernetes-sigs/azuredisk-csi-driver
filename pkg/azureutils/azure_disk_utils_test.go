@@ -755,7 +755,7 @@ func TestGetValidCreationData(t *testing.T) {
 		resourceGroup    string
 		sourceResourceID string
 		sourceType       string
-		expected1        compute.CreationData
+		expected1        armcompute.CreationData
 		expected2        error
 	}{
 		{
@@ -763,8 +763,8 @@ func TestGetValidCreationData(t *testing.T) {
 			resourceGroup:    "",
 			sourceResourceID: "",
 			sourceType:       "",
-			expected1: compute.CreationData{
-				CreateOption: compute.Empty,
+			expected1: armcompute.CreationData{
+				CreateOption: to.Ptr(armcompute.DiskCreateOptionEmpty),
 			},
 			expected2: nil,
 		},
@@ -773,8 +773,8 @@ func TestGetValidCreationData(t *testing.T) {
 			resourceGroup:    "",
 			sourceResourceID: "/subscriptions/xxx/resourceGroups/xxx/providers/Microsoft.Compute/snapshots/xxx",
 			sourceType:       consts.SourceSnapshot,
-			expected1: compute.CreationData{
-				CreateOption:     compute.Copy,
+			expected1: armcompute.CreationData{
+				CreateOption:     to.Ptr(armcompute.DiskCreateOptionCopy),
 				SourceResourceID: &sourceResourceSnapshotID,
 			},
 			expected2: nil,
@@ -784,8 +784,8 @@ func TestGetValidCreationData(t *testing.T) {
 			resourceGroup:    "xxx",
 			sourceResourceID: "xxx",
 			sourceType:       consts.SourceSnapshot,
-			expected1: compute.CreationData{
-				CreateOption:     compute.Copy,
+			expected1: armcompute.CreationData{
+				CreateOption:     to.Ptr(armcompute.DiskCreateOptionCopy),
 				SourceResourceID: &sourceResourceSnapshotID,
 			},
 			expected2: nil,
@@ -795,7 +795,7 @@ func TestGetValidCreationData(t *testing.T) {
 			resourceGroup:    "",
 			sourceResourceID: "/subscriptions/23/providers/Microsoft.Compute/disks/name",
 			sourceType:       consts.SourceSnapshot,
-			expected1:        compute.CreationData{},
+			expected1:        armcompute.CreationData{},
 			expected2:        fmt.Errorf("sourceResourceID(%s) is invalid, correct format: %s", "/subscriptions//resourceGroups//providers/Microsoft.Compute/snapshots//subscriptions/23/providers/Microsoft.Compute/disks/name", consts.DiskSnapshotPathRE),
 		},
 		{
@@ -803,7 +803,7 @@ func TestGetValidCreationData(t *testing.T) {
 			resourceGroup:    "",
 			sourceResourceID: "http://test.com/vhds/name",
 			sourceType:       consts.SourceSnapshot,
-			expected1:        compute.CreationData{},
+			expected1:        armcompute.CreationData{},
 			expected2:        fmt.Errorf("sourceResourceID(%s) is invalid, correct format: %s", "/subscriptions//resourceGroups//providers/Microsoft.Compute/snapshots/http://test.com/vhds/name", consts.DiskSnapshotPathRE),
 		},
 		{
@@ -811,7 +811,7 @@ func TestGetValidCreationData(t *testing.T) {
 			resourceGroup:    "",
 			sourceResourceID: "/subscriptions/xxx/snapshots/xxx",
 			sourceType:       consts.SourceSnapshot,
-			expected1:        compute.CreationData{},
+			expected1:        armcompute.CreationData{},
 			expected2:        fmt.Errorf("sourceResourceID(%s) is invalid, correct format: %s", "/subscriptions//resourceGroups//providers/Microsoft.Compute/snapshots//subscriptions/xxx/snapshots/xxx", consts.DiskSnapshotPathRE),
 		},
 		{
@@ -819,7 +819,7 @@ func TestGetValidCreationData(t *testing.T) {
 			resourceGroup:    "",
 			sourceResourceID: "/subscriptions/xxx/resourceGroups/xxx/providers/Microsoft.Compute/snapshots/xxx/snapshots/xxx/snapshots/xxx",
 			sourceType:       consts.SourceSnapshot,
-			expected1:        compute.CreationData{},
+			expected1:        armcompute.CreationData{},
 			expected2:        fmt.Errorf("sourceResourceID(%s) is invalid, correct format: %s", "/subscriptions/xxx/resourceGroups/xxx/providers/Microsoft.Compute/snapshots/xxx/snapshots/xxx/snapshots/xxx", consts.DiskSnapshotPathRE),
 		},
 		{
@@ -827,8 +827,8 @@ func TestGetValidCreationData(t *testing.T) {
 			resourceGroup:    "",
 			sourceResourceID: "xxx",
 			sourceType:       "",
-			expected1: compute.CreationData{
-				CreateOption: compute.Empty,
+			expected1: armcompute.CreationData{
+				CreateOption: to.Ptr(armcompute.DiskCreateOptionEmpty),
 			},
 			expected2: nil,
 		},
@@ -837,8 +837,8 @@ func TestGetValidCreationData(t *testing.T) {
 			resourceGroup:    "",
 			sourceResourceID: "/subscriptions/xxx/resourceGroups/xxx/providers/Microsoft.Compute/disks/xxx",
 			sourceType:       consts.SourceVolume,
-			expected1: compute.CreationData{
-				CreateOption:     compute.Copy,
+			expected1: armcompute.CreationData{
+				CreateOption:     to.Ptr(armcompute.DiskCreateOptionCopy),
 				SourceResourceID: &sourceResourceVolumeID,
 			},
 			expected2: nil,
@@ -848,8 +848,8 @@ func TestGetValidCreationData(t *testing.T) {
 			resourceGroup:    "xxx",
 			sourceResourceID: "xxx",
 			sourceType:       consts.SourceVolume,
-			expected1: compute.CreationData{
-				CreateOption:     compute.Copy,
+			expected1: armcompute.CreationData{
+				CreateOption:     to.Ptr(armcompute.DiskCreateOptionCopy),
 				SourceResourceID: &sourceResourceVolumeID,
 			},
 			expected2: nil,
@@ -859,7 +859,7 @@ func TestGetValidCreationData(t *testing.T) {
 			resourceGroup:    "",
 			sourceResourceID: "/subscriptions/xxx/resourceGroups/xxx/providers/Microsoft.Compute/snapshots/xxx",
 			sourceType:       consts.SourceVolume,
-			expected1:        compute.CreationData{},
+			expected1:        armcompute.CreationData{},
 			expected2:        fmt.Errorf("sourceResourceID(%s) is invalid, correct format: %s", "/subscriptions//resourceGroups//providers/Microsoft.Compute/disks//subscriptions/xxx/resourceGroups/xxx/providers/Microsoft.Compute/snapshots/xxx", consts.ManagedDiskPathRE),
 		},
 	}
