@@ -42,7 +42,7 @@ import (
 
 const (
 	fakeDriverName    = "disk.csi.azure.com"
-	fakeNodeID        = "fakeNodeID"
+	fakeNodeID        = "fake-vmss000000"
 	fakeDriverVersion = "fakeDriverVersion"
 )
 

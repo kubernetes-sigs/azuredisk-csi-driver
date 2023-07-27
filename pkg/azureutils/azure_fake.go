@@ -5,5 +5,20 @@ import (
 )
 
 func GetTestCloud(ctrl *gomock.Controller) (*Cloud) {
-	return &Cloud{}
+	az := &Cloud{
+		Config: Config{
+			AzureAuthConfig: AzureAuthConfig{
+				TenantID:       "tenant",
+				SubscriptionID: "subscription",
+			},
+			ResourceGroup:                            "rg",
+			Location:                                 "westus",
+			PrimaryAvailabilitySetName:               "as",
+			PrimaryScaleSetName:                      "vmss",
+			VMType:                                   VMTypeStandard,
+		},
+		VMSSVMCache: NewCache(),
+	}
+
+	return az
 }

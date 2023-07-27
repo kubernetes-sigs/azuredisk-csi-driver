@@ -1,7 +1,7 @@
-/*
+
 //go:build azurediskv2
 // +build azurediskv2
-*/
+
 /*
 Copyright 2020 The Kubernetes Authors.
 

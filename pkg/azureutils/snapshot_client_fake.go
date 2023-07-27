@@ -24,6 +24,10 @@ func (az *Cloud) CreateSnapshotsClientWithFunction(subscriptionID string, fget f
 
 	myFakeSnapshotsServer.NewListByResourceGroupPager = flist
 
+	if subscriptionID == "" {
+		subscriptionID = "subscriptionID"
+	}
+
 	client, err := armcompute.NewSnapshotsClient(subscriptionID, azfake.NewTokenCredential(), &arm.ClientOptions{
 		ClientOptions: azcore.ClientOptions{
 			Transport: armcomputefake.NewSnapshotsServerTransport(&myFakeSnapshotsServer),
@@ -32,6 +36,8 @@ func (az *Cloud) CreateSnapshotsClientWithFunction(subscriptionID string, fget f
 	if (err != nil) {
 		return nil
 	}
+
+	az.SnapshotsClient = client
 
 	return client
 }

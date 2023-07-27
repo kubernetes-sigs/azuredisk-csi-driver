@@ -63,7 +63,8 @@ var (
 
 	provisioningStateSucceeded = "Succeeded"
 
-	testVMName     = fakeNodeID
+	testVMName     = "fake-vmss000000"
+	testVMSSName   = "vmss/fake-vmss"
 	testVMURI      = fmt.Sprintf(virtualMachineURIFormat, testSubscription, testResourceGroup, testVMName)
 	testVMSize     = armcompute.VirtualMachineSizeTypesStandardD3V2
 	testVMLocation = "westus"
@@ -81,6 +82,15 @@ var (
 			StorageProfile: &armcompute.StorageProfile{
 				DataDisks: *new([]*armcompute.DataDisk),
 			},
+			VirtualMachineScaleSet: &armcompute.SubResource{
+				ID:	&testVMSSName,
+			},
+		},
+	}
+	testVMSS	   = armcompute.VirtualMachineScaleSet{
+		Name: &testVMSSName,
+		SKU:  &armcompute.SKU {
+			Name:	to.Ptr("fakeSKU"),
 		},
 	}
 	testAzVolumeAttachment = azdiskv1beta2.AzVolumeAttachment{
@@ -90,7 +100,7 @@ var (
 		},
 		Spec: azdiskv1beta2.AzVolumeAttachmentSpec{
 			VolumeID:      "test-volume",
-			NodeName:      fakeNodeID,
+			NodeName:      testVMName,
 			RequestedRole: azdiskv1beta2.PrimaryRole,
 		},
 	}
@@ -249,21 +259,6 @@ func TestNodeGetInfo(t *testing.T) {
 			expectedErr:  nil,
 			skipOnDarwin: true,
 			setupFunc: func(t *testing.T, d FakeDriver) {
-				fn1 := func(ctx context.Context, rg, vmName string, option *armcompute.VirtualMachinesClientGetOptions) (resp azfake.Responder[armcompute.VirtualMachinesClientGetResponse], errResp azfake.ErrorResponder) {
-					if rg == testResourceGroup && vmName == testVMName {
-						resp.SetResponse(http.StatusOK, armcompute.VirtualMachinesClientGetResponse{
-							VirtualMachine:	testVM,
-					  	}, nil) 
-						errResp.SetError(nil)
-						return resp, errResp
-					}
-					
-					resp.SetResponse(http.StatusNotFound, armcompute.VirtualMachinesClientGetResponse{}, nil)
-					errResp.SetError(nil)
-					return resp, errResp
-				}
-				client1 := d.getCloud().CreateVMClientWithFunction(testSubscription, fn1, nil)
-				client1.Get(context.Background(), testResourceGroup, testVMName, nil)
 				// cloud-provider-azure's GetZone function assumes the host is a VM and returns it zones.
 				// We therefore mock a return of the testVM if the hostname is used.
 				hostname, err := os.Hostname()
@@ -272,29 +267,35 @@ func TestNodeGetInfo(t *testing.T) {
 				// cloud-provider-azure's GetZone function always deals with lower case.
 				hostname = strings.ToLower(hostname)
 
+				fn := func(ctx context.Context, resourceGroupName string, vmScaleSetName string, options *armcompute.VirtualMachineScaleSetsClientGetOptions) (resp azfake.Responder[armcompute.VirtualMachineScaleSetsClientGetResponse], errResp azfake.ErrorResponder) {
+					resp.SetResponse(http.StatusOK, armcompute.VirtualMachineScaleSetsClientGetResponse{
+						VirtualMachineScaleSet:	testVMSS,
+					  }, nil) 
+					return resp, errResp
+				}
+				d.getCloud().CreateVMSSClientWithFunction(testSubscription, fn)
+
 				fn2 := func(ctx context.Context, rg, vmName string, option *armcompute.VirtualMachinesClientGetOptions) (resp azfake.Responder[armcompute.VirtualMachinesClientGetResponse], errResp azfake.ErrorResponder) {
+					
+					if rg == testResourceGroup && vmName == testVMName {
+						resp.SetResponse(http.StatusOK, armcompute.VirtualMachinesClientGetResponse{
+							VirtualMachine:	testVM,
+					  	}, nil) 
+						return resp, errResp
+					}
+					
 					if rg == testResourceGroup && vmName == hostname {
 						resp.SetResponse(http.StatusOK, armcompute.VirtualMachinesClientGetResponse{
 							VirtualMachine:	testVM,
 					  	}, nil) 
-						errResp.SetError(nil)
 						return resp, errResp
 					}
 					
 					resp.SetResponse(http.StatusNotFound, armcompute.VirtualMachinesClientGetResponse{}, nil)
-					errResp.SetError(nil)
-					return resp, errResp
-				}
-				client2 := d.getCloud().CreateVMClientWithFunction(testSubscription, fn2, nil)
-				client2.Get(context.Background(), testResourceGroup, hostname, nil)
-
-				fn3 := func(ctx context.Context, rg, vmName string, option *armcompute.VirtualMachinesClientGetOptions) (resp azfake.Responder[armcompute.VirtualMachinesClientGetResponse], errResp azfake.ErrorResponder) {
-					resp.SetResponse(http.StatusNotFound, armcompute.VirtualMachinesClientGetResponse{}, nil)
 					errResp.SetResponseError(http.StatusNotFound, "ErrorNotFound")
 					return resp, errResp
 				}
-				client3 := d.getCloud().CreateVMClientWithFunction(testSubscription, fn3, nil)
-				client3.Get(context.Background(), "", "", nil)
+				d.getCloud().CreateVirtualMachineClientWithFunction(testSubscription, fn2)
 			},
 			validateFunc: func(t *testing.T, resp *csi.NodeGetInfoResponse) {
 				assert.Equal(t, testVMName, resp.NodeId)
@@ -304,15 +305,14 @@ func TestNodeGetInfo(t *testing.T) {
 		},
 		{
 			desc:        "[Failure] Get node information for non-existing VM",
-			expectedErr: status.Error(codes.Internal, fmt.Sprintf("getNodeInfoFromLabels on node(%s) failed with %s", "fakeNodeID", "kubeClient is nil")),
+			expectedErr: status.Error(codes.Internal, fmt.Sprintf("getNodeInfoFromLabels on node(%s) failed with %s", testVMName, "kubeClient is nil")),
 			setupFunc: func(t *testing.T, d FakeDriver) {
 				fn2 := func(ctx context.Context, rg, vmName string, option *armcompute.VirtualMachinesClientGetOptions) (resp azfake.Responder[armcompute.VirtualMachinesClientGetResponse], errResp azfake.ErrorResponder) {
 					resp.SetResponse(http.StatusNotFound, armcompute.VirtualMachinesClientGetResponse{}, nil)
 					errResp.SetResponseError(http.StatusNotFound, "ErrorNotFound")
 					return resp, errResp
 				}
-				client := d.getCloud().CreateVMClientWithFunction(testSubscription, fn2, nil)
-				client.Get(context.Background(), "", "", nil)
+				d.getCloud().CreateVirtualMachineClientWithFunction(testSubscription, fn2)
 			},
 			validateFunc: func(t *testing.T, resp *csi.NodeGetInfoResponse) {
 				assert.Equal(t, testVMName, resp.NodeId)
@@ -333,6 +333,8 @@ func TestNodeGetInfo(t *testing.T) {
 			test.setupFunc(t, d)
 
 			resp, err := d.NodeGetInfo(context.TODO(), &csi.NodeGetInfoRequest{})
+			if err != nil {
+			}
 			require.Equal(t, test.expectedErr, err)
 			if err == nil {
 				test.validateFunc(t, resp)

@@ -27,7 +27,6 @@ import (
 
 	// "k8s.io/apimachinery/pkg/util/wait"
 	clientset "k8s.io/client-go/kubernetes"
-	"k8s.io/client-go/tools/cache"
 	cloudprovider "k8s.io/cloud-provider"
 	"k8s.io/klog/v2"
 
@@ -114,9 +113,6 @@ type Cloud struct {
 	VMSSClient					  *armcompute.VirtualMachineScaleSetsClient
 	ASClient					  *armcompute.AvailabilitySetsClient
 
-	// nodeInformerSynced is for determining if the informer has synced.
-	nodeInformerSynced cache.InformerSynced
-
 	VMSSVMCache *VMSSVMCache
 }
 
@@ -195,7 +191,6 @@ func ParseConfig(configReader io.Reader) (*Config, error) {
 
 	// these environment variables are injected by workload identity webhook
 	if tenantID := os.Getenv("AZURE_TENANT_ID"); tenantID != "" {
-		klog.Infof("tenantID : %+v", tenantID)
 		config.TenantID = tenantID
 	}
 	if clientID := os.Getenv("AZURE_CLIENT_ID"); clientID != "" {
@@ -218,7 +213,6 @@ func NewCloudWithoutFeatureGatesFromConfig(ctx context.Context, config *Config, 
 
 // InitializeCloudFromConfig initializes the Cloud from config.
 func (az *Cloud) InitializeCloudFromConfig(ctx context.Context, config *Config, fromSecret, callFromCCM bool) error {
-	klog.Infof("fromSecret 1: %+v", fromSecret)
 	if config == nil {
 		// should not reach here
 		return fmt.Errorf("InitializeCloudFromConfig: cannot initialize from nil config")
@@ -228,8 +222,6 @@ func (az *Cloud) InitializeCloudFromConfig(ctx context.Context, config *Config, 
 		// default to standard vmType if not set.
 		config.VMType = VMTypeStandard
 	}
-
-	klog.Infof("fromSecret 4: %+v", fromSecret)
 
 	if config.CloudConfigType == "" {
 		// The default cloud config type is cloudConfigTypeMerge.
@@ -244,20 +236,15 @@ func (az *Cloud) InitializeCloudFromConfig(ctx context.Context, config *Config, 
 		}
 	}
 
-	klog.Infof("fromSecret 2: %+v", fromSecret)
-
 	env, err := ParseAzureEnvironment(config.Cloud, config.ResourceManagerEndpoint, config.IdentitySystem)
 	if err != nil {
 		return err
 	}
 
-	klog.Infof("fromSecret 3: %+v", fromSecret)
-
 	servicePrincipalToken, err := GetServicePrincipalToken(&config.AzureAuthConfig, env, env.ServiceManagementEndpoint)
 	if errors.Is(err, ErrorNoAuth) {
 		// Only controller-manager would lazy-initialize from secret, and credentials are required for such case.
 		if fromSecret {
-			klog.Infof("fromSecret: %+v", fromSecret)
 			err := fmt.Errorf("no credentials provided for Azure cloud provider")
 			klog.Fatal(err)
 			return err
@@ -327,14 +314,14 @@ func (az *Cloud) ConfigAzureClients() {
 }
 
 func (az *Cloud) GetZoneByNodeName(ctx context.Context, nodeName string) (cloudprovider.Zone, error) {
-	entry, err := az.GetVMSSVM(ctx, nodeName)
+	response, err := az.VMClient.Get(ctx, az.ResourceGroup, nodeName, nil)
 	if err != nil {
 		return cloudprovider.Zone{}, fmt.Errorf("failed to get zone from nodename: %v", err)
 	}
 
 	var zones []*string
-	if entry != nil && entry.VM != nil && entry.VM.Zones != nil {
-		zones = entry.VM.Zones
+	if response.VirtualMachine.Zones != nil {
+		zones = response.VirtualMachine.Zones
 	}
 
 	var failureDomain string
@@ -344,11 +331,11 @@ func (az *Cloud) GetZoneByNodeName(ctx context.Context, nodeName string) (cloudp
 			return cloudprovider.Zone{}, fmt.Errorf("failed to parse zone %v", err)
 		}
 
-		failureDomain = fmt.Sprintf("%s-%d", strings.ToLower(*entry.VM.Location), zoneID)
-	} else if entry.VM.Properties.InstanceView != nil &&
-		entry.VM.Properties.InstanceView.PlatformFaultDomain != nil {
+		failureDomain = fmt.Sprintf("%s-%d", strings.ToLower(*response.VirtualMachine.Location), zoneID)
+	} else if response.VirtualMachine.Properties.InstanceView != nil &&
+		response.VirtualMachine.Properties.InstanceView.PlatformFaultDomain != nil {
 		// Availability zone is not used for the node, falling back to fault domain.
-		failureDomain = strconv.Itoa(int(*entry.VM.Properties.InstanceView.PlatformFaultDomain))
+		failureDomain = strconv.Itoa(int(*response.VirtualMachine.Properties.InstanceView.PlatformFaultDomain))
 	} else {
 		err = fmt.Errorf("failed to get zone info")
 		klog.Errorf("GetZoneByNodeName: got unexpected error %v", err)
@@ -358,7 +345,7 @@ func (az *Cloud) GetZoneByNodeName(ctx context.Context, nodeName string) (cloudp
 
 	return cloudprovider.Zone{
 		FailureDomain: strings.ToLower(failureDomain),
-		Region:        strings.ToLower(*entry.VM.Location),
+		Region:        strings.ToLower(*response.VirtualMachine.Location),
 	}, nil
 }
 

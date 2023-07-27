@@ -18,7 +18,7 @@ package csicommon
 
 const (
 	fakeCSIDriverName = "disk.csi.azure.com"
-	fakeNodeID        = "fakeNodeID"
+	fakeNodeID        = "fake-vmss000000"
 )
 
 var (
