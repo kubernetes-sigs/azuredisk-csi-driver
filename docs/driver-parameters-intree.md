@@ -1,6 +1,18 @@
 ## Driver Parameters
 
-in-tree [kubernetes.io/azure-disk](https://kubernetes.io/docs/concepts/storage/volumes/#azuredisk) driver parameters
+ - deprecated in-tree [kubernetes.io/azure-disk](https://kubernetes.io/docs/concepts/storage/volumes/#azuredisk) driver parameters
+
+<details><summary>required permissions for CSI driver controller</summary>
+<pre>
+"Microsoft.Resources/subscriptions/resourceGroups/read",
+"Microsoft.Compute/disks/*",
+"Microsoft.Compute/snapshots/*",
+"Microsoft.Compute/virtualMachines/*/read",
+"Microsoft.Compute/virtualMachineScaleSets/virtualMachines/write",
+"Microsoft.Compute/virtualMachineScaleSets/*/read",
+"Microsoft.Compute/virtualMachineScaleSets/read" 
+</pre>
+</details>
 
 ### Dynamic Provisioning
 
