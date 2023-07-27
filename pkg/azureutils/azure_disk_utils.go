@@ -821,6 +821,8 @@ func GetCachingMode(attributes map[string]string) (armcompute.CachingTypes, erro
 		}
 	}
 
+	klog.Infof("caching mode: %+v", cachingMode)
+
 	cachingMode, err = NormalizeCachingMode(cachingMode, maxShares)
 	return armcompute.CachingTypes(cachingMode), err
 }

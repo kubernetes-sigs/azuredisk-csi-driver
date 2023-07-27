@@ -19,7 +19,6 @@ package provisioner
 import (
 	"context"
 	"fmt"
-	"net/http"
 	"os"
 	"path"
 	"reflect"
@@ -32,7 +31,6 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/to"
 	armcompute "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute/v5"
 	"k8s.io/apimachinery/pkg/api/resource"
@@ -240,6 +238,7 @@ func (c *CloudProvisioner) CreateVolume(
 	secrets map[string]string,
 	volumeContentSource *azdiskv1beta2.ContentVolumeSource,
 	accessibilityRequirements *azdiskv1beta2.TopologyRequirement) (*azdiskv1beta2.AzVolumeStatusDetail, error) {
+	klog.Infof("creating volume")
 	var err error
 	ctx, w := workflow.New(ctx)
 	defer func() { w.Finish(err) }()
@@ -258,6 +257,8 @@ func (c *CloudProvisioner) CreateVolume(
 	if diskParams.Location == "" {
 		diskParams.Location = c.cloud.Location
 	}
+
+	klog.Infof("checkpoint 261")
 
 	localCloud := c.cloud
 	isAdvancedPerfProfile := strings.EqualFold(diskParams.PerfProfile, azureconstants.PerfProfileAdvanced)
@@ -288,6 +289,7 @@ func (c *CloudProvisioner) CreateVolume(
 			return nil, err
 		}
 	}
+	klog.Infof("checkpoint 290")
 	// normalize values
 	var skuName armcompute.DiskStorageAccountTypes
 	skuName, err = azureutils.NormalizeStorageAccountType(diskParams.AccountType, localCloud.Config.Cloud, localCloud.Config.DisableAzureStackCloud)
@@ -309,6 +311,8 @@ func (c *CloudProvisioner) CreateVolume(
 		return nil, status.Error(codes.InvalidArgument, err.Error())
 	}
 
+	klog.Infof("checkpoint 312")
+
 	selectedAvailabilityZone := pickAvailabilityZone(accessibilityRequirements, c.cloud.Location)
 	accessibleTopology := []azdiskv1beta2.Topology{}
 	if skuName == armcompute.DiskStorageAccountTypesStandardSSDZRS || skuName == armcompute.DiskStorageAccountTypesPremiumZRS {
@@ -321,6 +325,7 @@ func (c *CloudProvisioner) CreateVolume(
 			}
 			accessibleTopology = append(accessibleTopology, topology)
 		}
+
 		// make volume scheduled on all non-zone nodes
 		topology := azdiskv1beta2.Topology{
 			Segments: map[string]string{topologyKeyStr: ""},
@@ -347,11 +352,12 @@ func (c *CloudProvisioner) CreateVolume(
 	}
 
 	if ok, derr := c.CheckDiskCapacity(ctx, diskParams.ResourceGroup, diskParams.DiskName, requestGiB); !ok {
+		klog.Infof("355")
 		err = derr
 		return nil, err
 	}
 
-	klog.V(2).Infof("begin to create disk(%s) account type(%s) rg(%s) location(%s) size(%d) selectedAvailabilityZone(%v) maxShares(%d)",
+	klog.Infof("begin to create disk(%s) account type(%s) rg(%s) location(%s) size(%d) selectedAvailabilityZone(%v) maxShares(%d)",
 		diskParams.DiskName, skuName, diskParams.ResourceGroup, diskParams.Location, requestGiB, selectedAvailabilityZone, diskParams.MaxShares)
 
 	if strings.EqualFold(diskParams.WriteAcceleratorEnabled, azureconstants.TrueValue) {
@@ -527,10 +533,11 @@ func (c *CloudProvisioner) DeleteVolume(
 
 	resp, err := disksClient.Get(ctx, c.cloud.ResourceGroup, diskName, nil)
 	if err != nil {
-		rerr := err.(*azcore.ResponseError)
-		if rerr.StatusCode == http.StatusNotFound {
-			klog.Infof("disk %+v is already deleted", volumeID)
+		if strings.Contains(err.Error(), "404") || strings.Contains(err.Error(), "NotFound") {
+			klog.Infof("disk is already deleted")
 			return nil
+		} else {
+			return fmt.Errorf("failed to finish the request: %+v", err)
 		}
 	}
 
@@ -659,7 +666,9 @@ func (c *CloudProvisioner) PublishVolume(
 
 	// disk already attached to nodeName
 	if strings.EqualFold(string(nodeName), strings.ToLower(attachedNode)) {
+		klog.Infof("attached here state: %+v", vmState)
 		if vmState != nil && strings.ToLower(*vmState) == "failed" {
+			klog.Infof("failed state")
 			w.Logger().Infof("VM(%q) is in failed state, update VM first", nodeName)
 
 			poller, err := vmssVMClient.BeginUpdate(ctx, c.cloud.ResourceGroup, scaleSetName, instanceID, armcompute.VirtualMachineScaleSetVM{
@@ -724,6 +733,9 @@ func (c *CloudProvisioner) PublishVolume(
 
 				attachResult.ResultChannel() <- resultErr
 				close(attachResult.ResultChannel())
+
+				resultLunCh <- resultLun
+				close(resultLunCh)
 				return
 			}
 
@@ -735,6 +747,9 @@ func (c *CloudProvisioner) PublishVolume(
 
 				attachResult.ResultChannel() <- resultErr
 				close(attachResult.ResultChannel())
+
+				resultLunCh <- resultLun
+				close(resultLunCh)
 				return
 			}
 			disks := storageProfile.DataDisks
@@ -814,11 +829,21 @@ func (c *CloudProvisioner) PublishVolume(
 			poller, resultErr := vmssVMClient.BeginUpdate(ctx, c.cloud.ResourceGroup, scaleSetName, instanceID, newVM, nil)
 			if resultErr != nil {
 				resultErr = fmt.Errorf("failed to finish the request: %v", resultErr)
+				attachResult.ResultChannel() <- resultErr
+				close(attachResult.ResultChannel())
+
+				resultLunCh <- resultLun
+				close(resultLunCh)
 				return
 			}
 			_, resultErr = poller.PollUntilDone(ctx, nil)
 			if resultErr != nil {
 				resultErr = fmt.Errorf("failed to pull the result: %v", resultErr)
+				attachResult.ResultChannel() <- resultErr
+				close(attachResult.ResultChannel())
+
+				resultLunCh <- resultLun
+				close(resultLunCh)
 				return
 			} else {
 				w.Logger().V(2).Infof("attach operation successful: volume %q attached to node %q.", volumeID, nodeName)
@@ -827,12 +852,22 @@ func (c *CloudProvisioner) PublishVolume(
 			resultLun, resultErr = GetDiskLun(diskName, volumeID, disks)
 			if resultErr != nil {
 				resultErr = fmt.Errorf("failed to find disk lun: %v", resultErr)
+				attachResult.ResultChannel() <- resultErr
+				close(attachResult.ResultChannel())
+
+				resultLunCh <- resultLun
+				close(resultLunCh)
 				return
 			}
 
 			resp, resultErr := vmssVMClient.Get(ctx, c.cloud.ResourceGroup, scaleSetName, instanceID, nil)
 			if resultErr != nil {
 				resultErr = fmt.Errorf("failed to get vm: %v", resultErr)
+				attachResult.ResultChannel() <- resultErr
+				close(attachResult.ResultChannel())
+
+				resultLunCh <- resultLun
+				close(resultLunCh)
 				return
 			}
 
@@ -1259,6 +1294,8 @@ func (c *CloudProvisioner) CheckDiskExists(ctx context.Context, diskURI string) 
 		return nil, nil
 	}
 
+	klog.Infof("disks cleint address: %+v", c.cloud.DisksClient)
+
 	disk, rerr := c.cloud.DisksClient.Get(ctx, resourceGroup, diskName, nil)
 	if rerr != nil {
 		return nil, rerr
@@ -1307,8 +1344,6 @@ func (c *CloudProvisioner) CheckDiskCapacity(ctx context.Context, resourceGroup,
 		if !reflect.DeepEqual(disk, armcompute.Disk{}) && disk.Properties.DiskSizeGB != nil && int(*disk.Properties.DiskSizeGB) != requestGiB {
 			return false, status.Errorf(codes.AlreadyExists, "the request volume already exists, but its capacity(%v) is different from (%v)", *disk.Properties.DiskSizeGB, requestGiB)
 		}
-	} else {
-		return false, rerr
 	}
 
 	return true, nil

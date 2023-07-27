@@ -24,10 +24,8 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/Azure/azure-sdk-for-go/sdk/azidentity"
 	armcompute "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute/v5"
 
-	//"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2022-03-01/compute"
 	"github.com/container-storage-interface/spec/lib/go/csi"
 
 	"google.golang.org/grpc/codes"
@@ -45,6 +43,7 @@ import (
 	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/optimization"
+	"sigs.k8s.io/azuredisk-csi-driver/pkg/provisioner"
 	volumehelper "sigs.k8s.io/azuredisk-csi-driver/pkg/util"
 	"sigs.k8s.io/cloud-provider-azure/pkg/metrics"
 	azure "sigs.k8s.io/cloud-provider-azure/pkg/provider"
@@ -323,13 +322,16 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 		return nil, status.Errorf(codes.Internal, err.Error())
 	}
 
-	cred, err := azidentity.NewDefaultAzureCredential(nil)
+	poller, err := d.cloud.DisksClient.BeginCreateOrUpdate(ctx, diskParams.ResourceGroup, diskParams.DiskName, disk, nil)
 
-	client, err := armcompute.NewDisksClient(diskParams.SubscriptionID, cred, nil)
-
-	poller, err := client.BeginCreateOrUpdate(ctx, diskParams.ResourceGroup, diskParams.DiskName, disk, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to finish the request: %v", err)
+	}
 
 	_, err = poller.PollUntilDone(ctx, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to pull the result: %v", err)
+	}
 
 	diskURI = fmt.Sprintf("/subscriptions/%s/resourceGroups/%s/providers/Microsoft.Compute/disks/%s", d.cloud.SubscriptionID, diskParams.ResourceGroup, diskParams.DiskName)
 
@@ -448,6 +450,11 @@ func (d *Driver) ControllerPublishVolume(ctx context.Context, req *csi.Controlle
 		volumeContext = map[string]string{}
 	}
 
+	var cachingMode armcompute.CachingTypes
+	if cachingMode, err = azureutils.GetCachingMode(volumeContext); err != nil {
+		return nil, status.Errorf(codes.Internal, err.Error())
+	}
+
 	if err == nil {
 		if vmState != nil && strings.ToLower(*vmState) == "failed" {
 			klog.Warningf("VM(%s) is in failed state, update VM first", nodeName)
@@ -462,10 +469,10 @@ func (d *Driver) ControllerPublishVolume(ctx context.Context, req *csi.Controlle
 			strings.Contains(strings.ToLower(err.Error()), azureconstants.ClientThrottled) {
 			return nil, status.Errorf(codes.Internal, err.Error())
 		}
-		var cachingMode armcompute.CachingTypes
-		if cachingMode, err = azureutils.GetCachingMode(volumeContext); err != nil {
-			return nil, status.Errorf(codes.Internal, err.Error())
-		}
+		// var cachingMode armcompute.CachingTypes
+		// if cachingMode, err = azureutils.GetCachingMode(volumeContext); err != nil {
+		// 	return nil, status.Errorf(codes.Internal, err.Error())
+		// }
 		klog.V(2).Infof("Trying to attach volume %s to node %s", diskURI, nodeName)
 
 		asyncAttach := azureutils.IsAsyncAttachEnabled(d.enableAsyncAttach, volumeContext)
@@ -719,69 +726,76 @@ func (d *Driver) listVolumesInNodeResourceGroup(ctx context.Context, start, maxE
 
 // listVolumesByResourceGroup is a helper function that updates the ListVolumeResponse_Entry slice and returns number of total visited volumes, number of volumes that needs to be visited and an error if found
 func (d *Driver) listVolumesByResourceGroup(ctx context.Context, resourceGroup string, entries []*csi.ListVolumesResponse_Entry, start, maxEntries int, volSet map[string]bool) listVolumeStatus {
-	return listVolumeStatus{}
-	// disks, derr := d.cloud.DisksClient.ListByResourceGroup(ctx, "", resourceGroup)
-	// if derr != nil {
-	// 	return listVolumeStatus{err: status.Errorf(codes.Internal, "ListVolumes on rg(%s) failed with error: %v", resourceGroup, derr.Error())}
-	// }
-	// // if volSet is initialized but is empty, return
-	// if volSet != nil && len(volSet) == 0 {
-	// 	return listVolumeStatus{
-	// 		numVisited:    len(disks),
-	// 		isCompleteRun: true,
-	// 		entries:       entries,
-	// 	}
-	// }
-	// if start > 0 && start >= len(disks) {
-	// 	return listVolumeStatus{
-	// 		numVisited: len(disks),
-	// 		err:        status.Errorf(codes.FailedPrecondition, "ListVolumes starting token(%d) on rg(%s) is greater than total number of volumes", start, d.cloud.ResourceGroup),
-	// 	}
-	// }
-	// if start < 0 {
-	// 	start = 0
-	// }
-	// i := start
-	// isCompleteRun := true
-	// // Loop until
-	// for ; i < len(disks); i++ {
-	// 	if maxEntries > 0 && len(entries) >= maxEntries {
-	// 		isCompleteRun = false
-	// 		break
-	// 	}
+	pager := d.cloud.DisksClient.NewListByResourceGroupPager(resourceGroup, nil)
+	var disks []armcompute.Disk
+	for pager.More() {
+		page, err := pager.NextPage(ctx)
+		if err != nil {
+			return listVolumeStatus{err: status.Errorf(codes.Internal, "ListVolumes on rg(%s) failed with error: %v", resourceGroup, err)}
+		}
+		for _, disk := range page.Value {
+			disks = append(disks, *disk)
+		}
+	}
 
-	// 	disk := disks[i]
-	// 	// if given a set of volumes from KubeClient, only continue if the disk can be found in the set
-	// 	if volSet != nil && !volSet[strings.ToLower(*disk.ID)] {
-	// 		continue
-	// 	}
-	// 	// HyperVGeneration property is only setup for os disks. Only the non os disks should be included in the list
-	// 	if disk.DiskProperties == nil || disk.DiskProperties.HyperVGeneration == "" {
-	// 		nodeList := []string{}
+	// if volSet is initialized but is empty, return
+	if volSet != nil && len(volSet) == 0 {
+		return listVolumeStatus{
+			numVisited:    len(disks),
+			isCompleteRun: true,
+			entries:       entries,
+		}
+	}
+	if start > 0 && start >= len(disks) {
+		return listVolumeStatus{
+			numVisited: len(disks),
+			err:        status.Errorf(codes.FailedPrecondition, "ListVolumes starting token(%d) on rg(%s) is greater than total number of volumes", start, d.cloud.ResourceGroup),
+		}
+	}
+	if start < 0 {
+		start = 0
+	}
+	i := start
+	isCompleteRun := true
+	// Loop until
+	for ; i < len(disks); i++ {
+		if maxEntries > 0 && len(entries) >= maxEntries {
+			isCompleteRun = false
+			break
+		}
 
-	// 		if disk.ManagedBy != nil {
-	// 			attachedNode, err := d.cloud.VMSet.GetNodeNameByProviderID(*disk.ManagedBy)
-	// 			if err != nil {
-	// 				return listVolumeStatus{err: err}
-	// 			}
-	// 			nodeList = append(nodeList, string(attachedNode))
-	// 		}
+		disk := disks[i]
+		// if given a set of volumes from KubeClient, only continue if the disk can be found in the set
+		if volSet != nil && !volSet[strings.ToLower(*disk.ID)] {
+			continue
+		}
+		// HyperVGeneration property is only setup for os disks. Only the non os disks should be included in the list
+		if disk.Properties == nil || disk.Properties.HyperVGeneration != nil || *disk.Properties.HyperVGeneration == "" {
+			nodeList := []string{}
 
-	// 		entries = append(entries, &csi.ListVolumesResponse_Entry{
-	// 			Volume: &csi.Volume{
-	// 				VolumeId: *disk.ID,
-	// 			},
-	// 			Status: &csi.ListVolumesResponse_VolumeStatus{
-	// 				PublishedNodeIds: nodeList,
-	// 			},
-	// 		})
-	// 	}
-	// }
-	// return listVolumeStatus{
-	// 	numVisited:    i - start,
-	// 	isCompleteRun: isCompleteRun,
-	// 	entries:       entries,
-	// }
+			if disk.ManagedBy != nil {
+				attachedNode, err := provisioner.GetLastSegment(*disk.ManagedBy, "/")
+				if err != nil {
+					return listVolumeStatus{err: err}
+				}
+				nodeList = append(nodeList, string(attachedNode))
+			}
+
+			entries = append(entries, &csi.ListVolumesResponse_Entry{
+				Volume: &csi.Volume{
+					VolumeId: *disk.ID,
+				},
+				Status: &csi.ListVolumesResponse_VolumeStatus{
+					PublishedNodeIds: nodeList,
+				},
+			})
+		}
+	}
+	return listVolumeStatus{
+		numVisited:    i - start,
+		isCompleteRun: isCompleteRun,
+		entries:       entries,
+	}
 }
 
 // ControllerExpandVolume controller expand volume
@@ -971,69 +985,76 @@ func (d *Driver) CreateSnapshot(ctx context.Context, req *csi.CreateSnapshotRequ
 
 // DeleteSnapshot delete a snapshot
 func (d *Driver) DeleteSnapshot(ctx context.Context, req *csi.DeleteSnapshotRequest) (*csi.DeleteSnapshotResponse, error) {
-	// snapshotID := req.SnapshotId
-	// if len(snapshotID) == 0 {
-	// 	return nil, status.Error(codes.InvalidArgument, "Snapshot ID must be provided")
-	// }
+	snapshotID := req.SnapshotId
+	if len(snapshotID) == 0 {
+		return nil, status.Error(codes.InvalidArgument, "Snapshot ID must be provided")
+	}
 
-	// var err error
-	// var subsID string
-	// snapshotName := snapshotID
-	// resourceGroup := d.cloud.ResourceGroup
+	var err error
+	snapshotName := snapshotID
+	resourceGroup := d.cloud.ResourceGroup
 
-	// if azureutils.IsARMResourceID(snapshotID) {
-	// 	snapshotName, resourceGroup, subsID, err = d.getSnapshotInfo(snapshotID)
-	// 	if err != nil {
-	// 		return nil, status.Errorf(codes.Internal, err.Error())
-	// 	}
-	// }
+	if azureutils.IsARMResourceID(snapshotID) {
+		snapshotName, resourceGroup, _, err = d.getSnapshotInfo(snapshotID)
+		if err != nil {
+			return nil, status.Errorf(codes.Internal, err.Error())
+		}
+	}
 
-	// mc := metrics.NewMetricContext(consts.AzureDiskCSIDriverName, "controller_delete_snapshot", d.cloud.ResourceGroup, d.cloud.SubscriptionID, d.Name)
-	// isOperationSucceeded := false
-	// defer func() {
-	// 	mc.ObserveOperationWithResult(isOperationSucceeded, consts.SnapshotID, snapshotID)
-	// }()
+	mc := metrics.NewMetricContext(consts.AzureDiskCSIDriverName, "controller_delete_snapshot", d.cloud.ResourceGroup, d.cloud.SubscriptionID, d.Name)
+	isOperationSucceeded := false
+	defer func() {
+		mc.ObserveOperationWithResult(isOperationSucceeded, consts.SnapshotID, snapshotID)
+	}()
 
-	// klog.V(2).Infof("begin to delete snapshot(%s) under rg(%s)", snapshotName, resourceGroup)
-	// if rerr := d.cloud.SnapshotsClient.Delete(ctx, subsID, resourceGroup, snapshotName); rerr != nil {
-	// 	azureutils.SleepIfThrottled(rerr.Error(), azureconstants.SnapshotOpThrottlingSleepSec)
-	// 	return nil, status.Error(codes.Internal, fmt.Sprintf("delete snapshot error: %v", rerr.Error()))
-	// }
-	// klog.V(2).Infof("delete snapshot(%s) under rg(%s) successfully", snapshotName, resourceGroup)
-	// isOperationSucceeded = true
+	klog.V(2).Infof("begin to delete snapshot(%s) under rg(%s)", snapshotName, resourceGroup)
+	if _, rerr := d.cloud.SnapshotsClient.BeginDelete(ctx, resourceGroup, snapshotName, nil); rerr != nil {
+		azureutils.SleepIfThrottled(rerr, azureconstants.SnapshotOpThrottlingSleepSec)
+		return nil, status.Error(codes.Internal, fmt.Sprintf("delete snapshot error: %v", rerr.Error()))
+	}
+
+	klog.V(2).Infof("delete snapshot(%s) under rg(%s) successfully", snapshotName, resourceGroup)
+	isOperationSucceeded = true
 	return &csi.DeleteSnapshotResponse{}, nil
 }
 
 // ListSnapshots list all snapshots
 func (d *Driver) ListSnapshots(ctx context.Context, req *csi.ListSnapshotsRequest) (*csi.ListSnapshotsResponse, error) {
 	// SnapshotId is not empty, return snapshot that match the snapshot id.
-	// if len(req.GetSnapshotId()) != 0 {
-	// 	snapshot, err := d.getSnapshotByID(ctx, "", d.cloud.ResourceGroup, req.GetSnapshotId(), req.SourceVolumeId)
-	// 	if err != nil {
-	// 		if strings.Contains(err.Error(), consts.ResourceNotFound) {
-	// 			return &csi.ListSnapshotsResponse{}, nil
-	// 		}
-	// 		return nil, err
-	// 	}
-	// 	entries := []*csi.ListSnapshotsResponse_Entry{
-	// 		{
-	// 			Snapshot: snapshot,
-	// 		},
-	// 	}
-	// 	listSnapshotResp := &csi.ListSnapshotsResponse{
-	// 		Entries: entries,
-	// 	}
-	// 	return listSnapshotResp, nil
-	// }
+	if len(req.GetSnapshotId()) != 0 {
+		snapshot, err := d.getSnapshotByID(ctx, "", d.cloud.ResourceGroup, req.GetSnapshotId(), req.SourceVolumeId)
+		if err != nil {
+			if strings.Contains(err.Error(), consts.ResourceNotFound) {
+				return &csi.ListSnapshotsResponse{}, nil
+			}
+			return nil, err
+		}
+		entries := []*csi.ListSnapshotsResponse_Entry{
+			{
+				Snapshot: snapshot,
+			},
+		}
+		listSnapshotResp := &csi.ListSnapshotsResponse{
+			Entries: entries,
+		}
+		return listSnapshotResp, nil
+	}
 
-	// // no SnapshotId is set, return all snapshots that satisfy the request.
-	// snapshots, err := d.cloud.SnapshotsClient.ListByResourceGroup(ctx, "", d.cloud.ResourceGroup)
-	// if err != nil {
-	// 	return nil, status.Error(codes.Internal, fmt.Sprintf("Unknown list snapshot error: %v", err.Error()))
-	// }
+	var snapshots []armcompute.Snapshot
 
-	// return azureutils.GetEntriesAndNextToken(req, snapshots)
-	return &csi.ListSnapshotsResponse{}, nil
+	// no SnapshotId is set, return all snapshots that satisfy the request.
+	pager := d.cloud.SnapshotsClient.NewListByResourceGroupPager(d.cloud.ResourceGroup, nil)
+	for pager.More() {
+		page, err := pager.NextPage(ctx)
+		if err != nil {
+			return nil, fmt.Errorf("failed to advance page: %v", err)
+		}
+		for _, snapshot := range page.Value {
+			snapshots = append(snapshots, *snapshot)
+		}
+	}
+
+	return azureutils.GetEntriesAndNextToken(req, snapshots)
 }
 
 func (d *Driver) getSnapshotByID(ctx context.Context, subsID, resourceGroup, snapshotID, sourceVolumeID string) (*csi.Snapshot, error) {

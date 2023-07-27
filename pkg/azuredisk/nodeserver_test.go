@@ -307,6 +307,7 @@ func TestNodeGetInfo(t *testing.T) {
 			desc:        "[Failure] Get node information for non-existing VM",
 			expectedErr: status.Error(codes.Internal, fmt.Sprintf("getNodeInfoFromLabels on node(%s) failed with %s", testVMName, "kubeClient is nil")),
 			setupFunc: func(t *testing.T, d FakeDriver) {
+				d.(*fakeDriverV1).getNodeInfoFromLabels = true
 				fn2 := func(ctx context.Context, rg, vmName string, option *armcompute.VirtualMachinesClientGetOptions) (resp azfake.Responder[armcompute.VirtualMachinesClientGetResponse], errResp azfake.ErrorResponder) {
 					resp.SetResponse(http.StatusNotFound, armcompute.VirtualMachinesClientGetResponse{}, nil)
 					errResp.SetResponseError(http.StatusNotFound, "ErrorNotFound")

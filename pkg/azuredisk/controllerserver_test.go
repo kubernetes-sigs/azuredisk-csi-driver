@@ -326,6 +326,7 @@ func TestCreateVolume(t *testing.T) {
 					return resp, errResp
 				}
 				d.getCloud().CreateDisksClientWithFunction(d.getCloud().SubscriptionID, fget, fcreate, nil, nil, nil)
+				klog.Infof("fake client: %+v", *d.getCloud().DisksClient)
 
 				_, err := d.CreateVolume(context.Background(), req)
 				expectedErr := fmt.Errorf("failed to finish the request: test")
@@ -705,7 +706,6 @@ func TestDeleteVolume(t *testing.T) {
 		}
 
 		fget := func(ctx context.Context, resourceGroupName string, diskName string, options *armcompute.DisksClientGetOptions) (resp azfake.Responder[armcompute.DisksClientGetResponse], errResp azfake.ErrorResponder) {
-			klog.Infof("fget")
 			resp.SetResponse(http.StatusOK, armcompute.DisksClientGetResponse{
 				Disk:	disk,
 			}, nil)
@@ -713,13 +713,11 @@ func TestDeleteVolume(t *testing.T) {
 		}
 
 		fdelete := func(ctx context.Context, resourceGroupName string, diskName string, options *armcompute.DisksClientBeginDeleteOptions) (resp azfake.PollerResponder[armcompute.DisksClientDeleteResponse], errResp azfake.ErrorResponder) {
-			klog.Infof("fdelete")
 			resp.SetTerminalResponse(http.StatusOK, armcompute.DisksClientDeleteResponse{}, nil)
 			return resp, errResp
 		}
 
 		d.getCloud().CreateDisksClientWithFunction(d.getCloud().SubscriptionID, fget, nil, fdelete, nil, nil)
-		klog.Infof("diskclient address test: %+v", d.getCloud().DisksClient)
 
 		result, err := d.DeleteVolume(ctx, test.req)
 		if err != nil {
@@ -897,86 +895,85 @@ func TestControllerPublishVolume(t *testing.T) {
 				}
 			},
 		},
-		// {
-		// 	name: "failed provisioning state",
-		// 	testFunc: func(t *testing.T) {
-		// 		req := &csi.ControllerPublishVolumeRequest{
-		// 			VolumeId:         testVolumeID,
-		// 			VolumeCapability: volumeCap,
-		// 			NodeId:           "vmss-000000",
-		// 		}
-		// 		id := req.VolumeId
-		// 		disk := armcompute.Disk{
-		// 			ID: &id,
-		// 		}
-		// 		ctrl := gomock.NewController(t)
-		// 		defer ctrl.Finish()
+		{
+			name: "failed provisioning state",
+			testFunc: func(t *testing.T) {
+				req := &csi.ControllerPublishVolumeRequest{
+					VolumeId:         testVolumeID,
+					VolumeCapability: volumeCap,
+					NodeId:           "vmss-000000",
+				}
+				id := req.VolumeId
+				disk := armcompute.Disk{
+					ID: &id,
+				}
+				ctrl := gomock.NewController(t)
+				defer ctrl.Finish()
 
-		// 		fget := func(ctx context.Context, resourceGroupName string, diskName string, options *armcompute.DisksClientGetOptions) (resp azfake.Responder[armcompute.DisksClientGetResponse], errResp azfake.ErrorResponder) {
-		// 			resp.SetResponse(http.StatusOK, armcompute.DisksClientGetResponse{
-		// 				Disk:	disk,
-		// 			}, nil)
-		// 			return resp, errResp
-		// 		}
+				fget := func(ctx context.Context, resourceGroupName string, diskName string, options *armcompute.DisksClientGetOptions) (resp azfake.Responder[armcompute.DisksClientGetResponse], errResp azfake.ErrorResponder) {
+					resp.SetResponse(http.StatusOK, armcompute.DisksClientGetResponse{
+						Disk:	disk,
+					}, nil)
+					return resp, errResp
+				}
 		
-		// 		d.getCloud().CreateDisksClientWithFunction(d.getCloud().SubscriptionID, fget, nil, nil, nil, nil)
+				d.getCloud().CreateDisksClientWithFunction(d.getCloud().SubscriptionID, fget, nil, nil, nil, nil)
 
-		// 		instanceID := fmt.Sprintf("/subscriptions/subscription/resourceGroups/rg/providers/Microsoft.Compute/virtualMachines/%s", nodeName)
-		// 		vm := armcompute.VirtualMachine{
-		// 			Name:     to.Ptr("vmss-000000"),
-		// 			ID:       &instanceID,
-		// 			Location: &d.getCloud().Location,
-		// 		}
-		// 		vmstatus := []*armcompute.InstanceViewStatus{
-		// 			{
-		// 				Code: pointer.String("PowerState/Running"),
-		// 			},
-		// 			{
-		// 				Code: pointer.String("ProvisioningState/succeeded"),
-		// 			},
-		// 		}
-		// 		vm.Properties = &armcompute.VirtualMachineProperties{
-		// 			ProvisioningState: to.Ptr("Failed"),
-		// 			HardwareProfile: &armcompute.HardwareProfile{
-		// 				VMSize: to.Ptr(armcompute.VirtualMachineSizeTypesStandardA0),
-		// 			},
-		// 			InstanceView: &armcompute.VirtualMachineInstanceView{
-		// 				Statuses: vmstatus,
-		// 			},
-		// 			StorageProfile: &armcompute.StorageProfile{
-		// 				DataDisks: []*armcompute.DataDisk{},
-		// 			},
-		// 		}
-		// 		dataDisks := make([]*armcompute.DataDisk, 1)
-		// 		dataDisks[0] = &armcompute.DataDisk{Lun: pointer.Int32(int32(0)), Name: &testVolumeName}
-		// 		vm.Properties.StorageProfile.DataDisks = dataDisks
+				instanceID := fmt.Sprintf("/subscriptions/subscription/resourceGroups/rg/providers/Microsoft.Compute/virtualMachines/%s", nodeName)
+				vm := armcompute.VirtualMachineScaleSetVM{
+					Name:     to.Ptr("vmss-000000"),
+					ID:       &instanceID,
+					Location: &d.getCloud().Location,
+				}
+				vmstatus := []*armcompute.InstanceViewStatus{
+					{
+						Code: pointer.String("PowerState/Running"),
+					},
+					{
+						Code: pointer.String("ProvisioningState/succeeded"),
+					},
+				}
+				vm.Properties = &armcompute.VirtualMachineScaleSetVMProperties{
+					ProvisioningState: to.Ptr("Failed"),
+					HardwareProfile: &armcompute.HardwareProfile{
+						VMSize: to.Ptr(armcompute.VirtualMachineSizeTypesStandardA0),
+					},
+					InstanceView: &armcompute.VirtualMachineScaleSetVMInstanceView{
+						Statuses: vmstatus,
+					},
+					StorageProfile: &armcompute.StorageProfile{
+						DataDisks: []*armcompute.DataDisk{},
+					},
+				}
+				dataDisks := make([]*armcompute.DataDisk, 1)
+				dataDisks[0] = &armcompute.DataDisk{Lun: pointer.Int32(int32(0)), Name: &testVolumeName}
+				vm.Properties.StorageProfile.DataDisks = dataDisks
 
-		// 		fgetvm := func(ctx context.Context, rg, vmName string, option *armcompute.VirtualMachinesClientGetOptions) (resp azfake.Responder[armcompute.VirtualMachinesClientGetResponse], errResp azfake.ErrorResponder) {
-		// 			resp.SetResponse(http.StatusOK, armcompute.VirtualMachinesClientGetResponse{
-		// 				VirtualMachine:	vm,
-		// 			  }, nil) 
-		// 			return resp, errResp
-		// 		}
+				fgetvm := func(ctx context.Context, resourceGroupName string, vmScaleSetName string, instanceID string, options *armcompute.VirtualMachineScaleSetVMsClientGetOptions) (resp azfake.Responder[armcompute.VirtualMachineScaleSetVMsClientGetResponse], errResp azfake.ErrorResponder) {
+					resp.SetResponse(http.StatusOK, armcompute.VirtualMachineScaleSetVMsClientGetResponse{
+						VirtualMachineScaleSetVM:	vm,
+					  }, nil) 
+					return resp, errResp
+				}
 
-		// 		fupdatevm := func(ctx context.Context, resourceGroupName string, vmName string, parameters armcompute.VirtualMachineUpdate, options *armcompute.VirtualMachinesClientBeginUpdateOptions) (resp azfake.PollerResponder[armcompute.VirtualMachinesClientUpdateResponse], errResp azfake.ErrorResponder) {
-		// 			resp.SetTerminalResponse(http.StatusOK, armcompute.VirtualMachinesClientUpdateResponse{
-		// 				VirtualMachine:	vm,
-		// 			}, nil)
-		// 			resp.AddPollingError(fmt.Errorf("error"))
-		// 			errResp.SetError(fmt.Errorf("error"))
-		// 			return resp, errResp
-		// 		}
+				fupdatevm := func(ctx context.Context, resourceGroupName string, vmScaleSetName string, instanceID string, parameters armcompute.VirtualMachineScaleSetVM, options *armcompute.VirtualMachineScaleSetVMsClientBeginUpdateOptions) (resp azfake.PollerResponder[armcompute.VirtualMachineScaleSetVMsClientUpdateResponse], errResp azfake.ErrorResponder) {
+					resp.SetTerminalResponse(http.StatusOK, armcompute.VirtualMachineScaleSetVMsClientUpdateResponse{
+						VirtualMachineScaleSetVM:	vm,
+					}, nil)
+					resp.AddPollingError(fmt.Errorf("error"))
+					errResp.SetError(fmt.Errorf("error"))
+					return resp, errResp
+				}
 
-		// 		d.getCloud().CreateVMClientWithFunction(d.getCloud().SubscriptionID, fgetvm, fupdatevm)
+				d.getCloud().CreateVMSSVMClientWithFunction(d.getCloud().SubscriptionID, fgetvm, fupdatevm)
 
-		// 		expectedErr := status.Errorf(codes.Internal, "update instance \"unit-test-node\" failed with Retriable: false, RetryAfter: 0s, HTTPStatusCode: 0, RawError: error")
-		// 		_, err := d.ControllerPublishVolume(context.Background(), req)
-		// 		klog.Infof("finish publish: %+v", err)
-		// 		if !reflect.DeepEqual(err, expectedErr) {
-		// 			t.Errorf("actualErr: (%v), expectedErr: (%v)", err, expectedErr)
-		// 		}
-		// 	},
-		// },
+				_, err := d.ControllerPublishVolume(context.Background(), req)
+				klog.Infof("finish publish: %+v", err)
+				if !reflect.DeepEqual(err, nil) {
+					t.Errorf("actualErr: (%v), expectedErr: (%v)", err, nil)
+				}
+			},
+		},
 		{
 			name: "Volume already attached success",
 			testFunc: func(t *testing.T) {

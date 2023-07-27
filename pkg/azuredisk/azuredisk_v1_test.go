@@ -51,12 +51,10 @@ func TestCheckDiskCapacity_V1(t *testing.T) {
 		resp.SetResponse(http.StatusOK, armcompute.DisksClientGetResponse{
 			Disk:	disk,
 		}, nil)
-		errResp.SetError(nil)
 		return resp, errResp
 	}
 
-	client := d.getCloud().CreateDisksClientWithFunction(d.getCloud().SubscriptionID, fget, nil, nil, nil, nil)
-	client.Get(nil, "", "", nil)
+	d.getCloud().CreateDisksClientWithFunction(d.getCloud().SubscriptionID, fget, nil, nil, nil, nil)
 
 
 	flag, err := d.checkDiskCapacity(context.TODO(), subID, resourceGroup, diskName, 10)

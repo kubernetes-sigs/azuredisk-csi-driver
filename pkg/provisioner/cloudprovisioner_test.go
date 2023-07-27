@@ -222,15 +222,14 @@ func NewTestCloudProvisioner(controller *gomock.Controller) *CloudProvisioner {
 func mockExistingDisk(provisioner *CloudProvisioner) func(ctx context.Context, resourceGroupName string, diskName string, options *armcompute.DisksClientGetOptions) (resp azfake.Responder[armcompute.DisksClientGetResponse], errResp azfake.ErrorResponder) {		
 	return func(ctx context.Context, resourceGroupName string, diskName string, options *armcompute.DisksClientGetOptions) (resp azfake.Responder[armcompute.DisksClientGetResponse], errResp azfake.ErrorResponder) {
 		if (resourceGroupName == testResourceGroup && diskName == testDiskName0) {
+			klog.Infof("fget existing disk")
 			resp.SetResponse(http.StatusOK, armcompute.DisksClientGetResponse{
 				Disk:	testDisk,
 			}, nil)
-			errResp.SetError(nil)
 			return resp, errResp
 		}
 
 		resp.SetResponse(http.StatusNotFound, armcompute.DisksClientGetResponse{}, nil)
-		errResp.SetError(nil)
 		return resp, errResp
 	}
 }
@@ -241,12 +240,10 @@ func mockClonedDisk(provisioner *CloudProvisioner) {
 			resp.SetResponse(http.StatusOK, armcompute.DisksClientGetResponse{
 				Disk:	clonedDisk,
 			}, nil)
-			errResp.SetError(nil)
 			return resp, errResp
 		}
 
 		resp.SetResponse(http.StatusNotFound, armcompute.DisksClientGetResponse{}, nil)
-		errResp.SetError(nil)
 		return resp, errResp
 	}
 
@@ -259,12 +256,11 @@ func mockMissingDisk(provisioner *CloudProvisioner) func(ctx context.Context, re
 			resp.SetResponse(http.StatusNotFound, armcompute.DisksClientGetResponse{
 				Disk:	armcompute.Disk{},
 			}, nil)
-			errResp.SetError(notFoundError.RawError)
+			errResp.SetResponseError(http.StatusNotFound, "NotFound")
 			return resp, errResp
 		}
 
 		resp.SetResponse(http.StatusNotFound, armcompute.DisksClientGetResponse{}, nil)
-		errResp.SetError(nil)
 		return resp, errResp
 	}
 }
@@ -362,11 +358,9 @@ func mockUpdateVM(provisioner *CloudProvisioner) {
 			resp.SetResponse(http.StatusOK, armcompute.VirtualMachineScaleSetVMsClientGetResponse{
 				VirtualMachineScaleSetVM:	testVM,
 			}, nil)
-			errResp.SetError(nil)
 			return resp, errResp
 		}
 		resp.SetResponse(http.StatusNotFound, armcompute.VirtualMachineScaleSetVMsClientGetResponse{}, nil)
-		errResp.SetError(nil)
 		return resp, errResp
 	}
 
@@ -384,7 +378,6 @@ func mockUpdateVM(provisioner *CloudProvisioner) {
 			resp.SetTerminalResponse(http.StatusOK, armcompute.VirtualMachineScaleSetVMsClientUpdateResponse{
 				VirtualMachineScaleSetVM:		*vm,
 			}, nil)
-			errResp.SetError(nil)
 			return resp, errResp
 		}
 		resp.SetTerminalResponse(http.StatusNotFound, armcompute.VirtualMachineScaleSetVMsClientUpdateResponse{}, nil)
@@ -549,25 +542,24 @@ func TestCreateVolume(t *testing.T) {
 			mockedDisk.Properties.ProvisioningState = &provisioningStateSucceeded
 		}
 
-		// fget := func(ctx context.Context, rg string, name string, options *armcompute.DisksClientGetOptions) (resp azfake.Responder[armcompute.DisksClientGetResponse], errResp azfake.ErrorResponder) {
-		// 	if rg == resourceGroupName && name == diskName {
-		// 		resp.SetResponse(http.StatusOK, armcompute.DisksClientGetResponse{
-		// 			Disk:	mockedDisk,
-		// 		}, nil)
-		// 		errResp.SetError(nil)
-		// 		return resp, errResp
-		// 	}
-		// 	resp.SetResponse(http.StatusNotFound, armcompute.DisksClientGetResponse{}, nil)
-		// 	errResp.SetError(nil)
-		// 	return resp, errResp
-		// }
-		
-		// provisioner.cloud.DisksClient = provisioner.cloud.CreateDisksClientWithFunction(provisioner.cloud.SubscriptionID, fget, nil, nil, nil, nil)
+		defer func() {
+			fget := func(ctx context.Context, rg string, name string, options *armcompute.DisksClientGetOptions) (resp azfake.Responder[armcompute.DisksClientGetResponse], errResp azfake.ErrorResponder) {
+				if rg == resourceGroupName && name == diskName {
+					resp.SetResponse(http.StatusOK, armcompute.DisksClientGetResponse{
+						Disk:	mockedDisk,
+					}, nil)
+					return resp, errResp
+				}
+				resp.SetResponse(http.StatusNotFound, armcompute.DisksClientGetResponse{}, nil)
+				return resp, errResp
+			}
+			
+			provisioner.cloud.CreateDisksClientWithFunction(provisioner.cloud.SubscriptionID, fget, nil, nil, nil, nil)
+		}()
 
 		resp.SetTerminalResponse(http.StatusOK, armcompute.DisksClientCreateOrUpdateResponse{
 			Disk:	mockedDisk,
 		}, nil)
-		errResp.SetError(nil)
 		return resp, errResp
 	}
 
@@ -793,7 +785,7 @@ func TestCreateVolume(t *testing.T) {
 			parameter: map[string]string{
 				"storageAccountType": "SuperPremiumSSD_URS",
 			},
-			expectedError: status.Error(codes.InvalidArgument, "azureDisk - SuperPremiumSSD_URS is not supported sku/storageaccounttype. Supported values are [Premium_LRS Premium_ZRS Standard_LRS StandardSSD_LRS StandardSSD_ZRS UltraSSD_LRS PremiumV2_LRS]"),
+			expectedError: status.Error(codes.InvalidArgument, "azureDisk - SuperPremiumSSD_URS is not supported sku/storageaccounttype. Supported values are [Premium_LRS PremiumV2_LRS Premium_ZRS Standard_LRS StandardSSD_LRS StandardSSD_ZRS UltraSSD_LRS]"),
 		},
 		{
 			description: "[Failure] Returns an error when an unsupported caching mode is specified",
@@ -820,17 +812,15 @@ func TestCreateVolume(t *testing.T) {
 						errResp.SetError(notFoundError.RawError)
 						return resp, errResp
 					}
+					
 					resp.SetResponse(http.StatusNotFound, armcompute.DisksClientGetResponse{}, nil)
-					errResp.SetError(nil)
 					return resp, errResp
 				}
-				provisioner.cloud.DisksClient = provisioner.cloud.CreateDisksClientWithFunction(provisioner.cloud.SubscriptionID, fget, fcreate, nil, nil, nil)
+				provisioner.cloud.CreateDisksClientWithFunction(provisioner.cloud.SubscriptionID, fget, fcreate, nil, nil, nil)
 			} else {
 				fget := mockExistingDisk(provisioner)
-				provisioner.cloud.DisksClient = provisioner.cloud.CreateDisksClientWithFunction(provisioner.cloud.SubscriptionID, fget, fcreate, nil, nil, nil)
+				provisioner.cloud.CreateDisksClientWithFunction(provisioner.cloud.SubscriptionID, fget, fcreate, nil, nil, nil)
 			}
-
-			klog.Infof("disksclient: %+v", provisioner.cloud.DisksClient)
 
 			volume, err := provisioner.CreateVolume(
 				context.TODO(),
@@ -841,7 +831,6 @@ func TestCreateVolume(t *testing.T) {
 				tt.secrets,
 				tt.contentSource,
 				tt.topology)
-			klog.Infof("volume: %+v err: %+v", volume, err.Error())
 			assert.Equal(t, tt.expectedError, err)
 			if err == nil {
 				assert.NotNil(t, volume)
@@ -858,11 +847,9 @@ func TestDeleteVolume(t *testing.T) {
 	fdelete := func(ctx context.Context, resourceGroupName string, diskName string, options *armcompute.DisksClientBeginDeleteOptions) (resp azfake.PollerResponder[armcompute.DisksClientDeleteResponse], errResp azfake.ErrorResponder) {
 		if resourceGroupName == testResourceGroup && diskName == testDiskName0 {
 			resp.SetTerminalResponse(http.StatusOK, armcompute.DisksClientDeleteResponse{}, nil)
-			errResp.SetError(nil)
 			return resp, errResp
 		}
 		resp.AddNonTerminalResponse(http.StatusNotFound, nil)
-		errResp.SetError(nil)
 		return resp, errResp
 	}
 
@@ -887,10 +874,10 @@ func TestDeleteVolume(t *testing.T) {
 		tt := test
 		if tt.diskURI == testDiskURI0 {
 			fget := mockExistingDisk(provisioner)
-			provisioner.cloud.DisksClient = provisioner.cloud.CreateDisksClientWithFunction(testSubscription, fget, nil, fdelete, nil, nil)
+			provisioner.cloud.CreateDisksClientWithFunction(testSubscription, fget, nil, fdelete, nil, nil)
 		} else {
 			fget := mockMissingDisk(provisioner)
-			provisioner.cloud.DisksClient = provisioner.cloud.CreateDisksClientWithFunction(testSubscription, fget, nil, fdelete, nil, nil)
+			provisioner.cloud.CreateDisksClientWithFunction(testSubscription, fget, nil, fdelete, nil, nil)
 		}
 		t.Run(test.description, func(t *testing.T) {
 			err := provisioner.DeleteVolume(context.TODO(), tt.diskURI, map[string]string{})
@@ -904,11 +891,9 @@ func TestPublishVolume(t *testing.T) {
 	defer mockCtrl.Finish()
 	provisioner := NewTestCloudProvisioner(mockCtrl)
 
-	mockExistingDisk(provisioner)
 	mockMissingDisk(provisioner)
-	mockUpdateVM(provisioner)
 
-	fget := func(ctx context.Context, resourceGroupName string, vmScaleSetName string, instanceID string, options *armcompute.VirtualMachineScaleSetVMsClientGetOptions) (resp azfake.Responder[armcompute.VirtualMachineScaleSetVMsClientGetResponse], errResp azfake.ErrorResponder) {
+	fgetvm := func(ctx context.Context, resourceGroupName string, vmScaleSetName string, instanceID string, options *armcompute.VirtualMachineScaleSetVMsClientGetOptions) (resp azfake.Responder[armcompute.VirtualMachineScaleSetVMsClientGetResponse], errResp azfake.ErrorResponder) {
 		if resourceGroupName == testResourceGroup && vmScaleSetName == missingVMName {
 			resp.SetResponse(http.StatusNotFound, armcompute.VirtualMachineScaleSetVMsClientGetResponse{
 				VirtualMachineScaleSetVM:	armcompute.VirtualMachineScaleSetVM{},
@@ -921,7 +906,6 @@ func TestPublishVolume(t *testing.T) {
 		errResp.SetError(nil)
 		return resp, errResp
 	}
-	provisioner.cloud.CreateVMSSVMClientWithFunction(provisioner.cloud.SubscriptionID, fget, nil)
 
 	tests := []struct {
 		description        string
@@ -957,6 +941,42 @@ func TestPublishVolume(t *testing.T) {
 	for _, test := range tests {
 		tt := test
 		t.Run(test.description, func(t *testing.T) {
+			if tt.nodeID == testVMName && tt.diskURI == testDiskURI0 {
+				fget := mockExistingDisk(provisioner)
+				provisioner.cloud.CreateDisksClientWithFunction(provisioner.cloud.SubscriptionID, fget, nil, nil, nil, nil)
+				mockUpdateVM(provisioner)
+			}
+
+			if tt.nodeID == missingVMName && tt.diskURI == testDiskURI0{
+				fget := mockExistingDisk(provisioner)
+				provisioner.cloud.CreateDisksClientWithFunction(provisioner.cloud.SubscriptionID, fget, nil, nil, nil, nil)
+				fupdate := func(ctx context.Context, resourceGroupName string, vmScaleSetName string, instanceID string, parameters armcompute.VirtualMachineScaleSetVM, options *armcompute.VirtualMachineScaleSetVMsClientBeginUpdateOptions) (resp azfake.PollerResponder[armcompute.VirtualMachineScaleSetVMsClientUpdateResponse], errResp azfake.ErrorResponder) {
+					if resourceGroupName == testResourceGroup && vmScaleSetName == testVMSSName && instanceID == testInstanceID {
+						vm := &armcompute.VirtualMachineScaleSetVM{
+							Plan:                     parameters.Plan,
+							Properties: 			  parameters.Properties,
+							Identity:                 parameters.Identity,
+							Zones:                    parameters.Zones,
+							Tags:                     parameters.Tags,
+							ID:                       &testVMID,
+							InstanceID:				  &instanceID, 
+						}
+						resp.SetTerminalResponse(http.StatusOK, armcompute.VirtualMachineScaleSetVMsClientUpdateResponse{
+							VirtualMachineScaleSetVM:		*vm,
+						}, nil)
+						return resp, errResp
+					}
+					resp.SetTerminalResponse(http.StatusNotFound, armcompute.VirtualMachineScaleSetVMsClientUpdateResponse{}, nil)
+					return resp, errResp
+				}
+				provisioner.cloud.CreateVMSSVMClientWithFunction(provisioner.cloud.SubscriptionID, fgetvm, fupdate)
+			}
+
+			if tt.nodeID == testVMName && tt.diskURI == missingDiskURI {
+				fget := mockMissingDisk(provisioner)
+				provisioner.cloud.CreateDisksClientWithFunction(provisioner.cloud.SubscriptionID, fget, nil, nil, nil, nil)
+				mockUpdateVM(provisioner)
+			}
 			result := provisioner.PublishVolume(context.TODO(), tt.diskURI, tt.nodeID, map[string]string{})
 			err := <-result.ResultChannel()
 			assert.Equal(t, tt.expectedError, err)
