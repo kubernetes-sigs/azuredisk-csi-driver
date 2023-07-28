@@ -77,7 +77,6 @@ Please refer to [`disk.csi.azure.com` driver parameters](./docs/driver-parameter
 - [Volume Expansion](./deploy/example/resize)
 - [Raw Block Volume](./deploy/example/rawblock)
 - [Windows](./deploy/example/windows)
-- [Shared Disk](./deploy/example/sharedisk)
 - [Volume Limits](./deploy/example/volumelimits)
 - [fsGroupPolicy](./deploy/example/fsgroup)
 - [Workload identity](./docs/workload-identity.md)
