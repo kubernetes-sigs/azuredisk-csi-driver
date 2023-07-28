@@ -719,11 +719,11 @@ func (c *CloudProvisioner) PublishVolume(
 			if resultErr != nil {
 				resultErr = fmt.Errorf("failed to get instance id and vmss name from node name: %v", resultErr)
 
-				// resultLunCh <- resultLun
-				// close(resultLunCh)
-
 				attachResult.ResultChannel() <- resultErr
 				close(attachResult.ResultChannel())
+				
+				resultLunCh <- resultLun
+				close(resultLunCh)
 
 				return 
 			}
@@ -732,11 +732,11 @@ func (c *CloudProvisioner) PublishVolume(
 			if resultErr != nil {
 				resultErr = fmt.Errorf("failed to get vm from cache: %v", resultErr)
 
-				// resultLunCh <- resultLun
-				// close(resultLunCh)
-
 				attachResult.ResultChannel() <- resultErr
 				close(attachResult.ResultChannel())
+
+				resultLunCh <- resultLun
+				close(resultLunCh)
 
 				return
 			}
@@ -747,11 +747,11 @@ func (c *CloudProvisioner) PublishVolume(
 			} else {
 				resultErr = fmt.Errorf("storage profile on node %+v not found", string(nodeName))
 
-				// resultLunCh <- resultLun
-				// close(resultLunCh)
-
 				attachResult.ResultChannel() <- resultErr
 				close(attachResult.ResultChannel())
+				
+				resultLunCh <- resultLun
+				close(resultLunCh)
 
 				return
 			}
@@ -832,12 +832,12 @@ func (c *CloudProvisioner) PublishVolume(
 			poller, resultErr := vmssVMClient.BeginUpdate(ctx, c.cloud.ResourceGroup, scaleSetName, instanceID, newVM, nil)
 			if resultErr != nil {
 				resultErr = fmt.Errorf("failed to finish the request: %v", resultErr)
-
-				// resultLunCh <- resultLun
-				// close(resultLunCh)
 				
 				attachResult.ResultChannel() <- resultErr
 				close(attachResult.ResultChannel())
+
+				resultLunCh <- resultLun
+				close(resultLunCh)
 
 				return
 			}
@@ -845,11 +845,11 @@ func (c *CloudProvisioner) PublishVolume(
 			if resultErr != nil {
 				resultErr = fmt.Errorf("failed to pull the result: %v", resultErr)
 
-				// resultLunCh <- resultLun
-				// close(resultLunCh)
-
 				attachResult.ResultChannel() <- resultErr
 				close(attachResult.ResultChannel())
+
+				resultLunCh <- resultLun
+				close(resultLunCh)
 
 				return
 			} else {
@@ -860,11 +860,11 @@ func (c *CloudProvisioner) PublishVolume(
 			if resultErr != nil {
 				resultErr = fmt.Errorf("failed to find disk lun: %v", resultErr)
 
-				// resultLunCh <- resultLun
-				// close(resultLunCh)
-
 				attachResult.ResultChannel() <- resultErr
 				close(attachResult.ResultChannel())
+
+				resultLunCh <- resultLun
+				close(resultLunCh)
 
 				return
 			}
@@ -873,11 +873,11 @@ func (c *CloudProvisioner) PublishVolume(
 			if resultErr != nil {
 				resultErr = fmt.Errorf("failed to get vm: %v", resultErr)
 
-				// resultLunCh <- resultLun
-				// close(resultLunCh)
-
 				attachResult.ResultChannel() <- resultErr
 				close(attachResult.ResultChannel())
+
+				resultLunCh <- resultLun
+				close(resultLunCh)
 
 				return
 			}
