@@ -28,7 +28,10 @@ import (
 	"syscall"
 	"testing"
 
-	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2022-03-01/compute"
+	azfake "github.com/Azure/azure-sdk-for-go/sdk/azcore/fake"
+
+	"github.com/Azure/azure-sdk-for-go/sdk/azcore/to"
+	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute/v5"
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/assert"
@@ -45,8 +48,6 @@ import (
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/optimization/mockoptimization"
 	volumehelper "sigs.k8s.io/azuredisk-csi-driver/pkg/util"
 	"sigs.k8s.io/azuredisk-csi-driver/test/utils/testutil"
-	"sigs.k8s.io/cloud-provider-azure/pkg/azureclients/vmclient/mockvmclient"
-	"sigs.k8s.io/cloud-provider-azure/pkg/retry"
 )
 
 const (
@@ -62,24 +63,34 @@ var (
 
 	provisioningStateSucceeded = "Succeeded"
 
-	testVMName     = fakeNodeID
+	testVMName     = "fake-vmss000000"
+	testVMSSName   = "vmss/fake-vmss"
 	testVMURI      = fmt.Sprintf(virtualMachineURIFormat, testSubscription, testResourceGroup, testVMName)
-	testVMSize     = compute.StandardD3V2
+	testVMSize     = armcompute.VirtualMachineSizeTypesStandardD3V2
 	testVMLocation = "westus"
-	testVMZones    = []string{"1"}
-	testVM         = compute.VirtualMachine{
+	testVMZones    = []*string{to.Ptr("1")}
+	testVM         = armcompute.VirtualMachine{
 		Name:     &testVMName,
 		ID:       &testVMURI,
 		Location: &testVMLocation,
-		Zones:    &testVMZones,
-		VirtualMachineProperties: &compute.VirtualMachineProperties{
+		Zones:    testVMZones,
+		Properties: &armcompute.VirtualMachineProperties{
 			ProvisioningState: &provisioningStateSucceeded,
-			HardwareProfile: &compute.HardwareProfile{
-				VMSize: testVMSize,
+			HardwareProfile: &armcompute.HardwareProfile{
+				VMSize: &testVMSize,
 			},
-			StorageProfile: &compute.StorageProfile{
-				DataDisks: new([]compute.DataDisk),
+			StorageProfile: &armcompute.StorageProfile{
+				DataDisks: *new([]*armcompute.DataDisk),
 			},
+			VirtualMachineScaleSet: &armcompute.SubResource{
+				ID:	&testVMSSName,
+			},
+		},
+	}
+	testVMSS	   = armcompute.VirtualMachineScaleSet{
+		Name: &testVMSSName,
+		SKU:  &armcompute.SKU {
+			Name:	to.Ptr("fakeSKU"),
 		},
 	}
 	testAzVolumeAttachment = azdiskv1beta2.AzVolumeAttachment{
@@ -89,7 +100,7 @@ var (
 		},
 		Spec: azdiskv1beta2.AzVolumeAttachmentSpec{
 			VolumeID:      "test-volume",
-			NodeName:      fakeNodeID,
+			NodeName:      testVMName,
 			RequestedRole: azdiskv1beta2.PrimaryRole,
 		},
 	}
@@ -209,7 +220,7 @@ func TestEnsureMountPoint(t *testing.T) {
 		},
 	}
 
-	Setup
+	// Setup
 	_ = makeDir(alreadyExistTarget)
 	d, _ := NewFakeDriver(t)
 	fakeMounter, err := mounter.NewFakeSafeMounter()
@@ -236,11 +247,6 @@ func TestEnsureMountPoint(t *testing.T) {
 }
 
 func TestNodeGetInfo(t *testing.T) {
-	notFoundErr := &retry.Error{
-		HTTPStatusCode: http.StatusNotFound,
-		RawError:       errors.New("not found"),
-	}
-
 	tests := []struct {
 		desc         string
 		expectedErr  error
@@ -253,11 +259,6 @@ func TestNodeGetInfo(t *testing.T) {
 			expectedErr:  nil,
 			skipOnDarwin: true,
 			setupFunc: func(t *testing.T, d FakeDriver) {
-				d.getCloud().VirtualMachinesClient.(*mockvmclient.MockInterface).EXPECT().
-					Get(gomock.Any(), testResourceGroup, testVMName, gomock.Any()).
-					Return(testVM, nil).
-					AnyTimes()
-
 				// cloud-provider-azure's GetZone function assumes the host is a VM and returns it zones.
 				// We therefore mock a return of the testVM if the hostname is used.
 				hostname, err := os.Hostname()
@@ -266,14 +267,35 @@ func TestNodeGetInfo(t *testing.T) {
 				// cloud-provider-azure's GetZone function always deals with lower case.
 				hostname = strings.ToLower(hostname)
 
-				d.getCloud().VirtualMachinesClient.(*mockvmclient.MockInterface).EXPECT().
-					Get(gomock.Any(), testResourceGroup, hostname, gomock.Any()).
-					Return(testVM, nil).
-					AnyTimes()
-				d.getCloud().VirtualMachinesClient.(*mockvmclient.MockInterface).EXPECT().
-					Get(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
-					Return(compute.VirtualMachine{}, notFoundErr).
-					AnyTimes()
+				fn := func(ctx context.Context, resourceGroupName string, vmScaleSetName string, options *armcompute.VirtualMachineScaleSetsClientGetOptions) (resp azfake.Responder[armcompute.VirtualMachineScaleSetsClientGetResponse], errResp azfake.ErrorResponder) {
+					resp.SetResponse(http.StatusOK, armcompute.VirtualMachineScaleSetsClientGetResponse{
+						VirtualMachineScaleSet:	testVMSS,
+					  }, nil) 
+					return resp, errResp
+				}
+				d.getCloud().CreateVMSSClientWithFunction(testSubscription, fn)
+
+				fn2 := func(ctx context.Context, rg, vmName string, option *armcompute.VirtualMachinesClientGetOptions) (resp azfake.Responder[armcompute.VirtualMachinesClientGetResponse], errResp azfake.ErrorResponder) {
+					
+					if rg == testResourceGroup && vmName == testVMName {
+						resp.SetResponse(http.StatusOK, armcompute.VirtualMachinesClientGetResponse{
+							VirtualMachine:	testVM,
+					  	}, nil) 
+						return resp, errResp
+					}
+					
+					if rg == testResourceGroup && vmName == hostname {
+						resp.SetResponse(http.StatusOK, armcompute.VirtualMachinesClientGetResponse{
+							VirtualMachine:	testVM,
+					  	}, nil) 
+						return resp, errResp
+					}
+					
+					resp.SetResponse(http.StatusNotFound, armcompute.VirtualMachinesClientGetResponse{}, nil)
+					errResp.SetResponseError(http.StatusNotFound, "ErrorNotFound")
+					return resp, errResp
+				}
+				d.getCloud().CreateVirtualMachineClientWithFunction(testSubscription, fn2)
 			},
 			validateFunc: func(t *testing.T, resp *csi.NodeGetInfoResponse) {
 				assert.Equal(t, testVMName, resp.NodeId)
@@ -283,12 +305,15 @@ func TestNodeGetInfo(t *testing.T) {
 		},
 		{
 			desc:        "[Failure] Get node information for non-existing VM",
-			expectedErr: status.Error(codes.Internal, fmt.Sprintf("getNodeInfoFromLabels on node(%s) failed with %s", "fakeNodeID", "kubeClient is nil")),
+			expectedErr: status.Error(codes.Internal, fmt.Sprintf("getNodeInfoFromLabels on node(%s) failed with %s", testVMName, "kubeClient is nil")),
 			setupFunc: func(t *testing.T, d FakeDriver) {
-				d.getCloud().VirtualMachinesClient.(*mockvmclient.MockInterface).EXPECT().
-					Get(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
-					Return(compute.VirtualMachine{}, notFoundErr).
-					AnyTimes()
+				d.(*fakeDriverV1).getNodeInfoFromLabels = true
+				fn2 := func(ctx context.Context, rg, vmName string, option *armcompute.VirtualMachinesClientGetOptions) (resp azfake.Responder[armcompute.VirtualMachinesClientGetResponse], errResp azfake.ErrorResponder) {
+					resp.SetResponse(http.StatusNotFound, armcompute.VirtualMachinesClientGetResponse{}, nil)
+					errResp.SetResponseError(http.StatusNotFound, "ErrorNotFound")
+					return resp, errResp
+				}
+				d.getCloud().CreateVirtualMachineClientWithFunction(testSubscription, fn2)
 			},
 			validateFunc: func(t *testing.T, resp *csi.NodeGetInfoResponse) {
 				assert.Equal(t, testVMName, resp.NodeId)
@@ -309,6 +334,8 @@ func TestNodeGetInfo(t *testing.T) {
 			test.setupFunc(t, d)
 
 			resp, err := d.NodeGetInfo(context.TODO(), &csi.NodeGetInfoRequest{})
+			if err != nil {
+			}
 			require.Equal(t, test.expectedErr, err)
 			if err == nil {
 				test.validateFunc(t, resp)
@@ -379,7 +406,7 @@ func TestNodeGetVolumeStats(t *testing.T) {
 		},
 	}
 
-	Setup
+	// Setup
 	_ = makeDir(fakePath)
 	_ = makeDir(blockVolumePath)
 
@@ -682,7 +709,7 @@ func TestNodeStageVolume(t *testing.T) {
 		test := test
 		t.Run(test.desc, func(t *testing.T) {
 			if !(test.skipOnDarwin && runtime.GOOS == "darwin") && !(test.skipOnWindows && runtime.GOOS == "windows") {
-				Setup
+				// Setup
 				d, err := NewFakeDriver(t)
 
 				ctrl := gomock.NewController(t)
@@ -711,7 +738,7 @@ func TestNodeStageVolume(t *testing.T) {
 					test.cleanupFunc(t, d)
 				}
 
-				Clean up
+				// Clean up
 				err = os.RemoveAll(sourceTest)
 				assert.NoError(t, err)
 
@@ -783,7 +810,7 @@ func TestNodeUnstageVolume(t *testing.T) {
 		},
 	}
 
-	Setup
+	// Setup
 	_ = makeDir(errorTarget)
 	fakeMounter, err := mounter.NewFakeSafeMounter()
 	assert.NoError(t, err)
@@ -805,7 +832,7 @@ func TestNodeUnstageVolume(t *testing.T) {
 		}
 	}
 
-	Clean up
+	// Clean up
 	err = os.RemoveAll(errorTarget)
 	assert.NoError(t, err)
 }
@@ -833,7 +860,7 @@ func TestNodePublishVolume(t *testing.T) {
 
 	azurediskPath := "azuredisk.go"
 
-	".\azuredisk.go will get deleted on Windows"
+	// ".\azuredisk.go will get deleted on Windows"
 	if runtime.GOOS == "windows" {
 		azurediskPath = "testfiles\\azuredisk.go"
 	}
@@ -986,7 +1013,7 @@ func TestNodePublishVolume(t *testing.T) {
 		},
 	}
 
-	Setup
+	// Setup
 	_ = makeDir(alreadyMountedTarget)
 	assert.NoError(t, err)
 	fakeMounter, err := mounter.NewFakeSafeMounter()
@@ -1009,7 +1036,7 @@ func TestNodePublishVolume(t *testing.T) {
 		}
 	}
 
-	Clean up
+	// Clean up
 	err = os.RemoveAll(targetTest)
 	assert.NoError(t, err)
 	err = os.RemoveAll(alreadyMountedTarget)
@@ -1063,7 +1090,7 @@ func TestNodeUnpublishVolume(t *testing.T) {
 		},
 	}
 
-	Setup
+	// Setup
 	_ = makeDir(errorTarget)
 	fakeMounter, err := mounter.NewFakeSafeMounter()
 	assert.NoError(t, err)
@@ -1085,7 +1112,7 @@ func TestNodeUnpublishVolume(t *testing.T) {
 		}
 	}
 
-	Clean up
+	// Clean up
 	err = os.RemoveAll(errorTarget)
 	assert.NoError(t, err)
 }
@@ -1305,10 +1332,10 @@ func TestNodeExpandVolume(t *testing.T) {
 }
 
 func TestEnsureBlockTargetFile(t *testing.T) {
-	This functionality has moved to the provisioner package in DriverV2.
+	// This functionality has moved to the provisioner package in DriverV2.
 	skipIfTestingDriverV2(t)
 
-	Skip this test because `util/mount` not supported on darwin
+	// Skip this test because `util/mount` not supported on darwin
 	if runtime.GOOS == "darwin" {
 		t.Skip("Skipping tests on darwin")
 	}
@@ -1359,18 +1386,18 @@ func makeDir(pathname string) error {
 }
 
 func TestMakeDir(t *testing.T) {
-	Successfully create directory
+	// Successfully create directory
 	err := makeDir(targetTest)
 	assert.NoError(t, err)
 
-	Failed case
+	// Failed case
 	err = makeDir("./azuredisk.go")
 	var e *os.PathError
 	if !errors.As(err, &e) {
 		t.Errorf("Unexpected Error: %v", err)
 	}
 
-	Remove the directory created
+	// Remove the directory created
 	err = os.RemoveAll(targetTest)
 	assert.NoError(t, err)
 }

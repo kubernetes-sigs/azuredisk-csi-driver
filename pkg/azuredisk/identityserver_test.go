@@ -25,7 +25,7 @@ import (
 )
 
 func TestGetPluginInfo(t *testing.T) {
-	Check with correct arguments
+	// Check with correct arguments
 	d, _ := NewFakeDriver(t)
 	req := csi.GetPluginInfoRequest{}
 	resp, err := d.GetPluginInfo(context.Background(), &req)

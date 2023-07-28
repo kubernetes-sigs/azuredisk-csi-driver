@@ -1,7 +1,7 @@
-/*
+
 //go:build azurediskv2
 // +build azurediskv2
-*/
+
 /*
 Copyright 2020 The Kubernetes Authors.
 
@@ -25,7 +25,7 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2022-03-01/compute"
+	armcompute "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute/v5"
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/assert"
@@ -159,8 +159,8 @@ func (d *fakeDriverV2) checkDiskCapacity(ctx context.Context, subscriptionID, re
 	return false, nil
 }
 
-func (d *fakeDriverV2) checkDiskExists(ctx context.Context, diskURI string) (*compute.Disk, error) {
-	return &compute.Disk{}, nil
+func (d *fakeDriverV2) checkDiskExists(ctx context.Context, diskURI string) (*armcompute.Disk, error) {
+	return &armcompute.Disk{}, nil
 }
 
 func (d *fakeDriverV2) setMounter(mounter *mount.SafeFormatAndMount) {

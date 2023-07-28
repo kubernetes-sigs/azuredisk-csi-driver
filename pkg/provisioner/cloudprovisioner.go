@@ -19,7 +19,6 @@ package provisioner
 import (
 	"context"
 	"fmt"
-	"net/http"
 	"os"
 	"path"
 	"reflect"
@@ -32,10 +31,8 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/to"
 	armcompute "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute/v5"
-	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2022-03-01/compute"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
@@ -149,6 +146,7 @@ func (c *CloudProvisioner) GetLocation() string {
 func (c *CloudProvisioner) GetFailureDomain(ctx context.Context, nodeID string) (string, error) {
 	var zone cloudprovider.Zone
 	var err error
+	klog.Info("getfailuredomain nodeId: %s", nodeID)
 
 	if runtime.GOOS == "windows" {
 		zone, err = c.cloud.GetZoneByNodeName(ctx, nodeID)
@@ -159,6 +157,9 @@ func (c *CloudProvisioner) GetFailureDomain(ctx context.Context, nodeID string) 
 			err = fmt.Errorf("failure getting hostname from kernel")
 		} else {
 			zone, err = c.cloud.GetZoneByNodeName(ctx, strings.ToLower(hostname))
+			if err != nil {
+				return "", err
+			}
 		}
 	}
 
@@ -173,23 +174,50 @@ func (c *CloudProvisioner) GetInstanceType(ctx context.Context, nodeID string) (
 	var err error
 
 	if runtime.GOOS == "windows" {
-		entry, err := c.cloud.GetVMSSVM(ctx, nodeID)
-
-		if err == nil && entry.VM != nil && entry.VM.Properties != nil && entry.VM.Properties.HardwareProfile != nil &&
-			entry.VM.Properties.HardwareProfile.VMSize != nil {
-			return string(*entry.VM.Properties.HardwareProfile.VMSize), nil
+		resp, err := c.cloud.VMClient.Get(ctx, c.cloud.ResourceGroup, nodeID, nil)
+		if err == nil && resp.VirtualMachine.Properties != nil && resp.VirtualMachine.Properties.HardwareProfile != nil &&
+		resp.VirtualMachine.Properties.HardwareProfile.VMSize != nil {
+			return string(*resp.VirtualMachine.Properties.HardwareProfile.VMSize), nil
 		}
 
 		klog.Warningf("failed to get instance type from metadata for node %s: %v", nodeID, err)
 	} else {
 		klog.Infof("value for instance: %+v, %b", c, true)
-		entry, err := c.cloud.GetVMSSVM(ctx, nodeID)
+		resp, err := c.cloud.VMClient.Get(ctx, c.cloud.ResourceGroup, nodeID, nil)
 		if err != nil {
 			return "", err
 		}
 
-		if entry.VM != nil && entry.VM.SKU != nil && entry.VM.SKU.Name != nil {
-			return *entry.VM.SKU.Name, nil
+		if resp.VirtualMachine.Properties != nil && resp.VirtualMachine.Properties.AvailabilitySet != nil {
+			asName, err := GetLastSegment(*resp.VirtualMachine.Properties.AvailabilitySet.ID, "/")
+			if err != nil {
+				return "", fmt.Errorf("failed to get asName from availability set ID: %v", err)
+			}
+
+			resp, err := c.cloud.ASClient.Get(ctx, c.cloud.ResourceGroup, asName, nil)
+			if err != nil {
+				return "", err
+			}
+
+			if resp.AvailabilitySet.SKU != nil && resp.AvailabilitySet.SKU.Name != nil {
+				return *resp.AvailabilitySet.SKU.Name, nil
+			}
+
+		} else if resp.VirtualMachine.Properties != nil && resp.VirtualMachine.Properties.VirtualMachineScaleSet != nil {
+			ssName, err := GetLastSegment(*resp.VirtualMachine.Properties.VirtualMachineScaleSet.ID, "/")
+			if err != nil {
+				return "", fmt.Errorf("failed to get ssName from scale set ID: %v", err)
+			}
+
+			resp, err := c.cloud.VMSSClient.Get(ctx, c.cloud.ResourceGroup, ssName, nil)
+			if err != nil {
+				return "", err
+			}
+
+			if resp.VirtualMachineScaleSet.SKU != nil && resp.VirtualMachineScaleSet.SKU.Name != nil {
+				return *resp.VirtualMachineScaleSet.SKU.Name, nil
+			}
+
 		}
 
 		klog.Warningf("failed to get instances from cloud provider: %b, %b", c == nil, true)
@@ -211,6 +239,7 @@ func (c *CloudProvisioner) CreateVolume(
 	secrets map[string]string,
 	volumeContentSource *azdiskv1beta2.ContentVolumeSource,
 	accessibilityRequirements *azdiskv1beta2.TopologyRequirement) (*azdiskv1beta2.AzVolumeStatusDetail, error) {
+	klog.Infof("creating volume")
 	var err error
 	ctx, w := workflow.New(ctx)
 	defer func() { w.Finish(err) }()
@@ -229,6 +258,8 @@ func (c *CloudProvisioner) CreateVolume(
 	if diskParams.Location == "" {
 		diskParams.Location = c.cloud.Location
 	}
+
+	klog.Infof("checkpoint 261")
 
 	localCloud := c.cloud
 	isAdvancedPerfProfile := strings.EqualFold(diskParams.PerfProfile, azureconstants.PerfProfileAdvanced)
@@ -259,6 +290,7 @@ func (c *CloudProvisioner) CreateVolume(
 			return nil, err
 		}
 	}
+	klog.Infof("checkpoint 290")
 	// normalize values
 	var skuName armcompute.DiskStorageAccountTypes
 	skuName, err = azureutils.NormalizeStorageAccountType(diskParams.AccountType, localCloud.Config.Cloud, localCloud.Config.DisableAzureStackCloud)
@@ -280,6 +312,8 @@ func (c *CloudProvisioner) CreateVolume(
 		return nil, status.Error(codes.InvalidArgument, err.Error())
 	}
 
+	klog.Infof("checkpoint 312")
+
 	selectedAvailabilityZone := pickAvailabilityZone(accessibilityRequirements, c.cloud.Location)
 	accessibleTopology := []azdiskv1beta2.Topology{}
 	if skuName == armcompute.DiskStorageAccountTypesStandardSSDZRS || skuName == armcompute.DiskStorageAccountTypesPremiumZRS {
@@ -292,6 +326,7 @@ func (c *CloudProvisioner) CreateVolume(
 			}
 			accessibleTopology = append(accessibleTopology, topology)
 		}
+
 		// make volume scheduled on all non-zone nodes
 		topology := azdiskv1beta2.Topology{
 			Segments: map[string]string{topologyKeyStr: ""},
@@ -318,11 +353,12 @@ func (c *CloudProvisioner) CreateVolume(
 	}
 
 	if ok, derr := c.CheckDiskCapacity(ctx, diskParams.ResourceGroup, diskParams.DiskName, requestGiB); !ok {
+		klog.Infof("355")
 		err = derr
 		return nil, err
 	}
 
-	klog.V(2).Infof("begin to create disk(%s) account type(%s) rg(%s) location(%s) size(%d) selectedAvailabilityZone(%v) maxShares(%d)",
+	klog.Infof("begin to create disk(%s) account type(%s) rg(%s) location(%s) size(%d) selectedAvailabilityZone(%v) maxShares(%d)",
 		diskParams.DiskName, skuName, diskParams.ResourceGroup, diskParams.Location, requestGiB, selectedAvailabilityZone, diskParams.MaxShares)
 
 	if strings.EqualFold(diskParams.WriteAcceleratorEnabled, azureconstants.TrueValue) {
@@ -360,8 +396,6 @@ func (c *CloudProvisioner) CreateVolume(
 
 	diskThrottled := c.isGetDiskThrottled()
 
-	klog.Infof("source id: %+v, source type: %+v", sourceID, sourceType)
-
 	creationData, err := azureutils.GetValidCreationData(c.cloud.SubscriptionID, diskParams.ResourceGroup, sourceID, sourceType)
 	if err != nil {
 		klog.Warningf("failed to get creation data: %v", err)
@@ -374,7 +408,7 @@ func (c *CloudProvisioner) CreateVolume(
 	if diskParams.DiskIOPSReadWrite != "" {
 		iops, err = strconv.Atoi(diskParams.DiskIOPSReadWrite)
 		if err != nil {
-			klog.Fatalf("failed to parse DiskIOPSReadWrite: %v", err)
+			return nil, fmt.Errorf("failed to parse DiskIOPSReadWrite: %v", err)
 		}
 
 	}
@@ -383,7 +417,7 @@ func (c *CloudProvisioner) CreateVolume(
 	if diskParams.DiskMBPSReadWrite != "" {
 		mbps, err = strconv.Atoi(diskParams.DiskMBPSReadWrite)
 		if err != nil {
-			klog.Fatalf("failed to parse DiskMBPSReadWrite: %v", err)
+			return nil, fmt.Errorf("failed to parse DiskMBPSReadWrite: %v", err)
 		}
 
 	}
@@ -447,22 +481,19 @@ func (c *CloudProvisioner) CreateVolume(
 		}
 	}
 
-	// c.cloud.DisksClient = disksClient
-	klog.Infof("disk object: %+v", disk)
-	klog.Infof("createvolume disk client: %+v", c.cloud.DisksClient)
 	poller, err := c.cloud.DisksClient.BeginCreateOrUpdate(ctx, diskParams.ResourceGroup, diskParams.DiskName, disk, nil)
 
 	if err != nil {
-		klog.Fatalf("failed to finish the request: %v", err)
+		return nil, fmt.Errorf("failed to finish the request: %v", err)
 	}
 
 	resp, err := poller.PollUntilDone(ctx, nil)
 	if err != nil {
-		klog.Fatalf("failed to pull the result: %v", err)
+		return nil, fmt.Errorf("failed to pull the result: %v", err)
 	}
 
 	diskID := fmt.Sprintf("/subscriptions/%s/resourceGroups/%s/providers/Microsoft.Compute/disks/%s", c.cloud.SubscriptionID, diskParams.ResourceGroup, diskParams.DiskName)
-	if *resp.Disk.ID != "" {
+	if resp.Disk.ID != nil && *resp.Disk.ID != "" {
 		diskID = *resp.Disk.ID
 	}
 
@@ -499,15 +530,15 @@ func (c *CloudProvisioner) DeleteVolume(
 	}
 
 	disksClient := c.cloud.DisksClient
-	klog.Infof("deletevolume disk client: %+v", disksClient)
 	diskName := path.Base(volumeID)
 
 	resp, err := disksClient.Get(ctx, c.cloud.ResourceGroup, diskName, nil)
 	if err != nil {
-		rerr := err.(*azcore.ResponseError)
-		if rerr.StatusCode == http.StatusNotFound {
-			klog.Infof("disk %+v is already deleted", volumeID)
+		if strings.Contains(err.Error(), "404") || strings.Contains(err.Error(), "NotFound") {
+			klog.Infof("disk is already deleted")
 			return nil
+		} else {
+			return fmt.Errorf("failed to finish the request: %+v", err)
 		}
 	}
 
@@ -517,15 +548,14 @@ func (c *CloudProvisioner) DeleteVolume(
 
 	poller, err := disksClient.BeginDelete(ctx, c.cloud.ResourceGroup, diskName, nil)
 	if err != nil {
-		klog.Fatalf("failed to finish the request: %v", err)
+		return fmt.Errorf("failed to finish the request: %v", err)
 	}
 
 	_, err = poller.PollUntilDone(ctx, nil)
 	if err != nil {
-		klog.Fatalf("failed to pull the result: %v", err)
+		return fmt.Errorf("failed to pull the result: %v", err)
 	}
 
-	//err = c.cloud.DeleteManagedDisk(ctx, volumeID)
 	return err
 }
 
@@ -579,15 +609,10 @@ func (c *CloudProvisioner) PublishVolume(
 	}
 
 	vmssVMClient := c.cloud.VMSSVMClient
-	klog.Info("publishvolume vmssvm client: %+v", vmssVMClient)
-
 	providerID := ""
 	if disk.ManagedBy != nil {
 		providerID = *disk.ManagedBy
 	}
-
-	klog.Infof("providerID: %+v", providerID)
-	klog.Infof("line 590 node name: %+v", string(nodeName))
 
 	var vmState *string
 	lun := int32(-1)
@@ -598,65 +623,72 @@ func (c *CloudProvisioner) PublishVolume(
 	if providerID != "" {
 		attachedNode, err = c.GetNodeNameFromProviderID(ctx, providerID)
 		if err != nil {
-			klog.Fatalf("failed to get node name from providerID: %v", err)
+			err = fmt.Errorf("failed to get node name from providerID: %v", err)
+			return 
 		}
 		var fullScaleSetName string
 		instanceID, fullScaleSetName, err = GetInstanceIDAndFullScaleSetNameFromProviderID(providerID)
 		if err != nil {
-			klog.Fatalf("failed to get instanceID and full scaleSet name from providerID: %v", err)
+			err = fmt.Errorf("failed to get instanceID and full scaleSet name from providerID: %v", err)
+			return
 		}
 
 		scaleSetName, err = GetLastSegment(fullScaleSetName, "/")
 		if err != nil {
-			klog.Fatalf("failed to extract scaleset name: %v", err)
+			err = fmt.Errorf("failed to extract scaleset name: %v", err)
+			return
 		}
 
 		vmEntry, err := c.cloud.GetVMSSVM(ctx, attachedNode)
-		klog.Infof("vmEntry: %+v", vmEntry)
-		storageProfile := vmEntry.VM.Properties.StorageProfile
-		vmState = vmEntry.VM.Properties.ProvisioningState
+		var storageProfile *armcompute.StorageProfile
+		if vmEntry != nil && vmEntry.VM != nil && vmEntry.VM.Properties != nil && vmEntry.VM.Properties.StorageProfile != nil {
+			storageProfile = vmEntry.VM.Properties.StorageProfile
+		} else {
+			err = fmt.Errorf("storage profile on node %+v not found", string(nodeName))
+			return
+		}
 
-		if err != nil {
-			klog.Fatalf("failed to get storage profile: %v", err)
+		if vmEntry != nil && vmEntry.VM != nil && vmEntry.VM.Properties != nil && vmEntry.VM.Properties.ProvisioningState != nil {
+			vmState = vmEntry.VM.Properties.ProvisioningState
+		} else {
+			err = fmt.Errorf("provisioning state on node %+v not found", string(nodeName))
+			return
 		}
 
 		lun, err = GetDiskLun(diskName, volumeID, storageProfile.DataDisks)
 		if err != nil {
-			klog.Fatalf("failed to find disk lun: %v", err)
+			err = fmt.Errorf("failed to find disk lun: %v", err)
 			return
 		}
-		klog.Infof("providerID: %+v, attachedNode: %+v, instanceID: %+v, scaleSetName: %+v, LUN: %+v", providerID, attachedNode, instanceID, scaleSetName, lun)
 	}
 
 	w.Logger().V(2).Infof("Initiating attaching volume %q to node %q.", volumeID, nodeName)
 
 	// disk already attached to nodeName
 	if strings.EqualFold(string(nodeName), strings.ToLower(attachedNode)) {
+		klog.Infof("attached here state: %+v", vmState)
 		if vmState != nil && strings.ToLower(*vmState) == "failed" {
+			klog.Infof("failed state")
 			w.Logger().Infof("VM(%q) is in failed state, update VM first", nodeName)
-			// if err = c.cloud.UpdateVM(ctx, nodeName); err != nil {
-			// 	if _, ok := err.(*retry.PartialUpdateError); !ok {
-			// 		err = status.Errorf(codes.Internal, "update instance %q failed with %v", nodeName, err)
-			// 	}
-			// 	return
-			// }
 
 			poller, err := vmssVMClient.BeginUpdate(ctx, c.cloud.ResourceGroup, scaleSetName, instanceID, armcompute.VirtualMachineScaleSetVM{
-				Name:       to.Ptr(string(nodeName)),
-				InstanceID: &instanceID,
+				Properties: &armcompute.VirtualMachineScaleSetVMProperties{
+					ProvisioningState: to.Ptr("Succeeded"),
+				},
 			}, nil)
 			if err != nil {
-				klog.Fatalf("failed to finish the request: %v", err)
+				err = fmt.Errorf("failed to finish the request: %v", err)
+				return
 			}
 			_, err = poller.PollUntilDone(ctx, nil)
 			if err != nil {
-				klog.Fatalf("failed to pull the result: %v", err)
+				err = fmt.Errorf("failed to pull the result: %v", err)
+				return
 			}
 		}
 		// Volume is already attached to node.
 		w.Logger().V(2).Infof("Attach operation is successful. volume %q is already attached to node %q.", volumeID, nodeName)
 	} else {
-
 		w.Logger().V(2).Infof("Trying to attach volume %q to node %q.", volumeID, nodeName)
 		var cachingMode armcompute.CachingTypes
 		if cachingMode, err = azureutils.GetCachingMode(volumeContext); err != nil {
@@ -664,7 +696,7 @@ func (c *CloudProvisioner) PublishVolume(
 			return 
 		}
 
-		if disk.Properties.DiskSizeGB != nil && *disk.Properties.DiskSizeGB >= int32(diskCachingLimit) && cachingMode != armcompute.CachingTypesNone {
+		if disk != nil && disk.Properties != nil && disk.Properties.DiskSizeGB != nil && *disk.Properties.DiskSizeGB >= int32(diskCachingLimit) && cachingMode != armcompute.CachingTypesNone {
 			// Disk Caching is not supported for disks 4 TiB and larger
 			cachingMode = armcompute.CachingTypesNone
 			klog.Warningf("size of disk(%s) is %dGB which is bigger than limit(%dGB), set cacheMode as None",
@@ -674,7 +706,10 @@ func (c *CloudProvisioner) PublishVolume(
 		lunCh := make(chan int32, 1)
 		resultLunCh := make(chan int32, 1)
 		ctx = context.WithValue(ctx, azure.LunChannelContextKey, lunCh)
+
 		asyncAttach := azureutils.IsAsyncAttachEnabled(c.config.ControllerConfig.EnableAsyncAttach, volumeContext)
+
+
 		waitForCloud = true
 		go func() {
 			var waitForBatch bool
@@ -828,12 +863,8 @@ func (c *CloudProvisioner) ExpandVolume(
 		err = status.Errorf(codes.Internal, "could not get size of the disk(%s)", diskName)
 		return nil, err
 	}
-	// oldSize := *resource.NewQuantity(int64(*result.Properties.DiskSizeGB), resource.BinarySI)
 
 	w.Logger().V(2).Infof("begin to expand azure disk(%s) with new size(%d)", volumeID, requestSize.Value())
-
-	// var newSize resource.Quantity
-	// newSize, err = c.cloud.ResizeDisk(ctx, volumeID, oldSize, requestSize, c.config.ControllerConfig.EnableDiskOnlineResize)
 
 	poller, err := c.cloud.DisksClient.BeginUpdate(ctx, c.cloud.ResourceGroup, diskName, armcompute.DiskUpdate{
 		Properties: &armcompute.DiskUpdateProperties{
@@ -846,7 +877,7 @@ func (c *CloudProvisioner) ExpandVolume(
 	}
 	res, err := poller.PollUntilDone(ctx, nil)
 	if err != nil {
-		klog.Fatalf("failed to pull the result: %v", err)
+		return nil, fmt.Errorf("failed to pull the result: %v", err)
 	}
 
 	currentSize := int64(*res.Disk.Properties.DiskSizeGB)
@@ -962,7 +993,7 @@ func (c *CloudProvisioner) CreateSnapshot(
 	}
 	_, rerr = poller.PollUntilDone(ctx, nil)
 	if rerr != nil {
-		klog.Fatalf("failed to pull the result: %v", rerr)
+		return nil, fmt.Errorf("failed to pull the result: %v", rerr)
 	}
 	klog.V(2).Infof("create snapshot(%s) under rg(%s) successfully", snapshotName, resourceGroup)
 
@@ -1004,15 +1035,12 @@ func (c *CloudProvisioner) ListSnapshots(
 	for pager.More() {
 		page, err := pager.NextPage(ctx)
 		if err != nil {
-			klog.Fatalf("failed to advance page: %v", err)
+			return nil, fmt.Errorf("failed to advance page: %v", err)
 		}
 		for _, snapshot := range page.Value {
 			snapshots = append(snapshots, *snapshot)
 		}
 	}
-	// if rerr != nil {
-	// 	return nil, status.Error(codes.Internal, fmt.Sprintf("Unknown list snapshot error: %v", rerr.Error()))
-	// }
 
 	// There are 4 scenarios for listing snapshots.
 	// 1. StartingToken is null, and MaxEntries is null. Return all snapshots from zero.
@@ -1106,13 +1134,10 @@ func (c *CloudProvisioner) CheckDiskExists(ctx context.Context, diskURI string) 
 		return nil, nil
 	}
 
+	klog.Infof("disks cleint address: %+v", c.cloud.DisksClient)
+
 	disk, rerr := c.cloud.DisksClient.Get(ctx, resourceGroup, diskName, nil)
 	if rerr != nil {
-		// if rerr.IsThrottled() || strings.Contains(rerr.RawError.Error(), azureconstants.RateLimited) {
-		// 	klog.Warningf("checkDiskExists(%s) is throttled with error: %v", diskURI, rerr.Error())
-		// 	c.getDiskThrottlingCache.Set(azureconstants.ThrottlingKey, "")
-		// 	return nil, nil
-		// }
 		return nil, rerr
 	}
 
@@ -1156,15 +1181,11 @@ func (c *CloudProvisioner) CheckDiskCapacity(ctx context.Context, resourceGroup,
 	// Because we can not judge the reason of the error. Maybe the disk does not exist.
 	// So here we do not handle the error.
 	if rerr == nil {
-		if !reflect.DeepEqual(disk, compute.Disk{}) && disk.Properties.DiskSizeGB != nil && int(*disk.Properties.DiskSizeGB) != requestGiB {
+		if !reflect.DeepEqual(disk, armcompute.Disk{}) && disk.Properties.DiskSizeGB != nil && int(*disk.Properties.DiskSizeGB) != requestGiB {
 			return false, status.Errorf(codes.AlreadyExists, "the request volume already exists, but its capacity(%v) is different from (%v)", *disk.Properties.DiskSizeGB, requestGiB)
 		}
-	} else {
-		// if rerr.IsThrottled() || strings.Contains(rerr.RawError.Error(), azureconstants.RateLimited) {
-		// 	klog.Warningf("checkDiskCapacity(%s, %s) is throttled with error: %v", resourceGroup, diskName, rerr.Error())
-		// 	c.getDiskThrottlingCache.Set(azureconstants.ThrottlingKey, "")
-		// }
 	}
+
 	return true, nil
 }
 
@@ -1352,15 +1373,15 @@ func (c *CloudProvisioner) listVolumesByResourceGroup(ctx context.Context, resou
 	for pager.More() {
 		page, err := pager.NextPage(ctx)
 		if err != nil {
-			klog.Fatalf("failed to advance page: %v", err)
+			return listVolumeStatus{
+				numVisited: len(disks),
+				err:        fmt.Errorf("failed to advance page: %v", err),
+			}
 		}
 		for _, disk := range page.Value {
 			disks = append(disks, *disk)
 		}
 	}
-	// if derr != nil {
-	// 	return listVolumeStatus{err: status.Errorf(codes.Internal, "ListVolumes on rg(%s) failed with error: %v", resourceGroup, derr.Error())}
-	// }
 
 	// if volSet is initialized but is empty, return
 	if volSet != nil && len(volSet) == 0 {
@@ -1398,7 +1419,6 @@ func (c *CloudProvisioner) listVolumesByResourceGroup(ctx context.Context, resou
 			nodeList := []string{}
 
 			if disk.ManagedBy != nil {
-				// this is probably fixed...
 				attachedNode, err := c.GetNodeNameFromProviderID(ctx, *disk.ManagedBy)
 				if err != nil {
 					return listVolumeStatus{err: err}
@@ -1531,7 +1551,6 @@ func GetInstanceIDAndScaleSetNameFromNodeName(nodeName string) (string, string, 
 }
 
 func GetFullScaleSetNameFromProviderID(fullVMName string) (string, error) {
-	klog.Infof("fullVMName: %+v", fullVMName)
 	parts := strings.Split(fullVMName, "/")
 	scaleSetName := ""
 
@@ -1574,7 +1593,7 @@ func GetInstanceIDAndFullScaleSetNameFromProviderID(providerID string) (string, 
 func (c *CloudProvisioner) GetNodeNameFromProviderID(ctx context.Context, providerID string) (string, error) {
 	scaleSetName, err := GetFullScaleSetNameFromProviderID(providerID)
 	if err != nil {
-		klog.Fatalf("failed to get full scaleSet name: %v", err)
+		return "", fmt.Errorf("failed to get full scaleSet name: %v", err)
 	}
 
 	instanceID, _, err := GetInstanceIDAndFullScaleSetNameFromProviderID(providerID)
@@ -1582,28 +1601,24 @@ func (c *CloudProvisioner) GetNodeNameFromProviderID(ctx context.Context, provid
 		return "", err
 	}
 
-	klog.Infof("line 1773 instanceID: %+v vmss name: %+v", instanceID, scaleSetName)
-
 	vmss, found := c.cloud.VMSSVMCache.VmssGetter(scaleSetName)
 	if !found {
 		scaleSetName, err = GetLastSegment(scaleSetName, "/")
 		if err != nil {
-			klog.Fatalf("failed to get scaleSetName from full scaleSetName: %v", err)
+			return "", fmt.Errorf("failed to get scaleSetName from full scaleSetName: %v", err)
 		}
-		klog.Infof("scaleset line 1777: %+v", scaleSetName)
 
 		vmssVMClient := c.cloud.VMSSVMClient
-		klog.Infof("getnodename vmssvm client: %+v", vmssVMClient)
 		resVM, err := vmssVMClient.Get(ctx, c.cloud.ResourceGroup, scaleSetName, instanceID, nil)
 		if err != nil {
-			klog.Fatalf("failed to finish the request: %v", err)
+			return "", fmt.Errorf("failed to finish the request: %v", err)
 		}
 
-		nodeName := resVM.VirtualMachineScaleSetVM.Properties.OSProfile.ComputerName
-
-		klog.Infof("node name line 1787: %+v", nodeName)
-
-		return *nodeName, nil
+		if resVM.VirtualMachineScaleSetVM.Properties != nil && resVM.VirtualMachineScaleSetVM.Properties.OSProfile != nil && resVM.VirtualMachineScaleSetVM.Properties.OSProfile.ComputerName != nil {
+			nodeName := resVM.VirtualMachineScaleSetVM.Properties.OSProfile.ComputerName
+			return *nodeName, nil
+		}
+		return "", fmt.Errorf("os profile is nil")
 	} else {
 		nodeName := ""
 		vmss.VMCache.Range(func(key, value interface{}) bool {
@@ -1617,11 +1632,9 @@ func (c *CloudProvisioner) GetNodeNameFromProviderID(ctx context.Context, provid
 		})
 
 		if nodeName != "" {
-			klog.Infof("line 1808 node name: %+v", nodeName)
 			return nodeName, nil
 		} else {
 			return "", fmt.Errorf("node name not found")
 		}
 	}
-
 }

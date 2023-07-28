@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"io"
 	"os"
+
+	// "os"
 	"strconv"
 	"strings"
 	"sync"
@@ -30,7 +32,6 @@ import (
 
 	// "k8s.io/apimachinery/pkg/util/wait"
 	clientset "k8s.io/client-go/kubernetes"
-	"k8s.io/client-go/tools/cache"
 	cloudprovider "k8s.io/cloud-provider"
 	"k8s.io/klog/v2"
 
@@ -129,9 +130,8 @@ type Cloud struct {
 	SnapshotsClient               *armcompute.SnapshotsClient // placeholder
 	VirtualMachineScaleSetsClient *armcompute.VirtualMachineScaleSetsClient
 	VMSSVMClient				  *armcompute.VirtualMachineScaleSetVMsClient
-
-	// nodeInformerSynced is for determining if the informer has synced.
-	nodeInformerSynced cache.InformerSynced
+	VMSSClient					  *armcompute.VirtualMachineScaleSetsClient
+	ASClient					  *armcompute.AvailabilitySetsClient
 
 	VMSSVMCache *VMSSVMCache
 
@@ -263,7 +263,6 @@ func (az *Cloud) InitializeCloudFromConfig(ctx context.Context, config *Config, 
 		return err
 	}
 
-	// HERE
 	servicePrincipalToken, err := GetServicePrincipalToken(&config.AzureAuthConfig, env, env.ServiceManagementEndpoint)
 	if errors.Is(err, ErrorNoAuth) {
 		// Only controller-manager would lazy-initialize from secret, and credentials are required for such case.
@@ -276,10 +275,6 @@ func (az *Cloud) InitializeCloudFromConfig(ctx context.Context, config *Config, 
 		// No credentials provided, useInstanceMetadata should be enabled for Kubelet.
 		// TODO(feiskyer): print different error message for Kubelet and controller-manager, as they're
 		// requiring different credential settings.
-
-		// if !config.UseInstanceMetadata && config.CloudConfigType == cloudConfigTypeFile {
-		// 	return fmt.Errorf("useInstanceMetadata must be enabled without Azure credentials")
-		// }
 
 		klog.V(2).Infof("Azure cloud provider is starting without credentials")
 	} else if err != nil {
@@ -302,7 +297,7 @@ func (az *Cloud) InitializeCloudFromConfig(ctx context.Context, config *Config, 
 	return nil
 }
 
-func (az *Cloud) configAzureClients() {
+func (az *Cloud) ConfigAzureClients() {
 
 	cred, err := azidentity.NewDefaultAzureCredential(nil)
 	if err != nil {
@@ -330,21 +325,26 @@ func (az *Cloud) configAzureClients() {
 	if err != nil {
 		klog.Fatalf("failed to create client: %v", err)
 	}
+	az.VMSSClient, err = armcompute.NewVirtualMachineScaleSetsClient(az.SubscriptionID, cred, nil)
+	if err != nil {
+		klog.Fatalf("failed to create client: %v", err)
+	}
+	az.ASClient, err = armcompute.NewAvailabilitySetsClient(az.SubscriptionID, cred, nil)
+	if err != nil {
+		klog.Fatalf("failed to create client: %v", err)
+	}
 }
 
 func (az *Cloud) GetZoneByNodeName(ctx context.Context, nodeName string) (cloudprovider.Zone, error) {
-	entry, err := az.GetVMSSVM(ctx, nodeName)
+	response, err := az.VMClient.Get(ctx, az.ResourceGroup, nodeName, nil)
 	if err != nil {
 		return cloudprovider.Zone{}, fmt.Errorf("failed to get zone from nodename: %v", err)
 	}
-	zones := entry.VM.Zones
 
-	// zoneID, err := strconv.Atoi(*zones[0])
-	// if err != nil {
-	// 	return cloudprovider.Zone{}, fmt.Errorf("failed to parse zone %v", err)
-	// }
-
-	// failureDomain := fmt.Sprintf("%s-%d", strings.ToLower(*entry.VM.Location), zoneID)
+	var zones []*string
+	if response.VirtualMachine.Zones != nil {
+		zones = response.VirtualMachine.Zones
+	}
 
 	var failureDomain string
 	if zones != nil && len(zones) > 0 {
@@ -353,11 +353,11 @@ func (az *Cloud) GetZoneByNodeName(ctx context.Context, nodeName string) (cloudp
 			return cloudprovider.Zone{}, fmt.Errorf("failed to parse zone %v", err)
 		}
 
-		failureDomain = fmt.Sprintf("%s-%d", strings.ToLower(*entry.VM.Location), zoneID)
-	} else if entry.VM.Properties.InstanceView != nil &&
-		entry.VM.Properties.InstanceView.PlatformFaultDomain != nil {
+		failureDomain = fmt.Sprintf("%s-%d", strings.ToLower(*response.VirtualMachine.Location), zoneID)
+	} else if response.VirtualMachine.Properties.InstanceView != nil &&
+		response.VirtualMachine.Properties.InstanceView.PlatformFaultDomain != nil {
 		// Availability zone is not used for the node, falling back to fault domain.
-		failureDomain = strconv.Itoa(int(*entry.VM.Properties.InstanceView.PlatformFaultDomain))
+		failureDomain = strconv.Itoa(int(*response.VirtualMachine.Properties.InstanceView.PlatformFaultDomain))
 	} else {
 		err = fmt.Errorf("failed to get zone info")
 		klog.Errorf("GetZoneByNodeName: got unexpected error %v", err)
@@ -367,7 +367,7 @@ func (az *Cloud) GetZoneByNodeName(ctx context.Context, nodeName string) (cloudp
 
 	return cloudprovider.Zone{
 		FailureDomain: strings.ToLower(failureDomain),
-		Region:        strings.ToLower(*entry.VM.Location),
+		Region:        strings.ToLower(*response.VirtualMachine.Location),
 	}, nil
 }
 

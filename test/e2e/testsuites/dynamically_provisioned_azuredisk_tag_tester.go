@@ -82,7 +82,8 @@ func (t *DynamicallyProvisionedAzureDiskWithTag) Run(client clientset.Interface,
 		//get disk information
 		disksClient, err := azureClient.GetAzureDisksClient()
 		framework.ExpectNoError(err, fmt.Sprintf("Error getting client for azuredisk %v", err))
-		disktest, err := disksClient.Get(context.Background(), resourceGroup, diskName)
+		resp, err := disksClient.Get(context.Background(), resourceGroup, diskName, nil)
+		disktest := resp
 		framework.ExpectNoError(err, fmt.Sprintf("Error getting disk for azuredisk %v", err))
 		test, err := util.ConvertTagsToMap(t.Tags)
 		framework.ExpectNoError(err, fmt.Sprintf("Error getting tag %v", err))

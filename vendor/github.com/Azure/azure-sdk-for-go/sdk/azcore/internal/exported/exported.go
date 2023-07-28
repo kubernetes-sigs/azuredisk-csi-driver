@@ -8,11 +8,11 @@ package exported
 
 import (
 	"context"
+	"encoding/base64"
+	"fmt"
 	"io"
 	"net/http"
 	"time"
-
-	"github.com/Azure/azure-sdk-for-go/sdk/azcore/internal/shared"
 )
 
 type nopCloser struct {
@@ -43,24 +43,6 @@ func HasStatusCode(resp *http.Response, statusCodes ...int) bool {
 	return false
 }
 
-// Payload reads and returns the response body or an error.
-// On a successful read, the response body is cached.
-// Subsequent reads will access the cached value.
-// Exported as runtime.Payload().
-func Payload(resp *http.Response) ([]byte, error) {
-	// r.Body won't be a nopClosingBytesReader if downloading was skipped
-	if buf, ok := resp.Body.(*shared.NopClosingBytesReader); ok {
-		return buf.Bytes(), nil
-	}
-	bytesBody, err := io.ReadAll(resp.Body)
-	resp.Body.Close()
-	if err != nil {
-		return nil, err
-	}
-	resp.Body = shared.NewNopClosingBytesReader(bytesBody)
-	return bytesBody, nil
-}
-
 // AccessToken represents an Azure service bearer access token with expiry information.
 // Exported as azcore.AccessToken.
 type AccessToken struct {
@@ -71,8 +53,16 @@ type AccessToken struct {
 // TokenRequestOptions contain specific parameter that may be used by credentials types when attempting to get a token.
 // Exported as policy.TokenRequestOptions.
 type TokenRequestOptions struct {
+	// Claims are any additional claims required for the token to satisfy a conditional access policy, such as a
+	// service may return in a claims challenge following an authorization failure. If a service returned the
+	// claims value base64 encoded, it must be decoded before setting this field.
+	Claims string
 	// Scopes contains the list of permission scopes required for the token.
 	Scopes []string
+
+	// TenantID identifies the tenant from which to request the token. azidentity credentials authenticate in
+	// their configured default tenants when this field isn't set.
+	TenantID string
 }
 
 // TokenCredential represents a credential capable of providing an OAuth token.
@@ -80,4 +70,36 @@ type TokenRequestOptions struct {
 type TokenCredential interface {
 	// GetToken requests an access token for the specified set of scopes.
 	GetToken(ctx context.Context, options TokenRequestOptions) (AccessToken, error)
+}
+
+// DecodeByteArray will base-64 decode the provided string into v.
+// Exported as runtime.DecodeByteArray()
+func DecodeByteArray(s string, v *[]byte, format Base64Encoding) error {
+	if len(s) == 0 {
+		return nil
+	}
+	payload := string(s)
+	if payload[0] == '"' {
+		// remove surrounding quotes
+		payload = payload[1 : len(payload)-1]
+	}
+	switch format {
+	case Base64StdFormat:
+		decoded, err := base64.StdEncoding.DecodeString(payload)
+		if err == nil {
+			*v = decoded
+			return nil
+		}
+		return err
+	case Base64URLFormat:
+		// use raw encoding as URL format should not contain any '=' characters
+		decoded, err := base64.RawURLEncoding.DecodeString(payload)
+		if err == nil {
+			*v = decoded
+			return nil
+		}
+		return err
+	default:
+		return fmt.Errorf("unrecognized byte array format: %d", format)
+	}
 }
