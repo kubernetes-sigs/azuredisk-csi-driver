@@ -153,6 +153,7 @@ type DiskOperationParams struct {
 	DiskURI						*string
 	Lun							*int32
 	VMName						*string
+	Async						*bool
 }
 
 

@@ -674,6 +674,7 @@ func (c *CloudProvisioner) PublishVolume(
 		lunCh := make(chan int32, 1)
 		resultLunCh := make(chan int32, 1)
 		ctx = context.WithValue(ctx, azure.LunChannelContextKey, lunCh)
+		asyncAttach := azureutils.IsAsyncAttachEnabled(c.config.ControllerConfig.EnableAsyncAttach, volumeContext)
 		waitForCloud = true
 		go func() {
 			var waitForBatch bool
@@ -710,6 +711,7 @@ func (c *CloudProvisioner) PublishVolume(
 				DiskURI:					&volumeID,
 				Lun:						&lun,
 				VMName:						to.Ptr(string(nodeName)),
+				Async:						&asyncAttach,
 			}
 
 			batchKey := metrics.KeyFromAttributes(c.cloud.SubscriptionID, strings.ToLower(c.cloud.ResourceGroup), strings.ToLower(string(nodeName)))

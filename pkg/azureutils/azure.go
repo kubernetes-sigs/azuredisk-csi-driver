@@ -378,7 +378,7 @@ func NewDiskOperationBatchProcessor(az *Cloud) error {
 			disksToAttach[i] = value.(DiskOperationParams)
 		}
 
-		lunChans, err := az.AttachDiskBatchToNode(ctx, disksToAttach)
+		lunChans, err := az.attachDiskBatchToNode(ctx, disksToAttach)
 		if err != nil {
 			return nil, err
 		}
@@ -397,7 +397,7 @@ func NewDiskOperationBatchProcessor(az *Cloud) error {
 			disksToDetach[i] = value.(DiskOperationParams)
 		}
 
-		err := az.DetachDiskBatchFromNode(ctx, disksToDetach)
+		err := az.detachDiskBatchFromNode(ctx, disksToDetach)
 		if err != nil {
 			return nil, err
 		}
@@ -411,8 +411,9 @@ func NewDiskOperationBatchProcessor(az *Cloud) error {
 	return nil
 }
 
-func (az *Cloud) AttachDiskBatchToNode(ctx context.Context, toBeAttachedDisks []DiskOperationParams) ([]chan (AttachDiskResult), error) {
+func (az *Cloud) attachDiskBatchToNode(ctx context.Context, toBeAttachedDisks []DiskOperationParams) ([]chan (AttachDiskResult), error) {
 	lunChans := make([]chan (AttachDiskResult), len(toBeAttachedDisks))
+	async := false
 
 	entry, resultErr := az.GetVMSSVM(ctx, *toBeAttachedDisks[0].VMName)
 	if resultErr != nil {
@@ -482,6 +483,7 @@ func (az *Cloud) AttachDiskBatchToNode(ctx context.Context, toBeAttachedDisks []
 			}
 			disks = append(disks, newDisk)
 		}
+		async = async || *tbaDisk.Async
 	}
 
 	newVM := armcompute.VirtualMachineScaleSetVM{
@@ -497,15 +499,40 @@ func (az *Cloud) AttachDiskBatchToNode(ctx context.Context, toBeAttachedDisks []
 		return nil, fmt.Errorf("failed to finish request: %v", err)
 	}
 
-	resp, err := poller.PollUntilDone(ctx, nil)
-	if err != nil {
-		return nil, fmt.Errorf("failed to pull result: %v", err)
-	} else {
-		klog.Infof("attach operation successful: volumes attached to node %q.", *entry.Name)
+	var resp armcompute.VirtualMachineScaleSetVMsClientUpdateResponse
+	attach := func() {
+		resultCtx := ctx
+
+		if async {
+			// The context, ctx, passed to attachDiskBatchToNode is owned by batch.Processor which will
+			// cancel it when we return. Since we're asynchronously waiting for the attach disk result,
+			// we must create an independent context passed to WaitForUpdateResult with the deadline
+			// provided in ctx. This avoids an earlier return due to ctx being canceled while still
+			// respecting the deadline for the overall attach operation.
+			resultCtx = context.Background()
+			if deadline, ok := ctx.Deadline(); ok {
+				var cancel func()
+				resultCtx, cancel = context.WithDeadline(resultCtx, deadline)
+				defer cancel()
+			}
+		}
+
+		resp, err = poller.PollUntilDone(ctx, nil)
+		if err != nil {
+			err = fmt.Errorf("failed to pull result: %v", err)
+		} else {
+			klog.Infof("attach operation successful: volumes attached to node %q.", *entry.Name)
+		}
+
+		for i, disk := range toBeAttachedDisks {
+			lunChans[i] <- AttachDiskResult{Lun: *disk.Lun, Err: err}
+		}
 	}
 
-	for i, disk := range toBeAttachedDisks {
-		lunChans[i] <- AttachDiskResult{Lun: *disk.Lun, Err: err}
+	if async {
+		go attach()
+	} else {
+		attach()
 	}
 
 	// update the cache
@@ -514,7 +541,7 @@ func (az *Cloud) AttachDiskBatchToNode(ctx context.Context, toBeAttachedDisks []
 	return lunChans, nil
 }
 
-func (az *Cloud) DetachDiskBatchFromNode(ctx context.Context, toBeDetachedDisks []DiskOperationParams) error {
+func (az *Cloud) detachDiskBatchFromNode(ctx context.Context, toBeDetachedDisks []DiskOperationParams) error {
 	errChans := make([]chan (DetachDiskResult), len(toBeDetachedDisks))
 
 	entry, resultErr := az.GetVMSSVM(ctx, *toBeDetachedDisks[0].VMName)
@@ -564,30 +591,23 @@ func (az *Cloud) DetachDiskBatchFromNode(ctx context.Context, toBeDetachedDisks 
 		},
 	}
 
-	cred, err := azidentity.NewDefaultAzureCredential(nil)
-	if err != nil {
-		return fmt.Errorf("failed to get new credential: %v", err)
-	}
-
-	vmssVmClient, err := armcompute.NewVirtualMachineScaleSetVMsClient(az.SubscriptionID, cred, nil)
-	if err != nil {
-		return fmt.Errorf("failed to get client: %v", err)
-	}
-
-	poller, err := vmssVmClient.BeginUpdate(ctx, az.ResourceGroup, *entry.VMSSName, *entry.InstanceID, newVM, nil)
+	poller, err := az.VMSSVMClient.BeginUpdate(ctx, az.ResourceGroup, *entry.VMSSName, *entry.InstanceID, newVM, nil)
 	if err != nil {
 		return fmt.Errorf("failed to finish request: %v", err)
 	}
 
-	_, err = poller.PollUntilDone(ctx, nil)
-	if err != nil {
-		klog.Warningf("could not detach volumes from node %q: %v", *entry.InstanceID, err)
-		return fmt.Errorf("failed to pull result: %v", err)
-	}
+	go func() {
+		_, err = poller.PollUntilDone(ctx, nil)
+		if err != nil {
+			klog.Warningf("could not detach volumes from node %q: %v", *entry.InstanceID, err)
+			err = fmt.Errorf("failed to pull result: %v", err)
+		}
 
-	for i, _ := range toBeDetachedDisks {
-		errChans[i] <- DetachDiskResult{Err: err}
-	}
+		for i, _ := range toBeDetachedDisks {
+			errChans[i] <- DetachDiskResult{Err: err}
+		}
+	}()
+
 
 	resp, err := az.VMSSVMClient.Get(ctx, az.ResourceGroup, *entry.VMSSName, *entry.InstanceID, nil)
 	if err != nil {
