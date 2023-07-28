@@ -48,7 +48,6 @@ import (
 	volumehelper "sigs.k8s.io/azuredisk-csi-driver/pkg/util"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/workflow"
 	azcache "sigs.k8s.io/cloud-provider-azure/pkg/cache"
-	"sigs.k8s.io/cloud-provider-azure/pkg/metrics"
 	azure "sigs.k8s.io/cloud-provider-azure/pkg/provider"
 )
 
@@ -749,7 +748,7 @@ func (c *CloudProvisioner) PublishVolume(
 				Async:						&asyncAttach,
 			}
 
-			batchKey := metrics.KeyFromAttributes(c.cloud.SubscriptionID, strings.ToLower(c.cloud.ResourceGroup), strings.ToLower(string(nodeName)))
+			batchKey := azureutils.KeyFromAttributes(c.cloud.SubscriptionID, strings.ToLower(c.cloud.ResourceGroup), strings.ToLower(string(nodeName)))
 			waitForBatch = true
 			r, err := c.cloud.DiskOperationBatchProcessor.AttachDiskProcessor.Do(ctx, batchKey, diskToAttach)
 			if err == nil {
@@ -807,7 +806,7 @@ func (c *CloudProvisioner) UnpublishVolume(
 		VMName:		to.Ptr(string(nodeName)),
 	}
 
-	batchKey := metrics.KeyFromAttributes(c.cloud.SubscriptionID, strings.ToLower(c.cloud.ResourceGroup), strings.ToLower(string(nodeName)))
+	batchKey := azureutils.KeyFromAttributes(c.cloud.SubscriptionID, strings.ToLower(c.cloud.ResourceGroup), strings.ToLower(string(nodeName)))
 	waitForBatch = true
 	r, err := c.cloud.DiskOperationBatchProcessor.AttachDiskProcessor.Do(ctx, batchKey, diskToDetach)
 	if err == nil {
