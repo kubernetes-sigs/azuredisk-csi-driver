@@ -116,6 +116,7 @@ func (az *Client) EnsureResourceGroup(ctx context.Context, name, location string
 		Tags:      tags,
 	}, nil)
 	if err != nil {
+		klog.Infof("")
 		return &response.ResourceGroup, err
 	}
 
