@@ -38,9 +38,18 @@ import (
 )
 
 type DiskOperationBatchProcessor struct {
-	toBeAttachedDisksMap		  *sync.Map
-	attachDiskProcessor			  *batch.Processor
-	detachDiskProcessor			  *batch.Processor
+	ToBeAttachedDisksMap		  *sync.Map
+	AttachDiskProcessor			  *batch.Processor
+	DetachDiskProcessor			  *batch.Processor
+}
+
+type AttachDiskResult struct {
+	Lun int32
+	Err error
+}
+
+type DetachDiskResult struct {
+	Err error
 }
 
 var (
@@ -364,27 +373,61 @@ func (az *Cloud) GetZoneByNodeName(ctx context.Context, nodeName string) (cloudp
 
 func NewDiskOperationBatchProcessor(az *Cloud) error {
 	attachBatch := func(ctx context.Context, key string, values []interface{}) ([]interface{}, error) {
+		disksToAttach := make([]DiskOperationParams, len(values))
+		for i, value := range values {
+			disksToAttach[i] = value.(DiskOperationParams)
+		}
 
+		lunChans, err := az.AttachDiskBatchToNode(ctx, disksToAttach)
+		if err != nil {
+			return nil, err
+		}
+
+		results := make([]interface{}, len(lunChans))
+		for i, lun := range lunChans {
+			results[i] = lun
+		}
+
+		return results, nil
 	}
 
 	detachBatch := func(ctx context.Context, key string, values []interface{}) ([]interface{}, error) {
+		disksToDetach := make([]DiskOperationParams, len(values))
+		for i, value := range values {
+			disksToDetach[i] = value.(DiskOperationParams)
+		}
 
+		err := az.DetachDiskBatchFromNode(ctx, disksToDetach)
+		if err != nil {
+			return nil, err
+		}
+
+		return make([]interface{}, len(disksToDetach)), nil
 	}
 
-	az.DiskOperationBatchProcessor.attachDiskProcessor = batch.NewProcessor(attachBatch, nil)
-	az.DiskOperationBatchProcessor.detachDiskProcessor = batch.NewProcessor(detachBatch, nil)
+	az.DiskOperationBatchProcessor.AttachDiskProcessor = batch.NewProcessor(attachBatch, nil)
+	az.DiskOperationBatchProcessor.DetachDiskProcessor = batch.NewProcessor(detachBatch, nil)
+
+	return nil
 }
 
-func (az *Cloud) AttachDiskBatchToNode(ctx context.Context, toBeAttachedDisks []DiskOperationParams, entry *VMCacheEntry) (error){
+func (az *Cloud) AttachDiskBatchToNode(ctx context.Context, toBeAttachedDisks []DiskOperationParams) ([]chan (AttachDiskResult), error) {
+	lunChans := make([]chan (AttachDiskResult), len(toBeAttachedDisks))
+
+	entry, resultErr := az.GetVMSSVM(ctx, *toBeAttachedDisks[0].VMName)
+	if resultErr != nil {
+		return nil, fmt.Errorf("failed to get storage profile: %v", resultErr)
+	}
+
 	var disks []*armcompute.DataDisk
 	if entry != nil && entry.VM != nil && entry.VM.Properties != nil && entry.VM.Properties.StorageProfile != nil && entry.VM.Properties.StorageProfile.DataDisks != nil {
 		disks = entry.VM.Properties.StorageProfile.DataDisks
 	} else {
-		return fmt.Errorf("failed to get vm's disks")
+		return nil, fmt.Errorf("failed to get vm's disks")
 	}
 
 	attached := false
-	usedLuns := make([]bool, len(disks)+1)
+	usedLuns := make([]bool, len(disks) + 1)
 	count := 0
 	for _, tbaDisk := range toBeAttachedDisks {
 		for _, disk := range disks {
@@ -394,11 +437,8 @@ func (az *Cloud) AttachDiskBatchToNode(ctx context.Context, toBeAttachedDisks []
 					attached = true
 					break
 				} else {
-					return fmt.Errorf("disk(%s) already attached to node(%s) on LUN(%d), but target LUN is %d", *tbaDisk.DiskURI, *entry.Name, *disk.Lun, *tbaDisk.Lun)
+					return nil, fmt.Errorf("disk(%s) already attached to node(%s) on LUN(%d), but target LUN is %d", *tbaDisk.DiskURI, *entry.Name, *disk.Lun, *tbaDisk.Lun)
 				}
-			}
-			if *disk.Lun == *tbaDisk.Lun {
-				tbaDisk.UpdateLun = pointer.Bool(true)
 			}
 
 			usedLuns[*disk.Lun] = true
@@ -428,11 +468,12 @@ func (az *Cloud) AttachDiskBatchToNode(ctx context.Context, toBeAttachedDisks []
 				ManagedDisk:             managedDisk,
 				WriteAcceleratorEnabled: tbaDisk.WriteAcceleratorEnabled,
 			}
-			if *tbaDisk.Lun != -1 && *tbaDisk.UpdateLun != true {
+			if *tbaDisk.Lun != -1 {
 				newDisk.Lun = tbaDisk.Lun
 			} else {
 				for index, used := range usedLuns {
 					if !used {
+						tbaDisk.Lun = to.Ptr(int32(index))
 						newDisk.Lun = to.Ptr(int32(index))
 						klog.Infof("lun is -1 or duplicate, new lun is: %+v", index)
 						break
@@ -453,18 +494,34 @@ func (az *Cloud) AttachDiskBatchToNode(ctx context.Context, toBeAttachedDisks []
 
 	poller, err := az.VMSSVMClient.BeginUpdate(ctx, az.ResourceGroup, *entry.VMSSName, *entry.InstanceID, newVM, nil)
 	if err != nil {
-		return fmt.Errorf("failed to finish request: %v", err)
+		return nil, fmt.Errorf("failed to finish request: %v", err)
 	}
 
-	_, err = poller.PollUntilDone(ctx, nil)
+	resp, err := poller.PollUntilDone(ctx, nil)
 	if err != nil {
-		return fmt.Errorf("failed to pull result: %v", err)
+		return nil, fmt.Errorf("failed to pull result: %v", err)
 	} else {
-		return fmt.Errorf("attach operation successful: volumes attached to node %q.", *entry.Name)
+		klog.Infof("attach operation successful: volumes attached to node %q.", *entry.Name)
 	}
+
+	for i, disk := range toBeAttachedDisks {
+		lunChans[i] <- AttachDiskResult{Lun: *disk.Lun, Err: err}
+	}
+
+	// update the cache
+	az.VMSSVMCache.SetVMSSAndVM(*entry.VMSSName, *entry.Name, *entry.InstanceID, *entry.ResourceGroup, &resp.VirtualMachineScaleSetVM)
+
+	return lunChans, nil
 }
 
-func (az *Cloud) DetachDiskBatchFromNode(ctx context.Context, toBeDetachDisks []DiskOperationParams, entry *VMCacheEntry) (error) {
+func (az *Cloud) DetachDiskBatchFromNode(ctx context.Context, toBeDetachedDisks []DiskOperationParams) error {
+	errChans := make([]chan (DetachDiskResult), len(toBeDetachedDisks))
+
+	entry, resultErr := az.GetVMSSVM(ctx, *toBeDetachedDisks[0].VMName)
+	if resultErr != nil {
+		return fmt.Errorf("failed to get storage profile: %v", resultErr)
+	}
+
 	var disks []*armcompute.DataDisk
 	if entry != nil && entry.VM != nil && entry.VM.Properties != nil && entry.VM.Properties.StorageProfile != nil && entry.VM.Properties.StorageProfile.DataDisks != nil {
 		disks = entry.VM.Properties.StorageProfile.DataDisks
@@ -475,7 +532,7 @@ func (az *Cloud) DetachDiskBatchFromNode(ctx context.Context, toBeDetachDisks []
 	var newDisks []*armcompute.DataDisk
 	var found bool
 
-	for _, tbdDisk := range toBeDetachDisks {
+	for _, tbdDisk := range toBeDetachedDisks {
 		for i, disk := range disks {
 			if disk.Lun != nil && (disk.Name != nil && *tbdDisk.Name != "" && strings.EqualFold(*disk.Name, *tbdDisk.Name)) ||
 				(disk.Vhd != nil && disk.Vhd.URI != nil && *tbdDisk.DiskURI != "" && strings.EqualFold(*disk.Vhd.URI, *tbdDisk.DiskURI)) ||
@@ -509,24 +566,37 @@ func (az *Cloud) DetachDiskBatchFromNode(ctx context.Context, toBeDetachDisks []
 
 	cred, err := azidentity.NewDefaultAzureCredential(nil)
 	if err != nil {
-		klog.Fatalf("failed to get new credential: %v", err)
+		return fmt.Errorf("failed to get new credential: %v", err)
 	}
 
 	vmssVmClient, err := armcompute.NewVirtualMachineScaleSetVMsClient(az.SubscriptionID, cred, nil)
 	if err != nil {
-		klog.Fatalf("failed to get client: %v", err)
+		return fmt.Errorf("failed to get client: %v", err)
 	}
 
 	poller, err := vmssVmClient.BeginUpdate(ctx, az.ResourceGroup, *entry.VMSSName, *entry.InstanceID, newVM, nil)
 	if err != nil {
-		klog.Fatalf("failed to finish request: %v", err)
+		return fmt.Errorf("failed to finish request: %v", err)
 	}
 
 	_, err = poller.PollUntilDone(ctx, nil)
 	if err != nil {
-		klog.Fatalf("failed to pull result: %v", err)
-		return fmt.Errorf("could not detach volumes from node %q: %v", *entry.InstanceID, err)
+		klog.Warningf("could not detach volumes from node %q: %v", *entry.InstanceID, err)
+		return fmt.Errorf("failed to pull result: %v", err)
 	}
+
+	for i, _ := range toBeDetachedDisks {
+		errChans[i] <- DetachDiskResult{Err: err}
+	}
+
+	resp, err := az.VMSSVMClient.Get(ctx, az.ResourceGroup, *entry.VMSSName, *entry.InstanceID, nil)
+	if err != nil {
+		return fmt.Errorf("failed to get vm: %v", err)
+	}
+
+	// update the cache
+	az.VMSSVMCache.SetVMSSAndVM(*entry.VMSSName, *entry.Name, *entry.InstanceID, *entry.ResourceGroup, &resp.VirtualMachineScaleSetVM)
+	return nil
 }
 
 

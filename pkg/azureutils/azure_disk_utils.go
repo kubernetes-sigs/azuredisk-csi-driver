@@ -152,9 +152,7 @@ type DiskOperationParams struct {
 	WriteAcceleratorEnabled 	*bool
 	DiskURI						*string
 	Lun							*int32
-	// update Lun is default to false, and will only be tru
-	// when the current lun is invalid (invalid lun or duplicate lun)
-	UpdateLun 					*bool
+	VMName						*string
 }
 
 
