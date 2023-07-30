@@ -54,8 +54,8 @@ func (t *DynamicallyProvisionedVolumeCloningTest) Run(ctx context.Context, clien
 	defer tpod.Cleanup(ctx)
 	ginkgo.By("checking that the pod's command exits with no error")
 	tpod.WaitForSuccess(ctx)
-	ginkgo.By("sleep 5s and then clone volume")
-	time.Sleep(5 * time.Second)
+	ginkgo.By("sleep 60s and then clone volume")
+	time.Sleep(60 * time.Second)
 
 	ginkgo.By("cloning existing volume")
 	clonedVolume := t.Pod.Volumes[0]
