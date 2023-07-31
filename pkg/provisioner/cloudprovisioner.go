@@ -780,12 +780,9 @@ func (c *CloudProvisioner) UnpublishVolume(
 	volumeID string,
 	nodeID string) error {
 	var err error
-	var waitForBatch bool
 	ctx, w := workflow.New(ctx)
 	defer func() {
-		if !waitForBatch {
-			w.Finish(err)
-		}
+		w.Finish(err)
 	}()
 
 	nodeName := types.NodeName(nodeID)
@@ -805,7 +802,6 @@ func (c *CloudProvisioner) UnpublishVolume(
 	}
 
 	batchKey := azureutils.KeyFromAttributes(c.cloud.SubscriptionID, strings.ToLower(c.cloud.ResourceGroup), strings.ToLower(string(nodeName)))
-	waitForBatch = true
 	r, err := c.cloud.DiskOperationBatchProcessor.AttachDiskProcessor.Do(ctx, batchKey, diskToDetach)
 	if err == nil {
 		select {
