@@ -2,22 +2,20 @@ package azureutils
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"io"
 	"os"
 
-	// "os"
 	"strconv"
 	"strings"
 
-	// "sync"
 	"time"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azidentity"
 	armcompute "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute/v5"
 
-	// armnetwork "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/network/armnetwork/v2"
+	"github.com/edreed/go-batch"
+
 	"github.com/Azure/go-autorest/autorest/azure"
 
 	v1 "k8s.io/api/core/v1"
@@ -25,13 +23,26 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/sets"
 
-	// "k8s.io/apimachinery/pkg/util/wait"
 	clientset "k8s.io/client-go/kubernetes"
 	cloudprovider "k8s.io/cloud-provider"
 	"k8s.io/klog/v2"
 
 	"sigs.k8s.io/yaml"
 )
+
+type DiskOperationBatchProcessor struct {
+	AttachDiskProcessor			  *batch.Processor
+	DetachDiskProcessor			  *batch.Processor
+}
+
+type AttachDiskResult struct {
+	Lun int32
+	Err error
+}
+
+type DetachDiskResult struct {
+	Err error
+}
 
 var (
 	// Master nodes are not added to standard load balancer by default.
@@ -114,6 +125,8 @@ type Cloud struct {
 	ASClient					  *armcompute.AvailabilitySetsClient
 
 	VMSSVMCache *VMSSVMCache
+
+	DiskOperationBatchProcessor	  *DiskOperationBatchProcessor
 }
 
 type InitSecretConfig struct {
@@ -241,24 +254,6 @@ func (az *Cloud) InitializeCloudFromConfig(ctx context.Context, config *Config, 
 		return err
 	}
 
-	servicePrincipalToken, err := GetServicePrincipalToken(&config.AzureAuthConfig, env, env.ServiceManagementEndpoint)
-	if errors.Is(err, ErrorNoAuth) {
-		// Only controller-manager would lazy-initialize from secret, and credentials are required for such case.
-		if fromSecret {
-			err := fmt.Errorf("no credentials provided for Azure cloud provider")
-			klog.Fatal(err)
-			return err
-		}
-
-		// No credentials provided, useInstanceMetadata should be enabled for Kubelet.
-		// TODO(feiskyer): print different error message for Kubelet and controller-manager, as they're
-		// requiring different credential settings.
-
-		klog.V(2).Infof("Azure cloud provider is starting without credentials")
-	} else if err != nil {
-		return err
-	}
-
 	az.Config = *config
 	az.Environment = *env
 
@@ -266,18 +261,13 @@ func (az *Cloud) InitializeCloudFromConfig(ctx context.Context, config *Config, 
 		return err
 	}
 
-	// No credentials provided, InstanceMetadataService would be used for getting Azure resources.
-	// Note that this only applies to Kubelet, controller-manager should configure credentials for managing Azure resources.
-	if servicePrincipalToken == nil {
-		return nil
-	}
-
 	return nil
 }
 
 func (az *Cloud) ConfigAzureClients() {
+	klog.Infof("begin configuring clients")
 
-	cred, err := azidentity.NewDefaultAzureCredential(nil)
+	cred, err := azidentity.NewClientSecretCredential(az.TenantID, az.AADClientID, az.AADClientSecret, nil)
 	if err != nil {
 		klog.Fatalf("failed to obtain new credential: %v", err)
 	}
@@ -348,6 +338,7 @@ func (az *Cloud) GetZoneByNodeName(ctx context.Context, nodeName string) (cloudp
 		Region:        strings.ToLower(*response.VirtualMachine.Location),
 	}, nil
 }
+
 
 // PLACEHOLDER
 // Initialize provides the cloud with a kubernetes client builder and may spawn goroutines

@@ -620,7 +620,6 @@ func (c *CloudProvisioner) PublishVolume(
 	var instanceID string
 
 	if providerID != "" {
-
 		attachedNode, err = c.GetNodeNameFromProviderID(ctx, providerID)
 		if err != nil {
 			err = fmt.Errorf("failed to get node name from providerID: %v", err)
@@ -706,6 +705,10 @@ func (c *CloudProvisioner) PublishVolume(
 		lunCh := make(chan int32, 1)
 		resultLunCh := make(chan int32, 1)
 		ctx = context.WithValue(ctx, azure.LunChannelContextKey, lunCh)
+
+		asyncAttach := azureutils.IsAsyncAttachEnabled(c.config.ControllerConfig.EnableAsyncAttach, volumeContext)
+
+
 		waitForCloud = true
 		go func() {
 			var resultErr error
@@ -715,62 +718,9 @@ func (c *CloudProvisioner) PublishVolume(
 				w.Finish(resultErr) 
 			}()
 
-			scaleSetName, instanceID, resultErr := GetInstanceIDAndScaleSetNameFromNodeName(string(nodeName))
-			if resultErr != nil {
-				resultErr = fmt.Errorf("failed to get instance id and vmss name from node name: %v", resultErr)
-
-				attachResult.ResultChannel() <- resultErr
-				close(attachResult.ResultChannel())
-				
-				resultLunCh <- resultLun
-				close(resultLunCh)
-
-				return 
-			}
-
-			vmEntry, resultErr := c.cloud.GetVMSSVM(ctx, string(nodeName))
-			if resultErr != nil {
-				resultErr = fmt.Errorf("failed to get vm from cache: %v", resultErr)
-
-				attachResult.ResultChannel() <- resultErr
-				close(attachResult.ResultChannel())
-
-				resultLunCh <- resultLun
-				close(resultLunCh)
-
-				return
-			}
-
-			var storageProfile *armcompute.StorageProfile
-			if vmEntry != nil && vmEntry.VM != nil && vmEntry.VM.Properties != nil && vmEntry.VM.Properties.StorageProfile != nil {
-				storageProfile = vmEntry.VM.Properties.StorageProfile
-			} else {
-				resultErr = fmt.Errorf("storage profile on node %+v not found", string(nodeName))
-
-				attachResult.ResultChannel() <- resultErr
-				close(attachResult.ResultChannel())
-				
-				resultLunCh <- resultLun
-				close(resultLunCh)
-
-				return
-			}
-			disks := storageProfile.DataDisks
-
-			attached := false
-			usedLuns := make([]bool, len(disks)+1)
-			count := 0
-			for _, disk := range disks {
-				count++
-				if disk.ManagedDisk != nil && strings.EqualFold(*disk.ManagedDisk.ID, strings.ToLower(volumeID)) && disk.Lun != nil {
-					if *disk.Lun == lun {
-						attached = true
-						break
-					} else {
-						resultErr = fmt.Errorf("disk(%s) already attached to node(%s) on LUN(%d), but target LUN is %d", volumeID, nodeName, *disk.Lun, lun)
-					}
-				}
-				usedLuns[*disk.Lun] = true
+			diskEncryptionSetID := ""
+			if disk.Properties != nil && disk.Properties.Encryption != nil && disk.Properties.Encryption.DiskEncryptionSetID != nil {
+				diskEncryptionSetID = *disk.Properties.Encryption.DiskEncryptionSetID
 			}
 
 			writeAcceleratorEnabled := false
@@ -780,110 +730,35 @@ func (c *CloudProvisioner) PublishVolume(
 				}
 			}
 
-			diskEncryptionSetID := ""
-			if disk.Properties != nil && disk.Properties.Encryption != nil && disk.Properties.Encryption.DiskEncryptionSetID != nil {
-				diskEncryptionSetID = *disk.Properties.Encryption.DiskEncryptionSetID
+			diskToAttach := azureutils.DiskOperationParams{
+				Name:						&diskName, 
+				CachingType:				&cachingMode,
+				CreateOption:				to.Ptr(armcompute.DiskCreateOptionTypesAttach),
+				DiskEncryptionSetID:		&diskEncryptionSetID,
+				WriteAcceleratorEnabled:	&writeAcceleratorEnabled,
+				DiskURI:					&volumeID,
+				Lun:						&lun,
+				VMName:						to.Ptr(string(nodeName)),
+				Async:						&asyncAttach,
 			}
 
-			if attached {
-				klog.V(2).Infof("azureDisk - disk(%s) already attached to node(%s) on LUN(%d)", volumeID, nodeName, lun)
-			} else {
-				managedDisk := &armcompute.ManagedDiskParameters{ID: &volumeID}
-				if diskEncryptionSetID == "" {
-					if storageProfile.OSDisk != nil &&
-						storageProfile.OSDisk.ManagedDisk != nil &&
-						storageProfile.OSDisk.ManagedDisk.DiskEncryptionSet != nil &&
-						storageProfile.OSDisk.ManagedDisk.DiskEncryptionSet.ID != nil {
-						// set diskEncryptionSet as value of os disk by default
-						diskEncryptionSetID = *storageProfile.OSDisk.ManagedDisk.DiskEncryptionSet.ID
+			batchKey := azureutils.KeyFromAttributes(c.cloud.SubscriptionID, strings.ToLower(c.cloud.ResourceGroup), strings.ToLower(string(nodeName)))
+			klog.Infof("processor: %+v", c.cloud.DiskOperationBatchProcessor)
+			klog.Infof("attach proccesor: %+v", c.cloud.DiskOperationBatchProcessor.AttachDiskProcessor)
+			r, err := c.cloud.DiskOperationBatchProcessor.AttachDiskProcessor.Do(ctx, batchKey, diskToAttach)
+			if err == nil {
+				select {
+				case <-ctx.Done():
+					resultErr = ctx.Err()
+				case result := <-r.(chan (azureutils.AttachDiskResult)):
+					if resultErr = result.Err; resultErr == nil {
+						resultLun = result.Lun
 					}
 				}
-				if diskEncryptionSetID != "" {
-					managedDisk.DiskEncryptionSet = &armcompute.DiskEncryptionSetParameters{ID: &diskEncryptionSetID}
-				}
-				newDisk := &armcompute.DataDisk{
-					Name:                    &diskName,
-					Caching:                 &cachingMode,
-					CreateOption:            to.Ptr(armcompute.DiskCreateOptionTypesAttach),
-					ManagedDisk:             managedDisk,
-					WriteAcceleratorEnabled: pointer.Bool(writeAcceleratorEnabled),
-				}
-				if lun != -1 {
-					newDisk.Lun = &lun
-				} else {
-					for index, used := range usedLuns {
-						if !used {
-							newDisk.Lun = to.Ptr(int32(index))
-							break
-						}
-					}
-				}
-				disks = append(disks, newDisk)
 			}
 
-			newVM := armcompute.VirtualMachineScaleSetVM{
-				Properties: &armcompute.VirtualMachineScaleSetVMProperties{
-					StorageProfile: &armcompute.StorageProfile{
-						DataDisks: disks,
-					},
-				},
-			}
-
-			poller, resultErr := vmssVMClient.BeginUpdate(ctx, c.cloud.ResourceGroup, scaleSetName, instanceID, newVM, nil)
-			if resultErr != nil {
-				resultErr = fmt.Errorf("failed to finish the request: %v", resultErr)
-				
-				attachResult.ResultChannel() <- resultErr
-				close(attachResult.ResultChannel())
-
-				resultLunCh <- resultLun
-				close(resultLunCh)
-
-				return
-			}
-			_, resultErr = poller.PollUntilDone(ctx, nil)
-			if resultErr != nil {
-				resultErr = fmt.Errorf("failed to pull the result: %v", resultErr)
-
-				attachResult.ResultChannel() <- resultErr
-				close(attachResult.ResultChannel())
-
-				resultLunCh <- resultLun
-				close(resultLunCh)
-
-				return
-			} else {
-				w.Logger().V(2).Infof("attach operation successful: volume %q attached to node %q.", volumeID, nodeName)
-			}
-
-			resultLun, resultErr = GetDiskLun(diskName, volumeID, disks)
-			if resultErr != nil {
-				resultErr = fmt.Errorf("failed to find disk lun: %v", resultErr)
-
-				attachResult.ResultChannel() <- resultErr
-				close(attachResult.ResultChannel())
-
-				resultLunCh <- resultLun
-				close(resultLunCh)
-
-				return
-			}
-
-			resp, resultErr := vmssVMClient.Get(ctx, c.cloud.ResourceGroup, scaleSetName, instanceID, nil)
-			if resultErr != nil {
-				resultErr = fmt.Errorf("failed to get vm: %v", resultErr)
-
-				attachResult.ResultChannel() <- resultErr
-				close(attachResult.ResultChannel())
-
-				resultLunCh <- resultLun
-				close(resultLunCh)
-
-				return
-			}
-
-			// update the cache
-			c.cloud.VMSSVMCache.SetVMSSAndVM(*vmEntry.VMSSName, *vmEntry.Name, *vmEntry.InstanceID, *vmEntry.ResourceGroup, &resp.VirtualMachineScaleSetVM)
+			attachResult.ResultChannel() <- resultErr
+			close(attachResult.ResultChannel())
 
 			resultLunCh <- resultLun
 			close(resultLunCh)
@@ -905,8 +780,13 @@ func (c *CloudProvisioner) UnpublishVolume(
 	volumeID string,
 	nodeID string) error {
 	var err error
+	var waitForBatch bool
 	ctx, w := workflow.New(ctx)
-	defer func() { w.Finish(err) }()
+	defer func() {
+		if !waitForBatch {
+			w.Finish(err)
+		}
+	}()
 
 	nodeName := types.NodeName(nodeID)
 
@@ -918,79 +798,25 @@ func (c *CloudProvisioner) UnpublishVolume(
 
 	w.Logger().V(2).Infof("Trying to detach volume %s from node %s", volumeID, nodeID)
 
-	scaleSetName, instanceID, err := GetInstanceIDAndScaleSetNameFromNodeName(string(nodeName))
-	if err != nil {
-		return err
+	diskToDetach := azureutils.DiskOperationParams{
+		Name:		&diskName,
+		DiskURI:	&volumeID, 
+		VMName:		to.Ptr(string(nodeName)),
 	}
 
-	vmssVmClient := c.cloud.VMSSVMClient
-	vmEntry, err := c.cloud.GetVMSSVM(ctx, string(nodeName))
-	if err != nil {
-		return fmt.Errorf("failed to get vm from cache: %v", err)
-	}
-
-	var storageProfile *armcompute.StorageProfile
-	if vmEntry != nil && vmEntry.VM != nil && vmEntry.VM.Properties != nil && vmEntry.VM.Properties.StorageProfile != nil {
-		storageProfile = vmEntry.VM.Properties.StorageProfile
-	} else {
-		return fmt.Errorf("storage profile on node %+v not found", string(nodeName))
-	}
-
-	var disks []*armcompute.DataDisk
-	disks = make([]*armcompute.DataDisk, len(storageProfile.DataDisks))
-	copy(disks, storageProfile.DataDisks)
-
-	found := false
-	for i, disk := range disks {
-		if disk.Lun != nil && (disk.Name != nil && diskName != "" && strings.EqualFold(*disk.Name, diskName)) ||
-			(disk.Vhd != nil && disk.Vhd.URI != nil && volumeID != "" && strings.EqualFold(*disk.Vhd.URI, volumeID)) ||
-			(disk.ManagedDisk != nil && volumeID != "" && strings.EqualFold(*disk.ManagedDisk.ID, volumeID)) {
-			// found the disk
-			klog.V(2).Infof("azureDisk - detach disk: name %s uri %s", diskName, volumeID)
-			disks[i].ToBeDetached = pointer.Bool(true)
-			found = true
-		}
-	}
-
-	var newDisks []*armcompute.DataDisk
-
-	if !found {
-		klog.Warningf("to be detached disk(%s) on node(%s) not found", diskName, string(nodeName))
-	} else {
-		for _, disk := range disks {
-			// if disk.ToBeDetached is true
-			if disk.ToBeDetached == nil || (disk.ToBeDetached != nil && *disk.ToBeDetached == false) {
-				newDisks = append(newDisks, disk)
+	batchKey := azureutils.KeyFromAttributes(c.cloud.SubscriptionID, strings.ToLower(c.cloud.ResourceGroup), strings.ToLower(string(nodeName)))
+	waitForBatch = true
+	r, err := c.cloud.DiskOperationBatchProcessor.AttachDiskProcessor.Do(ctx, batchKey, diskToDetach)
+	if err == nil {
+		select {
+		case <-ctx.Done():
+			err = ctx.Err()
+		case result := <-r.(chan (azureutils.DetachDiskResult)):
+			if err = result.Err; err != nil {
+				return err
 			}
 		}
 	}
-
-	newVM := armcompute.VirtualMachineScaleSetVM{
-		Properties: &armcompute.VirtualMachineScaleSetVMProperties{
-			StorageProfile: &armcompute.StorageProfile{
-				DataDisks: newDisks,
-			},
-		},
-	}
-
-	poller, err := vmssVmClient.BeginUpdate(ctx, c.cloud.ResourceGroup, scaleSetName, instanceID, newVM, nil)
-	if err != nil {
-		return fmt.Errorf("failed to finish request: %v", err)
-	}
-
-	_, err = poller.PollUntilDone(ctx, nil)
-	if err != nil {
-		err = status.Errorf(codes.Internal, "could not detach volume %q from node %q: %v", volumeID, nodeID, err)
-		return err
-	}
-
-	resp, err := vmssVmClient.Get(ctx, c.cloud.ResourceGroup, scaleSetName, instanceID, nil)
-	if err != nil {
-		return fmt.Errorf("failed to get vm: %v", err)
-	}
-
-	// update the cache
-	c.cloud.VMSSVMCache.SetVMSSAndVM(*vmEntry.VMSSName, *vmEntry.Name, *vmEntry.InstanceID, *vmEntry.ResourceGroup, &resp.VirtualMachineScaleSetVM)
 
 	return nil
 }
@@ -1534,7 +1360,7 @@ func (c *CloudProvisioner) listVolumesInNodeResourceGroup(ctx context.Context, s
 		NextToken: nextTokenString,
 	}
 
-	return listVolumesResp, nil
+	return listVolumesResp, nil 
 }
 
 // listVolumesByResourceGroup is a helper function that updates the ListVolumeResponse_Entry slice and returns number of total visited volumes, number of volumes that needs to be visited and an error if found
@@ -1652,7 +1478,7 @@ func pickAvailabilityZone(requirement *azdiskv1beta2.TopologyRequirement, region
 }
 
 func (c *CloudProvisioner) isPerfOptimizationEnabled() bool {
-	return c.config.NodeConfig.EnablePerfOptimization
+	return c.config.NodeConfig.EnablePerfOptimization 
 }
 
 func GetLastSegment(ID, separator string) (string, error) {

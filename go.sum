@@ -170,6 +170,8 @@ github.com/docker/distribution v2.8.1+incompatible/go.mod h1:J2gT2udsDAN96Uj4Kfc
 github.com/docopt/docopt-go v0.0.0-20180111231733-ee0de3bc6815/go.mod h1:WwZ+bS3ebgob9U8Nd0kOddGdZWjyMGR8Wziv+TBNwSE=
 github.com/edreed/cloud-provider-azure v0.7.3-0.20230227234418-c94372fa2571 h1:FCuPpjCyiKmoCYZTDRcAxnWuxS/lpkux5P4AG4p2cmw=
 github.com/edreed/cloud-provider-azure v0.7.3-0.20230227234418-c94372fa2571/go.mod h1:igL4v2BA1fd0V2hzHBX+JInC7mROEd10TN/DPWrbcRU=
+github.com/edreed/go-batch v0.0.0-20230626221829-93a203a9c72d h1:bHEHnaKSuPFw3tQhZJrvvw9GJytypLdBnIxL2YFmiMw=
+github.com/edreed/go-batch v0.0.0-20230626221829-93a203a9c72d/go.mod h1:ujN3uiIBLOvIHGoRBdKS8otAjd/lihv7qVZVxpv/fDQ=
 github.com/elazarl/goproxy v0.0.0-20180725130230-947c36da3153 h1:yUdfgN0XgIJw7foRItutHYUIhlcKzcSf5vDpdhQAKTc=
 github.com/elazarl/goproxy v0.0.0-20180725130230-947c36da3153/go.mod h1:/Zj4wYkgs4iZTTu3o/KG3Itv/qCCa8VVMlb3i9OVuzc=
 github.com/emicklei/go-restful/v3 v3.8.0/go.mod h1:6n3XBCmQQb25CM2LCACGz8ukIrRry+4bhvbpWn3mrbc=
@@ -340,8 +342,6 @@ github.com/jmespath/go-jmespath/internal/testify v1.5.1 h1:shLQSRRSCCPj3f2gpwzGw
 github.com/jmespath/go-jmespath/internal/testify v1.5.1/go.mod h1:L3OGu8Wl2/fWfCI6z80xFu9LTZmf1ZRjMHUOPmWr69U=
 github.com/joho/godotenv v1.3.0 h1:Zjp+RcGpHhGlrMbJzXTrZZPrWj+1vfm90La1wgB6Bhc=
 github.com/joho/godotenv v1.3.0/go.mod h1:7hK45KPybAkOC6peb+G5yklZfMxEjkZhHbwpqxOKXbg=
-github.com/jongio/azidext/go/azidext v0.4.0 h1:TOYyVFMeWGgXNhURSgrEtUCu7JAAKgsy+5C4+AEfYlw=
-github.com/jongio/azidext/go/azidext v0.4.0/go.mod h1:VrlpGde5B+pPbTUxnThE5UIQQkcebdr3jrC2MmlMVSI=
 github.com/josharian/intern v1.0.0 h1:vlS4z54oSdjm0bgjRigI+G1HpF+tI+9rE5LLzOg8HmY=
 github.com/josharian/intern v1.0.0/go.mod h1:5DoeVV0s6jJacbCEi61lwdGj/aVlrQvzHFFd8Hwg//Y=
 github.com/jpillora/backoff v0.0.0-20180909062703-3050d21c67d7/go.mod h1:2iMrUgbbvHEiQClaW2NsSzMyGHqN+rDFqY705q49KG0=
