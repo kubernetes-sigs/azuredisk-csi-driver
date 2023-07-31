@@ -13,6 +13,18 @@ import (
 	"k8s.io/utils/pointer"
 )
 
+type DiskOperationParams struct {
+	Name						*string
+	CachingType                 *armcompute.CachingTypes
+	CreateOption            	*armcompute.DiskCreateOptionTypes
+	DiskEncryptionSetID			*string
+	WriteAcceleratorEnabled 	*bool
+	DiskURI						*string
+	Lun							*int32
+	VMName						*string
+	Async						*bool
+}
+
 const keyAttributesSeparator = "|"
 
 // KeyFromAttributes concatenates the parameters to form a unique key for the referenced resource. Since the

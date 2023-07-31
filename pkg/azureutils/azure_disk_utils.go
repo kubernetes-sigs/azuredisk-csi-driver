@@ -144,19 +144,6 @@ type ManagedDiskParameters struct {
 	Zoned                   string
 }
 
-type DiskOperationParams struct {
-	Name						*string
-	CachingType                 *armcompute.CachingTypes
-	CreateOption            	*armcompute.DiskCreateOptionTypes
-	DiskEncryptionSetID			*string
-	WriteAcceleratorEnabled 	*bool
-	DiskURI						*string
-	Lun							*int32
-	VMName						*string
-	Async						*bool
-}
-
-
 const (
 	Cached ClientOperationMode = iota
 	Uncached

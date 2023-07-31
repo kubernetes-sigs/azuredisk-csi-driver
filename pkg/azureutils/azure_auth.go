@@ -2,7 +2,6 @@ package azureutils
 
 import (
 	"fmt"
-	"os"
 	"strings"
 
 	"crypto/rsa"
@@ -60,94 +59,6 @@ type AzureAuthConfig struct {
 	AADFederatedTokenFile string `json:"aadFederatedTokenFile,omitempty" yaml:"aadFederatedTokenFile,omitempty"`
 	// Use workload identity federation for the virtual machine to access Azure ARM APIs
 	UseFederatedWorkloadIdentityExtension bool `json:"useFederatedWorkloadIdentityExtension,omitempty" yaml:"useFederatedWorkloadIdentityExtension,omitempty"`
-}
-
-// GetServicePrincipalToken creates a new service principal token based on the configuration.
-//
-// By default, the cluster and its network resources are deployed in the same AAD Tenant and Subscription,
-// and all azure clients use this method to fetch Service Principal Token.
-//
-// If NetworkResourceTenantID and NetworkResourceSubscriptionID are specified to have different values than TenantID and SubscriptionID, network resources are deployed in different AAD Tenant and Subscription than those for the cluster,
-// than only azure clients except VM/VMSS and network resource ones use this method to fetch Token.
-// For tokens for VM/VMSS and network resource ones, please check GetMultiTenantServicePrincipalToken and GetNetworkResourceServicePrincipalToken.
-func GetServicePrincipalToken(config *AzureAuthConfig, env *azure.Environment, resource string) (*adal.ServicePrincipalToken, error) {
-	var tenantID string
-	klog.Infof("GetServicePrincipalToken: config.IdentitySystem: %+v config.TenantID: %+v", config.IdentitySystem, config.TenantID)
-	if strings.EqualFold(config.IdentitySystem, ADFSIdentitySystem) {
-		tenantID = ADFSIdentitySystem
-	} else {
-		tenantID = config.TenantID
-	}
-
-	if resource == "" {
-		resource = env.ServiceManagementEndpoint
-	}
-
-	if config.UseManagedIdentityExtension {
-		klog.V(2).Infoln("azure: using managed identity extension to retrieve access token")
-		msiEndpoint, err := adal.GetMSIVMEndpoint()
-		if err != nil {
-			return nil, fmt.Errorf("error getting the managed service identity endpoint: %w", err)
-		}
-		if len(config.UserAssignedIdentityID) > 0 {
-			klog.V(4).Info("azure: using User Assigned MSI ID to retrieve access token")
-			resourceID, err := azure.ParseResourceID(config.UserAssignedIdentityID)
-			if err == nil &&
-				strings.EqualFold(resourceID.Provider, "Microsoft.ManagedIdentity") &&
-				strings.EqualFold(resourceID.ResourceType, "userAssignedIdentities") {
-				klog.V(4).Info("azure: User Assigned MSI ID is resource ID")
-				return adal.NewServicePrincipalTokenFromMSIWithIdentityResourceID(msiEndpoint,
-					resource,
-					config.UserAssignedIdentityID)
-			}
-
-			klog.V(4).Info("azure: User Assigned MSI ID is client ID")
-			return adal.NewServicePrincipalTokenFromMSIWithUserAssignedID(msiEndpoint,
-				resource,
-				config.UserAssignedIdentityID)
-		}
-		klog.V(4).Info("azure: using System Assigned MSI to retrieve access token")
-		return adal.NewServicePrincipalTokenFromMSI(
-			msiEndpoint,
-			resource)
-	}
-
-	oauthConfig, err := adal.NewOAuthConfigWithAPIVersion(env.ActiveDirectoryEndpoint, tenantID, nil)
-	if err != nil {
-		return nil, fmt.Errorf("error creating the OAuth config: %w", err)
-	}
-
-	klog.Infof("GetServicePrincipalToken: config.AADClientSecret: %+v", config.AADClientSecret)
-	if len(config.AADClientSecret) > 0 {
-		klog.V(2).Infoln("azure: using client_id+client_secret to retrieve access token")
-		return adal.NewServicePrincipalToken(
-			*oauthConfig,
-			config.AADClientID,
-			config.AADClientSecret,
-			resource)
-	}
-
-	klog.Infof("GetServicePrincipalToken: config.AADClientCertPath: %+v config.AADClientCertPassword: %+v", config.AADClientCertPath, config.AADClientCertPassword)
-
-	if len(config.AADClientCertPath) > 0 && len(config.AADClientCertPassword) > 0 {
-		klog.V(2).Infoln("azure: using jwt client_assertion (client_cert+client_private_key) to retrieve access token")
-		certData, err := os.ReadFile(config.AADClientCertPath)
-		if err != nil {
-			return nil, fmt.Errorf("reading the client certificate from file %s: %w", config.AADClientCertPath, err)
-		}
-		certificate, privateKey, err := decodePkcs12(certData, config.AADClientCertPassword)
-		if err != nil {
-			return nil, fmt.Errorf("decoding the client certificate: %w", err)
-		}
-		return adal.NewServicePrincipalTokenFromCertificate(
-			*oauthConfig,
-			config.AADClientID,
-			certificate,
-			privateKey,
-			resource)
-	}
-
-	return nil, ErrorNoAuth
 }
 
 // ParseAzureEnvironment returns the azure environment.

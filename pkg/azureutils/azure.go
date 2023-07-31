@@ -2,7 +2,6 @@ package azureutils
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -255,35 +254,11 @@ func (az *Cloud) InitializeCloudFromConfig(ctx context.Context, config *Config, 
 		return err
 	}
 
-	servicePrincipalToken, err := GetServicePrincipalToken(&config.AzureAuthConfig, env, env.ServiceManagementEndpoint)
-	if errors.Is(err, ErrorNoAuth) {
-		// Only controller-manager would lazy-initialize from secret, and credentials are required for such case.
-		if fromSecret {
-			err := fmt.Errorf("no credentials provided for Azure cloud provider")
-			klog.Fatal(err)
-			return err
-		}
-
-		// No credentials provided, useInstanceMetadata should be enabled for Kubelet.
-		// TODO(feiskyer): print different error message for Kubelet and controller-manager, as they're
-		// requiring different credential settings.
-
-		klog.V(2).Infof("Azure cloud provider is starting without credentials")
-	} else if err != nil {
-		return err
-	}
-
 	az.Config = *config
 	az.Environment = *env
 
 	if err != nil {
 		return err
-	}
-
-	// No credentials provided, InstanceMetadataService would be used for getting Azure resources.
-	// Note that this only applies to Kubelet, controller-manager should configure credentials for managing Azure resources.
-	if servicePrincipalToken == nil {
-		return nil
 	}
 
 	return nil
