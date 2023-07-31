@@ -712,6 +712,8 @@ func GetCloudProviderFromClient(
 
 	az.ConfigAzureClients()
 
+	NewDiskOperationBatchProcessor(az)
+
 	return az, nil
 }
 

@@ -9,6 +9,7 @@ import (
 	armcompute "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute/v5"
 	"github.com/edreed/go-batch"
 	"k8s.io/klog/v2"
+	"k8s.io/klog/v2/klogr"
 	"k8s.io/utils/pointer"
 )
 
@@ -24,22 +25,29 @@ func KeyFromAttributes(subscriptionID, resourceGroup, resourceName string) strin
 		keyAttributesSeparator,)
 }
 
-func NewDiskOperationBatchProcessor(az *Cloud) error {
+func NewDiskOperationBatchProcessor(az *Cloud) {
 	attachBatch := func(ctx context.Context, key string, values []interface{}) ([]interface{}, error) {
+		klog.Infof("here 1")
 		disksToAttach := make([]DiskOperationParams, len(values))
 		for i, value := range values {
 			disksToAttach[i] = value.(DiskOperationParams)
 		}
+
+		klog.Infof("here 2")
 
 		lunChans, err := az.attachDiskBatchToNode(ctx, disksToAttach)
 		if err != nil {
 			return nil, err
 		}
 
+		klog.Infof("here 3")
+
 		results := make([]interface{}, len(lunChans))
 		for i, lun := range lunChans {
 			results[i] = lun
 		}
+
+		klog.Infof("here 4")
 
 		return results, nil
 	}
@@ -58,10 +66,21 @@ func NewDiskOperationBatchProcessor(az *Cloud) error {
 		return make([]interface{}, len(disksToDetach)), nil
 	}
 
-	az.DiskOperationBatchProcessor.AttachDiskProcessor = batch.NewProcessor(attachBatch, nil)
-	az.DiskOperationBatchProcessor.DetachDiskProcessor = batch.NewProcessor(detachBatch, nil)
+	logger := klogr.NewWithOptions(klogr.WithFormat(klogr.FormatKlog)).WithName("azuredisk-csi-driver").WithValues("type", "batch")
 
-	return nil
+	processorOptions := []batch.ProcessorOption{
+		batch.WithVerboseLogLevel(3),
+	}
+
+	attachDiskProcessorOptions := append(processorOptions,
+		batch.WithLogger(logger.WithValues("operation", "attach_disk")),)
+
+	detachDiskProcessorOptions := append(processorOptions,
+		batch.WithLogger(logger.WithValues("operation", "detach_disk")),)
+	
+	az.DiskOperationBatchProcessor = &DiskOperationBatchProcessor{}
+	az.DiskOperationBatchProcessor.AttachDiskProcessor = batch.NewProcessor(attachBatch, attachDiskProcessorOptions...)
+	az.DiskOperationBatchProcessor.DetachDiskProcessor = batch.NewProcessor(detachBatch, detachDiskProcessorOptions...)
 }
 
 func (az *Cloud) attachDiskBatchToNode(ctx context.Context, toBeAttachedDisks []DiskOperationParams) ([]chan (AttachDiskResult), error) {
@@ -136,8 +155,11 @@ func (az *Cloud) attachDiskBatchToNode(ctx context.Context, toBeAttachedDisks []
 			}
 			disks = append(disks, newDisk)
 		}
+		klog.Infof("async: %+v", tbaDisk.Async)
 		async = async || *tbaDisk.Async
 	}
+
+	klog.Infof("creating new VM for update")
 
 	newVM := armcompute.VirtualMachineScaleSetVM{
 		Properties: &armcompute.VirtualMachineScaleSetVMProperties{
@@ -146,6 +168,8 @@ func (az *Cloud) attachDiskBatchToNode(ctx context.Context, toBeAttachedDisks []
 			},
 		},
 	}
+
+	klog.Infof("calling client to update")
 
 	poller, err := az.VMSSVMClient.BeginUpdate(ctx, az.ResourceGroup, *entry.VMSSName, *entry.InstanceID, newVM, nil)
 	if err != nil {
@@ -170,6 +194,8 @@ func (az *Cloud) attachDiskBatchToNode(ctx context.Context, toBeAttachedDisks []
 			}
 		}
 
+		klog.Infof("polling")
+
 		resp, err = poller.PollUntilDone(ctx, nil)
 		if err != nil {
 			err = fmt.Errorf("failed to pull result: %v", err)
@@ -187,6 +213,8 @@ func (az *Cloud) attachDiskBatchToNode(ctx context.Context, toBeAttachedDisks []
 	} else {
 		attach()
 	}
+
+	klog.Infof("updating cache")
 
 	// update the cache
 	az.VMSSVMCache.SetVMSSAndVM(*entry.VMSSName, *entry.Name, *entry.InstanceID, *entry.ResourceGroup, &resp.VirtualMachineScaleSetVM)
@@ -256,7 +284,7 @@ func (az *Cloud) detachDiskBatchFromNode(ctx context.Context, toBeDetachedDisks 
 			err = fmt.Errorf("failed to pull result: %v", err)
 		}
 
-		for i, _ := range toBeDetachedDisks {
+		for i := range toBeDetachedDisks {
 			errChans[i] <- DetachDiskResult{Err: err}
 		}
 	}()

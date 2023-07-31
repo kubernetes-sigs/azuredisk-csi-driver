@@ -750,6 +750,8 @@ func (c *CloudProvisioner) PublishVolume(
 
 			batchKey := azureutils.KeyFromAttributes(c.cloud.SubscriptionID, strings.ToLower(c.cloud.ResourceGroup), strings.ToLower(string(nodeName)))
 			waitForBatch = true
+			klog.Infof("processor: %+v", c.cloud.DiskOperationBatchProcessor)
+			klog.Infof("attach proccesor: %+v", c.cloud.DiskOperationBatchProcessor.AttachDiskProcessor)
 			r, err := c.cloud.DiskOperationBatchProcessor.AttachDiskProcessor.Do(ctx, batchKey, diskToAttach)
 			if err == nil {
 				select {

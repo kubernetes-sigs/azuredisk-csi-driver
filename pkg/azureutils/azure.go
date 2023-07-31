@@ -9,7 +9,6 @@ import (
 
 	"strconv"
 	"strings"
-	"sync"
 
 	"time"
 
@@ -33,7 +32,6 @@ import (
 )
 
 type DiskOperationBatchProcessor struct {
-	ToBeAttachedDisksMap		  *sync.Map
 	AttachDiskProcessor			  *batch.Processor
 	DetachDiskProcessor			  *batch.Processor
 }
@@ -292,8 +290,9 @@ func (az *Cloud) InitializeCloudFromConfig(ctx context.Context, config *Config, 
 }
 
 func (az *Cloud) ConfigAzureClients() {
+	klog.Infof("begin configuring clients")
 
-	cred, err := azidentity.NewDefaultAzureCredential(nil)
+	cred, err := azidentity.NewClientSecretCredential(az.TenantID, az.AADClientID, az.AADClientSecret, nil)
 	if err != nil {
 		klog.Fatalf("failed to obtain new credential: %v", err)
 	}
