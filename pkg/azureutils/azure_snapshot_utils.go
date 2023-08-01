@@ -115,7 +115,7 @@ func NewAzureDiskSnapshot(sourceVolumeID string, snapshot *armcompute.Snapshot) 
 		return nil, fmt.Errorf("timeCreated of snapshot property is nil")
 	}
 
-	creationTime := metav1.NewTime(*snapshot.Properties.TimeCreated)
+	creationTime := metav1.NewTime(snapshot.Properties.TimeCreated.Round(0))
 
 	if snapshot.Properties.ProvisioningState == nil {
 		return nil, fmt.Errorf("provisioningState of snapshot property is nil")

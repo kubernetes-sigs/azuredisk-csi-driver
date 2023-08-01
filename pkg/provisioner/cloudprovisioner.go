@@ -738,11 +738,14 @@ func (c *CloudProvisioner) PublishVolume(
 				case <-ctx.Done():
 					resultErr = ctx.Err()
 				case result := <-r.(chan (azureutils.AttachDiskResult)):
+					klog.Infof("result.Err: %v", result.Err)
 					if resultErr = result.Err; resultErr == nil {
 						resultLun = result.Lun
 					}
 				}
 			}
+
+			resultErr = err
 
 			attachResult.ResultChannel() <- resultErr
 			close(attachResult.ResultChannel())
@@ -1129,7 +1132,7 @@ func (c *CloudProvisioner) GetSourceDiskSize(ctx context.Context, resourceGroup,
 	}
 	result, rerr := c.cloud.DisksClient.Get(ctx, resourceGroup, diskName, nil)
 	if rerr != nil {
-		return nil, rerr
+		return nil, fmt.Errorf("disk not found: %v", rerr)
 	}
 	if result.Properties == nil {
 		return nil, status.Error(codes.Internal, fmt.Sprintf("DiskProperty not found for disk (%s) in resource group (%s)", diskName, resourceGroup))
@@ -1194,7 +1197,7 @@ func (c *CloudProvisioner) getSnapshotByID(ctx context.Context, resourceGroup st
 
 	snapshot, rerr := c.cloud.SnapshotsClient.Get(ctx, resourceGroupName, snapshotNameVal, nil)
 	if rerr != nil {
-		return nil, status.Error(codes.Internal, fmt.Sprintf("get snapshot %s from rg(%s) error: %v", snapshotNameVal, resourceGroupName, rerr.Error()))
+		return nil, status.Error(codes.Internal, fmt.Sprintf("get snapshot %s from rg(%s) error: %v", snapshotNameVal, resourceGroupName, rerr))
 	}
 
 	return azureutils.NewAzureDiskSnapshot(sourceVolumeID, &snapshot.Snapshot)

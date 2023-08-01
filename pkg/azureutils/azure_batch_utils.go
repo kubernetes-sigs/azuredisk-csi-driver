@@ -3,6 +3,7 @@ package azureutils
 import (
 	"context"
 	"fmt"
+	"path"
 	"strings"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/to"
@@ -102,8 +103,16 @@ func (az *Cloud) attachDiskBatchToNode(ctx context.Context, toBeAttachedDisks []
 
 	entry, resultErr := az.GetVMSSVM(ctx, *toBeAttachedDisks[0].VMName)
 	if resultErr != nil {
+		klog.Infof("error :%+v", resultErr)
 		return nil, fmt.Errorf("failed to get VM: %v", resultErr)
 	}
+
+	// vmss, err := GetLastSegment(*entry.VMSSName, "/")
+	// if err != nil {
+	// 	return nil, err
+	// }
+	
+	vmss := path.Base(*entry.VMSSName)
 
 	var disks []*armcompute.DataDisk
 	if entry != nil && entry.VM != nil && entry.VM.Properties != nil && entry.VM.Properties.StorageProfile != nil && entry.VM.Properties.StorageProfile.DataDisks != nil {
@@ -172,8 +181,6 @@ func (az *Cloud) attachDiskBatchToNode(ctx context.Context, toBeAttachedDisks []
 		async = async || *tbaDisk.Async
 	}
 
-	klog.Infof("creating new VM for update")
-
 	newVM := armcompute.VirtualMachineScaleSetVM{
 		Properties: &armcompute.VirtualMachineScaleSetVMProperties{
 			StorageProfile: &armcompute.StorageProfile{
@@ -182,9 +189,7 @@ func (az *Cloud) attachDiskBatchToNode(ctx context.Context, toBeAttachedDisks []
 		},
 	}
 
-	klog.Infof("calling client to update")
-
-	poller, err := az.VMSSVMClient.BeginUpdate(ctx, az.ResourceGroup, *entry.VMSSName, *entry.InstanceID, newVM, nil)
+	poller, err := az.VMSSVMClient.BeginUpdate(ctx, az.ResourceGroup, vmss, *entry.InstanceID, newVM, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to finish request: %v", err)
 	}
@@ -206,8 +211,6 @@ func (az *Cloud) attachDiskBatchToNode(ctx context.Context, toBeAttachedDisks []
 				defer cancel()
 			}
 		}
-
-		klog.Infof("polling")
 
 		resp, err = poller.PollUntilDone(ctx, nil)
 		if err != nil {

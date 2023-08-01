@@ -57,12 +57,9 @@ func (c *Cloud) GetVMSSVM(ctx context.Context, vmName string) (*VMCacheEntry, er
 
 	fullScaleSetName, vmss, found := c.getVMSSFromNodeName(vmName)
 
-	klog.Infof("found: %+v", found)
-
 	if !found {
 		vm, err := c.getVMFromClient(ctx, scaleSetName, instanceID)
 		if err != nil {
-			klog.Infof("Err: %+v", err)
 			return nil, err
 		}
 
@@ -154,15 +151,10 @@ func getScaleSetName(fullScaleSetName string) (string, error) {
 }
 
 func (c *Cloud) getVMFromClient(ctx context.Context, scaleSetName, instanceID string) (*armcompute.VirtualMachineScaleSetVM, error) {
-	klog.Infof("client: %+v", c.VMSSVMClient)
 	resVM, err := c.VMSSVMClient.Get(ctx, c.ResourceGroup, scaleSetName, instanceID, nil)
 	if err != nil {
-		klog.Infof("err: %+v", err)
 		return nil, fmt.Errorf("failed to finish the request: %v", err)
 	}
-
-	klog.Infof("err: %+v", err)
-
 	return &resVM.VirtualMachineScaleSetVM, nil
 }
 
@@ -187,14 +179,11 @@ func (c *Cloud) getVMSSFromNodeName(nodeName string) (string, *VMSSCacheEntry, b
 }
 
 func GetInstanceIDAndScaleSetNameFromNodeName(nodeName string) (string, string, error) {
-	klog.Infof("nodename: %+v", nodeName)
 	nameLength := len(nodeName)
 	if nameLength < 6 {
 		return "", "", fmt.Errorf("not a vmss instance")
 	}
 	scaleSetName := fmt.Sprintf("%s", string(nodeName[:nameLength-6]))
-
-	klog.Infof("id: %s", string((nodeName)[nameLength-6:]))
 
 	id, err := strconv.Atoi(string((nodeName)[nameLength-6:]))
 	if err != nil {
