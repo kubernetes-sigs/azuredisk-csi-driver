@@ -3,7 +3,6 @@ package azureutils
 import (
 	"context"
 	"fmt"
-	"path"
 	"strings"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/to"
@@ -103,17 +102,14 @@ func (az *Cloud) attachDiskBatchToNode(ctx context.Context, toBeAttachedDisks []
 
 	entry, resultErr := az.GetVMSSVM(ctx, *toBeAttachedDisks[0].VMName)
 	if resultErr != nil {
-		klog.Infof("error :%+v", resultErr)
 		return nil, fmt.Errorf("failed to get VM: %v", resultErr)
 	}
 
-	// vmss, err := GetLastSegment(*entry.VMSSName, "/")
-	// if err != nil {
-	// 	return nil, err
-	// }
+	vmss, err := GetLastSegment(*entry.VMSSName, "/")
+	if err != nil {
+		return nil, err
+	}
 	
-	vmss := path.Base(*entry.VMSSName)
-
 	var disks []*armcompute.DataDisk
 	if entry != nil && entry.VM != nil && entry.VM.Properties != nil && entry.VM.Properties.StorageProfile != nil && entry.VM.Properties.StorageProfile.DataDisks != nil {
 		disks = entry.VM.Properties.StorageProfile.DataDisks
