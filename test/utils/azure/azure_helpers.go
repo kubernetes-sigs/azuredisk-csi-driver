@@ -33,13 +33,8 @@ import (
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/network/armnetwork"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/resources/armresources"
 
-	// "github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2022-03-01/compute"
-	// "github.com/Azure/azure-sdk-for-go/services/network/mgmt/2019-06-01/network"
-	// "github.com/Azure/azure-sdk-for-go/services/resources/mgmt/2018-05-01/resources"
 	"github.com/Azure/go-autorest/autorest/azure"
-	// "github.com/jongio/azidext/go/azidext"
 	"github.com/stretchr/testify/assert"
-	"k8s.io/klog/v2"
 	"k8s.io/utils/pointer"
 )
 
@@ -103,7 +98,6 @@ func (az *Client) EnsureResourceGroup(ctx context.Context, name, location string
 		managedBy = group.ManagedBy
 	}
 
-	klog.Infof("EnsureRG: %+v, %+v, %+v", name, location, managedBy)
 	// Tags for correlating resource groups with prow jobs on testgrid
 	tags["buildID"] = stringPointer(os.Getenv("BUILD_ID"))
 	tags["jobName"] = stringPointer(os.Getenv("JOB_NAME"))
@@ -116,7 +110,6 @@ func (az *Client) EnsureResourceGroup(ctx context.Context, name, location string
 		Tags:      tags,
 	}, nil)
 	if err != nil {
-		klog.Infof("")
 		return &response.ResourceGroup, err
 	}
 
@@ -374,20 +367,6 @@ func getClient(env azure.Environment, subscriptionID, tenantID string, cred *azi
 	if !strings.HasSuffix(scope, "/.default") {
 		scope += "/.default"
 	}
-	// Use an adapter so azidentity in the Azure SDK can be used as Authorizer
-	// when calling the Azure Management Packages, which we currently use. Once
-	// the Azure SDK clients (found in /sdk) move to stable, we can update our
-	// clients and they will be able to use the creds directly without the
-	// authorizer.
-	// authorizer := azidext.NewTokenCredentialAdapter(cred, []string{scope})
-
-	// c.groupsClient.Authorizer = authorizer
-	// c.vmClient.Authorizer = authorizer
-	// c.nicClient.Authorizer = authorizer
-	// c.subnetsClient.Authorizer = authorizer
-	// c.vnetClient.Authorizer = authorizer
-	// c.disksClient.Authorizer = authorizer
-	// c.sshPublicKeysClient.Authorizer = authorizer
 
 	return c
 }

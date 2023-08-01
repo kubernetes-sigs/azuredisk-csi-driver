@@ -19,6 +19,7 @@ func GetTestCloud(ctrl *gomock.Controller) (*Cloud) {
 		},
 		VMSSVMCache: NewCache(),
 	}
+	NewDiskOperationBatchProcessor(az)
 
 	return az
 }

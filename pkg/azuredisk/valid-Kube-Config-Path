@@ -1,0 +1,17 @@
+
+    apiVersion: v1
+    clusters:
+    - cluster:
+        server: https://foo-cluster-dns-57e0bda1.hcp.westus2.azmk8s.io:443
+      name: foo-cluster
+    contexts:
+    - context:
+        cluster: foo-cluster
+        user: clusterUser_abhib-resources_foo-cluster
+      name: foo-cluster
+    current-context: foo-cluster
+    kind: Config
+    preferences: {}
+    users:
+    - name: clusterUser_abhib-resources_foo-cluster
+      user:

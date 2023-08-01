@@ -46,7 +46,6 @@ import (
 	k8sRuntime "k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	testingClient "k8s.io/client-go/testing"
-	"k8s.io/klog/v2"
 	"k8s.io/utils/pointer"
 	azdiskv1beta2 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1beta2"
 	azdisk "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/client/clientset/versioned"
@@ -414,10 +413,6 @@ users:
 			-1,
 			false,
 			-1)
-		klog.Infof("line 416: test %+v %+v", test, err)
-		if test.expectedErr != nil {
-			klog.Infof("line 419 expected %+v", test.expectedErr)
-		}
 		if test.expectedErr != nil && !reflect.DeepEqual(err, test.expectedErr) && (err == nil || !strings.Contains(err.Error(), test.expectedErr.Error())) {
 			t.Errorf("desc: %s,\n input: %q, GetCloudProvider err: %v, expectedErr: %v", test.desc, test.kubeconfig, err, test.expectedErr)
 		}

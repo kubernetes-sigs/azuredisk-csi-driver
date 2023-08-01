@@ -1,7 +1,5 @@
-
 //go:build azurediskv2
 // +build azurediskv2
-
 
 /*
 Copyright 2017 The Kubernetes Authors.
@@ -409,6 +407,8 @@ func (d *DriverV2) NodeGetInfo(ctx context.Context, req *csi.NodeGetInfoRequest)
 		if failureDomain == "" {
 			failureDomain = failureDomainFromLabels
 		}
+
+		klog.V(2).Infof("NodeGetInfo, nodeName: %s, failureDomain: %s", d.NodeID, failureDomain)
 
 		if azureutils.IsValidAvailabilityZone(failureDomain, d.cloudProvisioner.GetLocation()) {
 			topology.Segments[topologyKey] = failureDomain

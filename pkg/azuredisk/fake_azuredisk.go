@@ -37,7 +37,6 @@ import (
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/optimization/mockoptimization"
 	volumehelper "sigs.k8s.io/azuredisk-csi-driver/pkg/util"
 	azcache "sigs.k8s.io/cloud-provider-azure/pkg/cache"
-	//"sigs.k8s.io/cloud-provider-azure/pkg/provider"
 )
 
 const (

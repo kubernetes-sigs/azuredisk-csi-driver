@@ -228,7 +228,6 @@ func (r *ReconcileAttachDetach) triggerAttach(ctx context.Context, azVolumeAttac
 			} else {
 				handleSuccess(true)
 			}
-
 		}
 
 		handleError = func() {

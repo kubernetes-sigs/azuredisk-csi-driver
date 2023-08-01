@@ -643,10 +643,6 @@ func GetCloudProviderFromClient(
 			return nil, fmt.Errorf("no cloud config provided, error: %v", err)
 		}
 	} else {
-		// configure batching parameters
-		// I cannot find this field even in the original azure.Config type
-		// config.AttachDetachBatchInitialDelayInMillis = cloudConfig.AzureClientAttachDetachBatchInitialDelayInMillis
-
 		config.UserAgent = userAgent
 
 		if cloudConfig.EnableTrafficManager && cloudConfig.TrafficManagerPort > 0 {
@@ -700,6 +696,8 @@ func GetCloudProviderFromClient(
 	az.ConfigAzureClients()
 
 	NewDiskOperationBatchProcessor(az)
+
+	klog.Infof("processor: %+v", az.DiskOperationBatchProcessor)
 
 	return az, nil
 }

@@ -40,7 +40,6 @@ import (
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/provisioner"
 
 	volumehelper "sigs.k8s.io/azuredisk-csi-driver/pkg/util"
-	// "sigs.k8s.io/cloud-provider-azure/pkg/provider"
 )
 
 type fakeDriverV2 struct {

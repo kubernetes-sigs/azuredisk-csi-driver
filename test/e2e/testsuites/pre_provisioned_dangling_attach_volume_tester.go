@@ -19,7 +19,7 @@ package testsuites
 import (
 	"context"
 
-	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2022-03-01/compute"
+	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute/v5"
 	"sigs.k8s.io/azuredisk-csi-driver/test/e2e/driver"
 
 	"github.com/onsi/ginkgo/v2"
@@ -31,14 +31,13 @@ import (
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
 	"sigs.k8s.io/azuredisk-csi-driver/test/resources"
 	nodeutil "sigs.k8s.io/azuredisk-csi-driver/test/utils/node"
-	"sigs.k8s.io/cloud-provider-azure/pkg/provider"
 )
 
 // PreProvisionedDanglingAttachVolumeTest will provision required PV(s), PVC(s) and Pod(s)
 // Testing that a volume could be reattached to a different node on DanglingAttachError
 type PreProvisionedDanglingAttachVolumeTest struct {
 	CSIDriver     driver.PreProvisionedVolumeTestDriver
-	AzureCloud    *provider.Cloud
+	AzureCloud    *azureutils.Cloud
 	Pod           resources.PodDetails
 	VolumeContext map[string]string
 }
@@ -68,9 +67,9 @@ func (t *PreProvisionedDanglingAttachVolumeTest) Run(client clientset.Interface,
 	}
 	resourceGroup, err := azureutils.GetResourceGroupFromURI(diskURI)
 	framework.ExpectNoError(err)
-	disk, rerr := t.AzureCloud.DisksClient.Get(context.Background(), t.AzureCloud.SubscriptionID, resourceGroup, diskName)
-	framework.ExpectNoError(rerr.Error())
-	_, err = t.AzureCloud.AttachDisk(context.Background(), false, diskName, diskURI, types.NodeName(node0Name), compute.CachingTypes(cachingMode), &disk)
+	resp, rerr := t.AzureCloud.DisksClient.Get(context.Background(), resourceGroup, diskName, nil)
+	framework.ExpectNoError(rerr)
+	_, err = t.AzureCloud.AttachDisk(context.Background(), false, diskName, diskURI, types.NodeName(node0Name), armcompute.CachingTypes(cachingMode), &resp.Disk)
 	framework.ExpectNoError(err)
 
 	// Make node#0 unschedulable to ensure that pods are scheduled on a different node

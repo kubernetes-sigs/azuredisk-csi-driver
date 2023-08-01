@@ -4,13 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"crypto/rsa"
-	"crypto/x509"
-
-	"github.com/Azure/go-autorest/autorest/adal"
 	"github.com/Azure/go-autorest/autorest/azure"
-
-	"golang.org/x/crypto/pkcs12"
 
 	"k8s.io/klog/v2"
 )
@@ -84,20 +78,6 @@ func ParseAzureEnvironment(cloudName, resourceManagerEndpoint, identitySystem st
 	return &env, err
 }
 
-// decodePkcs12 decodes a PKCS#12 client certificate by extracting the public certificate and
-// the private RSA key
-func decodePkcs12(pkcs []byte, password string) (*x509.Certificate, *rsa.PrivateKey, error) {
-	privateKey, certificate, err := pkcs12.Decode(pkcs, password)
-	if err != nil {
-		return nil, nil, fmt.Errorf("decoding the PKCS#12 client certificate: %w", err)
-	}
-	rsaPrivateKey, isRsaKey := privateKey.(*rsa.PrivateKey)
-	if !isRsaKey {
-		return nil, nil, fmt.Errorf("PKCS#12 certificate must contain a RSA private key")
-	}
-
-	return certificate, rsaPrivateKey, nil
-}
 
 // azureStackOverrides ensures that the Environment matches what AKSe currently generates for Azure Stack
 func azureStackOverrides(env *azure.Environment, resourceManagerEndpoint, identitySystem string) {
@@ -109,97 +89,4 @@ func azureStackOverrides(env *azure.Environment, resourceManagerEndpoint, identi
 		env.ActiveDirectoryEndpoint = strings.TrimSuffix(env.ActiveDirectoryEndpoint, "/")
 		env.ActiveDirectoryEndpoint = strings.TrimSuffix(env.ActiveDirectoryEndpoint, "adfs")
 	}
-}
-
-// UsesNetworkResourceInDifferentTenant determines whether the AzureAuthConfig indicates to use network resources in
-// different AAD Tenant than those for the cluster. Return true when NetworkResourceTenantID is specified  and not equal
-// to one defined in global configs
-func (config *AzureAuthConfig) UsesNetworkResourceInDifferentTenant() bool {
-	return len(config.NetworkResourceTenantID) > 0 && !strings.EqualFold(config.NetworkResourceTenantID, config.TenantID)
-}
-
-// GetMultiTenantServicePrincipalToken is used when (and only when) NetworkResourceTenantID and NetworkResourceSubscriptionID are specified to have different values than TenantID and SubscriptionID.
-//
-// In that scenario, network resources are deployed in different AAD Tenant and Subscription than those for the cluster,
-// and this method creates a new multi-tenant service principal token based on the configuration.
-//
-// PrimaryToken of the returned multi-tenant token is for the AAD Tenant specified by TenantID, and AuxiliaryToken of the returned multi-tenant token is for the AAD Tenant specified by NetworkResourceTenantID.
-//
-// Azure VM/VMSS clients use this multi-tenant token, in order to operate those VM/VMSS in AAD Tenant specified by TenantID, and meanwhile in their payload they are referencing network resources (e.g. Load Balancer, Network Security Group, etc.) in AAD Tenant specified by NetworkResourceTenantID.
-func GetMultiTenantServicePrincipalToken(config *AzureAuthConfig, env *azure.Environment) (*adal.MultiTenantServicePrincipalToken, error) {
-	err := config.checkConfigWhenNetworkResourceInDifferentTenant()
-	if err != nil {
-		return nil, fmt.Errorf("got error getting multi-tenant service principal token: %w", err)
-	}
-
-	multiTenantOAuthConfig, err := adal.NewMultiTenantOAuthConfig(
-		env.ActiveDirectoryEndpoint, config.TenantID, []string{config.NetworkResourceTenantID}, adal.OAuthOptions{})
-	if err != nil {
-		return nil, fmt.Errorf("creating the multi-tenant OAuth config: %w", err)
-	}
-
-	if len(config.AADClientSecret) > 0 {
-		klog.V(2).Infoln("azure: using client_id+client_secret to retrieve multi-tenant access token")
-		return adal.NewMultiTenantServicePrincipalToken(
-			multiTenantOAuthConfig,
-			config.AADClientID,
-			config.AADClientSecret,
-			env.ServiceManagementEndpoint)
-	}
-
-	if len(config.AADClientCertPath) > 0 && len(config.AADClientCertPassword) > 0 {
-		return nil, fmt.Errorf("AAD Application client certificate authentication is not supported in getting multi-tenant service principal token")
-	}
-
-	return nil, ErrorNoAuth
-}
-
-// GetNetworkResourceServicePrincipalToken is used when (and only when) NetworkResourceTenantID and NetworkResourceSubscriptionID are specified to have different values than TenantID and SubscriptionID.
-//
-// In that scenario, network resources are deployed in different AAD Tenant and Subscription than those for the cluster,
-// and this method creates a new service principal token for network resources tenant based on the configuration.
-//
-// Azure network resource (Load Balancer, Public IP, Route Table, Network Security Group and their sub level resources) clients use this multi-tenant token, in order to operate resources in AAD Tenant specified by NetworkResourceTenantID.
-func GetNetworkResourceServicePrincipalToken(config *AzureAuthConfig, env *azure.Environment) (*adal.ServicePrincipalToken, error) {
-	err := config.checkConfigWhenNetworkResourceInDifferentTenant()
-	if err != nil {
-		return nil, fmt.Errorf("got error(%w) in getting network resources service principal token", err)
-	}
-
-	oauthConfig, err := adal.NewOAuthConfigWithAPIVersion(env.ActiveDirectoryEndpoint, config.NetworkResourceTenantID, nil)
-	if err != nil {
-		return nil, fmt.Errorf("creating the OAuth config for network resources tenant: %w", err)
-	}
-
-	if len(config.AADClientSecret) > 0 {
-		klog.V(2).Infoln("azure: using client_id+client_secret to retrieve access token for network resources tenant")
-		return adal.NewServicePrincipalToken(
-			*oauthConfig,
-			config.AADClientID,
-			config.AADClientSecret,
-			env.ServiceManagementEndpoint)
-	}
-
-	if len(config.AADClientCertPath) > 0 && len(config.AADClientCertPassword) > 0 {
-		return nil, fmt.Errorf("AAD Application client certificate authentication is not supported in getting network resources service principal token")
-	}
-
-	return nil, ErrorNoAuth
-}
-
-// checkConfigWhenNetworkResourceInDifferentTenant checks configuration for the scenario of using network resource in different tenant
-func (config *AzureAuthConfig) checkConfigWhenNetworkResourceInDifferentTenant() error {
-	if !config.UsesNetworkResourceInDifferentTenant() {
-		return fmt.Errorf("NetworkResourceTenantID must be configured")
-	}
-
-	if strings.EqualFold(config.IdentitySystem, ADFSIdentitySystem) {
-		return fmt.Errorf("ADFS identity system is not supported")
-	}
-
-	if config.UseManagedIdentityExtension {
-		return fmt.Errorf("managed identity is not supported")
-	}
-
-	return nil
 }

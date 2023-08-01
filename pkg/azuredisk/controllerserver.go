@@ -43,7 +43,6 @@ import (
 	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/optimization"
-	"sigs.k8s.io/azuredisk-csi-driver/pkg/provisioner"
 	volumehelper "sigs.k8s.io/azuredisk-csi-driver/pkg/util"
 	"sigs.k8s.io/cloud-provider-azure/pkg/metrics"
 	azure "sigs.k8s.io/cloud-provider-azure/pkg/provider"
@@ -774,7 +773,7 @@ func (d *Driver) listVolumesByResourceGroup(ctx context.Context, resourceGroup s
 			nodeList := []string{}
 
 			if disk.ManagedBy != nil {
-				attachedNode, err := provisioner.GetLastSegment(*disk.ManagedBy, "/")
+				attachedNode, err := azureutils.GetLastSegment(*disk.ManagedBy, "/")
 				if err != nil {
 					return listVolumeStatus{err: err}
 				}

@@ -91,6 +91,7 @@ func NewDiskOperationBatchProcessor(az *Cloud) {
 		batch.WithLogger(logger.WithValues("operation", "detach_disk")),)
 	
 	az.DiskOperationBatchProcessor = &DiskOperationBatchProcessor{}
+	klog.Infof("processor: %+v", az.DiskOperationBatchProcessor)
 	az.DiskOperationBatchProcessor.AttachDiskProcessor = batch.NewProcessor(attachBatch, attachDiskProcessorOptions...)
 	az.DiskOperationBatchProcessor.DetachDiskProcessor = batch.NewProcessor(detachBatch, detachDiskProcessorOptions...)
 }
@@ -101,7 +102,7 @@ func (az *Cloud) attachDiskBatchToNode(ctx context.Context, toBeAttachedDisks []
 
 	entry, resultErr := az.GetVMSSVM(ctx, *toBeAttachedDisks[0].VMName)
 	if resultErr != nil {
-		return nil, fmt.Errorf("failed to get storage profile: %v", resultErr)
+		return nil, fmt.Errorf("failed to get VM: %v", resultErr)
 	}
 
 	var disks []*armcompute.DataDisk

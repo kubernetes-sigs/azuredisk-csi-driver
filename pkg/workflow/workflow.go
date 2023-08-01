@@ -32,7 +32,6 @@ import (
 
 	"k8s.io/apimachinery/pkg/api/meta"
 	k8sRuntime "k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/klog/v2"
 	"k8s.io/klog/v2/klogr"
 	"k8s.io/utils/pointer"
 	azdiskv1beta2 "sigs.k8s.io/azuredisk-csi-driver/pkg/apis/azuredisk/v1beta2"
@@ -153,7 +152,6 @@ func (w Workflow) Finish(errs ...error) {
 	}
 
 	if w.parentWorkflow != nil {
-		klog.Infof("workflow: %+v", w)
 		w.parentWorkflow.Finish(errs...)
 	}
 }

@@ -1,4 +1,3 @@
-// go:build !azurediskv2
 //go:build !azurediskv2
 // +build !azurediskv2
 

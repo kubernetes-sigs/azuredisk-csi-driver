@@ -188,7 +188,7 @@ func (c *CloudProvisioner) GetInstanceType(ctx context.Context, nodeID string) (
 		}
 
 		if resp.VirtualMachine.Properties != nil && resp.VirtualMachine.Properties.AvailabilitySet != nil {
-			asName, err := GetLastSegment(*resp.VirtualMachine.Properties.AvailabilitySet.ID, "/")
+			asName, err := azureutils.GetLastSegment(*resp.VirtualMachine.Properties.AvailabilitySet.ID, "/")
 			if err != nil {
 				return "", fmt.Errorf("failed to get asName from availability set ID: %v", err)
 			}
@@ -203,7 +203,7 @@ func (c *CloudProvisioner) GetInstanceType(ctx context.Context, nodeID string) (
 			}
 
 		} else if resp.VirtualMachine.Properties != nil && resp.VirtualMachine.Properties.VirtualMachineScaleSet != nil {
-			ssName, err := GetLastSegment(*resp.VirtualMachine.Properties.VirtualMachineScaleSet.ID, "/")
+			ssName, err := azureutils.GetLastSegment(*resp.VirtualMachine.Properties.VirtualMachineScaleSet.ID, "/")
 			if err != nil {
 				return "", fmt.Errorf("failed to get ssName from scale set ID: %v", err)
 			}
@@ -238,7 +238,6 @@ func (c *CloudProvisioner) CreateVolume(
 	secrets map[string]string,
 	volumeContentSource *azdiskv1beta2.ContentVolumeSource,
 	accessibilityRequirements *azdiskv1beta2.TopologyRequirement) (*azdiskv1beta2.AzVolumeStatusDetail, error) {
-	klog.Infof("creating volume")
 	var err error
 	ctx, w := workflow.New(ctx)
 	defer func() { w.Finish(err) }()
@@ -257,8 +256,6 @@ func (c *CloudProvisioner) CreateVolume(
 	if diskParams.Location == "" {
 		diskParams.Location = c.cloud.Location
 	}
-
-	klog.Infof("checkpoint 261")
 
 	localCloud := c.cloud
 	isAdvancedPerfProfile := strings.EqualFold(diskParams.PerfProfile, azureconstants.PerfProfileAdvanced)
@@ -289,7 +286,6 @@ func (c *CloudProvisioner) CreateVolume(
 			return nil, err
 		}
 	}
-	klog.Infof("checkpoint 290")
 	// normalize values
 	var skuName armcompute.DiskStorageAccountTypes
 	skuName, err = azureutils.NormalizeStorageAccountType(diskParams.AccountType, localCloud.Config.Cloud, localCloud.Config.DisableAzureStackCloud)
@@ -310,9 +306,6 @@ func (c *CloudProvisioner) CreateVolume(
 	if err != nil {
 		return nil, status.Error(codes.InvalidArgument, err.Error())
 	}
-
-	klog.Infof("checkpoint 312")
-
 	selectedAvailabilityZone := pickAvailabilityZone(accessibilityRequirements, c.cloud.Location)
 	accessibleTopology := []azdiskv1beta2.Topology{}
 	if skuName == armcompute.DiskStorageAccountTypesStandardSSDZRS || skuName == armcompute.DiskStorageAccountTypesPremiumZRS {
@@ -325,7 +318,6 @@ func (c *CloudProvisioner) CreateVolume(
 			}
 			accessibleTopology = append(accessibleTopology, topology)
 		}
-
 		// make volume scheduled on all non-zone nodes
 		topology := azdiskv1beta2.Topology{
 			Segments: map[string]string{topologyKeyStr: ""},
@@ -352,7 +344,6 @@ func (c *CloudProvisioner) CreateVolume(
 	}
 
 	if ok, derr := c.CheckDiskCapacity(ctx, diskParams.ResourceGroup, diskParams.DiskName, requestGiB); !ok {
-		klog.Infof("355")
 		err = derr
 		return nil, err
 	}
@@ -632,7 +623,7 @@ func (c *CloudProvisioner) PublishVolume(
 			return
 		}
 
-		scaleSetName, err = GetLastSegment(fullScaleSetName, "/")
+		scaleSetName, err = azureutils.GetLastSegment(fullScaleSetName, "/")
 		if err != nil {
 			err = fmt.Errorf("failed to extract scaleset name: %v", err)
 			return
@@ -665,9 +656,7 @@ func (c *CloudProvisioner) PublishVolume(
 
 	// disk already attached to nodeName
 	if strings.EqualFold(string(nodeName), strings.ToLower(attachedNode)) {
-		klog.Infof("attached here state: %+v", vmState)
 		if vmState != nil && strings.ToLower(*vmState) == "failed" {
-			klog.Infof("failed state")
 			w.Logger().Infof("VM(%q) is in failed state, update VM first", nodeName)
 
 			poller, err := vmssVMClient.BeginUpdate(ctx, c.cloud.ResourceGroup, scaleSetName, instanceID, armcompute.VirtualMachineScaleSetVM{
@@ -743,8 +732,6 @@ func (c *CloudProvisioner) PublishVolume(
 			}
 
 			batchKey := azureutils.KeyFromAttributes(c.cloud.SubscriptionID, strings.ToLower(c.cloud.ResourceGroup), strings.ToLower(string(nodeName)))
-			klog.Infof("processor: %+v", c.cloud.DiskOperationBatchProcessor)
-			klog.Infof("attach proccesor: %+v", c.cloud.DiskOperationBatchProcessor.AttachDiskProcessor)
 			r, err := c.cloud.DiskOperationBatchProcessor.AttachDiskProcessor.Do(ctx, batchKey, diskToAttach)
 			if err == nil {
 				select {
@@ -1127,8 +1114,6 @@ func (c *CloudProvisioner) CheckDiskExists(ctx context.Context, diskURI string) 
 		return nil, nil
 	}
 
-	klog.Infof("disks cleint address: %+v", c.cloud.DisksClient)
-
 	disk, rerr := c.cloud.DisksClient.Get(ctx, resourceGroup, diskName, nil)
 	if rerr != nil {
 		return nil, rerr
@@ -1408,7 +1393,7 @@ func (c *CloudProvisioner) listVolumesByResourceGroup(ctx context.Context, resou
 			continue
 		}
 		// HyperVGeneration property is only setup for os disks. Only the non os disks should be included in the list
-		if disk.Properties == nil || *disk.Properties.HyperVGeneration == "" {
+		if disk.Properties == nil || disk.Properties.HyperVGeneration == nil || *disk.Properties.HyperVGeneration == "" {
 			nodeList := []string{}
 
 			if disk.ManagedBy != nil {
@@ -1477,29 +1462,19 @@ func (c *CloudProvisioner) isPerfOptimizationEnabled() bool {
 	return c.config.NodeConfig.EnablePerfOptimization 
 }
 
-func GetLastSegment(ID, separator string) (string, error) {
-	parts := strings.Split(ID, separator)
-	name := parts[len(parts)-1]
-	if len(name) == 0 {
-		return "", fmt.Errorf("resource name was missing from identifier")
-	}
-
-	return name, nil
-}
-
 func getInstanceIDFromProviderID(providerID, scaleSetName string) (string, error) {
 	if providerID == "" {
 		return providerID, fmt.Errorf("failed to get instanceID from providerID: providerID is empty")
 	}
 
-	instanceID, err := GetLastSegment(providerID, "/")
+	instanceID, err := azureutils.GetLastSegment(providerID, "/")
 	if err != nil {
 		klog.Warningf("failed to extract instanceID from providerID (%s): %v", providerID, err)
 		return "", err
 	}
 
 	if strings.HasPrefix(strings.ToLower(instanceID), strings.ToLower(scaleSetName)) {
-		instanceID, err = GetLastSegment(instanceID, "_")
+		instanceID, err = azureutils.GetLastSegment(instanceID, "_")
 		if err != nil {
 			klog.Warningf("failed to get instanceID: %v", err)
 			return "", err
@@ -1563,19 +1538,19 @@ func GetInstanceIDAndFullScaleSetNameFromProviderID(providerID string) (string, 
 		return "", "", fmt.Errorf("failed to get full scaleSet name: %v", err)
 	}
 
-	instanceID, err := GetLastSegment(providerID, "/")
+	instanceID, err := azureutils.GetLastSegment(providerID, "/")
 	if err != nil {
 		return "", "", fmt.Errorf("failed to extract from providerID: %v", err)
 	}
 
-	scaleSetName, err := GetLastSegment(fullScaleSetName, "/")
+	scaleSetName, err := azureutils.GetLastSegment(fullScaleSetName, "/")
 	if err != nil {
 		return "", "", fmt.Errorf("failed to get scaleSet name from full scaleSet name: %v", err)
 	}
 
 	// instanceID contains scaleSetName
 	if strings.HasPrefix(strings.ToLower(instanceID), strings.ToLower(scaleSetName)) {
-		instanceID, err = GetLastSegment(instanceID, "_")
+		instanceID, err = azureutils.GetLastSegment(instanceID, "_")
 		if err != nil {
 			return "", "", fmt.Errorf("failed to get instanceID: %v", err)
 		}
@@ -1596,7 +1571,7 @@ func (c *CloudProvisioner) GetNodeNameFromProviderID(ctx context.Context, provid
 
 	vmss, found := c.cloud.VMSSVMCache.VmssGetter(scaleSetName)
 	if !found {
-		scaleSetName, err = GetLastSegment(scaleSetName, "/")
+		scaleSetName, err = azureutils.GetLastSegment(scaleSetName, "/")
 		if err != nil {
 			return "", fmt.Errorf("failed to get scaleSetName from full scaleSetName: %v", err)
 		}
