@@ -76,6 +76,7 @@ var maxDataDiskCountMap = map[string]int64{
 	"STANDARD_B32ALS_V2":         32,
 	"STANDARD_B32AS_V2":          32,
 	"STANDARD_B32LS_V2":          32,
+	"STANDARD_B32S_V2":           32,
 	"STANDARD_B4ALS_V2":          8,
 	"STANDARD_B4AS_V2":           8,
 	"STANDARD_B4LS_V2":           8,
