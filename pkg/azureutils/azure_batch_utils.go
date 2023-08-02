@@ -138,9 +138,14 @@ func (az *Cloud) attachDiskBatchToNode(ctx context.Context, toBeAttachedDisks []
 		if attached {
 			klog.V(2).Infof("azureDisk - disk(%s) already attached to node(%s) on LUN(%d)", *tbaDisk.DiskURI, entry.Name, *tbaDisk.Lun)
 		} else {
-			storageProfile := entry.VM.Properties.StorageProfile
+			var storageProfile *armcompute.StorageProfile
+			if entry != nil && entry.VM != nil && entry.VM.Properties != nil && entry.VM.Properties.StorageProfile != nil {
+				storageProfile = entry.VM.Properties.StorageProfile
+			} else {
+				return nil, fmt.Errorf("failed to get vm's storage profile")
+			}
 			managedDisk := &armcompute.ManagedDiskParameters{ID: tbaDisk.DiskURI}
-			if *tbaDisk.DiskEncryptionSetID == "" {
+			if tbaDisk.DiskEncryptionSetID == nil || *tbaDisk.DiskEncryptionSetID == "" {
 				if storageProfile.OSDisk != nil &&
 					storageProfile.OSDisk.ManagedDisk != nil &&
 					storageProfile.OSDisk.ManagedDisk.DiskEncryptionSet != nil &&

@@ -738,7 +738,6 @@ func (c *CloudProvisioner) PublishVolume(
 				case <-ctx.Done():
 					resultErr = ctx.Err()
 				case result := <-r.(chan (azureutils.AttachDiskResult)):
-					klog.Infof("result.Err: %v", result.Err)
 					if resultErr = result.Err; resultErr == nil {
 						resultLun = result.Lun
 					}
@@ -777,6 +776,8 @@ func (c *CloudProvisioner) UnpublishVolume(
 
 	nodeName := types.NodeName(nodeID)
 
+	klog.Infof("nodename: %+v", string(nodeName))
+
 	var diskName string
 	diskName, err = azureutils.GetDiskName(volumeID)
 	if err != nil {
@@ -792,7 +793,7 @@ func (c *CloudProvisioner) UnpublishVolume(
 	}
 
 	batchKey := azureutils.KeyFromAttributes(c.cloud.SubscriptionID, strings.ToLower(c.cloud.ResourceGroup), strings.ToLower(string(nodeName)))
-	r, err := c.cloud.DiskOperationBatchProcessor.AttachDiskProcessor.Do(ctx, batchKey, diskToDetach)
+	r, err := c.cloud.DiskOperationBatchProcessor.DetachDiskProcessor.Do(ctx, batchKey, diskToDetach)
 	if err == nil {
 		select {
 		case <-ctx.Done():
@@ -1531,6 +1532,8 @@ func GetFullScaleSetNameFromProviderID(fullVMName string) (string, error) {
 		}
 		scaleSetName = fmt.Sprintf("%s/%s", scaleSetName, part)
 	}
+
+	klog.Infof("providerID: %+v\n scaleset: %+v", fullVMName, scaleSetName)
 
 	return "", fmt.Errorf("invalid providerID")
 }

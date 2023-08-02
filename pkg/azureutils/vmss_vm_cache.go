@@ -171,7 +171,11 @@ func (c *Cloud) DeleteVMFromCache(nodeName string) {
 func (c *Cloud) getVMSSFromNodeName(nodeName string) (string, *VMSSCacheEntry, bool) {
 	scaleSetName := nodeName[:(len(nodeName) - 6)]
 
+	klog.Infof("scaleset: %+v", scaleSetName)
+
 	fullScaleSetName := fmt.Sprintf("/subscriptions/%s/resourceGroups/%s/providers/Microsoft.Compute/virtualMachineScaleSets/%s", c.SubscriptionID, c.ResourceGroup, scaleSetName)
+
+	klog.Infof("full scaleSet: %+v", fullScaleSetName)
 
 	vmss, found := c.VMSSVMCache.VmssGetter(fullScaleSetName)
 
