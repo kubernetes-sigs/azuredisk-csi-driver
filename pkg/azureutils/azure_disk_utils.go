@@ -1416,7 +1416,24 @@ func isFatalNetError(err error) bool {
 }
 
 func isNetError(err error) bool {
-	return net.IsConnectionRefused(err) || net.IsConnectionReset(err) || net.IsTimeout(err) || net.IsProbableEOF(err)
+	return net.IsConnectionRefused(err) || net.IsConnectionReset(err) || net.IsTimeout(err) || net.IsProbableEOF(err) || isOtherNetError(err)
+}
+
+func isOtherNetError(err error) bool {
+	if err == nil {
+		return false
+	}
+
+	msg := err.Error()
+
+	switch {
+	case strings.Contains(msg, "broken pipe"):
+		return true
+	case strings.Contains(msg, "http2: client connection force closed via ClientConn.Close"):
+		return true
+	default:
+		return false
+	}
 }
 
 func ExitOnNetError(err error, force bool) {

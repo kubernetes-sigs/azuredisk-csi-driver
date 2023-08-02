@@ -282,8 +282,12 @@ func (r *ReconcileAttachDetach) triggerAttach(ctx context.Context, azVolumeAttac
 				_, uerr := reportError(azva, azdiskv1beta2.AttachmentFailed, attachErr)
 				return uerr
 			}
+
 			//nolint:contextcheck // final status update of the CRI must occur even when the current context's deadline passes.
-			_, _ = azureutils.UpdateCRIWithRetry(goCtx, nil, r.cachedClient, r.azClient, azVolumeAttachment, updateFunc, consts.ForcedUpdateMaxNetRetry, azureutils.UpdateCRIStatus)
+			if _, err := azureutils.UpdateCRIWithRetry(goCtx, nil, r.cachedClient, r.azClient, azVolumeAttachment, updateFunc, consts.ForcedUpdateMaxNetRetry, azureutils.UpdateCRIStatus); err != nil {
+				// There's nothing much we can do in this case, so just log the error and move on.
+				goWorkflow.Logger().Errorf(err, "failed to update CRI with final attach error status")
+			}
 		}
 
 		handleSuccess = func(asyncComplete bool) {
@@ -311,8 +315,17 @@ func (r *ReconcileAttachDetach) triggerAttach(ctx context.Context, azVolumeAttac
 			if asyncComplete && azVolumeAttachment.Spec.RequestedRole == azdiskv1beta2.PrimaryRole {
 				_ = r.updateVolumeAttachmentWithResult(goCtx, azVolumeAttachment)
 			}
-			updatedObj, _ = azureutils.UpdateCRIWithRetry(goCtx, nil, r.cachedClient, r.azClient, azVolumeAttachment, updateFunc, consts.ForcedUpdateMaxNetRetry, azureutils.UpdateCRIStatus)
-			azVolumeAttachment = updatedObj.(*azdiskv1beta2.AzVolumeAttachment)
+
+			if updatedObj, err := azureutils.UpdateCRIWithRetry(goCtx, nil, r.cachedClient, r.azClient, azVolumeAttachment, updateFunc, consts.ForcedUpdateMaxNetRetry, azureutils.UpdateCRIStatus); err != nil {
+				azVolumeAttachment = updatedObj.(*azdiskv1beta2.AzVolumeAttachment)
+			} else {
+				// There's nothing much we can do in this case, so just log the error and move on.
+				phase := "intermediate"
+				if asyncComplete {
+					phase = "final"
+				}
+				goWorkflow.Logger().Errorf(err, "failed to update CRI with %s attach success status", phase)
+			}
 		}
 
 		attachAndUpdate()
