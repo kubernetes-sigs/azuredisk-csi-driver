@@ -34,15 +34,12 @@ spec:
                     values:
                       - virtual-kubelet
       priorityClassName: system-node-critical
-      securityContext:
-        seccompProfile:
-          type: RuntimeDefault
       containers:
         - name: liveness-probe
           volumeMounts:
             - mountPath: C:\csi
               name: plugin-dir
-          image: mcr.microsoft.com/oss/kubernetes-csi/livenessprobe:v2.10.0
+          image: mcr.microsoft.com/oss/kubernetes-csi/livenessprobe:v2.8.0
           args:
             - "--csi-address=$(CSI_ENDPOINT)"
             - "--probe-timeout=3s"
@@ -58,7 +55,7 @@ spec:
               cpu: 10m
               memory: 40Mi
         - name: node-driver-registrar
-          image: mcr.microsoft.com/oss/kubernetes-csi/csi-node-driver-registrar:v2.8.0
+          image: mcr.microsoft.com/oss/kubernetes-csi/csi-node-driver-registrar:v2.6.2
           args:
             - "--v=2"
             - "--csi-address=$(CSI_ENDPOINT)"
@@ -94,12 +91,13 @@ spec:
               cpu: 30m
               memory: 40Mi
         - name: azuredisk
-          image: mcr.microsoft.com/oss/kubernetes-csi/azuredisk-csi:v1.28.1
+          image: mcr.microsoft.com/oss/kubernetes-csi/azuredisk-csi:v1.26.6
           imagePullPolicy: IfNotPresent
           args:
             - "--v=5"
             - "--endpoint=$(CSI_ENDPOINT)"
             - "--nodeid=$(KUBE_NODE_NAME)"
+            - "--metrics-address=0.0.0.0:29605"
             - "--allow-empty-cloud-config=true"
             - "--get-node-info-from-labels=false"
           ports:

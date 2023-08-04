@@ -19,6 +19,9 @@ spec:
       nodeSelector:
         kubernetes.io/os: linux  # add "kubernetes.io/role: master" to run controller on master node
       priorityClassName: system-cluster-critical
+      securityContext:
+        seccompProfile:
+          type: RuntimeDefault
       tolerations:
         - key: "node-role.kubernetes.io/master"
           operator: "Exists"
@@ -31,7 +34,7 @@ spec:
           effect: "NoSchedule"
       containers:
         - name: csi-provisioner
-          image: mcr.microsoft.com/oss/kubernetes-csi/csi-provisioner:v3.3.0
+          image: mcr.microsoft.com/oss/kubernetes-csi/csi-provisioner:v3.5.0
           args:
             - "--feature-gates=Topology=true"
             - "--csi-address=$(ADDRESS)"
@@ -57,16 +60,16 @@ spec:
               cpu: 10m
               memory: 20Mi
         - name: csi-attacher
-          image: mcr.microsoft.com/oss/kubernetes-csi/csi-attacher:v4.0.0
+          image: mcr.microsoft.com/oss/kubernetes-csi/csi-attacher:v4.3.0
           args:
             - "-v=2"
             - "-csi-address=$(ADDRESS)"
             - "-timeout=1200s"
             - "-leader-election"
             - "--leader-election-namespace=kube-system"
-            - "-worker-threads=500"
-            - "-kube-api-qps=50"
-            - "-kube-api-burst=100"
+            - "-worker-threads=1000"
+            - "-kube-api-qps=200"
+            - "-kube-api-burst=400"
           env:
             - name: ADDRESS
               value: /csi/csi.sock
@@ -80,7 +83,7 @@ spec:
               cpu: 10m
               memory: 20Mi
         - name: csi-snapshotter
-          image: mcr.microsoft.com/oss/kubernetes-csi/csi-snapshotter:v5.0.1
+          image: mcr.microsoft.com/oss/kubernetes-csi/csi-snapshotter:v6.2.2
           args:
             - "-csi-address=$(ADDRESS)"
             - "-leader-election"
@@ -95,12 +98,12 @@ spec:
               mountPath: /csi
           resources:
             limits:
-              memory: 100Mi
+              memory: 200Mi
             requests:
               cpu: 10m
               memory: 20Mi
         - name: csi-resizer
-          image: mcr.microsoft.com/oss/kubernetes-csi/csi-resizer:v1.6.0
+          image: mcr.microsoft.com/oss/kubernetes-csi/csi-resizer:v1.8.0
           args:
             - "-csi-address=$(ADDRESS)"
             - "-v=2"
@@ -122,7 +125,7 @@ spec:
               cpu: 10m
               memory: 20Mi
         - name: liveness-probe
-          image: mcr.microsoft.com/oss/kubernetes-csi/livenessprobe:v2.8.0
+          image: mcr.microsoft.com/oss/kubernetes-csi/livenessprobe:v2.10.0
           args:
             - --csi-address=/csi/csi.sock
             - --probe-timeout=3s
@@ -138,7 +141,7 @@ spec:
               cpu: 10m
               memory: 20Mi
         - name: azuredisk
-          image: mcr.microsoft.com/oss/kubernetes-csi/azuredisk-csi:v1.26.5
+          image: mcr.microsoft.com/oss/kubernetes-csi/azuredisk-csi:v1.28.2
           imagePullPolicy: IfNotPresent
           args:
             - "--v=5"

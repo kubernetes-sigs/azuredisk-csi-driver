@@ -4,15 +4,15 @@ If you have already installed Helm, you can also use it to install this driver. 
 ### Install by kubectl
  - Option#1. remote install
 ```console
-curl -skSL https://raw.githubusercontent.com/kubernetes-sigs/azuredisk-csi-driver/v1.28.1/deploy/install-driver.sh | bash -s v1.28.1 snapshot --
+curl -skSL https://raw.githubusercontent.com/kubernetes-sigs/azuredisk-csi-driver/v1.26.6/deploy/install-driver.sh | bash -s v1.26.6 snapshot --
 ```
 
  - Option#2. local install
 ```console
 git clone https://github.com/kubernetes-sigs/azuredisk-csi-driver.git
 cd azuredisk-csi-driver
-git checkout v1.28.1
-./deploy/install-driver.sh v1.28.1 local
+git checkout v1.26.6
+./deploy/install-driver.sh v1.26.6 local
 ```
 
 ### Check pods status:
@@ -36,13 +36,13 @@ csi-azuredisk-node-dr4s4                        3/3     Running   0          7m4
 ### clean up CSI driver
  - Option#1. remote uninstall
 ```console
-curl -skSL https://raw.githubusercontent.com/kubernetes-sigs/azuredisk-csi-driver/v1.28.1/deploy/uninstall-driver.sh | bash -s v1.28.1 --
+curl -skSL https://raw.githubusercontent.com/kubernetes-sigs/azuredisk-csi-driver/v1.26.6/deploy/uninstall-driver.sh | bash -s v1.26.6 --
 ```
 
  - Option#2. local uninstall
 ```console
 git clone https://github.com/kubernetes-sigs/azuredisk-csi-driver.git
 cd azuredisk-csi-driver
-git checkout v1.28.1
-./deploy/install-driver.sh v1.28.1 local
+git checkout v1.26.6
+./deploy/install-driver.sh v1.26.6 local
 ```
