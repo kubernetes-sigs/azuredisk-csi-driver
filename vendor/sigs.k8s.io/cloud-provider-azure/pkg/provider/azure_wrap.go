@@ -24,7 +24,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2022-08-01/compute"
+	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2022-03-01/compute"
 	"github.com/Azure/azure-sdk-for-go/services/network/mgmt/2022-07-01/network"
 
 	"k8s.io/apimachinery/pkg/types"
@@ -158,7 +158,9 @@ func (az *Cloud) getSubnet(virtualNetworkName string, subnetName string) (networ
 
 	if !exists {
 		klog.V(2).Infof("Subnet %q not found", subnetName)
+		return subnet, false, nil
 	}
+
 	return subnet, exists, nil
 }
 
@@ -201,7 +203,7 @@ func (az *Cloud) getPrivateLinkService(frontendIPConfigID *string, crt azcache.A
 	return *(cachedPLS.(*network.PrivateLinkService)), nil
 }
 
-func (az *Cloud) newVMCache() (azcache.Resource, error) {
+func (az *Cloud) newVMCache() (*azcache.TimedCache, error) {
 	getter := func(key string) (interface{}, error) {
 		// Currently InstanceView request are used by azure_zones, while the calls come after non-InstanceView
 		// request. If we first send an InstanceView request and then a non InstanceView request, the second
@@ -229,7 +231,7 @@ func (az *Cloud) newVMCache() (azcache.Resource, error) {
 		}
 
 		if vm.VirtualMachineProperties != nil &&
-			strings.EqualFold(pointer.StringDeref(vm.VirtualMachineProperties.ProvisioningState, ""), string(consts.ProvisioningStateDeleting)) {
+			strings.EqualFold(pointer.StringDeref(vm.VirtualMachineProperties.ProvisioningState, ""), string(compute.ProvisioningStateDeleting)) {
 			klog.V(2).Infof("Virtual machine %q is under deleting", key)
 			return nil, nil
 		}
@@ -240,10 +242,10 @@ func (az *Cloud) newVMCache() (azcache.Resource, error) {
 	if az.VMCacheTTLInSeconds == 0 {
 		az.VMCacheTTLInSeconds = vmCacheTTLDefaultInSeconds
 	}
-	return azcache.NewTimedCache(time.Duration(az.VMCacheTTLInSeconds)*time.Second, getter, az.Config.DisableAPICallCache)
+	return azcache.NewTimedcache(time.Duration(az.VMCacheTTLInSeconds)*time.Second, getter)
 }
 
-func (az *Cloud) newLBCache() (azcache.Resource, error) {
+func (az *Cloud) newLBCache() (*azcache.TimedCache, error) {
 	getter := func(key string) (interface{}, error) {
 		ctx, cancel := getContextWithCancel()
 		defer cancel()
@@ -265,10 +267,10 @@ func (az *Cloud) newLBCache() (azcache.Resource, error) {
 	if az.LoadBalancerCacheTTLInSeconds == 0 {
 		az.LoadBalancerCacheTTLInSeconds = loadBalancerCacheTTLDefaultInSeconds
 	}
-	return azcache.NewTimedCache(time.Duration(az.LoadBalancerCacheTTLInSeconds)*time.Second, getter, az.Config.DisableAPICallCache)
+	return azcache.NewTimedcache(time.Duration(az.LoadBalancerCacheTTLInSeconds)*time.Second, getter)
 }
 
-func (az *Cloud) newNSGCache() (azcache.Resource, error) {
+func (az *Cloud) newNSGCache() (*azcache.TimedCache, error) {
 	getter := func(key string) (interface{}, error) {
 		ctx, cancel := getContextWithCancel()
 		defer cancel()
@@ -289,10 +291,10 @@ func (az *Cloud) newNSGCache() (azcache.Resource, error) {
 	if az.NsgCacheTTLInSeconds == 0 {
 		az.NsgCacheTTLInSeconds = nsgCacheTTLDefaultInSeconds
 	}
-	return azcache.NewTimedCache(time.Duration(az.NsgCacheTTLInSeconds)*time.Second, getter, az.Config.DisableAPICallCache)
+	return azcache.NewTimedcache(time.Duration(az.NsgCacheTTLInSeconds)*time.Second, getter)
 }
 
-func (az *Cloud) newRouteTableCache() (azcache.Resource, error) {
+func (az *Cloud) newRouteTableCache() (*azcache.TimedCache, error) {
 	getter := func(key string) (interface{}, error) {
 		ctx, cancel := getContextWithCancel()
 		defer cancel()
@@ -313,10 +315,10 @@ func (az *Cloud) newRouteTableCache() (azcache.Resource, error) {
 	if az.RouteTableCacheTTLInSeconds == 0 {
 		az.RouteTableCacheTTLInSeconds = routeTableCacheTTLDefaultInSeconds
 	}
-	return azcache.NewTimedCache(time.Duration(az.RouteTableCacheTTLInSeconds)*time.Second, getter, az.Config.DisableAPICallCache)
+	return azcache.NewTimedcache(time.Duration(az.RouteTableCacheTTLInSeconds)*time.Second, getter)
 }
 
-func (az *Cloud) newPIPCache() (azcache.Resource, error) {
+func (az *Cloud) newPIPCache() (*azcache.TimedCache, error) {
 	getter := func(key string) (interface{}, error) {
 		ctx, cancel := getContextWithCancel()
 		defer cancel()
@@ -338,10 +340,10 @@ func (az *Cloud) newPIPCache() (azcache.Resource, error) {
 	if az.PublicIPCacheTTLInSeconds == 0 {
 		az.PublicIPCacheTTLInSeconds = publicIPCacheTTLDefaultInSeconds
 	}
-	return azcache.NewTimedCache(time.Duration(az.PublicIPCacheTTLInSeconds)*time.Second, getter, az.Config.DisableAPICallCache)
+	return azcache.NewTimedcache(time.Duration(az.PublicIPCacheTTLInSeconds)*time.Second, getter)
 }
 
-func (az *Cloud) newPLSCache() (azcache.Resource, error) {
+func (az *Cloud) newPLSCache() (*azcache.TimedCache, error) {
 	// for PLS cache, key is LBFrontendIPConfiguration ID
 	getter := func(key string) (interface{}, error) {
 		ctx, cancel := getContextWithCancel()
@@ -379,7 +381,7 @@ func (az *Cloud) newPLSCache() (azcache.Resource, error) {
 	if az.PlsCacheTTLInSeconds == 0 {
 		az.PlsCacheTTLInSeconds = plsCacheTTLDefaultInSeconds
 	}
-	return azcache.NewTimedCache(time.Duration(az.PlsCacheTTLInSeconds)*time.Second, getter, az.Config.DisableAPICallCache)
+	return azcache.NewTimedcache(time.Duration(az.PlsCacheTTLInSeconds)*time.Second, getter)
 }
 
 func (az *Cloud) useStandardLoadBalancer() bool {

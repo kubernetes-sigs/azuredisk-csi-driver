@@ -26,7 +26,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2022-08-01/compute"
+	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2022-03-01/compute"
 	"github.com/Azure/azure-sdk-for-go/services/network/mgmt/2022-07-01/network"
 
 	v1 "k8s.io/api/core/v1"
@@ -336,47 +336,36 @@ func (az *Cloud) ListManagedLBs(service *v1.Service, nodes []*v1.Node, clusterNa
 		return nil, nil
 	}
 
-	managedLBNames := sets.New[string](strings.ToLower(clusterName))
-	managedLBs := make([]network.LoadBalancer, 0)
-	if strings.EqualFold(az.LoadBalancerSku, consts.LoadBalancerSkuBasic) {
-		// return early if wantLb=false
-		if nodes == nil {
-			klog.V(4).Infof("ListManagedLBs: return all LBs in the resource group %s, including unmanaged LBs", az.getLoadBalancerResourceGroup())
-			return allLBs, nil
-		}
-
-		agentPoolVMSetNamesMap := make(map[string]bool)
-		agentPoolVMSetNames, err := az.VMSet.GetAgentPoolVMSetNames(nodes)
-		if err != nil {
-			return nil, fmt.Errorf("ListManagedLBs: failed to get agent pool vmSet names: %w", err)
-		}
-
-		if agentPoolVMSetNames != nil && len(*agentPoolVMSetNames) > 0 {
-			for _, vmSetName := range *agentPoolVMSetNames {
-				klog.V(6).Infof("ListManagedLBs: found agent pool vmSet name %s", vmSetName)
-				agentPoolVMSetNamesMap[strings.ToLower(vmSetName)] = true
-			}
-		}
-
-		for agentPoolVMSetName := range agentPoolVMSetNamesMap {
-			managedLBNames.Insert(az.mapVMSetNameToLoadBalancerName(agentPoolVMSetName, clusterName))
-		}
+	// return early if wantLb=false
+	if nodes == nil {
+		klog.V(4).Infof("ListManagedLBs: return all LBs in the resource group %s, including unmanaged LBs", az.getLoadBalancerResourceGroup())
+		return allLBs, nil
 	}
 
-	if az.useMultipleStandardLoadBalancers() {
-		for _, multiSLBConfig := range az.MultipleStandardLoadBalancerConfigurations {
-			managedLBNames.Insert(multiSLBConfig.Name, fmt.Sprintf("%s%s", multiSLBConfig.Name, consts.InternalLoadBalancerNameSuffix))
+	agentPoolLBs := make([]network.LoadBalancer, 0)
+	agentPoolVMSetNames, err := az.VMSet.GetAgentPoolVMSetNames(nodes)
+	if err != nil {
+		return nil, fmt.Errorf("ListManagedLBs: failed to get agent pool vmSet names: %w", err)
+	}
+
+	agentPoolVMSetNamesSet := sets.New[string]()
+	if agentPoolVMSetNames != nil && len(*agentPoolVMSetNames) > 0 {
+		for _, vmSetName := range *agentPoolVMSetNames {
+			klog.V(6).Infof("ListManagedLBs: found agent pool vmSet name %s", vmSetName)
+			agentPoolVMSetNamesSet.Insert(strings.ToLower(vmSetName))
 		}
 	}
 
 	for _, lb := range allLBs {
-		if managedLBNames.Has(strings.ToLower(strings.TrimSuffix(pointer.StringDeref(lb.Name, ""), consts.InternalLoadBalancerNameSuffix))) {
-			managedLBs = append(managedLBs, lb)
-			klog.V(4).Infof("ListManagedLBs: found managed LB %s", pointer.StringDeref(lb.Name, ""))
+		vmSetNameFromLBName := az.mapLoadBalancerNameToVMSet(pointer.StringDeref(lb.Name, ""), clusterName)
+		if strings.EqualFold(strings.TrimSuffix(pointer.StringDeref(lb.Name, ""), consts.InternalLoadBalancerNameSuffix), clusterName) ||
+			agentPoolVMSetNamesSet.Has(strings.ToLower(vmSetNameFromLBName)) {
+			agentPoolLBs = append(agentPoolLBs, lb)
+			klog.V(4).Infof("ListManagedLBs: found agent pool LB %s", pointer.StringDeref(lb.Name, ""))
 		}
 	}
 
-	return managedLBs, nil
+	return agentPoolLBs, nil
 }
 
 // ListLB invokes az.LoadBalancerClient.List with exponential backoff retry

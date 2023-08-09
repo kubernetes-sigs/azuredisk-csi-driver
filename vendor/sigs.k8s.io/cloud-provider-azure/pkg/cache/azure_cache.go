@@ -62,56 +62,28 @@ func cacheKeyFunc(obj interface{}) (string, error) {
 	return obj.(*AzureCacheEntry).Key, nil
 }
 
-// Resource operations
-type Resource interface {
-	Get(key string, crt AzureCacheReadType) (interface{}, error)
-	GetWithDeepCopy(key string, crt AzureCacheReadType) (interface{}, error)
-	Delete(key string) error
-	Set(key string, data interface{})
-	Update(key string, data interface{})
-
-	GetStore() cache.Store
-	Lock()
-	Unlock()
-}
-
 // TimedCache is a cache with TTL.
 type TimedCache struct {
-	Store     cache.Store
-	MutexLock sync.RWMutex
-	TTL       time.Duration
-
-	resourceProvider Resource
-}
-
-type ResourceProvider struct {
+	Store  cache.Store
+	Lock   sync.Mutex
 	Getter GetFunc
+	TTL    time.Duration
 }
 
-// NewTimedCache creates a new azcache.Resource.
-func NewTimedCache(ttl time.Duration, getter GetFunc, disabled bool) (Resource, error) {
+// NewTimedcache creates a new TimedCache.
+func NewTimedcache(ttl time.Duration, getter GetFunc) (*TimedCache, error) {
 	if getter == nil {
 		return nil, fmt.Errorf("getter is not provided")
 	}
 
-	provider := &ResourceProvider{
+	return &TimedCache{
 		Getter: getter,
-	}
-
-	if disabled {
-		return provider, nil
-	}
-
-	timedCache := &TimedCache{
 		// switch to using NewStore instead of NewTTLStore so that we can
 		// reuse entries for calls that are fine with reading expired/stalled data.
 		// with NewTTLStore, entries are not returned if they have already expired.
-		Store:            cache.NewStore(cacheKeyFunc),
-		MutexLock:        sync.RWMutex{},
-		TTL:              ttl,
-		resourceProvider: provider,
-	}
-	return timedCache, nil
+		Store: cache.NewStore(cacheKeyFunc),
+		TTL:   ttl,
+	}, nil
 }
 
 // getInternal returns AzureCacheEntry by key. If the key is not cached yet,
@@ -128,8 +100,8 @@ func (t *TimedCache) getInternal(key string) (*AzureCacheEntry, error) {
 
 	// lock here to ensure if entry doesn't exist, we add a new entry
 	// avoiding overwrites
-	t.Lock()
-	defer t.Unlock()
+	t.Lock.Lock()
+	defer t.Lock.Unlock()
 
 	// Another goroutine might have written the same key.
 	entry, exists, err = t.Store.GetByKey(key)
@@ -155,19 +127,11 @@ func (t *TimedCache) Get(key string, crt AzureCacheReadType) (interface{}, error
 	return t.get(key, crt)
 }
 
-func (c *ResourceProvider) Get(key string, _ AzureCacheReadType) (interface{}, error) {
-	return c.Getter(key)
-}
-
 // Get returns the requested item by key with deep copy.
 func (t *TimedCache) GetWithDeepCopy(key string, crt AzureCacheReadType) (interface{}, error) {
 	data, err := t.get(key, crt)
 	copied := deepcopy.Copy(data)
 	return copied, err
-}
-
-func (c *ResourceProvider) GetWithDeepCopy(key string, _ AzureCacheReadType) (interface{}, error) {
-	return c.Getter(key)
 }
 
 func (t *TimedCache) get(key string, crt AzureCacheReadType) (interface{}, error) {
@@ -193,7 +157,7 @@ func (t *TimedCache) get(key string, crt AzureCacheReadType) (interface{}, error
 	// Data is not cached yet, cache data is expired or requested force refresh
 	// cache it by getter. entry is locked before getting to ensure concurrent
 	// gets don't result in multiple ARM calls.
-	data, err := t.resourceProvider.Get(key, CacheReadTypeDefault /* not matter */)
+	data, err := t.Getter(key)
 	if err != nil {
 		return nil, err
 	}
@@ -213,10 +177,6 @@ func (t *TimedCache) Delete(key string) error {
 	})
 }
 
-func (c *ResourceProvider) Delete(_ string) error {
-	return nil
-}
-
 // Set sets the data cache for the key.
 // It is only used for testing.
 func (t *TimedCache) Set(key string, data interface{}) {
@@ -226,8 +186,6 @@ func (t *TimedCache) Set(key string, data interface{}) {
 		CreatedOn: time.Now().UTC(),
 	})
 }
-
-func (c *ResourceProvider) Set(_ string, _ interface{}) {}
 
 // Update updates the data cache for the key.
 func (t *TimedCache) Update(key string, data interface{}) {
@@ -244,25 +202,3 @@ func (t *TimedCache) Update(key string, data interface{}) {
 		})
 	}
 }
-
-func (c *ResourceProvider) Update(_ string, _ interface{}) {}
-
-func (t *TimedCache) GetStore() cache.Store {
-	return t.Store
-}
-
-func (c *ResourceProvider) GetStore() cache.Store {
-	return nil
-}
-
-func (t *TimedCache) Lock() {
-	t.MutexLock.Lock()
-}
-
-func (t *TimedCache) Unlock() {
-	t.MutexLock.Unlock()
-}
-
-func (c *ResourceProvider) Lock() {}
-
-func (c *ResourceProvider) Unlock() {}

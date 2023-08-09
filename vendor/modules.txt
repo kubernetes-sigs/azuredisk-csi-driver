@@ -1,5 +1,6 @@
 # github.com/Azure/azure-sdk-for-go v68.0.0+incompatible
 ## explicit
+github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2022-03-01/compute
 github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2022-08-01/compute
 github.com/Azure/azure-sdk-for-go/services/containerservice/mgmt/2021-10-01/containerservice
 github.com/Azure/azure-sdk-for-go/services/network/mgmt/2019-06-01/network
@@ -9,7 +10,7 @@ github.com/Azure/azure-sdk-for-go/services/resources/mgmt/2017-05-10/resources
 github.com/Azure/azure-sdk-for-go/services/resources/mgmt/2018-05-01/resources
 github.com/Azure/azure-sdk-for-go/services/storage/mgmt/2021-09-01/storage
 github.com/Azure/azure-sdk-for-go/version
-# github.com/Azure/azure-sdk-for-go/sdk/azcore v1.2.0
+# github.com/Azure/azure-sdk-for-go/sdk/azcore v1.3.0
 ## explicit; go 1.18
 github.com/Azure/azure-sdk-for-go/sdk/azcore
 github.com/Azure/azure-sdk-for-go/sdk/azcore/cloud
@@ -334,7 +335,7 @@ github.com/onsi/ginkgo/v2/internal/parallel_support
 github.com/onsi/ginkgo/v2/internal/testingtproxy
 github.com/onsi/ginkgo/v2/reporters
 github.com/onsi/ginkgo/v2/types
-# github.com/onsi/gomega v1.27.8
+# github.com/onsi/gomega v1.27.10
 ## explicit; go 1.18
 github.com/onsi/gomega
 github.com/onsi/gomega/format
@@ -1233,7 +1234,6 @@ k8s.io/client-go/util/workqueue
 # k8s.io/cloud-provider v0.27.3 => k8s.io/cloud-provider v0.27.3
 ## explicit; go 1.20
 k8s.io/cloud-provider
-k8s.io/cloud-provider/api
 k8s.io/cloud-provider/app/config
 k8s.io/cloud-provider/config
 k8s.io/cloud-provider/config/install
@@ -1243,7 +1243,6 @@ k8s.io/cloud-provider/controllers/node/config/v1alpha1
 k8s.io/cloud-provider/controllers/service/config
 k8s.io/cloud-provider/controllers/service/config/v1alpha1
 k8s.io/cloud-provider/fake
-k8s.io/cloud-provider/node/helpers
 k8s.io/cloud-provider/options
 k8s.io/cloud-provider/service/helpers
 k8s.io/cloud-provider/volume
@@ -1273,7 +1272,6 @@ k8s.io/component-base/tracing/api/v1
 k8s.io/component-base/version
 # k8s.io/component-helpers v0.27.3 => k8s.io/component-helpers v0.27.3
 ## explicit; go 1.20
-k8s.io/component-helpers/node/util
 k8s.io/component-helpers/node/util/sysctl
 k8s.io/component-helpers/scheduling/corev1
 k8s.io/component-helpers/scheduling/corev1/nodeaffinity
@@ -1432,7 +1430,7 @@ sigs.k8s.io/apiserver-network-proxy/konnectivity-client/pkg/client
 sigs.k8s.io/apiserver-network-proxy/konnectivity-client/pkg/client/metrics
 sigs.k8s.io/apiserver-network-proxy/konnectivity-client/pkg/common/metrics
 sigs.k8s.io/apiserver-network-proxy/konnectivity-client/proto/client
-# sigs.k8s.io/cloud-provider-azure v1.27.1-0.20230629023444-76504759ed59
+# sigs.k8s.io/cloud-provider-azure v1.27.7
 ## explicit; go 1.20
 sigs.k8s.io/cloud-provider-azure/pkg/azureclients
 sigs.k8s.io/cloud-provider-azure/pkg/azureclients/armclient
@@ -1477,7 +1475,6 @@ sigs.k8s.io/cloud-provider-azure/pkg/azureclients/zoneclient
 sigs.k8s.io/cloud-provider-azure/pkg/cache
 sigs.k8s.io/cloud-provider-azure/pkg/consts
 sigs.k8s.io/cloud-provider-azure/pkg/metrics
-sigs.k8s.io/cloud-provider-azure/pkg/nodemanager
 sigs.k8s.io/cloud-provider-azure/pkg/provider
 sigs.k8s.io/cloud-provider-azure/pkg/provider/config
 sigs.k8s.io/cloud-provider-azure/pkg/provider/virtualmachine

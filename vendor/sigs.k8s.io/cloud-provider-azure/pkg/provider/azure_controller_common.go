@@ -27,7 +27,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2022-08-01/compute"
+	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2022-03-01/compute"
 	"github.com/Azure/go-autorest/autorest/azure"
 
 	"k8s.io/apimachinery/pkg/types"
@@ -724,16 +724,14 @@ func vmUpdateRequired(future *azure.Future, err error) bool {
 	return configAccepted(future) && errCode == consts.OperationPreemptedErrorCode
 }
 
-func getValidCreationData(subscriptionID, resourceGroup string, options *ManagedDiskOptions) (compute.CreationData, error) {
-	if options.SourceResourceID == "" {
+func getValidCreationData(subscriptionID, resourceGroup, sourceResourceID, sourceType string) (compute.CreationData, error) {
+	if sourceResourceID == "" {
 		return compute.CreationData{
-			CreateOption:    compute.Empty,
-			PerformancePlus: options.PerformancePlus,
+			CreateOption: compute.Empty,
 		}, nil
 	}
 
-	sourceResourceID := options.SourceResourceID
-	switch options.SourceType {
+	switch sourceType {
 	case sourceSnapshot:
 		if match := diskSnapshotPathRE.FindString(sourceResourceID); match == "" {
 			sourceResourceID = fmt.Sprintf(diskSnapshotPath, subscriptionID, resourceGroup, sourceResourceID)
@@ -745,14 +743,13 @@ func getValidCreationData(subscriptionID, resourceGroup string, options *Managed
 		}
 	default:
 		return compute.CreationData{
-			CreateOption:    compute.Empty,
-			PerformancePlus: options.PerformancePlus,
+			CreateOption: compute.Empty,
 		}, nil
 	}
 
 	splits := strings.Split(sourceResourceID, "/")
 	if len(splits) > 9 {
-		if options.SourceType == sourceSnapshot {
+		if sourceType == sourceSnapshot {
 			return compute.CreationData{}, fmt.Errorf("sourceResourceID(%s) is invalid, correct format: %s", sourceResourceID, diskSnapshotPathRE)
 		}
 		return compute.CreationData{}, fmt.Errorf("sourceResourceID(%s) is invalid, correct format: %s", sourceResourceID, managedDiskPathRE)
@@ -760,7 +757,6 @@ func getValidCreationData(subscriptionID, resourceGroup string, options *Managed
 	return compute.CreationData{
 		CreateOption:     compute.Copy,
 		SourceResourceID: &sourceResourceID,
-		PerformancePlus:  options.PerformancePlus,
 	}, nil
 }
 
