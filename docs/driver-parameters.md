@@ -5,6 +5,7 @@
 "Microsoft.Resources/subscriptions/resourceGroups/read",
 "Microsoft.Compute/disks/*",
 "Microsoft.Compute/snapshots/*",
+"Microsoft.Compute/virtualMachines/write",
 "Microsoft.Compute/virtualMachines/*/read",
 "Microsoft.Compute/virtualMachineScaleSets/virtualMachines/write",
 "Microsoft.Compute/virtualMachineScaleSets/*/read",
