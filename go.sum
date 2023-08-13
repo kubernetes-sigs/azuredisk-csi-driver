@@ -336,8 +336,8 @@ github.com/kubernetes-csi/csi-lib-utils v0.13.0 h1:QrTdZVZbHlaSUBN9ReayBPnnF1N0e
 github.com/kubernetes-csi/csi-lib-utils v0.13.0/go.mod h1:JS9eDIZmSjx4F9o0bLTVK/qfhIIOifdjEfVXzxWapfE=
 github.com/kubernetes-csi/csi-proxy/client v1.0.1 h1:BPK9e5Fy0GcDRjDc9hqu7TnouSRujG6IvbH+PXSDOsY=
 github.com/kubernetes-csi/csi-proxy/client v1.0.1/go.mod h1:URLOkEbRhOwKVvGvug6HSKRTpLSFuQ/Gt3xahDag8qc=
-github.com/kubernetes-csi/external-snapshotter/client/v4 v4.1.0 h1:DecASDOSUnp0ftwi4aU87joEpZfLv9iMPwNYzrGb9Lc=
-github.com/kubernetes-csi/external-snapshotter/client/v4 v4.1.0/go.mod h1:YBCo4DoEeDndqvAn6eeu0vWM7QdXmHEeI9cFWplmBys=
+github.com/kubernetes-csi/external-snapshotter/client/v4 v4.2.0 h1:nHHjmvjitIiyPlUHk/ofpgvBcNcawJLtf4PYHORLjAA=
+github.com/kubernetes-csi/external-snapshotter/client/v4 v4.2.0/go.mod h1:YBCo4DoEeDndqvAn6eeu0vWM7QdXmHEeI9cFWplmBys=
 github.com/kylelemons/godebug v1.1.0 h1:RPNrshWIDI6G2gRW9EHilWtl7Z6Sb1BR0xunSBf0SNc=
 github.com/kylelemons/godebug v1.1.0/go.mod h1:9/0rRGxNHcop5bhtWyNeEfOS8JIWk580+fNqagV/RAw=
 github.com/mailru/easyjson v0.7.7 h1:UGYAvKxe3sBsEDzO8ZeWOSlIQfWFlxbzLZe7hwFURr0=
