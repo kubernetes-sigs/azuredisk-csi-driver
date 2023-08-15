@@ -142,7 +142,7 @@ func getDriverConfig() *azdiskv1beta2.AzDiskDriverConfiguration {
 		}
 
 		// Convert yaml to a driveConfig object
-		err = yaml.Unmarshal(yamlFile, &driverConfig)
+		err = yaml.Unmarshal(yamlFile, driverConfig)
 		if err != nil {
 			klog.Fatalf("failed to unmarshal the driver config, error: %v", err)
 		}

@@ -301,6 +301,67 @@ func TestAttachDetachReconcile(t *testing.T) {
 				require.Equal(t, azVolumeAttachment.Status.Detail.Role, azdiskv1beta2.ReplicaRole)
 			},
 		},
+		{
+			description: "[Success] Should mark attach replica for retry when encountering context.DeadlineExceeded error",
+			request:     testReplicaAzVolumeAttachmentRequest,
+			setupFunc: func(t *testing.T, mockCtl *gomock.Controller) *ReconcileAttachDetach {
+				newAttachment := testReplicaAzVolumeAttachment.DeepCopy()
+				newAttachment.Status.State = azdiskv1beta2.AttachmentPending
+				newAttachment.Status.Annotations = azureutils.AddToMap(newAttachment.Status.Annotations, consts.VolumeAttachmentKey, testVolumeAttachmentName)
+
+				newVolumeAttachment := testVolumeAttachment.DeepCopy()
+
+				controller := NewTestAttachDetachController(
+					mockCtl,
+					testNamespace,
+					&testAzVolume0,
+					newVolumeAttachment,
+					newAttachment)
+
+				controller.azVolumeAttachmentToVaMap.Store(newAttachment.Name, newVolumeAttachment.Name)
+				addTestNodeInAvailableAttachmentsMap(controller.SharedState, newAttachment.Spec.NodeName, testNodeAvailableAttachmentCount)
+
+				mockClients(controller.cachedClient.(*mockclient.MockClient), controller.azClient, controller.kubeClient)
+
+				controller.cloudDiskAttacher.(*mockattachmentprovisioner.MockCloudDiskAttachDetacher).EXPECT().
+					PublishVolume(gomock.Any(), testManagedDiskURI0, gomock.Any(), gomock.Any()).
+					DoAndReturn(func(ctx context.Context, volumeID, nodeID string, volumeContext map[string]string) provisioner.CloudAttachResult {
+						attachResult := provisioner.NewCloudAttachResult()
+						attachResult.SetPublishContext(map[string]string{consts.LUN: "1"})
+						attachResult.ResultChannel() <- context.DeadlineExceeded
+						close(attachResult.ResultChannel())
+						return attachResult
+					}).
+					MaxTimes(1)
+
+				controller.cloudDiskAttacher.(*mockattachmentprovisioner.MockCloudDiskAttachDetacher).EXPECT().
+					UnpublishVolume(gomock.Any(), testManagedDiskURI0, gomock.Any()).
+					DoAndReturn(func(ctx context.Context, volumeID, nodeID string) error {
+						return nil
+					}).
+					MaxTimes(1)
+
+				return controller
+			},
+			verifyFunc: func(t *testing.T, controller *ReconcileAttachDetach, result reconcile.Result, err error) {
+				require.NoError(t, err)
+				require.False(t, result.Requeue)
+
+				conditionFunc := func() (bool, error) {
+					azVolumeAttachment, localError := controller.azClient.DiskV1beta2().AzVolumeAttachments(testReplicaAzVolumeAttachment.Namespace).Get(context.TODO(), testReplicaAzVolumeAttachment.Name, metav1.GetOptions{})
+					if localError != nil {
+						return false, nil
+					}
+					if retryAnnotation, ok := azVolumeAttachment.Status.Annotations[consts.ReplicaVolumeAttachRetryAnnotation]; ok {
+						return azVolumeAttachment.Status.State == azdiskv1beta2.AttachmentFailed && retryAnnotation == "true", nil
+					}
+					return false, nil
+				}
+
+				conditionError := wait.PollImmediate(verifyCRIInterval, verifyCRITimeout, conditionFunc)
+				require.NoError(t, conditionError)
+			},
+		},
 	}
 
 	for _, test := range tests {
