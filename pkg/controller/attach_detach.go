@@ -275,7 +275,7 @@ func (r *ReconcileAttachDetach) triggerAttach(ctx context.Context, azVolumeAttac
 				azva := obj.(*azdiskv1beta2.AzVolumeAttachment)
 				// add retriable annotation if the replica attach error is PartialUpdateError or timeout
 				if azva.Spec.RequestedRole == azdiskv1beta2.ReplicaRole {
-					if _, ok := attachErr.(*retry.PartialUpdateError); ok || errors.Is(err, context.DeadlineExceeded) {
+					if _, ok := attachErr.(*retry.PartialUpdateError); ok || errors.Is(attachErr, context.DeadlineExceeded) {
 						azva.Status.Annotations = azureutils.AddToMap(azva.Status.Annotations, consts.ReplicaVolumeAttachRetryAnnotation, "true")
 					}
 				}
@@ -316,7 +316,7 @@ func (r *ReconcileAttachDetach) triggerAttach(ctx context.Context, azVolumeAttac
 				_ = r.updateVolumeAttachmentWithResult(goCtx, azVolumeAttachment)
 			}
 
-			if updatedObj, err := azureutils.UpdateCRIWithRetry(goCtx, nil, r.cachedClient, r.azClient, azVolumeAttachment, updateFunc, consts.ForcedUpdateMaxNetRetry, azureutils.UpdateCRIStatus); err != nil {
+			if updatedObj, err := azureutils.UpdateCRIWithRetry(goCtx, nil, r.cachedClient, r.azClient, azVolumeAttachment, updateFunc, consts.ForcedUpdateMaxNetRetry, azureutils.UpdateCRIStatus); err == nil {
 				azVolumeAttachment = updatedObj.(*azdiskv1beta2.AzVolumeAttachment)
 			} else {
 				// There's nothing much we can do in this case, so just log the error and move on.
