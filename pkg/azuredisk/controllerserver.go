@@ -98,7 +98,13 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 	capacityBytes := req.GetCapacityRange().GetRequiredBytes()
 	volSizeBytes := int64(capacityBytes)
 	requestGiB := int(volumehelper.RoundUpGiB(volSizeBytes))
+
+	if diskParams.PerformancePlus != nil && *diskParams.PerformancePlus && requestGiB < consts.PerformancePlusMinimumDiskSizeGiB {
+		klog.Warningf("using PerformancePlus, increasing requested disk size from %vGiB to %vGiB (minimal size for PerformancePlus feature)", requestGiB, consts.PerformancePlusMinimumDiskSizeGiB)
+		requestGiB = consts.PerformancePlusMinimumDiskSizeGiB
+	}
 	if requestGiB < consts.MinimumDiskSizeGiB {
+		klog.Infof("increasing requested disk size from %vGiB to %vGiB (minimal disk size)", requestGiB, consts.MinimumDiskSizeGiB)
 		requestGiB = consts.MinimumDiskSizeGiB
 	}
 
