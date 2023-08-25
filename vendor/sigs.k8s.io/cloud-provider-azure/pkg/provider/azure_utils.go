@@ -26,6 +26,7 @@ import (
 	"github.com/Azure/azure-sdk-for-go/services/network/mgmt/2022-07-01/network"
 
 	v1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/klog/v2"
 	utilnet "k8s.io/utils/net"
 	"k8s.io/utils/pointer"
@@ -426,6 +427,14 @@ func getServicePIPName(service *v1.Service, isIPv6 bool) string {
 	return service.Annotations[consts.ServiceAnnotationPIPNameDualStack[isIPv6]]
 }
 
+func getServicePIPNames(service *v1.Service) []string {
+	var ips []string
+	for _, ipVersion := range []bool{IPVersionIPv4, IPVersionIPv6} {
+		ips = append(ips, getServicePIPName(service, ipVersion))
+	}
+	return ips
+}
+
 func getServicePIPPrefixID(service *v1.Service, isIPv6 bool) string {
 	if service == nil {
 		return ""
@@ -538,4 +547,60 @@ func stringSlice(s *[]string) []string {
 		return *s
 	}
 	return nil
+}
+
+// IntInSlice checks if an int is in a list
+func IntInSlice(i int, list []int) bool {
+	for _, item := range list {
+		if item == i {
+			return true
+		}
+	}
+	return false
+}
+
+func safeAddKeyToStringsSet(set sets.Set[string], key string) sets.Set[string] {
+	if set != nil {
+		set.Insert(key)
+	} else {
+		set = sets.New[string](key)
+	}
+
+	return set
+}
+
+func safeRemoveKeyFromStringsSet(set sets.Set[string], key string) (sets.Set[string], bool) {
+	var has bool
+	if set != nil {
+		if set.Has(key) {
+			has = true
+		}
+		set.Delete(key)
+	}
+
+	return set, has
+}
+
+func setToStrings(set sets.Set[string]) []string {
+	var res []string
+	for key := range set {
+		res = append(res, key)
+	}
+	return res
+}
+
+func isLocalService(service *v1.Service) bool {
+	return service.Spec.ExternalTrafficPolicy == v1.ServiceExternalTrafficPolicyLocal
+}
+
+func getServiceIPFamily(service *v1.Service) string {
+	if len(service.Spec.IPFamilies) > 1 {
+		return consts.IPVersionDualStackString
+	}
+	for _, ipFamily := range service.Spec.IPFamilies {
+		if ipFamily == v1.IPv6Protocol {
+			return consts.IPVersionIPv6String
+		}
+	}
+	return consts.IPVersionIPv4String
 }
