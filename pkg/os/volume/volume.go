@@ -41,8 +41,8 @@ var (
 )
 
 func getVolumeSize(volumeID string) (int64, error) {
-	cmd := fmt.Sprintf("(Get-Volume -UniqueId \"%s\" | Get-partition).Size", volumeID)
-	out, err := azureutils.RunPowershellCmd(cmd)
+	cmd := "(Get-Volume -UniqueId \"$Env:volumeID\" | Get-partition).Size"
+	out, err := azureutils.RunPowershellCmd(cmd, fmt.Sprintf("volumeID=%s", volumeID))
 
 	if err != nil || len(out) == 0 {
 		return -1, fmt.Errorf("error getting size of the partition from mount. cmd %s, output: %s, error: %v", cmd, string(out), err)
@@ -77,8 +77,8 @@ func ListVolumesOnDisk(diskNumber uint32, partitionNumber uint32) (volumeIDs []s
 
 // FormatVolume - Formats a volume with the NTFS format.
 func FormatVolume(volumeID string) (err error) {
-	cmd := fmt.Sprintf("Get-Volume -UniqueId \"%s\" | Format-Volume -FileSystem ntfs -Confirm:$false", volumeID)
-	out, err := azureutils.RunPowershellCmd(cmd)
+	cmd := "Get-Volume -UniqueId \"$Env:volumeID\" | Format-Volume -FileSystem ntfs -Confirm:$false"
+	out, err := azureutils.RunPowershellCmd(cmd, fmt.Sprintf("volumeID=%s", volumeID))
 	if err != nil {
 		return fmt.Errorf("error formatting volume. cmd: %s, output: %s, error: %v", cmd, string(out), err)
 	}
@@ -93,8 +93,8 @@ func WriteVolumeCache(volumeID string) (err error) {
 
 // IsVolumeFormatted - Check if the volume is formatted with the pre specified filesystem(typically ntfs).
 func IsVolumeFormatted(volumeID string) (bool, error) {
-	cmd := fmt.Sprintf("(Get-Volume -UniqueId \"%s\" -ErrorAction Stop).FileSystemType", volumeID)
-	out, err := azureutils.RunPowershellCmd(cmd)
+	cmd := "(Get-Volume -UniqueId \"$Env:volumeID\" -ErrorAction Stop).FileSystemType"
+	out, err := azureutils.RunPowershellCmd(cmd, fmt.Sprintf("volumeID=%s", volumeID))
 	if err != nil {
 		return false, fmt.Errorf("error checking if volume is formatted. cmd: %s, output: %s, error: %v", cmd, string(out), err)
 	}
@@ -107,8 +107,8 @@ func IsVolumeFormatted(volumeID string) (bool, error) {
 
 // MountVolume - mounts a volume to a path. This is done using the Add-PartitionAccessPath for presenting the volume via a path.
 func MountVolume(volumeID, path string) error {
-	cmd := fmt.Sprintf("Get-Volume -UniqueId \"%s\" | Get-Partition | Add-PartitionAccessPath -AccessPath %s", volumeID, path)
-	out, err := azureutils.RunPowershellCmd(cmd)
+	cmd := "Get-Volume -UniqueId \"$Env:volumeID\" | Get-Partition | Add-PartitionAccessPath -AccessPath $Env:path"
+	out, err := azureutils.RunPowershellCmd(cmd, fmt.Sprintf("volumeID=%s", volumeID), fmt.Sprintf("path=%s", path))
 	if err != nil {
 		return fmt.Errorf("error mount volume to path. cmd: %s, output: %s, error: %v", cmd, string(out), err)
 	}
@@ -120,8 +120,8 @@ func UnmountVolume(volumeID, path string) error {
 	if err := writeCache(volumeID); err != nil {
 		return err
 	}
-	cmd := fmt.Sprintf("Get-Volume -UniqueId \"%s\" | Get-Partition | Remove-PartitionAccessPath -AccessPath %s", volumeID, path)
-	out, err := azureutils.RunPowershellCmd(cmd)
+	cmd := "Get-Volume -UniqueId \"$Env:volumeID\" | Get-Partition | Remove-PartitionAccessPath -AccessPath $Env:path"
+	out, err := azureutils.RunPowershellCmd(cmd, fmt.Sprintf("volumeID=%s", volumeID), fmt.Sprintf("path=%s", path))
 	if err != nil {
 		return fmt.Errorf("error getting driver letter to mount volume. cmd: %s, output: %s,error: %v", cmd, string(out), err)
 	}
@@ -137,8 +137,8 @@ func ResizeVolume(volumeID string, size int64) error {
 	var finalSize int64
 	var outString string
 	if size == 0 {
-		cmd = fmt.Sprintf("Get-Volume -UniqueId \"%s\" | Get-partition | Get-PartitionSupportedSize | Select SizeMax | ConvertTo-Json", volumeID)
-		out, err := azureutils.RunPowershellCmd(cmd)
+		cmd = "Get-Volume -UniqueId \"$Env:volumeID\" | Get-partition | Get-PartitionSupportedSize | Select SizeMax | ConvertTo-Json"
+		out, err := azureutils.RunPowershellCmd(cmd, fmt.Sprintf("volumeID=%s", volumeID))
 
 		if err != nil || len(out) == 0 {
 			return fmt.Errorf("error getting sizemin,sizemax from mount. cmd: %s, output: %s, error: %v", cmd, string(out), err)
@@ -169,8 +169,8 @@ func ResizeVolume(volumeID string, size int64) error {
 		return nil
 	}
 
-	cmd = fmt.Sprintf("Get-Volume -UniqueId \"%s\" | Get-Partition | Resize-Partition -Size %d", volumeID, finalSize)
-	out, err = azureutils.RunPowershellCmd(cmd)
+	cmd = fmt.Sprintf("Get-Volume -UniqueId \"$Env:volumeID\" | Get-Partition | Resize-Partition -Size %d", finalSize)
+	out, err = azureutils.RunPowershellCmd(cmd, fmt.Sprintf("volumeID=%s", volumeID))
 	if err != nil {
 		return fmt.Errorf("error resizing volume. cmd: %s, output: %s size:%v, finalSize %v, error: %v", cmd, string(out), size, finalSize, err)
 	}
@@ -180,8 +180,8 @@ func ResizeVolume(volumeID string, size int64) error {
 // GetVolumeStats - retrieves the volume stats for a given volume
 func GetVolumeStats(volumeID string) (int64, int64, error) {
 	// get the size and sizeRemaining for the volume
-	cmd := fmt.Sprintf("(Get-Volume -UniqueId \"%s\" | Select SizeRemaining,Size) | ConvertTo-Json", volumeID)
-	out, err := azureutils.RunPowershellCmd(cmd)
+	cmd := "(Get-Volume -UniqueId \"$Env:volumeID\" | Select SizeRemaining,Size) | ConvertTo-Json"
+	out, err := azureutils.RunPowershellCmd(cmd, fmt.Sprintf("volumeID=%s", volumeID))
 
 	if err != nil {
 		return -1, -1, fmt.Errorf("error getting capacity and used size of volume. cmd: %s, output: %s, error: %v", cmd, string(out), err)
@@ -204,8 +204,8 @@ func GetVolumeStats(volumeID string) (int64, int64, error) {
 // GetDiskNumberFromVolumeID - gets the disk number where the volume is.
 func GetDiskNumberFromVolumeID(volumeID string) (uint32, error) {
 	// get the size and sizeRemaining for the volume
-	cmd := fmt.Sprintf("(Get-Volume -UniqueId \"%s\" | Get-Partition).DiskNumber", volumeID)
-	out, err := azureutils.RunPowershellCmd(cmd)
+	cmd := "(Get-Volume -UniqueId \"$Env:volumeID\" | Get-Partition).DiskNumber"
+	out, err := azureutils.RunPowershellCmd(cmd, fmt.Sprintf("volumeID=%s", volumeID))
 
 	if err != nil || len(out) == 0 {
 		return 0, fmt.Errorf("error getting disk number. cmd: %s, output: %s, error: %v", cmd, string(out), err)
@@ -238,8 +238,8 @@ func GetVolumeIDFromTargetPath(mount string) (string, error) {
 }
 
 func getTarget(mount string) (string, error) {
-	cmd := fmt.Sprintf("(Get-Item -Path %s).Target", mount)
-	out, err := azureutils.RunPowershellCmd(cmd)
+	cmd := "(Get-Item -Path $Env:mount).Target"
+	out, err := azureutils.RunPowershellCmd(cmd, fmt.Sprintf("mount=%s", mount))
 	if err != nil || len(out) == 0 {
 		return "", fmt.Errorf("error getting volume from mount. cmd: %s, output: %s, error: %v", cmd, string(out), err)
 	}
@@ -329,8 +329,8 @@ func ensureVolumePrefix(volume string) string {
 
 // dereferenceSymlink dereferences the symlink `path` and returns the stdout.
 func dereferenceSymlink(path string) (string, error) {
-	cmd := fmt.Sprintf(`(Get-Item -Path %s).Target`, path)
-	out, err := azureutils.RunPowershellCmd(cmd)
+	cmd := `(Get-Item -Path $Env:path).Target`
+	out, err := azureutils.RunPowershellCmd(cmd, fmt.Sprintf("path=%s", path))
 	if err != nil {
 		return "", err
 	}
@@ -345,8 +345,8 @@ func getVolumeForDriveLetter(path string) (string, error) {
 		return "", fmt.Errorf("The path=%s is not a valid DriverLetter", path)
 	}
 
-	cmd := fmt.Sprintf(`(Get-Partition -DriveLetter %s | Get-Volume).UniqueId`, path)
-	out, err := azureutils.RunPowershellCmd(cmd)
+	cmd := `(Get-Partition -DriveLetter $Env:path | Get-Volume).UniqueId`
+	out, err := azureutils.RunPowershellCmd(cmd, fmt.Sprintf("path=%s", path))
 	if err != nil {
 		return "", err
 	}
@@ -356,8 +356,8 @@ func getVolumeForDriveLetter(path string) (string, error) {
 }
 
 func writeCache(volumeID string) error {
-	cmd := fmt.Sprintf("Get-Volume -UniqueId \"%s\" | Write-Volumecache", volumeID)
-	out, err := azureutils.RunPowershellCmd(cmd)
+	cmd := "Get-Volume -UniqueId \"$Env:volumeID\" | Write-Volumecache"
+	out, err := azureutils.RunPowershellCmd(cmd, fmt.Sprintf("volumeID=%s", volumeID))
 	if err != nil {
 		return fmt.Errorf("error writing volume cache. cmd: %s, output: %s, error: %v", cmd, string(out), err)
 	}
