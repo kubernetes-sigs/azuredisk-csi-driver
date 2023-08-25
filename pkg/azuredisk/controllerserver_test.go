@@ -459,6 +459,41 @@ func TestCreateVolume(t *testing.T) {
 				}
 			},
 		},
+		{
+			name: "valid PerformancePlus request, disk resizes to min required size",
+			testFunc: func(t *testing.T) {
+				d, _ := NewFakeDriver(t)
+				stdCapacityRangetest := &csi.CapacityRange{
+					RequiredBytes: volumehelper.GiBToBytes(10),
+					LimitBytes:    volumehelper.GiBToBytes(514),
+				}
+				req := &csi.CreateVolumeRequest{
+					Name:               testVolumeName,
+					VolumeCapabilities: stdVolumeCapabilities,
+					CapacityRange:      stdCapacityRangetest,
+					Parameters:         map[string]string{consts.PerformancePlusField: "true"},
+				}
+				size := int32(volumehelper.BytesToGiB(req.CapacityRange.RequiredBytes))
+				id := fmt.Sprintf(consts.ManagedDiskPath, "subs", "rg", testVolumeName)
+				state := "Succeeded"
+				disk := compute.Disk{
+					ID:   &id,
+					Name: &testVolumeName,
+					DiskProperties: &compute.DiskProperties{
+						DiskSizeGB:        &size,
+						ProvisioningState: &state,
+					},
+				}
+				d.getCloud().DisksClient.(*mockdiskclient.MockInterface).EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(disk, nil).AnyTimes()
+				d.getCloud().DisksClient.(*mockdiskclient.MockInterface).EXPECT().CreateOrUpdate(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
+				res, err := d.CreateVolume(context.Background(), req)
+				assert.Equal(t, res.Volume.CapacityBytes, volumehelper.GiBToBytes(consts.PerformancePlusMinimumDiskSizeGiB))
+				expectedErr := error(nil)
+				if !reflect.DeepEqual(err, expectedErr) {
+					t.Errorf("actualErr: (%v), expectedErr: (%v)", err, expectedErr)
+				}
+			},
+		},
 	}
 	for _, tc := range testCases {
 		t.Run(tc.name, tc.testFunc)
