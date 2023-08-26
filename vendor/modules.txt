@@ -357,7 +357,7 @@ github.com/opencontainers/selinux/pkg/pwalkdir
 # github.com/pborman/uuid v1.2.0
 ## explicit
 github.com/pborman/uuid
-# github.com/pelletier/go-toml v1.9.4
+# github.com/pelletier/go-toml v1.9.5
 ## explicit; go 1.12
 github.com/pelletier/go-toml
 # github.com/pkg/browser v0.0.0-20210911075715-681adbf594b8

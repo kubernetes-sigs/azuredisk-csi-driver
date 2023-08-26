@@ -17,7 +17,7 @@ require (
 	github.com/kubernetes-csi/external-snapshotter/client/v4 v4.2.0
 	github.com/onsi/gomega v1.27.10
 	github.com/pborman/uuid v1.2.0
-	github.com/pelletier/go-toml v1.9.4
+	github.com/pelletier/go-toml v1.9.5
 	github.com/stretchr/testify v1.8.4
 	golang.org/x/net v0.14.0
 	google.golang.org/grpc v1.54.0
