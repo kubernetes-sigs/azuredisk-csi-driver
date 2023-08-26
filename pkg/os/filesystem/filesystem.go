@@ -82,8 +82,7 @@ func PathExists(path string) (bool, error) {
 
 func PathValid(ctx context.Context, path string) (bool, error) {
 	cmd := `Test-Path $Env:remotepath`
-	cmdEnv := fmt.Sprintf("remotepath=%s", path)
-	output, err := util.RunPowershellCmd(cmd, cmdEnv)
+	output, err := util.RunPowershellCmd(cmd, fmt.Sprintf("remotepath=%s", path))
 	if err != nil {
 		return false, fmt.Errorf("returned output: %s, error: %v", string(output), err)
 	}

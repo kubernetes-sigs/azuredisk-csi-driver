@@ -228,13 +228,7 @@ func GetDiskNumberFromVolumeID(volumeID string) (uint32, error) {
 
 // GetVolumeIDFromTargetPath - gets the volume ID given a mount point, the function is recursive until it find a volume or errors out
 func GetVolumeIDFromTargetPath(mount string) (string, error) {
-	volumeString, err := getTarget(mount)
-
-	if err != nil {
-		return "", fmt.Errorf("error getting the volume for the mount %s, internal error %v", mount, err)
-	}
-
-	return volumeString, nil
+	return getTarget(mount)
 }
 
 func getTarget(mount string) (string, error) {
@@ -253,13 +247,7 @@ func getTarget(mount string) (string, error) {
 
 // GetVolumeIDFromTargetPath returns the volume id of a given target path.
 func GetClosestVolumeIDFromTargetPath(targetPath string) (string, error) {
-	volumeString, err := findClosestVolume(targetPath)
-
-	if err != nil {
-		return "", fmt.Errorf("error getting the closest volume for the path=%s, err=%v", targetPath, err)
-	}
-
-	return volumeString, nil
+	return findClosestVolume(targetPath)
 }
 
 // findClosestVolume finds the closest volume id for a given target path

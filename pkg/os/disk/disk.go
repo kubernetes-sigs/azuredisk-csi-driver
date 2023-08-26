@@ -151,8 +151,7 @@ func CreateBasicPartition(diskNumber uint32) error {
 }
 
 func GetDiskNumberByName(page83ID string) (uint32, error) {
-	diskNumber, err := GetDiskNumberWithID(page83ID)
-	return diskNumber, err
+	return GetDiskNumberWithID(page83ID)
 }
 
 func GetDiskNumber(disk syscall.Handle) (uint32, error) {
