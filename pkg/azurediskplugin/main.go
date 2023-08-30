@@ -173,6 +173,7 @@ func getDriverConfig() *azdiskv1beta2.AzDiskDriverConfiguration {
 				WorkerThreads:                 *workerThreads,
 				WaitForLunEnabled:             *waitForLunEnabled,
 				ReplicaVolumeAttachRetryLimit: *replicaVolumeAttachRetryLimit,
+				EventTTLInSec:                 int(eventTTL.Seconds()),
 			},
 			NodeConfig: azdiskv1beta2.NodeConfiguration{
 				VolumeAttachLimit:       *volumeAttachLimit,
@@ -209,7 +210,6 @@ func getDriverConfig() *azdiskv1beta2.AzDiskDriverConfiguration {
 			MetricsAddress:  *metricsAddress,
 			DriverName:      *driverName,
 			ProfilerAddress: *profilerAddress,
-			EventTTLInSec:   int(eventTTL.Seconds()),
 		}
 
 		// Emit warning log for using deprecated command-line parameters

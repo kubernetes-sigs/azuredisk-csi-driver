@@ -18,10 +18,8 @@ package controller
 
 import (
 	"context"
-	"flag"
 	"fmt"
 	"reflect"
-	"strconv"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -479,21 +477,9 @@ func initState(client client.Client, azClient azdisk.Interface, kubeClient kuber
 	config := &azdiskv1beta2.AzDiskDriverConfiguration{
 		DriverName:      consts.DefaultDriverName,
 		ObjectNamespace: consts.DefaultAzureDiskCrdNamespace,
-		EventTTLInSec:   testEventTTLInSec,
-	}
-
-	vflag := flag.Lookup("v")
-	if vflag == nil {
-		overwriteVerbosity := true
-		klog.InitFlags(nil)
-		flag.Visit(func(f *flag.Flag) {
-			if f.Name == "v" {
-				overwriteVerbosity = false // use the explicitly provided verbosity
-			}
-		})
-		if overwriteVerbosity {
-			flag.Set("v", strconv.Itoa(defaultTestVerbosity)) // use `defaultTestVerbosity` instead of the default verbosity of 0
-		}
+		ControllerConfig: azdiskv1beta2.ControllerConfiguration{
+			EventTTLInSec: testEventTTLInSec,
+		},
 	}
 
 	azInformerFactory := azdiskinformers.NewSharedInformerFactory(azClient, consts.DefaultInformerResync)

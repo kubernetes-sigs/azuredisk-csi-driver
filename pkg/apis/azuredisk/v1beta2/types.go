@@ -542,8 +542,6 @@ type AzDiskDriverConfiguration struct {
 	DriverName string `json:"driverName,omitempty"`
 	// The address to expose profiling data from the pprof package. If empty, no profiler server is started.
 	ProfilerAddress string `json:"profilerAddress,omitempty"`
-	// The duration for which events are retained by kube-apiserver
-	EventTTLInSec int `json:"eventTTLInSec,omitempty"`
 }
 
 type ControllerConfiguration struct {
@@ -579,6 +577,8 @@ type ControllerConfiguration struct {
 	WaitForLunEnabled bool `json:"waitForLunEnabled,omitempty"`
 	// The maximum number of retries for creating a replica attachment.
 	ReplicaVolumeAttachRetryLimit int `json:"replicaVolumeAttachRetryLimit,omitempty"`
+	// The duration for which events are retained by kube-apiserver
+	EventTTLInSec int `json:"eventTTLInSec,omitempty"`
 }
 
 type NodeConfiguration struct {
