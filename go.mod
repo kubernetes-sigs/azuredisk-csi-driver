@@ -13,7 +13,7 @@ require (
 	github.com/google/gofuzz v1.2.0 // indirect
 	github.com/imdario/mergo v0.3.11 // indirect
 	github.com/kubernetes-csi/csi-lib-utils v0.13.0
-	github.com/kubernetes-csi/csi-proxy/client v1.1.2
+	github.com/kubernetes-csi/csi-proxy/client v1.1.3
 	github.com/kubernetes-csi/external-snapshotter/client/v4 v4.2.0
 	github.com/onsi/gomega v1.27.10
 	github.com/pborman/uuid v1.2.0
