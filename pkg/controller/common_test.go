@@ -55,7 +55,6 @@ const (
 	verifyCRIInterval          = time.Duration(1) * time.Second
 	testAttachableVolumesValue = "8"
 	testEventTTLInSec          = 10
-	defaultTestVerbosity       = 5
 )
 
 var (

@@ -1189,51 +1189,48 @@ func WatchObject(mgr manager.Manager, objKind source.Kind) error {
 	return err
 }
 
-// circular linked list with simple accessibility to the current event, etc.
-type eventRefresherList struct {
-	curr *eventRefresherNode
+type circularLinkedList[T any] struct {
+	*circularLinkedListNode[T]
 }
 
-type eventRefresherNode struct {
-	prev      *eventRefresherNode
-	next      *eventRefresherNode
-	message   string
-	timestamp time.Time
-	objects   []runtime.Object
+func (list circularLinkedList[T]) isEmpty() bool {
+	return list.circularLinkedListNode == nil
 }
 
-func (events eventRefresherList) isEmpty() bool {
-	return events.curr == nil
+func (list *circularLinkedList[T]) clear() {
+	list.circularLinkedListNode = nil
 }
 
-func (events *eventRefresherList) clear() {
-	events.curr = nil
-}
-
-func (events *eventRefresherList) add(newEvent *eventRefresherNode) {
-	if events.curr == nil {
-		events.curr = newEvent
+func (list *circularLinkedList[T]) add(newNode *circularLinkedListNode[T]) {
+	if list.circularLinkedListNode == nil {
+		list.circularLinkedListNode = newNode
 	} else {
-		events.curr.prev.next = newEvent
+		list.prev.next = newNode
 	}
-	newEvent.next = events.curr
-	events.curr.prev = newEvent
+	newNode.next = list.circularLinkedListNode
+	list.prev = newNode
 }
 
-// Moves to the next event in the list and retrieves it.
-func (events *eventRefresherList) next() *eventRefresherNode {
-	nextEvent := events.curr.next
-	events.curr = nextEvent
-	return nextEvent
+// Moves to the next node in the list and retrieves it.
+func (list *circularLinkedList[T]) next() *circularLinkedListNode[T] {
+	nextNode := list.circularLinkedListNode.next
+	list.circularLinkedListNode = nextNode
+	return nextNode
 }
 
-func (oldEvent *eventRefresherNode) remove() {
-	oldEvent.prev.next = oldEvent.next
-	oldEvent.next.prev = oldEvent.prev
+type circularLinkedListNode[T any] struct {
+	curr T
+	prev *circularLinkedListNode[T]
+	next *circularLinkedListNode[T]
 }
 
-func (oldEvent *eventRefresherNode) tryRemove() {
-	if oldEvent != nil {
-		oldEvent.remove()
+func (oldNode *circularLinkedListNode[T]) remove() { //nolint:golint // receiver name should be consistent with previous receiver name for invalid-type
+	oldNode.prev.next = oldNode.next
+	oldNode.next.prev = oldNode.prev
+}
+
+func (oldNode *circularLinkedListNode[T]) tryRemove() { //nolint:golint // receiver name should be consistent with previous receiver name for invalid-type
+	if oldNode != nil {
+		oldNode.remove()
 	}
 }

@@ -1400,10 +1400,16 @@ func (c *SharedState) createEventQueues() {
 }
 
 func (c *SharedState) _eventRefresherRoutine() {
-	var eventTTL = time.Duration(c.config.ControllerConfig.EventTTLInSec) * time.Second
-	eventMap := map[string]*eventRefresherNode{}
+	type eventInfo struct {
+		message   string
+		timestamp time.Time
+		objects   []runtime.Object
+	}
 
-	var events eventRefresherList
+	var eventTTL = time.Duration(c.config.ControllerConfig.EventTTLInSec) * time.Second
+	eventMap := map[string]*circularLinkedListNode[eventInfo]{}
+
+	var events circularLinkedList[eventInfo]
 	var lastTime time.Time
 	var delay time.Duration            // how long the alarm was last set to wait for
 	expLatency := eventOverlapVariance // we request the alarm to wake us up earlier by this amount, to negate latency due to other operations and timer imprecision
@@ -1416,15 +1422,17 @@ func (c *SharedState) _eventRefresherRoutine() {
 		select {
 		case newFailureInfo := <-c.eventsToPersistQueue:
 			// add the new failure
-			newEvent := &eventRefresherNode{
-				message:   newFailureInfo.message,
-				objects:   newFailureInfo.pods,
-				timestamp: newFailureInfo.timestamp.Add(eventTTL - eventOverlapDuration),
+			newEvent := &circularLinkedListNode[eventInfo]{
+				curr: eventInfo{
+					message:   newFailureInfo.message,
+					objects:   newFailureInfo.pods,
+					timestamp: newFailureInfo.timestamp.Add(eventTTL - eventOverlapDuration),
+				},
 			}
 
 			if events.isEmpty() {
 				lastTime = time.Now()
-				delay = newEvent.timestamp.Sub(lastTime) - expLatency
+				delay = newEvent.curr.timestamp.Sub(lastTime) - expLatency
 				alarm.Reset(delay)
 			}
 
