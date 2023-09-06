@@ -36,7 +36,7 @@ spec:
         - name: csi-provisioner
           image: mcr.microsoft.com/oss/kubernetes-csi/csi-provisioner:v3.5.0
           args:
-            - "--feature-gates=Topology=true"
+            - "--feature-gates=Topology=true,HonorPVReclaimPolicy=true"
             - "--csi-address=$(ADDRESS)"
             - "--v=2"
             - "--timeout=30s"
