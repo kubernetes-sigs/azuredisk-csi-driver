@@ -54,6 +54,7 @@ const (
 	verifyCRITimeout           = time.Duration(5) * time.Minute
 	verifyCRIInterval          = time.Duration(1) * time.Second
 	testAttachableVolumesValue = "8"
+	testEventTTLInSec          = 10
 )
 
 var (
@@ -475,6 +476,9 @@ func initState(client client.Client, azClient azdisk.Interface, kubeClient kuber
 	config := &azdiskv1beta2.AzDiskDriverConfiguration{
 		DriverName:      consts.DefaultDriverName,
 		ObjectNamespace: consts.DefaultAzureDiskCrdNamespace,
+		ControllerConfig: azdiskv1beta2.ControllerConfiguration{
+			EventTTLInSec: testEventTTLInSec,
+		},
 	}
 
 	azInformerFactory := azdiskinformers.NewSharedInformerFactory(azClient, consts.DefaultInformerResync)

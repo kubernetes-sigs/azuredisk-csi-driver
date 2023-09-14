@@ -577,6 +577,8 @@ type ControllerConfiguration struct {
 	WaitForLunEnabled bool `json:"waitForLunEnabled,omitempty"`
 	// The maximum number of retries for creating a replica attachment.
 	ReplicaVolumeAttachRetryLimit int `json:"replicaVolumeAttachRetryLimit,omitempty"`
+	// The duration for which events are retained by kube-apiserver
+	EventTTLInSec int `json:"eventTTLInSec,omitempty"`
 }
 
 type NodeConfiguration struct {

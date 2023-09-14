@@ -21,11 +21,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
 	"reflect"
 	"sort"
 	"strings"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -34,6 +36,7 @@ import (
 	apiErrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
+	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/selection"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/wait"
@@ -86,7 +89,23 @@ type SharedState struct {
 	azureDiskCSITranslator        csitranslator.InTreePlugin
 	availableAttachmentsMap       sync.Map
 	driverLifecycle               DriverLifecycle
+	eventsToPersistQueue          chan ReplicaAttachmentFailureInfo
+	eventsToUnpersistQueue        chan string
 }
+
+type ReplicaAttachmentFailureInfo struct {
+	volumeName string
+	message    string
+	pods       []runtime.Object
+	timestamp  time.Time
+}
+
+const (
+	// persistent event and their refreshes should overlap by this amount of time
+	eventOverlapDuration = 30 * time.Second
+	// allow persistent events to overlap by up to this additional amount of time for batched reporting etc.
+	eventOverlapVariance = 30 * time.Millisecond
+)
 
 func NewSharedState(config *azdiskv1beta2.AzDiskDriverConfiguration, topologyKey string, eventRecorder record.EventRecorder, cachedClient client.Client, crdClient crdClientset.Interface, kubeClient kubernetes.Interface, driverLifecycle DriverLifecycle) *SharedState {
 	newSharedState := &SharedState{
@@ -102,6 +121,7 @@ func NewSharedState(config *azdiskv1beta2.AzDiskDriverConfiguration, topologyKey
 		driverLifecycle:        driverLifecycle,
 	}
 	newSharedState.createReplicaRequestsQueue()
+	newSharedState.createEventQueues()
 
 	return newSharedState
 }
@@ -1244,6 +1264,10 @@ func (c *SharedState) manageReplicas(ctx context.Context, volumeName string) err
 
 	var azVolume *azdiskv1beta2.AzVolume
 	azVolume, err = azureutils.GetAzVolume(ctx, c.cachedClient, c.azClient, volumeName, c.config.ObjectNamespace, true)
+
+	// in case the volume attachment succeeds or terminally errors out
+	c.unpersistAttachmentFailure(volumeName) // attempt un-persisting a previous failure (if the event refresher is active)
+
 	if apiErrors.IsNotFound(err) {
 		w.Logger().V(5).Info("Volume no longer exists. Aborting manage replica operation")
 		return nil
@@ -1351,11 +1375,109 @@ func (c *SharedState) createReplicas(ctx context.Context, remainingReplicas int,
 		//no failed replica attachments, but there are still more replicas to reach MaxShares
 		request := ReplicaRequest{VolumeName: volumeName, Priority: remainingReplicas}
 		c.priorityReplicaRequestsQueue.Push(ctx, &request)
-		for _, pod := range pods {
-			c.eventRecorder.Eventf(pod.DeepCopyObject(), v1.EventTypeWarning, consts.ReplicaAttachmentFailedEvent, "Not enough suitable nodes to attach %d of %d replica mount(s) for volume %s", remainingReplicas, requiredReplicas, volumeName)
+		message := fmt.Sprintf("Not enough suitable nodes to attach %d of %d replica mount(s) for volume %s", remainingReplicas, requiredReplicas, volumeName)
+		podCopies := make([]runtime.Object, len(pods))
+		for i, pod := range pods {
+			podCopies[i] = pod.DeepCopyObject()
 		}
+		timestamp := time.Now()
+		for _, podCopy := range podCopies {
+			c.eventRecorder.Eventf(podCopy, v1.EventTypeWarning, consts.ReplicaAttachmentFailedEvent, message)
+		}
+		message += timestamp.UTC().Format(" [0102 15:04:05") // append original timestamp
+		c.persistAttachmentFailure(volumeName, message, podCopies, timestamp)
 	}
 	return nil
+}
+
+func (c *SharedState) persistAttachmentFailure(volumeName string, message string, podCopies []runtime.Object, timestamp time.Time) {
+	c.eventsToPersistQueue <- ReplicaAttachmentFailureInfo{volumeName, message, podCopies, timestamp}
+}
+
+// Only requests an event un-persist if the event refresher is active
+func (c *SharedState) unpersistAttachmentFailure(volumeName string) {
+	c.eventsToUnpersistQueue <- volumeName
+}
+
+func (c *SharedState) createEventQueues() {
+	c.eventsToPersistQueue = make(chan ReplicaAttachmentFailureInfo, c.config.ControllerConfig.WorkerThreads)
+	c.eventsToUnpersistQueue = make(chan string, c.config.ControllerConfig.WorkerThreads*2)
+	go c._eventRefresherRoutine()
+}
+
+func (c *SharedState) _eventRefresherRoutine() {
+	type eventInfo struct {
+		message   string
+		timestamp time.Time
+		objects   []runtime.Object
+	}
+
+	var eventTTL = time.Duration(c.config.ControllerConfig.EventTTLInSec) * time.Second
+	eventMap := map[string]*circularLinkedListNode[eventInfo]{}
+
+	var events circularLinkedList[eventInfo]
+	var lastTime time.Time
+	var delay time.Duration            // how long the alarm was last set to wait for
+	expLatency := eventOverlapVariance // we request the alarm to wake us up earlier by this amount, to negate latency due to other operations and timer imprecision
+	alarm := time.NewTimer(math.MaxInt64)
+	if !alarm.Stop() {
+		<-alarm.C
+	}
+
+	for {
+		select {
+		case newFailureInfo := <-c.eventsToPersistQueue:
+			// add the new failure
+			newEvent := &circularLinkedListNode[eventInfo]{
+				curr: eventInfo{
+					message:   newFailureInfo.message,
+					objects:   newFailureInfo.pods,
+					timestamp: newFailureInfo.timestamp.Add(eventTTL - eventOverlapDuration),
+				},
+			}
+
+			if events.isEmpty() {
+				lastTime = time.Now()
+				delay = newEvent.curr.timestamp.Sub(lastTime) - expLatency
+				alarm.Reset(delay)
+			}
+
+			events.add(newEvent)
+
+			eventMap[newFailureInfo.volumeName].tryRemove()
+			eventMap[newFailureInfo.volumeName] = newEvent
+		case newVolumeName := <-c.eventsToUnpersistQueue:
+			oldEvent := eventMap[newVolumeName]
+			if oldEvent != nil {
+				delete(eventMap, newVolumeName)
+				if oldEvent.next == oldEvent {
+					// no more events to refresh!
+					events.clear()
+				} else {
+					oldEvent.remove()
+				}
+			}
+		case <-alarm.C:
+			currTime := time.Now()
+			currLatency := expLatency + currTime.Sub(lastTime) - delay
+			expLatency = (expLatency*3 + currLatency) / 4 // update the expected latency with a 25% expontially-weighted moving average
+			lastTime = currTime
+			for {
+				for _, object := range events.curr.objects { // can we keep this as is? or do we need to check / keep track of whether each pod is still relevant
+					c.eventRecorder.Event(object, v1.EventTypeWarning, consts.ReplicaAttachmentFailedEvent, events.curr.message)
+				}
+				events.curr.timestamp = events.curr.timestamp.Add(eventTTL)
+				events.next()
+				delay = time.Until(events.curr.timestamp) - expLatency
+				if delay >= eventOverlapVariance {
+					break
+				}
+				// events which are really close together will be processed at the same, preventing the overuse of sleep()
+				// event refresher's responsiviness may be more variable, so we'll increase its channel buffers as needed
+			}
+			alarm.Reset(delay)
+		}
+	}
 }
 
 func (c *SharedState) getNodesForReplica(ctx context.Context, volumeName string, pods []v1.Pod) ([]string, error) {

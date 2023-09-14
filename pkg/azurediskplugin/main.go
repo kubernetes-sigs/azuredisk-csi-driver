@@ -90,6 +90,7 @@ var (
 	enableTrafficManager                     = flag.Bool("enable-traffic-manager", false, "boolean flag to enable traffic manager")
 	trafficManagerPort                       = flag.Int64("traffic-manager-port", 7788, "default traffic manager port")
 	replicaVolumeAttachRetryLimit            = flag.Int("volume-attach-retry-limit", consts.DefaultReplicaVolumeAttachRetryLimit, "The maximum number of retries for creating a replica attachment.")
+	eventTTL                                 = flag.Duration("event-ttl", consts.DefaultEventTTL, "The duration for which events are retained by kube-apiserver.")
 )
 
 func main() {
@@ -172,6 +173,7 @@ func getDriverConfig() *azdiskv1beta2.AzDiskDriverConfiguration {
 				WorkerThreads:                 *workerThreads,
 				WaitForLunEnabled:             *waitForLunEnabled,
 				ReplicaVolumeAttachRetryLimit: *replicaVolumeAttachRetryLimit,
+				EventTTLInSec:                 int(eventTTL.Seconds()),
 			},
 			NodeConfig: azdiskv1beta2.NodeConfiguration{
 				VolumeAttachLimit:       *volumeAttachLimit,

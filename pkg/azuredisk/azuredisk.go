@@ -122,6 +122,7 @@ func NewDefaultDriverConfig() *azdiskv1beta2.AzDiskDriverConfiguration {
 			WorkerThreads:                 consts.DefaultWorkerThreads,
 			WaitForLunEnabled:             consts.DefaultWaitForLunEnabled,
 			ReplicaVolumeAttachRetryLimit: consts.DefaultReplicaVolumeAttachRetryLimit,
+			EventTTLInSec:                 int(consts.DefaultEventTTL.Seconds()),
 		},
 		NodeConfig: azdiskv1beta2.NodeConfiguration{
 			VolumeAttachLimit:       consts.DefaultVolumeAttachLimit,

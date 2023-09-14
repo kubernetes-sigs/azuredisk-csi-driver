@@ -1192,3 +1192,49 @@ func WatchObject(mgr manager.Manager, objKind source.Kind) error {
 	})
 	return err
 }
+
+type circularLinkedList[T any] struct {
+	*circularLinkedListNode[T]
+}
+
+func (list circularLinkedList[T]) isEmpty() bool {
+	return list.circularLinkedListNode == nil
+}
+
+func (list *circularLinkedList[T]) clear() {
+	list.circularLinkedListNode = nil
+}
+
+func (list *circularLinkedList[T]) add(newNode *circularLinkedListNode[T]) {
+	if list.circularLinkedListNode == nil {
+		list.circularLinkedListNode = newNode
+	} else {
+		list.prev.next = newNode
+	}
+	newNode.next = list.circularLinkedListNode
+	list.prev = newNode
+}
+
+// Moves to the next node in the list and retrieves it.
+func (list *circularLinkedList[T]) next() *circularLinkedListNode[T] {
+	nextNode := list.circularLinkedListNode.next
+	list.circularLinkedListNode = nextNode
+	return nextNode
+}
+
+type circularLinkedListNode[T any] struct {
+	curr T
+	prev *circularLinkedListNode[T]
+	next *circularLinkedListNode[T]
+}
+
+func (oldNode *circularLinkedListNode[T]) remove() { //nolint:golint // receiver name should be consistent with previous receiver name for invalid-type
+	oldNode.prev.next = oldNode.next
+	oldNode.next.prev = oldNode.prev
+}
+
+func (oldNode *circularLinkedListNode[T]) tryRemove() { //nolint:golint // receiver name should be consistent with previous receiver name for invalid-type
+	if oldNode != nil {
+		oldNode.remove()
+	}
+}
