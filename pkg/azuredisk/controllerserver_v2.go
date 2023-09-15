@@ -71,8 +71,8 @@ func (d *DriverV2) CreateVolume(ctx context.Context, req *csi.CreateVolumeReques
 		return nil, status.Error(codes.InvalidArgument, "CreateVolume Volume capabilities must be provided")
 	}
 
-	if !azureutils.IsValidVolumeCapabilities(volCaps, diskParams.MaxShares) {
-		return nil, status.Error(codes.InvalidArgument, "Volume capability not supported")
+	if err := azureutils.IsValidVolumeCapabilities(volCaps, diskParams.MaxShares); err != nil {
+		return nil, status.Error(codes.InvalidArgument, err.Error())
 	}
 	isAdvancedPerfProfile := strings.EqualFold(diskParams.PerfProfile, consts.PerfProfileAdvanced)
 	// If perfProfile is set to advanced and no/invalid device settings are provided, fail the request
@@ -303,8 +303,8 @@ func (d *DriverV2) ControllerPublishVolume(ctx context.Context, req *csi.Control
 		return nil, status.Error(codes.InvalidArgument, "MaxShares value not supported")
 	}
 
-	if !azureutils.IsValidVolumeCapabilities(caps, maxShares) {
-		return nil, status.Error(codes.InvalidArgument, "Volume capability not supported")
+	if err := azureutils.IsValidVolumeCapabilities(caps, maxShares); err != nil {
+		return nil, status.Error(codes.InvalidArgument, err.Error())
 	}
 
 	disk, err := d.checkDiskExists(ctx, diskURI)
@@ -448,8 +448,8 @@ func (d *DriverV2) ValidateVolumeCapabilities(ctx context.Context, req *csi.Vali
 		return nil, status.Error(codes.InvalidArgument, "MaxShares value not supported")
 	}
 
-	if !azureutils.IsValidVolumeCapabilities(volumeCapabilities, maxShares) {
-		return &csi.ValidateVolumeCapabilitiesResponse{Message: "VolumeCapabilities are invalid"}, nil
+	if err := azureutils.IsValidVolumeCapabilities(volumeCapabilities, maxShares); err != nil {
+		return &csi.ValidateVolumeCapabilitiesResponse{Message: err.Error()}, nil
 	}
 
 	if _, err := d.checkDiskExists(ctx, diskURI); err != nil {
