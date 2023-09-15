@@ -67,8 +67,8 @@ func (d *DriverV2) NodeStageVolume(ctx context.Context, req *csi.NodeStageVolume
 		return nil, status.Error(codes.InvalidArgument, "MaxShares value not supported")
 	}
 
-	if !azureutils.IsValidVolumeCapabilities([]*csi.VolumeCapability{volumeCapability}, maxShares) {
-		return nil, status.Error(codes.InvalidArgument, "Volume capability not supported")
+	if err := azureutils.IsValidVolumeCapabilities([]*csi.VolumeCapability{volumeCapability}, maxShares); err != nil {
+		return nil, status.Error(codes.InvalidArgument, err.Error())
 	}
 
 	if acquired := d.volumeLocks.TryAcquire(diskURI); !acquired {
@@ -213,8 +213,8 @@ func (d *DriverV2) NodePublishVolume(ctx context.Context, req *csi.NodePublishVo
 		return nil, status.Error(codes.InvalidArgument, "MaxShares value not supported")
 	}
 
-	if !azureutils.IsValidVolumeCapabilities([]*csi.VolumeCapability{volumeCapability}, maxShares) {
-		return nil, status.Error(codes.InvalidArgument, "Volume capability not supported")
+	if err := azureutils.IsValidVolumeCapabilities([]*csi.VolumeCapability{volumeCapability}, maxShares); err != nil {
+		return nil, status.Error(codes.InvalidArgument, err.Error())
 	}
 
 	source := req.GetStagingTargetPath()
