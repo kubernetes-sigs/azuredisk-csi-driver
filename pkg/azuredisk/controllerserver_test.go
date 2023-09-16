@@ -217,7 +217,7 @@ func TestCreateVolume(t *testing.T) {
 					Parameters:         mp,
 				}
 				_, err := d.CreateVolume(context.Background(), req)
-				expectedErr := status.Error(codes.InvalidArgument, "Volume capability not supported")
+				expectedErr := status.Error(codes.InvalidArgument, "mountVolume is not supported for access mode: MULTI_NODE_MULTI_WRITER")
 				if !reflect.DeepEqual(err, expectedErr) {
 					t.Errorf("actualErr: (%v), expectedErr: (%v)", err, expectedErr)
 				}
@@ -635,7 +635,7 @@ func TestControllerPublishVolume(t *testing.T) {
 					VolumeId:         "vol_1",
 					VolumeCapability: volumeCapWrong,
 				}
-				expectedErr := status.Error(codes.InvalidArgument, "Volume capability not supported")
+				expectedErr := status.Error(codes.InvalidArgument, "invalid access mode: [mount:<> access_mode:<mode:10 > ]")
 				_, err := d.ControllerPublishVolume(context.Background(), req)
 				if !reflect.DeepEqual(err, expectedErr) {
 					t.Errorf("actualErr: (%v), expectedErr: (%v)", err, expectedErr)

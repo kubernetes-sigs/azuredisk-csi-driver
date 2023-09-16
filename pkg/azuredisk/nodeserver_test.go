@@ -464,7 +464,7 @@ func TestNodeStageVolume(t *testing.T) {
 		{
 			desc:        "Volume capabilities not supported",
 			req:         csi.NodeStageVolumeRequest{VolumeId: "vol_1", StagingTargetPath: sourceTest, VolumeCapability: &csi.VolumeCapability{AccessMode: &volumeCapWrong}},
-			expectedErr: status.Error(codes.InvalidArgument, "Volume capability not supported"),
+			expectedErr: status.Error(codes.InvalidArgument, "invalid access mode: [access_mode:<mode:10 > ]"),
 		},
 		{
 			desc: "MaxShares value not supported",
@@ -819,7 +819,7 @@ func TestNodePublishVolume(t *testing.T) {
 			req: csi.NodePublishVolumeRequest{VolumeCapability: &csi.VolumeCapability{AccessMode: &volumeCapWrong, AccessType: stdVolCapBlock},
 				VolumeId: "vol_1"},
 			expectedErr: testutil.TestError{
-				DefaultError: status.Error(codes.InvalidArgument, "Volume capability not supported"),
+				DefaultError: status.Error(codes.InvalidArgument, "invalid access mode: [block:<> access_mode:<mode:10 > ]"),
 			},
 		},
 		{
