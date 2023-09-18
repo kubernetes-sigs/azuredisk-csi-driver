@@ -447,31 +447,35 @@ func IsValidDiskURI(diskURI string) error {
 	return nil
 }
 
-func IsValidVolumeCapabilities(volCaps []*csi.VolumeCapability, maxShares int) bool {
+// IsValidVolumeCapabilities checks whether the volume capabilities are valid
+func IsValidVolumeCapabilities(volCaps []*csi.VolumeCapability, maxShares int) error {
 	if ok := IsValidAccessModes(volCaps); !ok {
-		return false
+		return fmt.Errorf("invalid access mode: %v", volCaps)
 	}
 	for _, c := range volCaps {
 		blockVolume := c.GetBlock()
 		mountVolume := c.GetMount()
 		accessMode := c.GetAccessMode().GetMode()
 
-		if (blockVolume == nil && mountVolume == nil) ||
-			(blockVolume != nil && mountVolume != nil) {
-			return false
+		if blockVolume == nil && mountVolume == nil {
+			return fmt.Errorf("blockVolume and mountVolume are both nil")
+		}
+
+		if blockVolume != nil && mountVolume != nil {
+			return fmt.Errorf("blockVolume and mountVolume are both not nil")
 		}
 		if mountVolume != nil && (accessMode == csi.VolumeCapability_AccessMode_MULTI_NODE_MULTI_WRITER ||
 			accessMode == csi.VolumeCapability_AccessMode_MULTI_NODE_READER_ONLY ||
 			accessMode == csi.VolumeCapability_AccessMode_MULTI_NODE_SINGLE_WRITER) {
-			return false
+			return fmt.Errorf("mountVolume is not supported for access mode: %s", accessMode.String())
 		}
 		if maxShares < 2 && (accessMode == csi.VolumeCapability_AccessMode_MULTI_NODE_MULTI_WRITER ||
 			accessMode == csi.VolumeCapability_AccessMode_MULTI_NODE_READER_ONLY ||
 			accessMode == csi.VolumeCapability_AccessMode_MULTI_NODE_SINGLE_WRITER) {
-			return false
+			return fmt.Errorf("access mode: %s is not supported for non-shared disk", accessMode.String())
 		}
 	}
-	return true
+	return nil
 }
 
 func IsValidAccessModes(volCaps []*csi.VolumeCapability) bool {
