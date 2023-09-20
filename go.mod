@@ -15,7 +15,7 @@ require (
 	github.com/kubernetes-csi/csi-lib-utils v0.15.0
 	github.com/kubernetes-csi/csi-proxy/client v1.1.3
 	github.com/kubernetes-csi/external-snapshotter/client/v4 v4.2.0
-	github.com/onsi/ginkgo/v2 v2.12.0
+	github.com/onsi/ginkgo/v2 v2.12.1
 	github.com/onsi/gomega v1.27.10
 	github.com/pborman/uuid v1.2.1
 	github.com/pelletier/go-toml v1.9.5
