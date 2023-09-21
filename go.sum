@@ -903,8 +903,8 @@ k8s.io/apimachinery v0.28.1/go.mod h1:X0xh/chESs2hP9koe+SdIAcXWcQ+RM5hy0ZynB+yEv
 k8s.io/apiserver v0.28.1 h1:dw2/NKauDZCnOUAzIo2hFhtBRUo6gQK832NV8kuDbGM=
 k8s.io/apiserver v0.28.1/go.mod h1:d8aizlSRB6yRgJ6PKfDkdwCy2DXt/d1FDR6iJN9kY1w=
 k8s.io/client-go v0.19.0/go.mod h1:H9E/VT95blcFQnlyShFgnFT9ZnJOAceiUHM3MlRC+mU=
-k8s.io/client-go v0.28.1 h1:pRhMzB8HyLfVwpngWKE8hDcXRqifh1ga2Z/PU9SXVK8=
-k8s.io/client-go v0.28.1/go.mod h1:pEZA3FqOsVkCc07pFVzK076R+P/eXqsgx5zuuRWukNE=
+k8s.io/client-go v0.28.2 h1:DNoYI1vGq0slMBN/SWKMZMw0Rq+0EQW6/AK4v9+3VeY=
+k8s.io/client-go v0.28.2/go.mod h1:sMkApowspLuc7omj1FOSUxSoqjr+d5Q0Yc0LOFnYFJY=
 k8s.io/cloud-provider v0.28.1 h1:bR7lIRYBHqxfsOkUsY2hJ7V7vmStxb0wjJJdrID8+7I=
 k8s.io/cloud-provider v0.28.1/go.mod h1:7jxsc3c15go606KLXnUq8Cy4nX1R1dxFRgn/czIJp/Q=
 k8s.io/code-generator v0.28.1/go.mod h1:ueeSJZJ61NHBa0ccWLey6mwawum25vX61nRZ6WOzN9A=
