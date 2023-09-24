@@ -203,8 +203,8 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 	if strings.EqualFold(diskParams.WriteAcceleratorEnabled, consts.TrueValue) {
 		diskParams.Tags[azure.WriteAcceleratorEnabled] = consts.TrueValue
 	}
-	sourceID := ""
-	sourceType := ""
+	var sourceID, sourceType string
+	metricsRequest := "controller_create_volume"
 	content := req.GetVolumeContentSource()
 	if content != nil {
 		if content.GetSnapshot() != nil {
@@ -217,6 +217,7 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 					},
 				},
 			}
+			metricsRequest = "controller_create_volume_from_snapshot"
 		} else {
 			sourceID = content.GetVolume().GetVolumeId()
 			sourceType = consts.SourceVolume
@@ -231,6 +232,7 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 			if sourceGiB, _ := d.GetSourceDiskSize(ctx, subsID, diskParams.ResourceGroup, path.Base(sourceID), 0, consts.SourceDiskSearchMaxDepth); sourceGiB != nil && *sourceGiB < int32(requestGiB) {
 				diskParams.VolumeContext[consts.ResizeRequired] = strconv.FormatBool(true)
 			}
+			metricsRequest = "controller_create_volume_from_volume"
 		}
 	}
 
@@ -276,7 +278,7 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 	}
 
 	var diskURI string
-	mc := metrics.NewMetricContext(consts.AzureDiskCSIDriverName, "controller_create_volume", d.cloud.ResourceGroup, d.cloud.SubscriptionID, d.Name)
+	mc := metrics.NewMetricContext(consts.AzureDiskCSIDriverName, metricsRequest, d.cloud.ResourceGroup, d.cloud.SubscriptionID, d.Name)
 	isOperationSucceeded := false
 	defer func() {
 		mc.ObserveOperationWithResult(isOperationSucceeded, consts.VolumeID, diskURI)
