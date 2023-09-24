@@ -75,6 +75,7 @@ type DriverOptions struct {
 	EnableWindowsHostProcess     bool
 	GetNodeIDFromIMDS            bool
 	EnableOtelTracing            bool
+	WaitForSnapshotReady         bool
 }
 
 // CSIDriver defines the interface for a CSI driver.
@@ -123,6 +124,7 @@ type DriverCore struct {
 	enableWindowsHostProcess     bool
 	getNodeIDFromIMDS            bool
 	enableOtelTracing            bool
+	shouldWaitForSnapshotReady   bool
 }
 
 // Driver is the v1 implementation of the Azure Disk CSI Driver.
@@ -164,6 +166,7 @@ func newDriverV1(options *DriverOptions) *Driver {
 	driver.enableWindowsHostProcess = options.EnableWindowsHostProcess
 	driver.getNodeIDFromIMDS = options.GetNodeIDFromIMDS
 	driver.enableOtelTracing = options.EnableOtelTracing
+	driver.shouldWaitForSnapshotReady = options.WaitForSnapshotReady
 	driver.volumeLocks = volumehelper.NewVolumeLocks()
 	driver.ioHandler = azureutils.NewOSIOHandler()
 	driver.hostUtil = hostutil.NewHostUtil()
