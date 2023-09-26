@@ -75,6 +75,7 @@ type DriverOptions struct {
 	EnableWindowsHostProcess     bool
 	GetNodeIDFromIMDS            bool
 	EnableOtelTracing            bool
+	WaitForSnapshotReady         bool
 }
 
 // CSIDriver defines the interface for a CSI driver.
@@ -123,6 +124,7 @@ type DriverCore struct {
 	enableWindowsHostProcess     bool
 	getNodeIDFromIMDS            bool
 	enableOtelTracing            bool
+	shouldWaitForSnapshotReady   bool
 }
 
 // Driver is the v1 implementation of the Azure Disk CSI Driver.
@@ -164,6 +166,7 @@ func newDriverV1(options *DriverOptions) *Driver {
 	driver.enableWindowsHostProcess = options.EnableWindowsHostProcess
 	driver.getNodeIDFromIMDS = options.GetNodeIDFromIMDS
 	driver.enableOtelTracing = options.EnableOtelTracing
+	driver.shouldWaitForSnapshotReady = options.WaitForSnapshotReady
 	driver.volumeLocks = volumehelper.NewVolumeLocks()
 	driver.ioHandler = azureutils.NewOSIOHandler()
 	driver.hostUtil = hostutil.NewHostUtil()
@@ -418,29 +421,31 @@ func (d *DriverCore) getHostUtil() hostUtil {
 	return d.hostUtil
 }
 
-// getSnapshotCopyCompletionPercent returns the completion percent of copy snapshot
-func (d *DriverCore) getSnapshotCopyCompletionPercent(ctx context.Context, subsID, resourceGroup, copySnapshotName string) (float64, error) {
-	copySnapshot, rerr := d.cloud.SnapshotsClient.Get(ctx, subsID, resourceGroup, copySnapshotName)
+// getSnapshotCompletionPercent returns the completion percent of snapshot
+func (d *DriverCore) getSnapshotCompletionPercent(ctx context.Context, subsID, resourceGroup, snapshotName string) (float64, error) {
+	copySnapshot, rerr := d.cloud.SnapshotsClient.Get(ctx, subsID, resourceGroup, snapshotName)
 	if rerr != nil {
 		return 0.0, rerr.Error()
 	}
 
 	if copySnapshot.SnapshotProperties == nil || copySnapshot.SnapshotProperties.CompletionPercent == nil {
-		return 0.0, fmt.Errorf("copy snapshot(%s) under rg(%s) has no SnapshotProperties or CompletionPercent is nil", copySnapshotName, resourceGroup)
+		// If CompletionPercent is nil, it means the snapshot is complete
+		klog.V(2).Infof("snapshot(%s) under rg(%s) has no SnapshotProperties or CompletionPercent is nil", snapshotName, resourceGroup)
+		return 100.0, nil
 	}
 
 	return *copySnapshot.SnapshotProperties.CompletionPercent, nil
 }
 
-// waitForSnapshotCopy wait for copy incremental snapshot to a new region until completionPercent is 100.0
-func (d *DriverCore) waitForSnapshotCopy(ctx context.Context, subsID, resourceGroup, copySnapshotName string, intervel, timeout time.Duration) error {
-	completionPercent, err := d.getSnapshotCopyCompletionPercent(ctx, subsID, resourceGroup, copySnapshotName)
+// waitForSnapshotReady wait for completionPercent of snapshot is 100.0
+func (d *DriverCore) waitForSnapshotReady(ctx context.Context, subsID, resourceGroup, snapshotName string, intervel, timeout time.Duration) error {
+	completionPercent, err := d.getSnapshotCompletionPercent(ctx, subsID, resourceGroup, snapshotName)
 	if err != nil {
 		return err
 	}
 
 	if completionPercent >= float64(100.0) {
-		klog.V(2).Infof("copy snapshot(%s) under rg(%s) complete", copySnapshotName, resourceGroup)
+		klog.V(2).Infof("snapshot(%s) under rg(%s) complete", snapshotName, resourceGroup)
 		return nil
 	}
 
@@ -449,18 +454,18 @@ func (d *DriverCore) waitForSnapshotCopy(ctx context.Context, subsID, resourceGr
 	for {
 		select {
 		case <-timeTick:
-			completionPercent, err = d.getSnapshotCopyCompletionPercent(ctx, subsID, resourceGroup, copySnapshotName)
+			completionPercent, err = d.getSnapshotCompletionPercent(ctx, subsID, resourceGroup, snapshotName)
 			if err != nil {
 				return err
 			}
 
 			if completionPercent >= float64(100.0) {
-				klog.V(2).Infof("copy snapshot(%s) under rg(%s) complete", copySnapshotName, resourceGroup)
+				klog.V(2).Infof("snapshot(%s) under rg(%s) complete", snapshotName, resourceGroup)
 				return nil
 			}
-			klog.V(2).Infof("copy snapshot(%s) under rg(%s) completionPercent: %f", copySnapshotName, resourceGroup, completionPercent)
+			klog.V(2).Infof("snapshot(%s) under rg(%s) completionPercent: %f", snapshotName, resourceGroup, completionPercent)
 		case <-timeAfter:
-			return fmt.Errorf("timeout waiting for copy snapshot(%s) under rg(%s)", copySnapshotName, resourceGroup)
+			return fmt.Errorf("timeout waiting for snapshot(%s) under rg(%s)", snapshotName, resourceGroup)
 		}
 	}
 }

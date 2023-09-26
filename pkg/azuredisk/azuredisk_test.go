@@ -259,7 +259,7 @@ func TestGetDefaultDiskMBPSReadWrite(t *testing.T) {
 	}
 }
 
-func TestWaitForSnapshotCopy(t *testing.T) {
+func TestWaitForSnapshot(t *testing.T) {
 	testCases := []struct {
 		name     string
 		testFunc func(t *testing.T)
@@ -284,15 +284,15 @@ func TestWaitForSnapshotCopy(t *testing.T) {
 					RawError: fmt.Errorf("invalid snapshotID"),
 				}
 				mockSnapshotClient.EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(snapshot, rerr).AnyTimes()
-				err := d.waitForSnapshotCopy(context.Background(), subID, resourceGroup, snapshotID, intervel, timeout)
+				err := d.waitForSnapshotReady(context.Background(), subID, resourceGroup, snapshotID, intervel, timeout)
 
 				wantErr := true
 				subErrMsg := "invalid snapshotID"
 				if (err != nil) != wantErr {
-					t.Errorf("waitForSnapshotCopy() error = %v, wantErr %v", err, wantErr)
+					t.Errorf("waitForSnapshotReady() error = %v, wantErr %v", err, wantErr)
 				}
 				if err != nil && !strings.Contains(err.Error(), subErrMsg) {
-					t.Errorf("waitForSnapshotCopy() error = %v, wantErr %v", err, subErrMsg)
+					t.Errorf("waitForSnapshotReady() error = %v, wantErr %v", err, subErrMsg)
 				}
 			},
 		},
@@ -324,15 +324,15 @@ func TestWaitForSnapshotCopy(t *testing.T) {
 				mockSnapshotClient := mocksnapshotclient.NewMockInterface(ctrl)
 				d.getCloud().SnapshotsClient = mockSnapshotClient
 				mockSnapshotClient.EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(snapshot, nil).AnyTimes()
-				err := d.waitForSnapshotCopy(context.Background(), subID, resourceGroup, snapshotID, intervel, timeout)
+				err := d.waitForSnapshotReady(context.Background(), subID, resourceGroup, snapshotID, intervel, timeout)
 
 				wantErr := true
 				subErrMsg := "timeout"
 				if (err != nil) != wantErr {
-					t.Errorf("waitForSnapshotCopy() error = %v, wantErr %v", err, wantErr)
+					t.Errorf("waitForSnapshotReady() error = %v, wantErr %v", err, wantErr)
 				}
 				if err != nil && !strings.Contains(err.Error(), subErrMsg) {
-					t.Errorf("waitForSnapshotCopy() error = %v, wantErr %v", err, subErrMsg)
+					t.Errorf("waitForSnapshotReady() error = %v, wantErr %v", err, subErrMsg)
 				}
 			},
 		},
@@ -364,15 +364,15 @@ func TestWaitForSnapshotCopy(t *testing.T) {
 				mockSnapshotClient := mocksnapshotclient.NewMockInterface(ctrl)
 				d.getCloud().SnapshotsClient = mockSnapshotClient
 				mockSnapshotClient.EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(snapshot, nil).AnyTimes()
-				err := d.waitForSnapshotCopy(context.Background(), subID, resourceGroup, snapshotID, intervel, timeout)
+				err := d.waitForSnapshotReady(context.Background(), subID, resourceGroup, snapshotID, intervel, timeout)
 
 				wantErr := false
 				subErrMsg := ""
 				if (err != nil) != wantErr {
-					t.Errorf("waitForSnapshotCopy() error = %v, wantErr %v", err, wantErr)
+					t.Errorf("waitForSnapshotReady() error = %v, wantErr %v", err, wantErr)
 				}
 				if err != nil && !strings.Contains(err.Error(), subErrMsg) {
-					t.Errorf("waitForSnapshotCopy() error = %v, wantErr %v", err, subErrMsg)
+					t.Errorf("waitForSnapshotReady() error = %v, wantErr %v", err, subErrMsg)
 				}
 			},
 		},
