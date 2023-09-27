@@ -68,6 +68,7 @@ var (
 	trafficManagerPort           = flag.Int64("traffic-manager-port", 7788, "default traffic manager port")
 	enableWindowsHostProcess     = flag.Bool("enable-windows-host-process", false, "enable windows host process")
 	enableOtelTracing            = flag.Bool("enable-otel-tracing", false, "If set, enable opentelemetry tracing for the driver. The tracing is disabled by default. Configure the exporter endpoint with OTEL_EXPORTER_OTLP_ENDPOINT and other env variables, see https://opentelemetry.io/docs/specs/otel/configuration/sdk-environment-variables/#general-sdk-configuration.")
+	waitForSnapshotReady         = flag.Bool("wait-for-snapshot-ready", true, "boolean flag to wait for snapshot ready when creating snapshot in same region")
 )
 
 func main() {
@@ -133,6 +134,7 @@ func handle() {
 		EnableWindowsHostProcess:     *enableWindowsHostProcess,
 		GetNodeIDFromIMDS:            *getNodeIDFromIMDS,
 		EnableOtelTracing:            *enableOtelTracing,
+		WaitForSnapshotReady:         *waitForSnapshotReady,
 	}
 	driver := azuredisk.NewDriver(&driverOptions)
 	if driver == nil {
