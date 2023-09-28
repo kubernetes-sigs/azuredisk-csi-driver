@@ -23,6 +23,7 @@ import (
 	"io/ioutil"
 	"os"
 	"reflect"
+	"regexp"
 	"runtime"
 	"strings"
 	"testing"
@@ -267,6 +268,7 @@ users:
 }
 
 func TestGetCloudProvider(t *testing.T) {
+	locationRxp := regexp.MustCompile("(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])?")
 	fakeCredFile, err := testutil.GetWorkDirPath("fake-cred-file.json")
 	if err != nil {
 		t.Errorf("GetWorkDirPath failed with %v", err)
@@ -318,6 +320,7 @@ users:
 		desc                  string
 		createFakeCredFile    bool
 		createFakeKubeConfig  bool
+		credFile              string
 		kubeconfig            string
 		userAgent             string
 		allowEmptyCloudConfig bool
@@ -353,6 +356,15 @@ users:
 			allowEmptyCloudConfig: true,
 			expectedErr:           nil,
 		},
+		{
+			desc:                  "[success] out of cluster & in cluster, no kubeconfig, a fake credential file with upper case Location format",
+			createFakeCredFile:    true,
+			kubeconfig:            "",
+			credFile:              "location: \"East US\"\n",
+			userAgent:             "useragent",
+			allowEmptyCloudConfig: false,
+			expectedErr:           nil,
+		},
 	}
 
 	for _, test := range tests {
@@ -363,6 +375,10 @@ users:
 			defer func() {
 				os.Remove(fakeCredFile)
 			}()
+
+			if err := os.WriteFile(fakeCredFile, []byte(test.credFile), 0666); err != nil {
+				t.Error(err)
+			}
 
 			t.Setenv(consts.DefaultAzureCredentialFileEnv, fakeCredFile)
 		}
@@ -383,6 +399,7 @@ users:
 			t.Errorf("desc: %s,\n input: %q, GetCloudProvider err: %v, expectedErr: %v", test.desc, test.kubeconfig, err, test.expectedErr)
 		}
 		if cloud != nil {
+			assert.Regexp(t, locationRxp, cloud.Location)
 			assert.Equal(t, cloud.UserAgent, test.userAgent)
 			assert.Equal(t, cloud.DiskRateLimit != nil && cloud.DiskRateLimit.CloudProviderRateLimit, false)
 			assert.Equal(t, cloud.SnapshotRateLimit != nil && cloud.SnapshotRateLimit.CloudProviderRateLimit, false)
