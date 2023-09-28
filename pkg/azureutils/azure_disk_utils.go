@@ -216,6 +216,11 @@ func GetCloudProviderFromClient(ctx context.Context, kubeClient *clientset.Clien
 			return nil, fmt.Errorf("no cloud config provided, error: %v", err)
 		}
 	} else {
+		// Location may be either upper case with spaces (e.g. "East US") or lower case without spaces (e.g. "eastus")
+		// Kubernetes does not allow whitespaces in label values, e.g. for topology keys
+		// ensure Kubernetes compatible format for Location by enforcing lowercase-no-space format
+		config.Location = strings.ToLower(strings.ReplaceAll(config.Location, " ", ""))
+
 		// disable disk related rate limit
 		config.DiskRateLimit = &azclients.RateLimitConfig{
 			CloudProviderRateLimit: false,
