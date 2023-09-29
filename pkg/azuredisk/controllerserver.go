@@ -47,8 +47,8 @@ import (
 )
 
 const (
-	waitForSnapshotCopyInterval = 5 * time.Second
-	waitForSnapshotCopyTimeout  = 10 * time.Minute
+	waitForSnapshotReadyInterval = 5 * time.Second
+	waitForSnapshotReadyTimeout  = 10 * time.Minute
 )
 
 // listVolumeStatus explains the return status of `listVolumesByResourceGroup`
@@ -933,6 +933,10 @@ func (d *Driver) CreateSnapshot(ctx context.Context, req *csi.CreateSnapshotRequ
 		azureutils.SleepIfThrottled(rerr.Error(), consts.SnapshotOpThrottlingSleepSec)
 		return nil, status.Error(codes.Internal, fmt.Sprintf("create snapshot error: %v", rerr.Error()))
 	}
+
+	if err := d.waitForSnapshotReady(ctx, subsID, resourceGroup, snapshotName, waitForSnapshotReadyInterval, waitForSnapshotReadyTimeout); err != nil {
+		return nil, status.Error(codes.Internal, fmt.Sprintf("waitForSnapshotReady(%s, %s, %s) failed with %v", subsID, resourceGroup, snapshotName, err))
+	}
 	klog.V(2).Infof("create snapshot(%s) under rg(%s) region(%s) successfully", snapshotName, resourceGroup, d.cloud.Location)
 
 	csiSnapshot, err := d.getSnapshotByID(ctx, subsID, resourceGroup, snapshotName, sourceVolumeID)
@@ -963,8 +967,8 @@ func (d *Driver) CreateSnapshot(ctx context.Context, req *csi.CreateSnapshotRequ
 		}
 		klog.V(2).Infof("create snapshot(%s) under rg(%s) region(%s) successfully", crossRegionSnapshotName, resourceGroup, location)
 
-		if err := d.waitForSnapshotCopy(ctx, subsID, resourceGroup, crossRegionSnapshotName, waitForSnapshotCopyInterval, waitForSnapshotCopyTimeout); err != nil {
-			return nil, status.Error(codes.Internal, fmt.Sprintf("failed to wait for snapshot copy cross region: %v", err.Error()))
+		if err := d.waitForSnapshotReady(ctx, subsID, resourceGroup, crossRegionSnapshotName, waitForSnapshotReadyInterval, waitForSnapshotReadyTimeout); err != nil {
+			return nil, status.Error(codes.Internal, fmt.Sprintf("waitForSnapshotReady(%s, %s, %s) failed with %v", subsID, resourceGroup, crossRegionSnapshotName, err))
 		}
 
 		klog.V(2).Infof("begin to delete snapshot(%s) under rg(%s) region(%s)", snapshotName, resourceGroup, d.cloud.Location)
