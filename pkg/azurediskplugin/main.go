@@ -67,6 +67,7 @@ var (
 	enableTrafficManager         = flag.Bool("enable-traffic-manager", false, "boolean flag to enable traffic manager")
 	trafficManagerPort           = flag.Int64("traffic-manager-port", 7788, "default traffic manager port")
 	enableWindowsHostProcess     = flag.Bool("enable-windows-host-process", false, "enable windows host process")
+	waitForSnapshotReady         = flag.Bool("wait-for-snapshot-ready", true, "boolean flag to wait for snapshot ready when creating snapshot in same region")
 )
 
 func main() {
@@ -117,6 +118,7 @@ func handle() {
 		VMType:                       *vmType,
 		EnableWindowsHostProcess:     *enableWindowsHostProcess,
 		GetNodeIDFromIMDS:            *getNodeIDFromIMDS,
+		WaitForSnapshotReady:         *waitForSnapshotReady,
 	}
 	driver := azuredisk.NewDriver(&driverOptions)
 	if driver == nil {
