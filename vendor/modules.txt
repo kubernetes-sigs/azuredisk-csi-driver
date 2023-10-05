@@ -1399,8 +1399,8 @@ k8s.io/kubernetes/test/utils
 k8s.io/kubernetes/test/utils/format
 k8s.io/kubernetes/test/utils/image
 k8s.io/kubernetes/test/utils/kubeconfig
-# k8s.io/mount-utils v0.0.0 => k8s.io/mount-utils v0.0.0-20221216112627-49433b159e95
-## explicit; go 1.19
+# k8s.io/mount-utils v0.27.6
+## explicit; go 1.20
 k8s.io/mount-utils
 # k8s.io/pod-security-admission v0.27.3 => k8s.io/pod-security-admission v0.27.3
 ## explicit; go 1.20
@@ -1522,7 +1522,6 @@ sigs.k8s.io/yaml
 # k8s.io/kubelet => k8s.io/kubelet v0.27.3
 # k8s.io/legacy-cloud-providers => k8s.io/legacy-cloud-providers v0.27.3
 # k8s.io/metrics => k8s.io/metrics v0.27.3
-# k8s.io/mount-utils => k8s.io/mount-utils v0.0.0-20221216112627-49433b159e95
 # k8s.io/pod-security-admission => k8s.io/pod-security-admission v0.27.3
 # k8s.io/sample-apiserver => k8s.io/sample-apiserver v0.27.3
 # k8s.io/sample-cli-plugin => k8s.io/sample-cli-plugin v0.27.3
