@@ -49,6 +49,7 @@ type DynamicallyProvisionedVolumeSnapshotTest struct {
 	PodWithSnapshot                PodDetails
 	StorageClassParameters         map[string]string
 	SnapshotStorageClassParameters map[string]string
+	IsWindowsHPCDeployment         bool
 }
 
 func (t *DynamicallyProvisionedVolumeSnapshotTest) Run(ctx context.Context, client clientset.Interface, restclient restclientset.Interface, namespace *v1.Namespace) {
@@ -132,7 +133,7 @@ func (t *DynamicallyProvisionedVolumeSnapshotTest) Run(ctx context.Context, clie
 		defer tPodWithSnapshotCleanup[i](ctx)
 	}
 
-	if t.ShouldOverwrite {
+	if t.ShouldOverwrite && !t.IsWindowsHPCDeployment {
 		// 	TODO: add test case which will schedule the original disk and the copied disk on the same node once the conflicting UUID issue is fixed.
 		ginkgo.By("Set pod anti-affinity to make sure two pods are scheduled on different nodes")
 		tPodWithSnapshot.SetAffinity(&TestPodAntiAffinity)
