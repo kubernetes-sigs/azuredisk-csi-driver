@@ -747,6 +747,7 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 			CSIDriver:              testDriver,
 			Pod:                    pod,
 			ShouldOverwrite:        false,
+			IsWindowsHPCDeployment: isWindowsHPCDeployment,
 			PodWithSnapshot:        podWithSnapshot,
 			StorageClassParameters: map[string]string{"skuName": "StandardSSD_LRS"},
 			SnapshotStorageClassParameters: map[string]string{
