@@ -169,6 +169,15 @@ func (ss *ScaleSet) DetachDisk(ctx context.Context, nodeName types.NodeName, dis
 		return err
 	}
 
+	if vm != nil && vm.VirtualMachineScaleSetVMProperties != nil {
+		vmState := strings.ToLower(pointer.StringDeref(vm.VirtualMachineScaleSetVMProperties.ProvisioningState, ""))
+		klog.Warningf("vm(%s) is in state(%s)", vmName, vmState)
+		if vmState == vmPowerStateStopped || vmState == vmPowerStateDeallocated || vmState == vmPowerStateDeallocating {
+			klog.Warningf("vm(%s) is in state(%s), skip detach disk", vmName, vmState)
+			return nil
+		}
+	}
+
 	nodeResourceGroup, err := ss.GetNodeResourceGroup(vmName)
 	if err != nil {
 		return err
