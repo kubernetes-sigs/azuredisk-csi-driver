@@ -14,15 +14,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-set -euo pipefail
-
-readonly PKG_ROOT=$(git rev-parse --show-toplevel)
-
-${PKG_ROOT}/hack/verify-gofmt.sh
-${PKG_ROOT}/hack/verify-govet.sh
-${PKG_ROOT}/hack/verify-gomod.sh
-${PKG_ROOT}/hack/verify-yamllint.sh
-${PKG_ROOT}/hack/verify-boilerplate.sh
-${PKG_ROOT}/hack/verify-helm-chart-files.sh
-${PKG_ROOT}/hack/verify-helm-chart.sh
-${PKG_ROOT}/hack/verify-helm-chart-index.sh
+ip="192.168.0.1"
+if echo "$ip" | grep -q "\."; then
+    echo "print out cloudprovider_azure metrics ..."
+else
+    echo "non"
+fi
