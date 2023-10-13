@@ -157,7 +157,7 @@ func (t *DynamicallyProvisionedResizeVolumeTest) Run(ctx context.Context, client
 	framework.ExpectNoError(err, fmt.Sprintf("Error getting client for azuredisk %v", err))
 	disktest, err := disksClient.Get(ctx, resourceGroup, diskName)
 	framework.ExpectNoError(err, fmt.Sprintf("Error getting disk for azuredisk %v", err))
-	newdiskSize := strconv.Itoa(int(*disktest.DiskSizeGB)) + "Gi"
+	newdiskSize := strconv.Itoa(int(*disktest.Properties.DiskSizeGB)) + "Gi"
 	if !(newSize.String() == newdiskSize) {
 		framework.Failf("newPVCSize(%+v) is not equal to new azurediskSize(%+v)", newSize.String(), newdiskSize)
 	}
