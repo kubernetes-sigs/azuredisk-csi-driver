@@ -53,7 +53,7 @@ type DynamicallyProvisionedVolumeSnapshotCrossRegionTest struct {
 func (t *DynamicallyProvisionedVolumeSnapshotCrossRegionTest) Run(ctx context.Context, client clientset.Interface, restclient restclientset.Interface, namespace *v1.Namespace) {
 	tpod := NewTestPod(client, namespace, t.Pod.Cmd, t.Pod.IsWindows, t.Pod.WinServerVer)
 	volume := t.Pod.Volumes[0]
-	tpvc, pvcCleanup := volume.SetupDynamicPersistentVolumeClaim(ctx, client, namespace, t.CSIDriver, t.StorageClassParameters)
+	tpvc, pvcCleanup := volume.SetupDynamicPersistentVolumeClaim(ctx, client, namespace, t.CSIDriver, t.StorageClassParameters, nil)
 	for i := range pvcCleanup {
 		defer pvcCleanup[i](ctx)
 	}
@@ -118,7 +118,7 @@ func (t *DynamicallyProvisionedVolumeSnapshotCrossRegionTest) Run(ctx context.Co
 	restoredStorageClassParameters["location"] = t.SnapshotStorageClassParameters["location"]
 	volumeBindingMode := storagev1.VolumeBindingWaitForFirstConsumer
 	snapshotVolume.VolumeBindingMode = &volumeBindingMode
-	trpvc, rpvcCleanup := snapshotVolume.SetupDynamicPersistentVolumeClaim(ctx, client, namespace, t.CSIDriver, restoredStorageClassParameters)
+	trpvc, rpvcCleanup := snapshotVolume.SetupDynamicPersistentVolumeClaim(ctx, client, namespace, t.CSIDriver, restoredStorageClassParameters, nil)
 	for i := range rpvcCleanup {
 		defer rpvcCleanup[i](ctx)
 	}

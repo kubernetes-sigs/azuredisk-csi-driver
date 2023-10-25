@@ -75,6 +75,13 @@ func (f *Driver) GetPluginCapabilities(_ context.Context, _ *csi.GetPluginCapabi
 				},
 			},
 		},
+		{
+			Type: &csi.PluginCapability_Service_{
+				Service: &csi.PluginCapability_Service{
+					Type: csi.PluginCapability_Service_GROUP_CONTROLLER_SERVICE,
+				},
+			},
+		},
 	}
 
 	if f.enableDiskOnlineResize {

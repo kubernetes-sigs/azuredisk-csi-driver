@@ -29,11 +29,11 @@ if [[ "${deployDirNum}" != "${helmDirNum}" ]]; then
   exit 1
 fi
 
-for path in "deploy/*.yaml" "deploy/example/*.yaml" "deploy/example/metrics/*.yaml" "deploy/example/snapshot/*.yaml" "deploy/example/cloning/*.yaml" "deploy/example/rawblock/*.yaml" "deploy/example/windows/*.yaml" "deploy/example/sharedisk/*.yaml" "deploy/example/modifyvolume/*.yaml" "docs/known-issues/node-shutdown-recovery/*.yaml" "deploy/example/vpa/*.yaml"
+for path in "deploy/*.yaml" "deploy/example/*.yaml" "deploy/example/metrics/*.yaml" "deploy/example/snapshot/*.yaml" "deploy/example/cloning/*.yaml" "deploy/example/rawblock/*.yaml" "deploy/example/windows/*.yaml" "deploy/example/sharedisk/*.yaml" "deploy/example/modifyvolume/*.yaml" "docs/known-issues/node-shutdown-recovery/*.yaml" "deploy/example/vpa/*.yaml" "deploy/example/volumegroupsnapshot/*.yaml"
 do
     echo "checking yamllint under path: $path ..."
     yamllint -f parsable $path | grep -v "line too long" > $LOG
-    linecount=`cat $LOG | grep -v crd-csi-snapshot | wc -l`
+    linecount=`cat $LOG | grep -vE "crd-csi-snapshot|crd-csi-volumegroupsnapshot" | wc -l`
     if [ $linecount -gt 0 ]; then
         echo "yaml files under $path are not linted, failed with: "
         cat $LOG
@@ -43,7 +43,7 @@ done
 
 echo "checking yamllint under path: $helmPath ..."
 yamllint -f parsable $helmPath/*.yaml | grep -v "line too long" | grep -v "too many spaces inside braces" | grep -v "missing document start" | grep -v "syntax error" > $LOG
-linecount=`cat $LOG | grep -v crd-csi-snapshot | wc -l`
+linecount=`cat $LOG | grep -vE "crd-csi-snapshot|crd-csi-volumegroupsnapshot" | wc -l`
 if [ $linecount -gt 0 ]; then
 	echo "yaml files under $helmPath/ are not linted, failed with: "
 	cat $LOG

@@ -344,6 +344,10 @@ func convertToPowershellorCmdCommandIfNecessary(command string) string {
 		return "Get-Content C:\\mnt\\test-1\\data.txt | findstr 'hello world'"
 	case "df -h | grep /mnt/test- | awk '{print $2}' | grep -E '19|20'":
 		return "fsutil volume diskfree C:\\mnt\\ | Select-String 'Total bytes' | Select-String -Pattern '19|20'"
+	case "echo 'hello world 1' > /mnt/test-1/data":
+		return "echo 'hello world 1' | Out-File -FilePath C:\\mnt\\test-1\\data.txt"
+	case "echo 'hello world 2' > /mnt/test-1/data":
+		return "echo 'hello world 2' | Out-File -FilePath C:\\mnt\\test-1\\data.txt"
 	}
 
 	return command

@@ -49,6 +49,7 @@ import (
 var (
 	testVolumeName = "unit-test-volume"
 	testVolumeID   = fmt.Sprintf(consts.ManagedDiskPath, "subs", "rg", testVolumeName)
+	testVolumeIDs  = []string{testVolumeID}
 )
 
 func checkTestError(t *testing.T, expectedErrCode codes.Code, err error) {
@@ -1142,6 +1143,27 @@ func TestControllerGetCapabilities(t *testing.T) {
 	resp, err := d.ControllerGetCapabilities(context.Background(), &req)
 	assert.NotNil(t, resp)
 	assert.Equal(t, resp.Capabilities[0].GetType(), capType)
+	assert.NoError(t, err)
+}
+
+func TestGroupControllerGetCapabilities(t *testing.T) {
+	cntl := gomock.NewController(t)
+	defer cntl.Finish()
+	d, _ := NewFakeDriver(cntl)
+	gcapType := &csi.GroupControllerServiceCapability_Rpc{
+		Rpc: &csi.GroupControllerServiceCapability_RPC{
+			Type: csi.GroupControllerServiceCapability_RPC_UNKNOWN,
+		},
+	}
+	gcapList := []*csi.GroupControllerServiceCapability{{
+		Type: gcapType,
+	}}
+	d.setGroupControllerCapabilities(gcapList)
+	// Test valid request
+	req := csi.GroupControllerGetCapabilitiesRequest{}
+	resp, err := d.GroupControllerGetCapabilities(context.Background(), &req)
+	assert.NotNil(t, resp)
+	assert.Equal(t, resp.Capabilities[0].GetType(), gcapType)
 	assert.NoError(t, err)
 }
 
@@ -2331,6 +2353,878 @@ func TestListSnapshots(t *testing.T) {
 	}
 
 }
+
+func TestCreateVolumeGroupSnapshot(t *testing.T) {
+	testCases := []struct {
+		name     string
+		testFunc func(t *testing.T)
+	}{
+		{
+			name: "Source volume IDs missing",
+			testFunc: func(t *testing.T) {
+				cntl := gomock.NewController(t)
+				defer cntl.Finish()
+				d, _ := NewFakeDriver(cntl)
+				req := &csi.CreateVolumeGroupSnapshotRequest{}
+				_, err := d.CreateVolumeGroupSnapshot(context.Background(), req)
+				expectedErr := status.Error(codes.InvalidArgument, "CreateVolumeGroupSnapshot Source Volume IDs must be provided")
+				if !reflect.DeepEqual(err, expectedErr) {
+					t.Errorf("actualErr: (%v), expectedErr: (%v)", err, expectedErr)
+				}
+			},
+		},
+		{
+			name: "Source volume ID missing",
+			testFunc: func(t *testing.T) {
+				cntl := gomock.NewController(t)
+				defer cntl.Finish()
+				d, _ := NewFakeDriver(cntl)
+				req := &csi.CreateVolumeGroupSnapshotRequest{
+					SourceVolumeIds: []string{""},
+				}
+				_, err := d.CreateVolumeGroupSnapshot(context.Background(), req)
+				expectedErr := status.Error(codes.InvalidArgument, "CreateVolumeGroupSnapshot Source Volume ID must be provided")
+				if !reflect.DeepEqual(err, expectedErr) {
+					t.Errorf("actualErr: (%v), expectedErr: (%v)", err, expectedErr)
+				}
+			},
+		},
+		{
+			name: "VolumeGroupSnapshot name missing",
+			testFunc: func(t *testing.T) {
+				cntl := gomock.NewController(t)
+				defer cntl.Finish()
+				d, _ := NewFakeDriver(cntl)
+				req := &csi.CreateVolumeGroupSnapshotRequest{
+					SourceVolumeIds: []string{"vol_1"}}
+				_, err := d.CreateVolumeGroupSnapshot(context.Background(), req)
+				expectedErr := status.Error(codes.InvalidArgument, "volume group snapshot name must be provided")
+				if !reflect.DeepEqual(err, expectedErr) {
+					t.Errorf("actualErr: (%v), expectedErr: (%v)", err, expectedErr)
+				}
+			},
+		},
+		{
+			name: "Invalid parameter option",
+			testFunc: func(t *testing.T) {
+				cntl := gomock.NewController(t)
+				defer cntl.Finish()
+				d, _ := NewFakeDriver(cntl)
+				parameter := make(map[string]string)
+				parameter["unit-test"] = "test"
+				req := &csi.CreateVolumeGroupSnapshotRequest{
+					SourceVolumeIds: []string{"vol_1"},
+					Name:            "volumegroupsnapname",
+					Parameters:      parameter,
+				}
+
+				_, err := d.CreateVolumeGroupSnapshot(context.Background(), req)
+				expectedErr := status.Errorf(codes.Internal, "AzureDisk - invalid option unit-test in VolumeSnapshotClass")
+				if !reflect.DeepEqual(err, expectedErr) {
+					t.Errorf("actualErr: (%v), expectedErr: (%v)", err, expectedErr)
+				}
+			},
+		},
+		{
+			name: "Invalid volume ID",
+			testFunc: func(t *testing.T) {
+				cntl := gomock.NewController(t)
+				defer cntl.Finish()
+				d, _ := NewFakeDriver(cntl)
+				req := &csi.CreateVolumeGroupSnapshotRequest{
+					SourceVolumeIds: []string{"vol_1"},
+					Name:            "volumegroupsnapname",
+				}
+				_, err := d.CreateVolumeGroupSnapshot(context.Background(), req)
+				expectedErr := status.Errorf(codes.InvalidArgument, "could not get resource group from diskURI(vol_1) with error(invalid URI: vol_1)")
+				if !reflect.DeepEqual(err, expectedErr) {
+					t.Errorf("actualErr: (%v), expectedErr: (%v)", err, expectedErr)
+				}
+			},
+		},
+		{
+			name: "Invalid tag ",
+			testFunc: func(t *testing.T) {
+				cntl := gomock.NewController(t)
+				defer cntl.Finish()
+				d, _ := NewFakeDriver(cntl)
+				d.setCloud(&azure.Cloud{})
+				parameter := make(map[string]string)
+				parameter["tags"] = "unit-test"
+				parameter[consts.IncrementalField] = "false"
+				parameter[consts.ResourceGroupField] = "test"
+				req := &csi.CreateVolumeGroupSnapshotRequest{
+					SourceVolumeIds: testVolumeIDs,
+					Name:            "volumegroupsnapname",
+					Parameters:      parameter,
+				}
+
+				_, err := d.CreateVolumeGroupSnapshot(context.Background(), req)
+				expectedErr := status.Errorf(codes.InvalidArgument, "tags 'unit-test' are invalid, the format should like: 'key1=value1,key2=value2'")
+				if !reflect.DeepEqual(err, expectedErr) {
+					t.Errorf("actualErr: (%v), expectedErr: (%v)", err, expectedErr)
+				}
+			},
+		},
+		{
+			name: "invalid data access auth mode ",
+			testFunc: func(t *testing.T) {
+				if *useDriverV2 {
+					t.Skip("Skip the test for driver v2")
+				}
+				parameter := make(map[string]string)
+				parameter["dataaccessauthmode"] = "Invalid"
+				req := &csi.CreateVolumeGroupSnapshotRequest{
+					SourceVolumeIds: testVolumeIDs,
+					Name:            "volumegroupsnapname",
+					Parameters:      parameter,
+				}
+				cntl := gomock.NewController(t)
+				defer cntl.Finish()
+				d, _ := NewFakeDriver(cntl)
+				d.setCloud(&azure.Cloud{})
+
+				_, err := d.CreateVolumeGroupSnapshot(context.Background(), req)
+				expectedErr := status.Errorf(codes.InvalidArgument, "dataAccessAuthMode(Invalid) is not supported")
+				if !reflect.DeepEqual(err, expectedErr) {
+					t.Errorf("actualErr: (%v), expectedErr: (%v)", err, expectedErr)
+				}
+			},
+		},
+		{
+			name: "get snapshot client error ",
+			testFunc: func(t *testing.T) {
+				if *useDriverV2 {
+					t.Skip("Skip the test for driver v2")
+				}
+				parameter := make(map[string]string)
+				parameter["SubscriptionID"] = "1"
+				req := &csi.CreateVolumeGroupSnapshotRequest{
+					SourceVolumeIds: testVolumeIDs,
+					Name:            "volumegroupsnapname",
+					Parameters:      parameter,
+				}
+				cntl := gomock.NewController(t)
+				defer cntl.Finish()
+				d, _ := NewFakeDriver(cntl)
+				d.setCloud(&azure.Cloud{})
+				ctrl := gomock.NewController(t)
+				defer ctrl.Finish()
+				d.getClientFactory().(*mock_azclient.MockClientFactory).EXPECT().GetSnapshotClientForSub(gomock.Any()).Return(nil, fmt.Errorf("test")).AnyTimes()
+
+				_, err := d.CreateVolumeGroupSnapshot(context.Background(), req)
+				expectedErr := status.Errorf(codes.Internal, "could not get snapshot client for subscription(1) with error(test)")
+				if !reflect.DeepEqual(err, expectedErr) {
+					t.Errorf("actualErr: (%v), expectedErr: (%v)", err, expectedErr)
+				}
+			},
+		},
+		{
+			name: "create snapshot error ",
+			testFunc: func(t *testing.T) {
+				req := &csi.CreateVolumeGroupSnapshotRequest{
+					SourceVolumeIds: testVolumeIDs,
+					Name:            "volumegroupsnapname",
+				}
+				cntl := gomock.NewController(t)
+				defer cntl.Finish()
+				d, _ := NewFakeDriver(cntl)
+				d.setCloud(&azure.Cloud{})
+				ctrl := gomock.NewController(t)
+				defer ctrl.Finish()
+				mockSnapshotClient := mock_snapshotclient.NewMockInterface(ctrl)
+				d.getClientFactory().(*mock_azclient.MockClientFactory).EXPECT().GetSnapshotClientForSub(gomock.Any()).Return(mockSnapshotClient, nil).AnyTimes()
+				mockSnapshotClient.EXPECT().CreateOrUpdate(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, fmt.Errorf("test")).AnyTimes()
+
+				_, err := d.CreateVolumeGroupSnapshot(context.Background(), req)
+				expectedErr := status.Errorf(codes.Internal, "create snapshot error: test")
+				if !reflect.DeepEqual(err, expectedErr) {
+					t.Errorf("actualErr: (%v), expectedErr: (%v)", err, expectedErr)
+				}
+			},
+		},
+		{
+			name: "create snapshot already exist ",
+			testFunc: func(t *testing.T) {
+				parameter := make(map[string]string)
+				parameter["tags"] = "unit=test"
+				req := &csi.CreateVolumeGroupSnapshotRequest{
+					SourceVolumeIds: testVolumeIDs,
+					Name:            "volumegroupsnapname",
+					Parameters:      parameter,
+				}
+				cntl := gomock.NewController(t)
+				defer cntl.Finish()
+				d, _ := NewFakeDriver(cntl)
+				d.setCloud(&azure.Cloud{})
+				ctrl := gomock.NewController(t)
+				defer ctrl.Finish()
+				mockSnapshotClient := mock_snapshotclient.NewMockInterface(ctrl)
+				d.getClientFactory().(*mock_azclient.MockClientFactory).EXPECT().GetSnapshotClientForSub(gomock.Any()).Return(mockSnapshotClient, nil).AnyTimes()
+				mockSnapshotClient.EXPECT().CreateOrUpdate(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, fmt.Errorf("existing disk")).AnyTimes()
+				_, err := d.CreateVolumeGroupSnapshot(context.Background(), req)
+				expectedErr := status.Errorf(codes.AlreadyExists, "request snapshot(snapshot-a456d127be4fdc6c0d8a3bac680b80b1a446c925c2ff89404fa3e2abf888bbd2) under rg(rg) already exists, but the SourceVolumeId is different, error details: existing disk")
+				if !reflect.DeepEqual(err, expectedErr) {
+					t.Errorf("actualErr: (%v), expectedErr: (%v)", err, expectedErr)
+				}
+			},
+		},
+		{
+			name: "Wait snapshot ready error ",
+			testFunc: func(t *testing.T) {
+				parameter := make(map[string]string)
+				parameter["tags"] = "unit=test"
+				req := &csi.CreateVolumeGroupSnapshotRequest{
+					SourceVolumeIds: testVolumeIDs,
+					Name:            "unit-test",
+					Parameters:      parameter,
+				}
+				cntl := gomock.NewController(t)
+				defer cntl.Finish()
+				d, _ := NewFakeDriver(cntl)
+				d.setCloud(&azure.Cloud{})
+				ctrl := gomock.NewController(t)
+				defer ctrl.Finish()
+				mockSnapshotClient := mock_snapshotclient.NewMockInterface(ctrl)
+				d.getClientFactory().(*mock_azclient.MockClientFactory).EXPECT().GetSnapshotClientForSub(gomock.Any()).Return(mockSnapshotClient, nil).AnyTimes()
+
+				snapshot := &armcompute.Snapshot{}
+				mockSnapshotClient.EXPECT().CreateOrUpdate(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, nil).AnyTimes()
+				mockSnapshotClient.EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any()).Return(snapshot, fmt.Errorf("get snapshot error")).AnyTimes()
+				_, err := d.CreateVolumeGroupSnapshot(context.Background(), req)
+				expectedErr := status.Errorf(codes.Internal, "waitForSnapshotReady(, rg, snapshot-38618c6895a7b2a9aeb5ee2a249dcc6d28e219ec5382f4dff9f78298cb9d4a37) failed with get snapshot error")
+				if !reflect.DeepEqual(err, expectedErr) {
+					t.Errorf("actualErr: (%v), expectedErr: (%v)", err, expectedErr)
+				}
+			},
+		},
+		{
+			name: "Get snapshot ID error ",
+			testFunc: func(t *testing.T) {
+				if *useDriverV2 {
+					t.Skip("Skip the test for driver v2")
+				}
+				parameter := make(map[string]string)
+				parameter["tags"] = "unit=test"
+				req := &csi.CreateVolumeGroupSnapshotRequest{
+					SourceVolumeIds: testVolumeIDs,
+					Name:            "unit-test",
+					Parameters:      parameter,
+				}
+				cntl := gomock.NewController(t)
+				defer cntl.Finish()
+				d, _ := NewFakeDriver(cntl)
+				d.setCloud(&azure.Cloud{})
+				ctrl := gomock.NewController(t)
+				defer ctrl.Finish()
+				mockSnapshotClient := mock_snapshotclient.NewMockInterface(ctrl)
+				d.getClientFactory().(*mock_azclient.MockClientFactory).EXPECT().GetSnapshotClientForSub(gomock.Any()).Return(mockSnapshotClient, nil).AnyTimes()
+
+				provisioningState := "succeeded"
+				DiskSize := int32(10)
+				snapshotID := "test"
+				snapshot := &armcompute.Snapshot{
+					Properties: &armcompute.SnapshotProperties{
+						TimeCreated:       &time.Time{},
+						ProvisioningState: &provisioningState,
+						DiskSizeGB:        &DiskSize,
+					},
+					ID: &snapshotID,
+				}
+				mockSnapshotClient.EXPECT().CreateOrUpdate(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, nil).AnyTimes()
+				gomock.InOrder(
+					mockSnapshotClient.EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any()).Return(snapshot, nil).Times(1),
+					mockSnapshotClient.EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, fmt.Errorf("get snapshot error")).AnyTimes(),
+				)
+				_, err := d.CreateVolumeGroupSnapshot(context.Background(), req)
+				expectedErr := status.Errorf(codes.Internal, "get snapshot snapshot-38618c6895a7b2a9aeb5ee2a249dcc6d28e219ec5382f4dff9f78298cb9d4a37 from rg(rg) error: get snapshot error")
+				if !reflect.DeepEqual(err, expectedErr) {
+					t.Errorf("actualErr: (%v), expectedErr: (%v)", err, expectedErr)
+				}
+			},
+		},
+		{
+			name: "valid request ",
+			testFunc: func(t *testing.T) {
+				parameter := make(map[string]string)
+				parameter["tags"] = "unit=test"
+				req := &csi.CreateVolumeGroupSnapshotRequest{
+					SourceVolumeIds: testVolumeIDs,
+					Name:            "unit-test",
+					Parameters:      parameter,
+				}
+				cntl := gomock.NewController(t)
+				defer cntl.Finish()
+				d, _ := NewFakeDriver(cntl)
+				d.setCloud(&azure.Cloud{})
+				ctrl := gomock.NewController(t)
+				defer ctrl.Finish()
+				mockSnapshotClient := mock_snapshotclient.NewMockInterface(ctrl)
+				d.getClientFactory().(*mock_azclient.MockClientFactory).EXPECT().GetSnapshotClientForSub(gomock.Any()).Return(mockSnapshotClient, nil).AnyTimes()
+				provisioningState := "succeeded"
+				DiskSize := int32(10)
+				snapshotID := "test"
+				snapshot := &armcompute.Snapshot{
+					Properties: &armcompute.SnapshotProperties{
+						TimeCreated:       &time.Time{},
+						ProvisioningState: &provisioningState,
+						DiskSizeGB:        &DiskSize,
+					},
+					ID: &snapshotID,
+				}
+
+				mockSnapshotClient.EXPECT().CreateOrUpdate(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, nil).AnyTimes()
+				mockSnapshotClient.EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any()).Return(snapshot, nil).AnyTimes()
+				actualresponse, err := d.CreateVolumeGroupSnapshot(context.Background(), req)
+				tp := timestamppb.New(*snapshot.Properties.TimeCreated)
+				ready := true
+				expectedresponse := &csi.CreateVolumeGroupSnapshotResponse{
+					GroupSnapshot: &csi.VolumeGroupSnapshot{
+						GroupSnapshotId: req.Name,
+						Snapshots: []*csi.Snapshot{
+							{
+								SizeBytes:       volumehelper.GiBToBytes(int64(*snapshot.Properties.DiskSizeGB)),
+								SnapshotId:      *snapshot.ID,
+								SourceVolumeId:  req.SourceVolumeIds[0],
+								CreationTime:    tp,
+								ReadyToUse:      ready,
+								GroupSnapshotId: req.Name,
+							},
+						},
+						CreationTime: tp,
+						ReadyToUse:   ready,
+					},
+				}
+				if !reflect.DeepEqual(expectedresponse, actualresponse) || err != nil {
+					t.Errorf("actualresponse: (%+v), expectedresponse: (%+v)\n", actualresponse, expectedresponse)
+					t.Errorf("err:%v", err)
+				}
+			},
+		},
+		{
+			name: "valid request - one snapshot not ready",
+			testFunc: func(t *testing.T) {
+				parameter := make(map[string]string)
+				parameter["tags"] = "unit=test"
+				req := &csi.CreateVolumeGroupSnapshotRequest{
+					SourceVolumeIds: testVolumeIDs,
+					Name:            "unit-test",
+					Parameters:      parameter,
+				}
+				cntl := gomock.NewController(t)
+				defer cntl.Finish()
+				d, _ := NewFakeDriver(cntl)
+				d.setCloud(&azure.Cloud{})
+				ctrl := gomock.NewController(t)
+				defer ctrl.Finish()
+				mockSnapshotClient := mock_snapshotclient.NewMockInterface(ctrl)
+				d.getClientFactory().(*mock_azclient.MockClientFactory).EXPECT().GetSnapshotClientForSub(gomock.Any()).Return(mockSnapshotClient, nil).AnyTimes()
+				provisioningState := "failed"
+				DiskSize := int32(10)
+				snapshotID := "test"
+				snapshot := &armcompute.Snapshot{
+					Properties: &armcompute.SnapshotProperties{
+						TimeCreated:       &time.Time{},
+						ProvisioningState: &provisioningState,
+						DiskSizeGB:        &DiskSize,
+					},
+					ID: &snapshotID,
+				}
+
+				mockSnapshotClient.EXPECT().CreateOrUpdate(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, nil).AnyTimes()
+				mockSnapshotClient.EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any()).Return(snapshot, nil).AnyTimes()
+				actualresponse, err := d.CreateVolumeGroupSnapshot(context.Background(), req)
+				tp := timestamppb.New(*snapshot.Properties.TimeCreated)
+				ready := false
+				expectedresponse := &csi.CreateVolumeGroupSnapshotResponse{
+					GroupSnapshot: &csi.VolumeGroupSnapshot{
+						GroupSnapshotId: req.Name,
+						Snapshots: []*csi.Snapshot{
+							{
+								SizeBytes:       volumehelper.GiBToBytes(int64(*snapshot.Properties.DiskSizeGB)),
+								SnapshotId:      *snapshot.ID,
+								SourceVolumeId:  req.SourceVolumeIds[0],
+								CreationTime:    tp,
+								ReadyToUse:      ready,
+								GroupSnapshotId: req.Name,
+							},
+						},
+						CreationTime: tp,
+						ReadyToUse:   ready,
+					},
+				}
+				if !reflect.DeepEqual(expectedresponse, actualresponse) || err != nil {
+					t.Errorf("actualresponse: (%+v), expectedresponse: (%+v)\n", actualresponse, expectedresponse)
+					t.Errorf("err:%v", err)
+				}
+			},
+		},
+		{
+			name: "valid request - set optional parameter",
+			testFunc: func(t *testing.T) {
+				if *useDriverV2 {
+					t.Skip("Skip the test for driver v2")
+				}
+				parameter := make(map[string]string)
+				parameter["tags"] = "unit=test"
+				parameter["dataaccessauthmode"] = "None"
+				parameter["useragent"] = "ut"
+				parameter["csi.storage.k8s.io/volumegroupsnapshot/name"] = "VolumeGroupSnapshotNameKeyPlaceholder"
+				parameter["csi.storage.k8s.io/volumegroupsnapshot/namespace"] = "VolumeGroupSnapshotNamespaceKeyPlaceholder"
+				parameter["csi.storage.k8s.io/volumegroupsnapshotcontent/name"] = "VolumeGroupSnapshotContentNameKeyPlaceholder"
+				req := &csi.CreateVolumeGroupSnapshotRequest{
+					SourceVolumeIds: testVolumeIDs,
+					Name:            "unit-test",
+					Parameters:      parameter,
+				}
+				cntl := gomock.NewController(t)
+				defer cntl.Finish()
+				d, _ := NewFakeDriver(cntl)
+				d.setCloud(azure.GetTestCloudWithExtendedLocation(cntl))
+				ctrl := gomock.NewController(t)
+				defer ctrl.Finish()
+				mockSnapshotClient := mock_snapshotclient.NewMockInterface(ctrl)
+				d.getClientFactory().(*mock_azclient.MockClientFactory).EXPECT().GetSnapshotClientForSub(gomock.Any()).Return(mockSnapshotClient, nil).AnyTimes()
+				provisioningState := "succeeded"
+				DiskSize := int32(10)
+				snapshotID := "test"
+				snapshot := &armcompute.Snapshot{
+					Properties: &armcompute.SnapshotProperties{
+						TimeCreated:       &time.Time{},
+						ProvisioningState: &provisioningState,
+						DiskSizeGB:        &DiskSize,
+					},
+					ID: &snapshotID,
+				}
+
+				mockSnapshotClient.EXPECT().CreateOrUpdate(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, nil).AnyTimes()
+				mockSnapshotClient.EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any()).Return(snapshot, nil).AnyTimes()
+				actualresponse, err := d.CreateVolumeGroupSnapshot(context.Background(), req)
+				tp := timestamppb.New(*snapshot.Properties.TimeCreated)
+				ready := true
+				expectedresponse := &csi.CreateVolumeGroupSnapshotResponse{
+					GroupSnapshot: &csi.VolumeGroupSnapshot{
+						GroupSnapshotId: req.Name,
+						Snapshots: []*csi.Snapshot{
+							{
+								SizeBytes:       volumehelper.GiBToBytes(int64(*snapshot.Properties.DiskSizeGB)),
+								SnapshotId:      *snapshot.ID,
+								SourceVolumeId:  req.SourceVolumeIds[0],
+								CreationTime:    tp,
+								ReadyToUse:      ready,
+								GroupSnapshotId: req.Name,
+							},
+						},
+						CreationTime: tp,
+						ReadyToUse:   ready,
+					},
+				}
+				if !reflect.DeepEqual(expectedresponse, actualresponse) || err != nil {
+					t.Errorf("actualresponse: (%+v), expectedresponse: (%+v)\n", actualresponse, expectedresponse)
+					t.Errorf("err:%v", err)
+				}
+			},
+		},
+		{
+			name: "valid request - azure stack",
+			testFunc: func(t *testing.T) {
+				if *useDriverV2 {
+					t.Skip("Skip the test for driver v2")
+				}
+				parameter := make(map[string]string)
+				req := &csi.CreateVolumeGroupSnapshotRequest{
+					SourceVolumeIds: testVolumeIDs,
+					Name:            "unit-test",
+					Parameters:      parameter,
+				}
+				cntl := gomock.NewController(t)
+				defer cntl.Finish()
+				d, _ := NewFakeDriver(cntl)
+
+				az := azure.GetTestCloud(cntl)
+				az.Config.Cloud = "AZURESTACKCLOUD"
+				d.setCloud(az)
+				ctrl := gomock.NewController(t)
+				defer ctrl.Finish()
+				mockSnapshotClient := mock_snapshotclient.NewMockInterface(ctrl)
+				d.getClientFactory().(*mock_azclient.MockClientFactory).EXPECT().GetSnapshotClientForSub(gomock.Any()).Return(mockSnapshotClient, nil).AnyTimes()
+				provisioningState := "succeeded"
+				DiskSize := int32(10)
+				snapshotID := "test"
+				snapshot := &armcompute.Snapshot{
+					Properties: &armcompute.SnapshotProperties{
+						TimeCreated:       &time.Time{},
+						ProvisioningState: &provisioningState,
+						DiskSizeGB:        &DiskSize,
+					},
+					ID: &snapshotID,
+				}
+
+				mockSnapshotClient.EXPECT().CreateOrUpdate(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, nil).AnyTimes()
+				mockSnapshotClient.EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any()).Return(snapshot, nil).AnyTimes()
+				actualresponse, err := d.CreateVolumeGroupSnapshot(context.Background(), req)
+				tp := timestamppb.New(*snapshot.Properties.TimeCreated)
+				ready := true
+				expectedresponse := &csi.CreateVolumeGroupSnapshotResponse{
+					GroupSnapshot: &csi.VolumeGroupSnapshot{
+						GroupSnapshotId: req.Name,
+						Snapshots: []*csi.Snapshot{
+							{
+								SizeBytes:       volumehelper.GiBToBytes(int64(*snapshot.Properties.DiskSizeGB)),
+								SnapshotId:      *snapshot.ID,
+								SourceVolumeId:  req.SourceVolumeIds[0],
+								CreationTime:    tp,
+								ReadyToUse:      ready,
+								GroupSnapshotId: req.Name,
+							},
+						},
+						CreationTime: tp,
+						ReadyToUse:   ready,
+					},
+				}
+				if !reflect.DeepEqual(expectedresponse, actualresponse) || err != nil {
+					t.Errorf("actualresponse: (%+v), expectedresponse: (%+v)\n", actualresponse, expectedresponse)
+					t.Errorf("err:%v", err)
+				}
+			},
+		},
+	}
+	for _, tc := range testCases {
+		t.Run(tc.name, tc.testFunc)
+	}
+}
+
+func TestDeleteVolumeGroupSnapshot(t *testing.T) {
+	testCases := []struct {
+		name     string
+		testFunc func(t *testing.T)
+	}{
+		{
+			name: "GroupVolumeSnapshot ID missing",
+			testFunc: func(t *testing.T) {
+				req := &csi.DeleteVolumeGroupSnapshotRequest{}
+				expectedErr := status.Error(codes.InvalidArgument, "GroupVolumeSnapshot ID must be provided")
+				cntl := gomock.NewController(t)
+				defer cntl.Finish()
+				d, _ := NewFakeDriver(cntl)
+				_, err := d.DeleteVolumeGroupSnapshot(context.Background(), req)
+				if !reflect.DeepEqual(err, expectedErr) {
+					t.Errorf("actualErr: (%v), expectedErr: (%v)", err, expectedErr)
+				}
+			},
+		},
+		{
+			name: "GroupVolumeSnapshot is empty",
+			testFunc: func(t *testing.T) {
+				req := &csi.DeleteVolumeGroupSnapshotRequest{
+					GroupSnapshotId: "unit-test",
+				}
+				cntl := gomock.NewController(t)
+				defer cntl.Finish()
+				d, _ := NewFakeDriver(cntl)
+				expectedresponse := &csi.DeleteVolumeGroupSnapshotResponse{}
+				actualresponse, err := d.DeleteVolumeGroupSnapshot(context.Background(), req)
+				if !reflect.DeepEqual(expectedresponse, actualresponse) || err != nil {
+					t.Errorf("actualresponse: (%+v), expectedresponse: (%+v)\n", actualresponse, expectedresponse)
+					t.Errorf("err:%v", err)
+				}
+			},
+		},
+		{
+			name: "GroupVolumeSnapshot ID missing",
+			testFunc: func(t *testing.T) {
+				req := &csi.DeleteVolumeGroupSnapshotRequest{
+					GroupSnapshotId: "unit-test",
+					SnapshotIds:     []string{""},
+				}
+				expectedErr := status.Error(codes.InvalidArgument, "Snapshot ID must be provided")
+				cntl := gomock.NewController(t)
+				defer cntl.Finish()
+				d, _ := NewFakeDriver(cntl)
+				_, err := d.DeleteVolumeGroupSnapshot(context.Background(), req)
+				if !reflect.DeepEqual(err, expectedErr) {
+					t.Errorf("actualErr: (%v), expectedErr: (%v)", err, expectedErr)
+				}
+			},
+		},
+		{
+			name: "Snapshot ID invalid",
+			testFunc: func(t *testing.T) {
+				req := &csi.DeleteVolumeGroupSnapshotRequest{
+					GroupSnapshotId: "unit-test",
+					SnapshotIds:     []string{"/subscriptions/23/providers/Microsoft.Compute/snapshots/snapshot-name"},
+				}
+				cntl := gomock.NewController(t)
+				defer cntl.Finish()
+				d, _ := NewFakeDriver(cntl)
+				expectedErr := status.Errorf(codes.InvalidArgument, "invalid URI: /subscriptions/23/providers/Microsoft.Compute/snapshots/snapshot-name")
+				_, err := d.DeleteVolumeGroupSnapshot(context.Background(), req)
+				if !reflect.DeepEqual(err, expectedErr) {
+					t.Errorf("actualErr: (%v), expectedErr: (%v)", err, expectedErr)
+				}
+			},
+		},
+		{
+			name: "delete Snapshot error",
+			testFunc: func(t *testing.T) {
+				cntl := gomock.NewController(t)
+				defer cntl.Finish()
+				d, _ := NewFakeDriver(cntl)
+				d.setCloud(&azure.Cloud{})
+				ctrl := gomock.NewController(t)
+				defer ctrl.Finish()
+				mockSnapshotClient := mock_snapshotclient.NewMockInterface(ctrl)
+				d.getClientFactory().(*mock_azclient.MockClientFactory).EXPECT().GetSnapshotClientForSub(gomock.Any()).Return(mockSnapshotClient, nil).AnyTimes()
+				req := &csi.DeleteVolumeGroupSnapshotRequest{
+					GroupSnapshotId: "unit-test",
+					SnapshotIds:     []string{"testurl/subscriptions/12/resourceGroups/23/providers/Microsoft.Compute/snapshots/snapshot-name"},
+				}
+				mockSnapshotClient.EXPECT().Delete(gomock.Any(), gomock.Any(), gomock.Any()).Return(fmt.Errorf("get snapshot error")).AnyTimes()
+				expectedErr := status.Errorf(codes.Internal, "delete snapshot error: get snapshot error")
+				_, err := d.DeleteVolumeGroupSnapshot(context.Background(), req)
+				if !reflect.DeepEqual(err, expectedErr) {
+					t.Errorf("actualErr: (%v), expectedErr: (%v)", err, expectedErr)
+				}
+			},
+		},
+		{
+			name: "Valid delete VolumeGroupSnapshot ",
+			testFunc: func(t *testing.T) {
+				cntl := gomock.NewController(t)
+				defer cntl.Finish()
+				d, _ := NewFakeDriver(cntl)
+				d.setCloud(&azure.Cloud{})
+				ctrl := gomock.NewController(t)
+				defer ctrl.Finish()
+				mockSnapshotClient := mock_snapshotclient.NewMockInterface(ctrl)
+				d.getClientFactory().(*mock_azclient.MockClientFactory).EXPECT().GetSnapshotClientForSub(gomock.Any()).Return(mockSnapshotClient, nil).AnyTimes()
+				req := &csi.DeleteVolumeGroupSnapshotRequest{
+					GroupSnapshotId: "unit-test",
+					SnapshotIds:     []string{"testurl/subscriptions/12/resourceGroups/23/providers/Microsoft.Compute/snapshots/snapshot-name"},
+				}
+				mockSnapshotClient.EXPECT().Delete(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
+				_, err := d.DeleteVolumeGroupSnapshot(context.Background(), req)
+				if !reflect.DeepEqual(err, nil) {
+					t.Errorf("actualErr: (%v), expectedErr: nil)", err)
+				}
+			},
+		},
+	}
+	for _, tc := range testCases {
+		t.Run(tc.name, tc.testFunc)
+	}
+}
+
+func TestGetVolumeGroupSnapshot(t *testing.T) {
+	testCases := []struct {
+		name     string
+		testFunc func(t *testing.T)
+	}{
+		{
+			name: "GroupVolumeSnapshot ID missing",
+			testFunc: func(t *testing.T) {
+				req := &csi.GetVolumeGroupSnapshotRequest{}
+				expectedErr := status.Error(codes.InvalidArgument, "GroupVolumeSnapshot ID must be provided")
+				cntl := gomock.NewController(t)
+				defer cntl.Finish()
+				d, _ := NewFakeDriver(cntl)
+				_, err := d.GetVolumeGroupSnapshot(context.Background(), req)
+				if !reflect.DeepEqual(err, expectedErr) {
+					t.Errorf("actualErr: (%v), expectedErr: (%v)", err, expectedErr)
+				}
+			},
+		},
+		{
+			name: "GroupVolumeSnapshot is empty",
+			testFunc: func(t *testing.T) {
+				req := &csi.GetVolumeGroupSnapshotRequest{
+					GroupSnapshotId: "unit-test",
+				}
+				expectedErr := status.Error(codes.NotFound, "Snapshot IDs is empty")
+				cntl := gomock.NewController(t)
+				defer cntl.Finish()
+				d, _ := NewFakeDriver(cntl)
+				_, err := d.GetVolumeGroupSnapshot(context.Background(), req)
+				if !reflect.DeepEqual(err, expectedErr) {
+					t.Errorf("actualErr: (%v), expectedErr: (%v)", err, expectedErr)
+				}
+			},
+		},
+		{
+			name: "GroupVolumeSnapshot ID missing",
+			testFunc: func(t *testing.T) {
+				req := &csi.GetVolumeGroupSnapshotRequest{
+					GroupSnapshotId: "unit-test",
+					SnapshotIds:     []string{""},
+				}
+				expectedErr := status.Error(codes.InvalidArgument, "Snapshot ID must be provided")
+				cntl := gomock.NewController(t)
+				defer cntl.Finish()
+				d, _ := NewFakeDriver(cntl)
+				_, err := d.GetVolumeGroupSnapshot(context.Background(), req)
+				if !reflect.DeepEqual(err, expectedErr) {
+					t.Errorf("actualErr: (%v), expectedErr: (%v)", err, expectedErr)
+				}
+			},
+		},
+		{
+			name: "Snapshot ID invalid",
+			testFunc: func(t *testing.T) {
+				req := &csi.GetVolumeGroupSnapshotRequest{
+					GroupSnapshotId: "unit-test",
+					SnapshotIds:     []string{"/subscriptions/23/providers/Microsoft.Compute/snapshots/snapshot-name"},
+				}
+				cntl := gomock.NewController(t)
+				defer cntl.Finish()
+				d, _ := NewFakeDriver(cntl)
+				expectedErr := status.Errorf(codes.InvalidArgument, "invalid URI: /subscriptions/23/providers/Microsoft.Compute/snapshots/snapshot-name")
+				_, err := d.GetVolumeGroupSnapshot(context.Background(), req)
+				if !reflect.DeepEqual(err, expectedErr) {
+					t.Errorf("actualErr: (%v), expectedErr: (%v)", err, expectedErr)
+				}
+			},
+		},
+		{
+			name: "get Snapshot error",
+			testFunc: func(t *testing.T) {
+				cntl := gomock.NewController(t)
+				defer cntl.Finish()
+				d, _ := NewFakeDriver(cntl)
+				d.setCloud(&azure.Cloud{})
+				ctrl := gomock.NewController(t)
+				defer ctrl.Finish()
+				mockSnapshotClient := mock_snapshotclient.NewMockInterface(ctrl)
+				d.getClientFactory().(*mock_azclient.MockClientFactory).EXPECT().GetSnapshotClientForSub(gomock.Any()).Return(mockSnapshotClient, nil).AnyTimes()
+				req := &csi.GetVolumeGroupSnapshotRequest{
+					GroupSnapshotId: "unit-test",
+					SnapshotIds:     []string{"testurl/subscriptions/12/resourceGroups/23/providers/Microsoft.Compute/snapshots/snapshot-name"},
+				}
+				mockSnapshotClient.EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, fmt.Errorf("get snapshot error")).AnyTimes()
+				expectedErr := status.Errorf(codes.Internal, "get snapshot snapshot-name from rg(23) error: get snapshot error")
+				_, err := d.GetVolumeGroupSnapshot(context.Background(), req)
+				if !reflect.DeepEqual(err, expectedErr) {
+					t.Errorf("actualErr: (%v), expectedErr: (%v)", err, expectedErr)
+				}
+			},
+		},
+		{
+			name: "get VolumeGroupSnapshot nil",
+			testFunc: func(t *testing.T) {
+				cntl := gomock.NewController(t)
+				defer cntl.Finish()
+				d, _ := NewFakeDriver(cntl)
+				d.setCloud(&azure.Cloud{})
+				ctrl := gomock.NewController(t)
+				defer ctrl.Finish()
+				mockSnapshotClient := mock_snapshotclient.NewMockInterface(ctrl)
+				d.getClientFactory().(*mock_azclient.MockClientFactory).EXPECT().GetSnapshotClientForSub(gomock.Any()).Return(mockSnapshotClient, nil).AnyTimes()
+				req := &csi.GetVolumeGroupSnapshotRequest{
+					GroupSnapshotId: "unit-test",
+					SnapshotIds:     []string{"testurl/subscriptions/12/resourceGroups/23/providers/Microsoft.Compute/snapshots/snapshot-name"},
+				}
+				mockSnapshotClient.EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, nil).AnyTimes()
+				expectedErr := fmt.Errorf("snapshot property is nil")
+				_, err := d.GetVolumeGroupSnapshot(context.Background(), req)
+				if !reflect.DeepEqual(err, expectedErr) {
+					t.Errorf("actualErr: (%v), expectedErr: (%v)", err, expectedErr)
+				}
+			},
+		},
+		{
+			name: "Valid get VolumeGroupSnapshot",
+			testFunc: func(t *testing.T) {
+				cntl := gomock.NewController(t)
+				defer cntl.Finish()
+				d, _ := NewFakeDriver(cntl)
+				d.setCloud(&azure.Cloud{})
+				ctrl := gomock.NewController(t)
+				defer ctrl.Finish()
+				mockSnapshotClient := mock_snapshotclient.NewMockInterface(ctrl)
+				d.getClientFactory().(*mock_azclient.MockClientFactory).EXPECT().GetSnapshotClientForSub(gomock.Any()).Return(mockSnapshotClient, nil).AnyTimes()
+				req := &csi.GetVolumeGroupSnapshotRequest{
+					GroupSnapshotId: "unit-test",
+					SnapshotIds:     []string{"testurl/subscriptions/12/resourceGroups/23/providers/Microsoft.Compute/snapshots/snapshot-name"},
+				}
+				provisioningState := "succeeded"
+				DiskSize := int32(10)
+				snapshotID := "test"
+				snapshot := &armcompute.Snapshot{
+					Properties: &armcompute.SnapshotProperties{
+						TimeCreated:       &time.Time{},
+						ProvisioningState: &provisioningState,
+						DiskSizeGB:        &DiskSize,
+					},
+					ID: &snapshotID,
+				}
+				mockSnapshotClient.EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any()).Return(snapshot, nil).AnyTimes()
+				_, err := d.GetVolumeGroupSnapshot(context.Background(), req)
+				if !reflect.DeepEqual(err, nil) {
+					t.Errorf("actualErr: (%v), expectedErr: nil)", err)
+				}
+			},
+		},
+	}
+	for _, tc := range testCases {
+		t.Run(tc.name, tc.testFunc)
+	}
+}
+
+func TestGetVolumeGroupSnapshotByID(t *testing.T) {
+	testCases := []struct {
+		name     string
+		testFunc func(t *testing.T)
+	}{
+		{
+			name: "snapshotID not valid",
+			testFunc: func(t *testing.T) {
+				sourceVolumeIDs := []string{"unit-test"}
+				ctx := context.Background()
+				cntl := gomock.NewController(t)
+				defer cntl.Finish()
+				d, _ := NewFakeDriver(cntl)
+				d.setCloud(&azure.Cloud{})
+				groupVolumeSnapshotID := "unit-test"
+				snapshotIDs := []string{"testurl/subscriptions/23/providers/Microsoft.Compute/snapshots/snapshot-name"}
+				expectedErr := status.Errorf(codes.InvalidArgument, "invalid URI: testurl/subscriptions/23/providers/Microsoft.Compute/snapshots/snapshot-name")
+				_, err := d.getVolumeGroupSnapshotByID(ctx, d.getCloud().SubscriptionID, d.getCloud().ResourceGroup, groupVolumeSnapshotID, snapshotIDs, sourceVolumeIDs)
+				if !reflect.DeepEqual(err, expectedErr) {
+					t.Errorf("actualErr: (%v), expectedErr: (%v)", err, expectedErr)
+				}
+			},
+		},
+		{
+			name: "snapshot get error",
+			testFunc: func(t *testing.T) {
+				cntl := gomock.NewController(t)
+				defer cntl.Finish()
+				d, _ := NewFakeDriver(cntl)
+				d.setCloud(&azure.Cloud{})
+				ctrl := gomock.NewController(t)
+				defer ctrl.Finish()
+				mockSnapshotClient := mock_snapshotclient.NewMockInterface(ctrl)
+				d.getClientFactory().(*mock_azclient.MockClientFactory).EXPECT().GetSnapshotClientForSub(gomock.Any()).Return(mockSnapshotClient, nil).AnyTimes()
+				snapshotID := "testurl/subscriptions/23/providers/Microsoft.Compute/snapshots/snapshot-name"
+				snapshot := &armcompute.Snapshot{
+					Properties: &armcompute.SnapshotProperties{},
+					ID:         &snapshotID,
+				}
+				groupVolumeSnapshotID := "unit-test"
+				sourceVolumeIDs := []string{"unit-test"}
+				snapshotIDs := []string{"testurl/subscriptions/23/providers/Microsoft.Compute/snapshots/snapshot-name"}
+				mockSnapshotClient.EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any()).Return(snapshot, fmt.Errorf("test")).AnyTimes()
+				expectedErr := status.Errorf(codes.InvalidArgument, "invalid URI: testurl/subscriptions/23/providers/Microsoft.Compute/snapshots/snapshot-name")
+				_, err := d.getVolumeGroupSnapshotByID(context.Background(), d.getCloud().SubscriptionID, d.getCloud().ResourceGroup, groupVolumeSnapshotID, snapshotIDs, sourceVolumeIDs)
+				if !reflect.DeepEqual(err, expectedErr) {
+					t.Errorf("actualErr: (%v), expectedErr: (%v)", err, expectedErr)
+				}
+			},
+		},
+	}
+	for _, tc := range testCases {
+		t.Run(tc.name, tc.testFunc)
+	}
+}
+
 func TestGetCapacity(t *testing.T) {
 	cntl := gomock.NewController(t)
 	defer cntl.Finish()

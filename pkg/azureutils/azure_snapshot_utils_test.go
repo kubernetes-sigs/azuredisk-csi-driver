@@ -140,6 +140,141 @@ func TestGenerateCSISnapshot(t *testing.T) {
 
 }
 
+func TestGenerateCSIVolumeGroupSnapshot(t *testing.T) {
+	testCases := []struct {
+		name     string
+		testFunc func(t *testing.T)
+	}{
+		{
+			name: "snap shot property not exist",
+			testFunc: func(t *testing.T) {
+				groupVolumeSnapshot := "unit-test"
+				snapshots := []*armcompute.Snapshot{
+					{},
+				}
+				sourceVolumeIDs := []string{"unit-test"}
+				_, err := GenerateCSIVolumeGroupSnapshot(groupVolumeSnapshot, sourceVolumeIDs, snapshots)
+				expectedErr := fmt.Errorf("snapshot property is nil")
+				if !reflect.DeepEqual(err, expectedErr) {
+					t.Errorf("actualErr: (%v), expectedErr: (%v)", err, expectedErr)
+				}
+			},
+		},
+		{
+			name: "diskSizeGB of snapshot property is nil",
+			testFunc: func(t *testing.T) {
+				groupVolumeSnapshot := "unit-test"
+				provisioningState := "succeeded"
+				snapshots := []*armcompute.Snapshot{
+					{
+						Properties: &armcompute.SnapshotProperties{
+							TimeCreated:       &time.Time{},
+							ProvisioningState: &provisioningState,
+						},
+					},
+				}
+				sourceVolumeIDs := []string{"unit-test"}
+				_, err := GenerateCSIVolumeGroupSnapshot(groupVolumeSnapshot, sourceVolumeIDs, snapshots)
+				expectedErr := fmt.Errorf("diskSizeGB of snapshot property is nil")
+				if !reflect.DeepEqual(err, expectedErr) {
+					t.Errorf("actualErr: (%v), expectedErr: (%v)", err, expectedErr)
+				}
+			},
+		},
+		{
+			name: "valid request",
+			testFunc: func(t *testing.T) {
+				groupVolumeSnapshot := "unit-test"
+				provisioningState := "succeeded"
+				DiskSize := int32(10)
+				snapshotID := "test"
+				snapshots := []*armcompute.Snapshot{
+					{
+						Properties: &armcompute.SnapshotProperties{
+							TimeCreated:       &time.Time{},
+							ProvisioningState: &provisioningState,
+							DiskSizeGB:        &DiskSize,
+						},
+						ID: &snapshotID,
+					},
+				}
+				sourceVolumeIDs := []string{"unit-test"}
+				response, err := GenerateCSIVolumeGroupSnapshot(groupVolumeSnapshot, sourceVolumeIDs, snapshots)
+				tp := timestamppb.New(*snapshots[0].Properties.TimeCreated)
+				ready := true
+				expectedresponse := &csi.VolumeGroupSnapshot{
+					GroupSnapshotId: groupVolumeSnapshot,
+					Snapshots: []*csi.Snapshot{
+						{
+							SizeBytes:      volumehelper.GiBToBytes(int64(*snapshots[0].Properties.DiskSizeGB)),
+							SnapshotId:     *snapshots[0].ID,
+							SourceVolumeId: sourceVolumeIDs[0],
+							CreationTime:   tp,
+							ReadyToUse:     ready,
+						},
+					},
+					CreationTime: tp,
+					ReadyToUse:   ready,
+				}
+				if !reflect.DeepEqual(expectedresponse, response) || err != nil {
+					t.Errorf("actualresponse: (%+v), expectedresponse: (%+v)\n", response, expectedresponse)
+					t.Errorf("err:%v", err)
+				}
+			},
+		},
+		{
+			name: "sourceVolumeID property is missed",
+			testFunc: func(t *testing.T) {
+				groupVolumeSnapshot := "unit-test"
+				provisioningState := "succeeded"
+				DiskSize := int32(10)
+				snapshotID := "test"
+				sourceResourceID := "unit test"
+				snapshots := []*armcompute.Snapshot{
+					{
+						Properties: &armcompute.SnapshotProperties{
+							TimeCreated:       &time.Time{},
+							ProvisioningState: &provisioningState,
+							DiskSizeGB:        &DiskSize,
+							CreationData: &armcompute.CreationData{
+								SourceResourceID: &sourceResourceID,
+							},
+						},
+						ID: &snapshotID,
+					},
+				}
+				sourceVolumeIDs := []string{""}
+				response, err := GenerateCSIVolumeGroupSnapshot(groupVolumeSnapshot, sourceVolumeIDs, snapshots)
+				tp := timestamppb.New(*snapshots[0].Properties.TimeCreated)
+				ready := true
+				expectedresponse := &csi.VolumeGroupSnapshot{
+					GroupSnapshotId: groupVolumeSnapshot,
+					Snapshots: []*csi.Snapshot{
+						{
+							SizeBytes:      volumehelper.GiBToBytes(int64(*snapshots[0].Properties.DiskSizeGB)),
+							SnapshotId:     *snapshots[0].ID,
+							SourceVolumeId: sourceVolumeIDs[0],
+							CreationTime:   tp,
+							ReadyToUse:     ready,
+						},
+					},
+					CreationTime: tp,
+					ReadyToUse:   ready,
+				}
+				if !reflect.DeepEqual(expectedresponse, response) || err != nil {
+					t.Errorf("actualresponse: (%+v), expectedresponse: (%+v)\n", response, expectedresponse)
+					t.Errorf("err:%v", err)
+				}
+			},
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, tc.testFunc)
+	}
+
+}
+
 func TestGetEntriesAndNextToken(t *testing.T) {
 	provisioningState := "succeeded"
 	DiskSize := int32(10)

@@ -20,6 +20,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute/v6"
 	"github.com/container-storage-interface/spec/lib/go/csi"
@@ -136,4 +137,47 @@ func isCSISnapshotReady(state string) (bool, error) {
 	default:
 		return false, nil
 	}
+}
+
+func GenerateCSIVolumeGroupSnapshot(groupSnapshotID string, sourceVolumeIDs []string, snapshots []*armcompute.Snapshot) (*csi.VolumeGroupSnapshot, error) {
+	volumeGroupReady := true
+	snapshotList := []*csi.Snapshot{}
+	for idx, snapshot := range snapshots {
+		if snapshot == nil || snapshot.Properties == nil {
+			return nil, fmt.Errorf("snapshot property is nil")
+		}
+
+		if snapshot.Properties.TimeCreated == nil {
+			return nil, fmt.Errorf("TimeCreated of snapshot property is nil")
+		}
+
+		if snapshot.Properties.DiskSizeGB == nil {
+			return nil, fmt.Errorf("diskSizeGB of snapshot property is nil")
+		}
+
+		ready, _ := isCSISnapshotReady(*snapshot.Properties.ProvisioningState)
+		if !ready {
+			volumeGroupReady = false
+		}
+		if sourceVolumeIDs[idx] == "" {
+			sourceVolumeIDs[idx] = GetSourceVolumeID(snapshot)
+		}
+		snapshotList = append(snapshotList, &csi.Snapshot{
+			SizeBytes:      volumehelper.GiBToBytes(int64(*snapshot.Properties.DiskSizeGB)),
+			SnapshotId:     *snapshot.ID,
+			SourceVolumeId: sourceVolumeIDs[idx],
+			CreationTime:   timestamppb.New(*snapshot.Properties.TimeCreated),
+			ReadyToUse:     ready,
+		})
+	}
+	creationTime := timestamppb.New(time.Now())
+	if len(snapshots) > 0 {
+		creationTime = timestamppb.New(*snapshots[0].Properties.TimeCreated)
+	}
+	return &csi.VolumeGroupSnapshot{
+		GroupSnapshotId: groupSnapshotID,
+		Snapshots:       snapshotList,
+		CreationTime:    creationTime,
+		ReadyToUse:      volumeGroupReady,
+	}, nil
 }

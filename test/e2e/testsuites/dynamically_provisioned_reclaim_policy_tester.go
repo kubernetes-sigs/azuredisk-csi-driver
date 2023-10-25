@@ -41,7 +41,7 @@ func (t *DynamicallyProvisionedReclaimPolicyTest) Run(ctx context.Context, clien
 		// Force volume binding mode to immediate so the PV can be provisioned without a pod
 		volumeBindingMode := storagev1.VolumeBindingImmediate
 		volume.VolumeBindingMode = &volumeBindingMode
-		tpvc, _ := volume.SetupDynamicPersistentVolumeClaim(ctx, client, namespace, t.CSIDriver, t.StorageClassParameters)
+		tpvc, _ := volume.SetupDynamicPersistentVolumeClaim(ctx, client, namespace, t.CSIDriver, t.StorageClassParameters, nil)
 
 		// will delete the PVC
 		// will also wait for PV to be deleted when reclaimPolicy=Delete

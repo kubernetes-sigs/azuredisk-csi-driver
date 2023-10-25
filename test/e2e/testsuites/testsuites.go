@@ -25,8 +25,9 @@ import (
 	"time"
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
-	snapshotv1 "github.com/kubernetes-csi/external-snapshotter/client/v4/apis/volumesnapshot/v1"
-	snapshotclientset "github.com/kubernetes-csi/external-snapshotter/client/v4/clientset/versioned"
+	groupsnapshotv1 "github.com/kubernetes-csi/external-snapshotter/client/v8/apis/volumegroupsnapshot/v1beta1"
+	snapshotv1 "github.com/kubernetes-csi/external-snapshotter/client/v8/apis/volumesnapshot/v1"
+	snapshotclientset "github.com/kubernetes-csi/external-snapshotter/client/v8/clientset/versioned"
 	"github.com/onsi/ginkgo/v2"
 	"github.com/onsi/gomega"
 
@@ -170,6 +171,8 @@ func (t *TestVolumeSnapshotClass) ReadyToUse(ctx context.Context, snapshot *snap
 		if err != nil {
 			return false, fmt.Errorf("did not see ReadyToUse: %v", err)
 		}
+		framework.Logf("vs %v", vs)
+		framework.Logf("vs.Status %v", vs.Status)
 		return *vs.Status.ReadyToUse, nil
 	})
 	framework.ExpectNoError(err)
@@ -187,6 +190,98 @@ func (t *TestVolumeSnapshotClass) Cleanup() {
 	framework.Logf("skip deleting VolumeSnapshotClass %s", t.volumeSnapshotClass.Name)
 	//err := snapshotclientset.New(t.client).SnapshotV1().VolumeSnapshotClasses().Delete(t.volumeSnapshotClass.Name, nil)
 	//framework.ExpectNoError(err)
+}
+
+type TestVolumeGroupSnapshotClass struct {
+	client                   restclientset.Interface
+	snapshotClient           restclientset.Interface
+	volumeGroupSnapshotClass *groupsnapshotv1.VolumeGroupSnapshotClass
+	namespace                *v1.Namespace
+}
+
+func NewTestVolumeGroupSnapshotClass(c restclientset.Interface, sc restclientset.Interface, ns *v1.Namespace, vsgc *groupsnapshotv1.VolumeGroupSnapshotClass) *TestVolumeGroupSnapshotClass {
+	return &TestVolumeGroupSnapshotClass{
+		client:                   c,
+		snapshotClient:           sc,
+		volumeGroupSnapshotClass: vsgc,
+		namespace:                ns,
+	}
+}
+
+func (t *TestVolumeGroupSnapshotClass) Create(ctx context.Context) {
+	ginkgo.By("creating a VolumeGroupSnapshotClass")
+	var err error
+	t.volumeGroupSnapshotClass, err = snapshotclientset.New(t.client).GroupsnapshotV1beta1().VolumeGroupSnapshotClasses().Create(ctx, t.volumeGroupSnapshotClass, metav1.CreateOptions{})
+	framework.ExpectNoError(err)
+}
+
+func (t *TestVolumeGroupSnapshotClass) CreateVolumeGroupSnapshot(ctx context.Context, labels map[string]string) *groupsnapshotv1.VolumeGroupSnapshot {
+	labelsStr := ""
+	for k, v := range labels {
+		labelsStr += fmt.Sprintf("%s=%s,", k, v)
+	}
+	ginkgo.By("creating a VolumeGroupSnapshot for " + labelsStr)
+	volumeGroupSnapshot := &groupsnapshotv1.VolumeGroupSnapshot{
+		TypeMeta: metav1.TypeMeta{
+			Kind:       VolumeGroupSnapshotKind,
+			APIVersion: VolumeGroupSnapshotAPIVersion,
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			GenerateName: "volume-group-snapshot-",
+			Namespace:    t.namespace.Name,
+		},
+		Spec: groupsnapshotv1.VolumeGroupSnapshotSpec{
+			VolumeGroupSnapshotClassName: &t.volumeGroupSnapshotClass.Name,
+			Source: groupsnapshotv1.VolumeGroupSnapshotSource{
+				Selector: &metav1.LabelSelector{
+					MatchLabels: labels,
+				},
+			},
+		},
+	}
+	volumeGroupSnapshot, err := snapshotclientset.New(t.client).GroupsnapshotV1beta1().VolumeGroupSnapshots(t.namespace.Name).Create(ctx, volumeGroupSnapshot, metav1.CreateOptions{})
+	framework.ExpectNoError(err)
+	return volumeGroupSnapshot
+}
+
+func (t *TestVolumeGroupSnapshotClass) ReadyToUse(ctx context.Context, volumeGroupSnapshot *groupsnapshotv1.VolumeGroupSnapshot) {
+	ginkgo.By("waiting for VolumeGroupSnapshot to be ready to use - " + volumeGroupSnapshot.Name)
+	err := wait.Poll(15*time.Second, 30*time.Minute, func() (bool, error) {
+		vgs, err := snapshotclientset.New(t.client).GroupsnapshotV1beta1().VolumeGroupSnapshots(t.namespace.Name).Get(ctx, volumeGroupSnapshot.Name, metav1.GetOptions{})
+		if err != nil {
+			return false, fmt.Errorf("did not see ReadyToUse: %v", err)
+		}
+		framework.Logf("vgs %v", vgs)
+		framework.Logf("vgs.Status %v", vgs.Status)
+		return *vgs.Status.ReadyToUse, nil
+	})
+	framework.ExpectNoError(err)
+}
+
+func (t *TestVolumeGroupSnapshotClass) DeleteVolumeGroupSnapshot(ctx context.Context, vgs *groupsnapshotv1.VolumeGroupSnapshot) {
+	ginkgo.By("deleting a VolumeGroupSnapshot " + vgs.Name)
+	err := snapshotclientset.New(t.client).GroupsnapshotV1beta1().VolumeGroupSnapshots(t.namespace.Name).Delete(ctx, vgs.Name, metav1.DeleteOptions{})
+	framework.ExpectNoError(err)
+}
+
+func (t *TestVolumeGroupSnapshotClass) ListSnapshot(ctx context.Context, vgs *groupsnapshotv1.VolumeGroupSnapshot) ([]snapshotv1.VolumeSnapshot, error) {
+	ginkgo.By("list all snapshots in VolumeGroupSnapshot " + vgs.Name)
+	snapshotList, err := snapshotclientset.New(t.snapshotClient).SnapshotV1().VolumeSnapshots(t.namespace.Name).List(ctx, metav1.ListOptions{})
+	snapshotItems := []snapshotv1.VolumeSnapshot{}
+	for _, snapshot := range snapshotList.Items {
+		if *snapshot.Status.VolumeGroupSnapshotName == vgs.Name {
+			framework.Logf("Found snapshot %s in VolumeGroupSnapshot %s", snapshot.Name, vgs.Name)
+			snapshotItems = append(snapshotItems, snapshot)
+		}
+	}
+	framework.ExpectNoError(err)
+	return snapshotItems, nil
+}
+
+func (t *TestVolumeGroupSnapshotClass) Cleanup() {
+	framework.Logf("deleting VolumeGroupSnapshotClass %s", t.volumeGroupSnapshotClass.Name)
+	err := snapshotclientset.New(t.client).GroupsnapshotV1beta1().VolumeGroupSnapshotClasses().Delete(context.Background(), t.volumeGroupSnapshotClass.Name, metav1.DeleteOptions{})
+	framework.ExpectNoError(err)
 }
 
 type TestPreProvisionedPersistentVolume struct {
@@ -221,9 +316,10 @@ type TestPersistentVolumeClaim struct {
 	persistentVolumeClaim          *v1.PersistentVolumeClaim
 	requestedPersistentVolumeClaim *v1.PersistentVolumeClaim
 	dataSource                     *v1.TypedLocalObjectReference
+	labels                         map[string]string
 }
 
-func NewTestPersistentVolumeClaim(c clientset.Interface, ns *v1.Namespace, claimSize string, volumeMode VolumeMode, accessMode v1.PersistentVolumeAccessMode, sc *storagev1.StorageClass) *TestPersistentVolumeClaim {
+func NewTestPersistentVolumeClaim(c clientset.Interface, ns *v1.Namespace, claimSize string, volumeMode VolumeMode, accessMode v1.PersistentVolumeAccessMode, sc *storagev1.StorageClass, labels map[string]string) *TestPersistentVolumeClaim {
 	mode := v1.PersistentVolumeFilesystem
 	if volumeMode == Block {
 		mode = v1.PersistentVolumeBlock
@@ -235,10 +331,11 @@ func NewTestPersistentVolumeClaim(c clientset.Interface, ns *v1.Namespace, claim
 		accessMode:   accessMode,
 		namespace:    ns,
 		storageClass: sc,
+		labels:       labels,
 	}
 }
 
-func NewTestPersistentVolumeClaimWithDataSource(c clientset.Interface, ns *v1.Namespace, claimSize string, volumeMode VolumeMode, accessMode v1.PersistentVolumeAccessMode, sc *storagev1.StorageClass, dataSource *v1.TypedLocalObjectReference) *TestPersistentVolumeClaim {
+func NewTestPersistentVolumeClaimWithDataSource(c clientset.Interface, ns *v1.Namespace, claimSize string, volumeMode VolumeMode, accessMode v1.PersistentVolumeAccessMode, sc *storagev1.StorageClass, dataSource *v1.TypedLocalObjectReference, labels map[string]string) *TestPersistentVolumeClaim {
 	mode := v1.PersistentVolumeFilesystem
 	if volumeMode == Block {
 		mode = v1.PersistentVolumeBlock
@@ -251,6 +348,7 @@ func NewTestPersistentVolumeClaimWithDataSource(c clientset.Interface, ns *v1.Na
 		namespace:    ns,
 		storageClass: sc,
 		dataSource:   dataSource,
+		labels:       labels,
 	}
 }
 
@@ -262,7 +360,7 @@ func (t *TestPersistentVolumeClaim) Create(ctx context.Context) {
 	if t.storageClass != nil {
 		storageClassName = t.storageClass.Name
 	}
-	t.requestedPersistentVolumeClaim = generatePVC(t.namespace.Name, storageClassName, "", t.claimSize, t.volumeMode, t.accessMode, t.dataSource)
+	t.requestedPersistentVolumeClaim = generatePVC(t.namespace.Name, storageClassName, "", t.claimSize, t.volumeMode, t.accessMode, t.dataSource, t.labels)
 	t.persistentVolumeClaim, err = t.client.CoreV1().PersistentVolumeClaims(t.namespace.Name).Create(ctx, t.requestedPersistentVolumeClaim, metav1.CreateOptions{})
 	framework.ExpectNoError(err)
 }
@@ -315,13 +413,14 @@ func (t *TestPersistentVolumeClaim) WaitForBound(ctx context.Context) v1.Persist
 	return *t.persistentVolumeClaim
 }
 
-func generatePVC(namespace, storageClassName, name, claimSize string, volumeMode v1.PersistentVolumeMode, accessMode v1.PersistentVolumeAccessMode, dataSource *v1.TypedLocalObjectReference) *v1.PersistentVolumeClaim {
+func generatePVC(namespace, storageClassName, name, claimSize string, volumeMode v1.PersistentVolumeMode, accessMode v1.PersistentVolumeAccessMode, dataSource *v1.TypedLocalObjectReference, labels map[string]string) *v1.PersistentVolumeClaim {
 	if accessMode != v1.ReadWriteOnce && accessMode != v1.ReadOnlyMany && accessMode != v1.ReadWriteMany {
 		accessMode = v1.ReadWriteOnce
 	}
 
 	pvcMeta := metav1.ObjectMeta{
 		Namespace: namespace,
+		Labels:    labels,
 	}
 	if name == "" {
 		pvcMeta.GenerateName = "pvc-"
@@ -1002,6 +1101,10 @@ func (t *TestPod) GetZoneForVolume(ctx context.Context, index int) string {
 
 func (t *TestPod) Logs(ctx context.Context) ([]byte, error) {
 	return podLogs(ctx, t.client, t.pod.Name, t.namespace.Name)
+}
+
+func (t *TestPod) PollForStringInPodsExec(command []string, expectedString string) {
+	pollForStringInPodsExec(t.namespace.Name, []string{t.pod.Name}, command, expectedString)
 }
 
 func cleanupPodOrFail(ctx context.Context, client clientset.Interface, name, namespace string) {

@@ -17,21 +17,25 @@ limitations under the License.
 package driver
 
 import (
-	snapshotv1 "github.com/kubernetes-csi/external-snapshotter/client/v4/apis/volumesnapshot/v1"
+	volumegroupsnapshotv1beta1 "github.com/kubernetes-csi/external-snapshotter/client/v8/apis/volumegroupsnapshot/v1beta1"
+	snapshotv1 "github.com/kubernetes-csi/external-snapshotter/client/v8/apis/volumesnapshot/v1"
 	v1 "k8s.io/api/core/v1"
 	storagev1 "k8s.io/api/storage/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 const (
-	VolumeSnapshotClassKind = "VolumeSnapshotClass"
-	SnapshotAPIVersion      = "snapshot.storage.k8s.io/v1"
+	VolumeSnapshotClassKind       = "VolumeSnapshotClass"
+	SnapshotAPIVersion            = "snapshot.storage.k8s.io/v1"
+	VolumeGroupSnapshotClassKind  = "VolumeGroupSnapshotClass"
+	VolumeGroupSnapshotAPIVersion = "groupsnapshot.storage.k8s.io/v1beta1"
 )
 
 type PVTestDriver interface {
 	GetDynamicProvisionStorageClass(parameters map[string]string, mountOptions []string, reclaimPolicy *v1.PersistentVolumeReclaimPolicy, bindingMode *storagev1.VolumeBindingMode, allowedTopologyValues []string, namespace string) *storagev1.StorageClass
 	GetPersistentVolume(volumeID, fsType, size string, volumeMode v1.PersistentVolumeMode, accessMode v1.PersistentVolumeAccessMode, reclaimPolicy *v1.PersistentVolumeReclaimPolicy, namespace string, volumeContext map[string]string) *v1.PersistentVolume
 	GetVolumeSnapshotClass(namespace string, parameters map[string]string) *snapshotv1.VolumeSnapshotClass
+	GetVolumeGroupSnapshotClass(namespace string, parameters map[string]string) *volumegroupsnapshotv1beta1.VolumeGroupSnapshotClass
 }
 
 // DynamicPVTestDriver represents an interface for a CSI driver that supports DynamicPV
@@ -48,6 +52,10 @@ type PreProvisionedVolumeTestDriver interface {
 
 type VolumeSnapshotTestDriver interface {
 	GetVolumeSnapshotClass(namespace string, parameters map[string]string) *snapshotv1.VolumeSnapshotClass
+}
+
+type VolumeGroupSnapshotTestDriver interface {
+	GetVolumeGroupSnapshotClass(namespace string, parameters map[string]string) *volumegroupsnapshotv1beta1.VolumeGroupSnapshotClass
 }
 
 func getStorageClass(
@@ -87,6 +95,21 @@ func getVolumeSnapshotClass(generateName, provisioner string, parameters map[str
 		TypeMeta: metav1.TypeMeta{
 			Kind:       VolumeSnapshotClassKind,
 			APIVersion: SnapshotAPIVersion,
+		},
+		Parameters: parameters,
+		ObjectMeta: metav1.ObjectMeta{
+			GenerateName: generateName,
+		},
+		Driver:         provisioner,
+		DeletionPolicy: snapshotv1.VolumeSnapshotContentDelete,
+	}
+}
+
+func getVolumeGroupSnapshotClass(generateName, provisioner string, parameters map[string]string) *volumegroupsnapshotv1beta1.VolumeGroupSnapshotClass {
+	return &volumegroupsnapshotv1beta1.VolumeGroupSnapshotClass{
+		TypeMeta: metav1.TypeMeta{
+			Kind:       VolumeGroupSnapshotClassKind,
+			APIVersion: VolumeGroupSnapshotAPIVersion,
 		},
 		Parameters: parameters,
 		ObjectMeta: metav1.ObjectMeta{

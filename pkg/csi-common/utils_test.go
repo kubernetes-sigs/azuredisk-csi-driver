@@ -197,6 +197,23 @@ func TestNewNodeServiceCapability(t *testing.T) {
 	}
 }
 
+func TestNewGroupControllerServiceCapability(t *testing.T) {
+	tests := []struct {
+		cap csi.GroupControllerServiceCapability_RPC_Type
+	}{
+		{
+			cap: csi.GroupControllerServiceCapability_RPC_UNKNOWN,
+		},
+		{
+			cap: csi.GroupControllerServiceCapability_RPC_CREATE_DELETE_GET_VOLUME_GROUP_SNAPSHOT,
+		},
+	}
+	for _, test := range tests {
+		resp := NewGroupControllerServiceCapability(test.cap)
+		assert.NotNil(t, resp)
+	}
+}
+
 func TestGetLogLevel(t *testing.T) {
 	tests := []struct {
 		method string

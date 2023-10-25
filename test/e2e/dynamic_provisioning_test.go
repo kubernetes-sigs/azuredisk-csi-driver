@@ -58,10 +58,11 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 	f.NamespacePodSecurityEnforceLevel = admissionapi.LevelPrivileged
 
 	var (
-		cs          clientset.Interface
-		ns          *v1.Namespace
-		snapshotrcs restclientset.Interface
-		testDriver  driver.PVTestDriver
+		cs               clientset.Interface
+		ns               *v1.Namespace
+		snapshotrcs      restclientset.Interface
+		groupsnapshotrcs restclientset.Interface
+		testDriver       driver.PVTestDriver
 	)
 
 	ginkgo.BeforeEach(func(ctx ginkgo.SpecContext) {
@@ -78,6 +79,10 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 
 		var err error
 		snapshotrcs, err = restClient(testsuites.SnapshotAPIGroup, testsuites.APIVersionv1)
+		if err != nil {
+			ginkgo.Fail(fmt.Sprintf("could not get rest clientset: %v", err))
+		}
+		groupsnapshotrcs, err = restClient(testsuites.GroupSnapshotAPIGroup, testsuites.APIVersionv1beta1)
 		if err != nil {
 			ginkgo.Fail(fmt.Sprintf("could not get rest clientset: %v", err))
 		}
@@ -1384,6 +1389,204 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 		}
 
 		test.Run(ctx, cs, ns)
+	})
+
+	ginkgo.It("should create two pods, write and read to them, take a volume group snapshot, and create other two pods from the group snapshots [disk.csi.azure.com]", func(ctx ginkgo.SpecContext) {
+		skipIfUsingInTreeVolumePlugin()
+		skipIfTestingInWindowsCluster()
+
+		pods := []testsuites.PodDetails{
+			{
+				IsWindows:    isWindowsCluster,
+				WinServerVer: winServerVer,
+				Cmd:          convertToPowershellorCmdCommandIfNecessary("echo 'hello world 1' > /mnt/test-1/data"),
+				Volumes: t.normalizeVolumes([]testsuites.VolumeDetails{
+					{
+						FSType:    getFSType(isWindowsCluster),
+						ClaimSize: "10Gi",
+						VolumeMount: testsuites.VolumeMountDetails{
+							NameGenerate:      "test-volume-",
+							MountPathGenerate: "/mnt/test-",
+						},
+						VolumeAccessMode: v1.ReadWriteOnce,
+					},
+				}, isMultiZone),
+			},
+			{
+				IsWindows:    isWindowsCluster,
+				WinServerVer: winServerVer,
+				Cmd:          convertToPowershellorCmdCommandIfNecessary("echo 'hello world 2' > /mnt/test-1/data"),
+				Volumes: t.normalizeVolumes([]testsuites.VolumeDetails{
+					{
+						FSType:    getFSType(isWindowsCluster),
+						ClaimSize: "20Gi",
+						VolumeMount: testsuites.VolumeMountDetails{
+							NameGenerate:      "test-volume-",
+							MountPathGenerate: "/mnt/test-",
+						},
+						VolumeAccessMode: v1.ReadWriteOnce,
+					},
+				}, isMultiZone),
+			},
+		}
+		podsWithSnapshot := []testsuites.PodDetails{
+			{
+				IsWindows:    isWindowsCluster,
+				WinServerVer: winServerVer,
+				Cmd:          convertToPowershellorCmdCommandIfNecessary("while true; do sleep 5; done"),
+			},
+			{
+				IsWindows:    isWindowsCluster,
+				WinServerVer: winServerVer,
+				Cmd:          convertToPowershellorCmdCommandIfNecessary("while true; do sleep 5; done"),
+			},
+		}
+
+		podCheckCmd := []string{"cat", "/mnt/test-1/data"}
+		expectedString1 := "hello world 1\n"
+		expectedString2 := "hello world 2\n"
+		if isWindowsCluster {
+			podCheckCmd = []string{"cmd", "/c", "type C:\\mnt\\test-1\\data.txt"}
+			expectedString1 = "hello world 1\r\n"
+			expectedString2 = "hello world 2\r\n"
+		}
+		podChecks := []*testsuites.PodExecCheck{
+			{
+				Cmd:            podCheckCmd,
+				ExpectedString: expectedString1,
+			},
+			{
+				Cmd:            podCheckCmd,
+				ExpectedString: expectedString2,
+			},
+		}
+		test := testsuites.DynamicallyProvisionedVolumeGroupSnapshotTest{
+			CSIDriver:              testDriver,
+			GroupPods:              pods,
+			MatchLabels:            map[string]string{"app": "test"},
+			ShouldOverwrite:        false,
+			IsWindowsHPCDeployment: isWindowsHPCDeployment,
+			PodsWithSnapshot:       podsWithSnapshot,
+			StorageClassParameters: map[string]string{"skuName": "StandardSSD_LRS"},
+			GroupSnapshotStorageClassParameters: map[string]string{
+				"incremental": "false", "dataAccessAuthMode": "AzureActiveDirectory",
+			},
+			PodCheck: podChecks,
+		}
+		if isAzureStackCloud {
+			test.StorageClassParameters = map[string]string{"skuName": "Standard_LRS"}
+		}
+		if !isUsingInTreeVolumePlugin && supportsZRS {
+			test.StorageClassParameters = map[string]string{"skuName": "StandardSSD_ZRS"}
+		}
+		test.Run(ctx, cs, groupsnapshotrcs, snapshotrcs, ns)
+	})
+
+	ginkgo.It("should create two pods, write to their pv, take a volume group snapshot with xfs fs, overwrite data in original pv, create other two pods from the snapshots, and read unaltered original data from original pvs[disk.csi.azure.com]", func(ctx ginkgo.SpecContext) {
+		skipIfUsingInTreeVolumePlugin()
+		skipIfTestingInWindowsCluster()
+
+		fsType := "xfs"
+		if isWindowsCluster {
+			fsType = "ntfs"
+		}
+
+		pods := []testsuites.PodDetails{
+			{
+				IsWindows:    isWindowsCluster,
+				WinServerVer: winServerVer,
+				Cmd:          convertToPowershellorCmdCommandIfNecessary("echo 'hello world 1' > /mnt/test-1/data"),
+				Volumes: t.normalizeVolumes([]testsuites.VolumeDetails{
+					{
+						FSType:    fsType,
+						ClaimSize: "10Gi",
+						VolumeMount: testsuites.VolumeMountDetails{
+							NameGenerate:      "test-volume-",
+							MountPathGenerate: "/mnt/test-",
+						},
+						VolumeAccessMode: v1.ReadWriteOnce,
+					},
+				}, isMultiZone),
+			},
+			{
+				IsWindows:    isWindowsCluster,
+				WinServerVer: winServerVer,
+				Cmd:          convertToPowershellorCmdCommandIfNecessary("echo 'hello world 2' > /mnt/test-1/data"),
+				Volumes: t.normalizeVolumes([]testsuites.VolumeDetails{
+					{
+						FSType:    fsType,
+						ClaimSize: "20Gi",
+						VolumeMount: testsuites.VolumeMountDetails{
+							NameGenerate:      "test-volume-",
+							MountPathGenerate: "/mnt/test-",
+						},
+						VolumeAccessMode: v1.ReadWriteOnce,
+					},
+				}, isMultiZone),
+			},
+		}
+
+		podsOverwrite := []testsuites.PodDetails{
+			{
+				IsWindows:    isWindowsCluster,
+				WinServerVer: winServerVer,
+				Cmd:          convertToPowershellorCmdCommandIfNecessary("echo 'overwrite 1' > /mnt/test-1/data; sleep 3600"),
+			},
+			{
+				IsWindows:    isWindowsCluster,
+				WinServerVer: winServerVer,
+				Cmd:          convertToPowershellorCmdCommandIfNecessary("echo 'overwrite 2' > /mnt/test-1/data; sleep 3600"),
+			},
+		}
+
+		podsWithSnapshot := []testsuites.PodDetails{
+			{
+				IsWindows:    isWindowsCluster,
+				WinServerVer: winServerVer,
+				Cmd:          convertToPowershellorCmdCommandIfNecessary("while true; do sleep 5; done"),
+			},
+			{
+				IsWindows:    isWindowsCluster,
+				WinServerVer: winServerVer,
+				Cmd:          convertToPowershellorCmdCommandIfNecessary("while true; do sleep 5; done"),
+			},
+		}
+
+		podCheckCmd := []string{"cat", "/mnt/test-1/data"}
+		expectedString1 := "hello world 1\n"
+		expectedString2 := "hello world 2\n"
+		if isWindowsCluster {
+			podCheckCmd = []string{"cmd", "/c", "type C:\\mnt\\test-1\\data.txt"}
+			expectedString1 = "hello world 1\r\n"
+			expectedString2 = "hello world 2\r\n"
+		}
+		podChecks := []*testsuites.PodExecCheck{
+			{
+				Cmd:            podCheckCmd,
+				ExpectedString: expectedString1,
+			},
+			{
+				Cmd:            podCheckCmd,
+				ExpectedString: expectedString2,
+			},
+		}
+
+		test := testsuites.DynamicallyProvisionedVolumeGroupSnapshotTest{
+			CSIDriver:              testDriver,
+			GroupPods:              pods,
+			ShouldOverwrite:        true,
+			PodsOverwrite:          podsOverwrite,
+			PodsWithSnapshot:       podsWithSnapshot,
+			StorageClassParameters: map[string]string{"skuName": "StandardSSD_LRS"},
+			GroupSnapshotStorageClassParameters: map[string]string{
+				"incremental": "true", "dataAccessAuthMode": "None",
+			},
+			PodCheck: podChecks,
+		}
+		if isAzureStackCloud {
+			test.StorageClassParameters = map[string]string{"skuName": "Standard_LRS"}
+		}
+		test.Run(ctx, cs, groupsnapshotrcs, snapshotrcs, ns)
 	})
 }
 
