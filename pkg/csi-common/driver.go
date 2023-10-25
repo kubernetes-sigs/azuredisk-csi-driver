@@ -32,6 +32,7 @@ type CSIDriver struct {
 	Cap               []*csi.ControllerServiceCapability
 	VC                []*csi.VolumeCapability_AccessMode
 	NSCap             []*csi.NodeServiceCapability
+	GCap              []*csi.GroupControllerServiceCapability
 }
 
 // Creates a NewCSIDriver object. Assumes vendor version is equal to driver version &
@@ -102,6 +103,17 @@ func (d *CSIDriver) AddVolumeCapabilityAccessModes(vc []csi.VolumeCapability_Acc
 	}
 	d.VC = vca
 	return vca
+}
+
+func (d *CSIDriver) AddGroupControllerServiceCapabilities(gcl []csi.GroupControllerServiceCapability_RPC_Type) {
+	var gcsc []*csi.GroupControllerServiceCapability
+
+	for _, gc := range gcl {
+		klog.Infof("Enabling group controller service capability: %v", gc.String())
+		gcsc = append(gcsc, NewGroupControllerServiceCapability(gc))
+	}
+
+	d.GCap = gcsc
 }
 
 func (d *CSIDriver) GetVolumeCapabilityAccessModes() []*csi.VolumeCapability_AccessMode {

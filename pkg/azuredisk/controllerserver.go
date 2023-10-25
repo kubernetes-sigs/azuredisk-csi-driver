@@ -18,6 +18,7 @@ package azuredisk
 
 import (
 	"context"
+	"crypto/md5"
 	"fmt"
 	"path"
 	"sort"
@@ -30,6 +31,7 @@ import (
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/types/known/timestamppb"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -1070,6 +1072,155 @@ func (d *Driver) ListSnapshots(ctx context.Context, req *csi.ListSnapshotsReques
 	return azureutils.GetEntriesAndNextToken(req, snapshots)
 }
 
+func (d *Driver) CreateVolumeGroupSnapshot(ctx context.Context, req *csi.CreateVolumeGroupSnapshotRequest) (*csi.CreateVolumeGroupSnapshotResponse, error) {
+	sourceVolumeIDs := req.GetSourceVolumeIds()
+	if len(sourceVolumeIDs) == 0 {
+		return nil, status.Error(codes.InvalidArgument, "CreateVolumeGroupSnapshot Source Volume IDs must be provided")
+	}
+	for _, sourceVolumeID := range sourceVolumeIDs {
+		if len(sourceVolumeID) == 0 {
+			return nil, status.Error(codes.InvalidArgument, "CreateVolumeGroupSnapshot Source Volume ID must be provided")
+		}
+	}
+	volumeGroupSnapshotName := req.Name
+	if len(volumeGroupSnapshotName) == 0 {
+		return nil, status.Error(codes.InvalidArgument, "volume group snapshot name must be provided")
+	}
+	volumeGroupSnapshotName = azureutils.CreateValidDiskName(volumeGroupSnapshotName)
+
+	var customTags string
+	// set incremental snapshot as true by default
+	incremental := true
+	var subsID, resourceGroup, dataAccessAuthMode string
+	var err error
+	localCloud := d.cloud
+
+	parameters := req.GetParameters()
+	for k, v := range parameters {
+		switch strings.ToLower(k) {
+		case consts.TagsField:
+			customTags = v
+		case consts.IncrementalField:
+			if v == "false" {
+				incremental = false
+			}
+		case consts.ResourceGroupField:
+			resourceGroup = v
+		case consts.UserAgentField:
+			newUserAgent := v
+			localCloud, err = azureutils.GetCloudProvider(ctx, d.kubeconfig, d.cloudConfigSecretName, d.cloudConfigSecretNamespace, newUserAgent,
+				d.allowEmptyCloudConfig, d.enableTrafficManager, d.trafficManagerPort)
+			if err != nil {
+				return nil, status.Errorf(codes.Internal, "create cloud with UserAgent(%s) failed with: (%s)", newUserAgent, err)
+			}
+		case consts.SubscriptionIDField:
+			subsID = v
+		case consts.DataAccessAuthModeField:
+			dataAccessAuthMode = v
+		default:
+			return nil, status.Errorf(codes.Internal, "AzureDisk - invalid option %s in VolumeSnapshotClass", k)
+		}
+	}
+
+	if azureutils.IsAzureStackCloud(localCloud.Config.Cloud, localCloud.Config.DisableAzureStackCloud) {
+		klog.V(2).Info("Use full snapshot instead as Azure Stack does not support incremental snapshot.")
+		incremental = false
+	}
+
+	if resourceGroup == "" {
+		resourceGroup, err = azureutils.GetResourceGroupFromURI(sourceVolumeIDs[0])
+		if err != nil {
+			return nil, status.Errorf(codes.InvalidArgument, "could not get resource group from diskURI(%s) with error(%v)", sourceVolumeIDs[0], err)
+		}
+	}
+
+	customTagsMap, err := volumehelper.ConvertTagsToMap(customTags)
+	if err != nil {
+		return nil, status.Errorf(codes.InvalidArgument, err.Error())
+	}
+	tags := make(map[string]*string)
+	for k, v := range customTagsMap {
+		value := v
+		tags[k] = &value
+	}
+
+	volumeGroupSnapshot := []compute.Snapshot{}
+	snapshotNames := []string{}
+	for _, sourceVolumeID := range sourceVolumeIDs {
+		snapshot := compute.Snapshot{
+			SnapshotProperties: &compute.SnapshotProperties{
+				CreationData: &compute.CreationData{
+					CreateOption:     compute.Copy,
+					SourceResourceID: &sourceVolumeID,
+				},
+				Incremental: &incremental,
+			},
+			Location: &d.cloud.Location,
+			Tags:     tags,
+		}
+		pvcName, err := azureutils.GetDiskName(sourceVolumeID)
+		if err != nil {
+			return nil, err
+		}
+		snapshotName := fmt.Sprintf("snapshot-%s%s-%s", md5.Sum([]byte(volumeGroupSnapshotName)), md5.Sum([]byte(pvcName)), timestamppb.New(snapshot.SnapshotProperties.TimeCreated.ToTime()))
+		snapshotNames = append(snapshotNames, snapshotName)
+
+		if dataAccessAuthMode != "" {
+			if err := azureutils.ValidateDataAccessAuthMode(dataAccessAuthMode); err != nil {
+				return nil, status.Error(codes.InvalidArgument, err.Error())
+			}
+			snapshot.SnapshotProperties.DataAccessAuthMode = compute.DataAccessAuthMode(dataAccessAuthMode)
+		}
+
+		volumeGroupSnapshot = append(volumeGroupSnapshot, snapshot)
+	}
+
+	if acquired := d.volumeLocks.TryAcquire(volumeGroupSnapshotName); !acquired {
+		return nil, status.Errorf(codes.Aborted, volumeOperationAlreadyExistsFmt, volumeGroupSnapshotName)
+	}
+	defer d.volumeLocks.Release(volumeGroupSnapshotName)
+
+	metricsRequest := "controller_create_volume_group_snapshot"
+
+	mc := metrics.NewMetricContext(consts.AzureDiskCSIDriverName, metricsRequest, d.cloud.ResourceGroup, d.cloud.SubscriptionID, d.Name)
+	isOperationSucceeded := false
+	defer func() {
+		for idx, sourceVolumeID := range sourceVolumeIDs {
+			mc.ObserveOperationWithResult(isOperationSucceeded, consts.SourceResourceID, sourceVolumeID, consts.SnapshotName, snapshotNames[idx])
+		}
+	}()
+
+	klog.V(2).Infof("begin to create volume group snapshot(%s, incremental: %v) under rg(%s) region(%s)", volumeGroupSnapshotName, incremental, resourceGroup, d.cloud.Location)
+	for idx, snapshot := range volumeGroupSnapshot {
+		if rerr := d.cloud.SnapshotsClient.CreateOrUpdate(ctx, subsID, resourceGroup, snapshotNames[idx], snapshot); rerr != nil {
+			if strings.Contains(rerr.Error().Error(), "existing disk") {
+				return nil, status.Error(codes.AlreadyExists, fmt.Sprintf("request volume group snapshot(%s) under rg(%s) already exists, but the SourceVolumeId is different, error details: %v", volumeGroupSnapshotName, resourceGroup, rerr.Error()))
+			}
+
+			azureutils.SleepIfThrottled(rerr.Error(), consts.SnapshotOpThrottlingSleepSec)
+			return nil, status.Error(codes.Internal, fmt.Sprintf("create snapshot error: %v", rerr.Error()))
+		}
+
+		if d.shouldWaitForSnapshotReady {
+			if err := d.waitForSnapshotReady(ctx, subsID, resourceGroup, snapshotNames[idx], waitForSnapshotReadyInterval, waitForSnapshotReadyTimeout); err != nil {
+				return nil, status.Error(codes.Internal, fmt.Sprintf("waitForSnapshotReady(%s, %s, %s) failed with %v", subsID, resourceGroup, snapshotNames[idx], err))
+			}
+		}
+		klog.V(2).Infof("create snapshot(%s) under rg(%s) region(%s) successfully", snapshotNames[idx], resourceGroup, d.cloud.Location)
+
+	}
+	csiVolumeGroupSnapshot, err := d.getVolumeGroupSnapshotByID(ctx, subsID, resourceGroup, volumeGroupSnapshotName, []string{}, sourceVolumeIDs)
+	if err != nil {
+		return nil, err
+	}
+
+	createResp := &csi.CreateVolumeGroupSnapshotResponse{
+		GroupSnapshot: csiVolumeGroupSnapshot,
+	}
+	isOperationSucceeded = true
+	return createResp, nil
+}
+
 func (d *Driver) getSnapshotByID(ctx context.Context, subsID, resourceGroup, snapshotID, sourceVolumeID string) (*csi.Snapshot, error) {
 	var err error
 	snapshotName := snapshotID
@@ -1086,6 +1237,28 @@ func (d *Driver) getSnapshotByID(ctx context.Context, subsID, resourceGroup, sna
 	}
 
 	return azureutils.GenerateCSISnapshot(sourceVolumeID, &snapshot)
+}
+
+func (d *Driver) getVolumeGroupSnapshotByID(ctx context.Context, subsID, resourceGroup, volumeGroupSnapshotID string, snapshotIDs, sourceVolumeIDs []string) (*csi.VolumeGroupSnapshot, error) {
+	var err error
+	snapshotList := []*compute.Snapshot{}
+	for _, snapshotID := range snapshotIDs {
+		snapshotName := snapshotID
+		if azureutils.IsARMResourceID(snapshotID) {
+			snapshotName, resourceGroup, subsID, err = d.getSnapshotInfo(snapshotID)
+			if err != nil {
+				return nil, status.Errorf(codes.Internal, err.Error())
+			}
+		}
+
+		snapshot, rerr := d.cloud.SnapshotsClient.Get(ctx, subsID, resourceGroup, snapshotName)
+		if rerr != nil {
+			return nil, status.Error(codes.Internal, fmt.Sprintf("get snapshot %s from rg(%s) error: %v", snapshotName, resourceGroup, rerr.Error()))
+		}
+		snapshotList = append(snapshotList, &snapshot)
+	}
+
+	return azureutils.GenerateCSIVolumeGroupSnapshot(volumeGroupSnapshotID, sourceVolumeIDs, snapshotList)
 }
 
 // GetSourceDiskSize recursively searches for the sourceDisk and returns: sourceDisk disk size, error

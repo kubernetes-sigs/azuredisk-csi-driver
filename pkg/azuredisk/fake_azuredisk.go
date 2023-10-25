@@ -150,6 +150,9 @@ func newFakeDriverV1(t *testing.T) (*fakeDriverV1, error) {
 		csi.NodeServiceCapability_RPC_STAGE_UNSTAGE_VOLUME,
 		csi.NodeServiceCapability_RPC_EXPAND_VOLUME,
 	})
+	driver.AddGroupControllerServiceCapabilities([]csi.GroupControllerServiceCapability_RPC_Type{
+		csi.GroupControllerServiceCapability_RPC_CREATE_DELETE_GET_VOLUME_GROUP_SNAPSHOT,
+	})
 
 	nodeInfo := driver.getNodeInfo()
 	assert.NotEqual(t, nil, nodeInfo)
