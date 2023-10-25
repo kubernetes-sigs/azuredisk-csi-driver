@@ -74,6 +74,7 @@ type FakeDriver interface {
 	getVolumeLocks() *volumehelper.VolumeLocks
 	setControllerCapabilities([]*csi.ControllerServiceCapability)
 	setNodeCapabilities([]*csi.NodeServiceCapability)
+	setGroupControllerCapabilities([]*csi.GroupControllerServiceCapability)
 	setName(string)
 	setNodeID(string)
 	setVersion(version string)
@@ -157,6 +158,9 @@ func newFakeDriverV1(ctrl *gomock.Controller) (*fakeDriverV1, error) {
 	driver.AddNodeServiceCapabilities([]csi.NodeServiceCapability_RPC_Type{
 		csi.NodeServiceCapability_RPC_STAGE_UNSTAGE_VOLUME,
 		csi.NodeServiceCapability_RPC_EXPAND_VOLUME,
+	})
+	driver.AddGroupControllerServiceCapabilities([]csi.GroupControllerServiceCapability_RPC_Type{
+		csi.GroupControllerServiceCapability_RPC_CREATE_DELETE_GET_VOLUME_GROUP_SNAPSHOT,
 	})
 
 	return &driver, nil
