@@ -1199,9 +1199,10 @@ func (d *Driver) CreateVolumeGroupSnapshot(ctx context.Context, req *csi.CreateV
 
 	klog.V(2).Infof("begin to create volume group snapshot(%s, incremental: %v) under rg(%s) region(%s)", volumeGroupSnapshotName, incremental, resourceGroup, d.cloud.Location)
 	for idx, snapshot := range volumeGroupSnapshot {
+		klog.V(2).Infof("begin to create snapshot(%s, incremental: %v) under rg(%s) region(%s)", snapshotNames[idx], incremental, resourceGroup, d.cloud.Location)
 		if rerr := d.cloud.SnapshotsClient.CreateOrUpdate(ctx, subsID, resourceGroup, snapshotNames[idx], snapshot); rerr != nil {
 			if strings.Contains(rerr.Error().Error(), "existing disk") {
-				return nil, status.Error(codes.AlreadyExists, fmt.Sprintf("request volume group snapshot(%s) under rg(%s) already exists, but the SourceVolumeId is different, error details: %v", volumeGroupSnapshotName, resourceGroup, rerr.Error()))
+				return nil, status.Error(codes.AlreadyExists, fmt.Sprintf("request snapshot(%s) under rg(%s) already exists, but the SourceVolumeId is different, error details: %v", snapshotNames[idx], resourceGroup, rerr.Error()))
 			}
 
 			azureutils.SleepIfThrottled(rerr.Error(), consts.SnapshotOpThrottlingSleepSec)
@@ -1214,8 +1215,8 @@ func (d *Driver) CreateVolumeGroupSnapshot(ctx context.Context, req *csi.CreateV
 			}
 		}
 		klog.V(2).Infof("create snapshot(%s) under rg(%s) region(%s) successfully", snapshotNames[idx], resourceGroup, d.cloud.Location)
-
 	}
+	klog.V(2).Infof("create volume group snapshot(%s) under rg(%s) region(%s) successfully", volumeGroupSnapshotName, resourceGroup, d.cloud.Location)
 	csiVolumeGroupSnapshot, err := d.getVolumeGroupSnapshotByID(ctx, subsID, resourceGroup, volumeGroupSnapshotName, []string{}, sourceVolumeIDs)
 	if err != nil {
 		return nil, err
@@ -1229,6 +1230,54 @@ func (d *Driver) CreateVolumeGroupSnapshot(ctx context.Context, req *csi.CreateV
 }
 
 func (d *Driver) DeleteVolumeGroupSnapshot(ctx context.Context, req *csi.DeleteVolumeGroupSnapshotRequest) (*csi.DeleteVolumeGroupSnapshotResponse, error) {
+	groupSnapshotID := req.GroupSnapshotId
+	snapshotIDs := req.SnapshotIds
+	if len(groupSnapshotID) == 0 {
+		return nil, status.Error(codes.InvalidArgument, "GroupVolumeSnapshot ID must be provided")
+	}
+	if len(snapshotIDs) == 0 {
+		klog.V(2).Infof("GroupVolumeSnapshot is empty")
+		return &csi.DeleteVolumeGroupSnapshotResponse{}, nil
+	}
+
+	var err error
+	var subsID string
+	groupSnapshotName := groupSnapshotID
+	resourceGroup := d.cloud.ResourceGroup
+	snapshotNames := []string{}
+
+	for idx, snapshotID := range snapshotIDs {
+		if len(snapshotID) == 0 {
+			return nil, status.Error(codes.InvalidArgument, "Snapshot ID must be provided")
+		}
+		snapshotNames = append(snapshotNames, snapshotID)
+		if azureutils.IsARMResourceID(snapshotID) {
+			snapshotNames[idx], resourceGroup, subsID, err = d.getSnapshotInfo(snapshotID)
+			if err != nil {
+				return nil, status.Errorf(codes.Internal, err.Error())
+			}
+		}
+	}
+
+	mc := metrics.NewMetricContext(consts.AzureDiskCSIDriverName, "controller_delete_volume_group_snapshot", d.cloud.ResourceGroup, d.cloud.SubscriptionID, d.Name)
+	isOperationSucceeded := false
+	defer func() {
+		for _, snapshotID := range snapshotIDs {
+			mc.ObserveOperationWithResult(isOperationSucceeded, consts.SnapshotID, snapshotID)
+		}
+	}()
+
+	klog.V(2).Infof("begin to delete group volume snapshot(%s) under rg(%s)", groupSnapshotName, resourceGroup)
+	for _, snapshotName := range snapshotNames {
+		klog.V(2).Infof("begin to delete snapshot(%s) under rg(%s)", snapshotName, resourceGroup)
+		if rerr := d.cloud.SnapshotsClient.Delete(ctx, subsID, resourceGroup, snapshotName); rerr != nil {
+			azureutils.SleepIfThrottled(rerr.Error(), consts.SnapshotOpThrottlingSleepSec)
+			return nil, status.Error(codes.Internal, fmt.Sprintf("delete snapshot error: %v", rerr.Error()))
+		}
+		klog.V(2).Infof("delete snapshot(%s) under rg(%s) successfully", snapshotName, resourceGroup)
+	}
+	klog.V(2).Infof("delete group volume snapshot(%s) under rg(%s) successfully", groupSnapshotName, resourceGroup)
+	isOperationSucceeded = true
 	return &csi.DeleteVolumeGroupSnapshotResponse{}, nil
 }
 
