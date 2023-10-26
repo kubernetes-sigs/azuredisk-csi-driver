@@ -2,7 +2,7 @@
 apiVersion: groupsnapshot.storage.k8s.io/v1alpha1
 kind: VolumeGroupSnapshotClass
 metadata:
-  name: csi-groupSnapclass
+  name: csi-groupsnapclass
 driver: disk.csi.azure.com
 deletionPolicy: Delete
 parameters:

@@ -555,6 +555,13 @@ func (d *Driver) ControllerGetCapabilities(ctx context.Context, req *csi.Control
 	}, nil
 }
 
+// GroupControllerGetCapabilities returns the capabilities of the Group Controller plugin
+func (d *Driver) GroupControllerGetCapabilities(ctx context.Context, req *csi.GroupControllerGetCapabilitiesRequest) (*csi.GroupControllerGetCapabilitiesResponse, error) {
+	return &csi.GroupControllerGetCapabilitiesResponse{
+		Capabilities: d.GCap,
+	}, nil
+}
+
 // GetCapacity returns the capacity of the total available storage pool
 func (d *Driver) GetCapacity(ctx context.Context, req *csi.GetCapacityRequest) (*csi.GetCapacityResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "")
@@ -1219,6 +1226,14 @@ func (d *Driver) CreateVolumeGroupSnapshot(ctx context.Context, req *csi.CreateV
 	}
 	isOperationSucceeded = true
 	return createResp, nil
+}
+
+func (d *Driver) DeleteVolumeGroupSnapshot(ctx context.Context, req *csi.DeleteVolumeGroupSnapshotRequest) (*csi.DeleteVolumeGroupSnapshotResponse, error) {
+	return &csi.DeleteVolumeGroupSnapshotResponse{}, nil
+}
+
+func (d *Driver) GetVolumeGroupSnapshot(ctx context.Context, req *csi.GetVolumeGroupSnapshotRequest) (*csi.GetVolumeGroupSnapshotResponse, error) {
+	return &csi.GetVolumeGroupSnapshotResponse{}, nil
 }
 
 func (d *Driver) getSnapshotByID(ctx context.Context, subsID, resourceGroup, snapshotID, sourceVolumeID string) (*csi.Snapshot, error) {

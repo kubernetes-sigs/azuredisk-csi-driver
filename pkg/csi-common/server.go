@@ -33,7 +33,7 @@ import (
 // Defines Non blocking GRPC server interfaces
 type NonBlockingGRPCServer interface {
 	// Start services at the endpoint
-	Start(endpoint string, ids csi.IdentityServer, cs csi.ControllerServer, ns csi.NodeServer, testMode, enableOtelTracing bool)
+	Start(endpoint string, ids csi.IdentityServer, cs csi.ControllerServer, ns csi.NodeServer, gcs csi.GroupControllerServer, testMode, enableOtelTracing bool)
 	// Waits for the service to stop
 	Wait()
 	// Stops the service gracefully
@@ -52,9 +52,9 @@ type nonBlockingGRPCServer struct {
 	server *grpc.Server
 }
 
-func (s *nonBlockingGRPCServer) Start(endpoint string, ids csi.IdentityServer, cs csi.ControllerServer, ns csi.NodeServer, testMode, enableOtelTracing bool) {
+func (s *nonBlockingGRPCServer) Start(endpoint string, ids csi.IdentityServer, cs csi.ControllerServer, ns csi.NodeServer, gcs csi.GroupControllerServer, testMode, enableOtelTracing bool) {
 	s.wg.Add(1)
-	go s.serve(endpoint, ids, cs, ns, testMode, enableOtelTracing)
+	go s.serve(endpoint, ids, cs, ns, gcs, testMode, enableOtelTracing)
 }
 
 func (s *nonBlockingGRPCServer) Wait() {
@@ -69,7 +69,7 @@ func (s *nonBlockingGRPCServer) ForceStop() {
 	s.server.Stop()
 }
 
-func (s *nonBlockingGRPCServer) serve(endpoint string, ids csi.IdentityServer, cs csi.ControllerServer, ns csi.NodeServer, testMode, enableOtelTracing bool) {
+func (s *nonBlockingGRPCServer) serve(endpoint string, ids csi.IdentityServer, cs csi.ControllerServer, ns csi.NodeServer, gcs csi.GroupControllerServer, testMode, enableOtelTracing bool) {
 	proto, addr, err := ParseEndpoint(endpoint)
 	if err != nil {
 		klog.Fatal(err.Error())
@@ -109,6 +109,9 @@ func (s *nonBlockingGRPCServer) serve(endpoint string, ids csi.IdentityServer, c
 	}
 	if ns != nil {
 		csi.RegisterNodeServer(server, ns)
+	}
+	if gcs != nil {
+		csi.RegisterGroupControllerServer(server, gcs)
 	}
 	// Used to stop the server while running tests
 	if testMode {

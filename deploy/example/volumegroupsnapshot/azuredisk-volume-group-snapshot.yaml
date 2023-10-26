@@ -3,9 +3,8 @@ apiVersion: groupsnapshot.storage.k8s.io/v1alpha1
 kind: VolumeGroupSnapshot
 metadata:
   name: new-group-snapshot-demo
-  namespace: demo-namespace
 spec:
-  volumeGroupSnapshotClassName: csi-groupSnapclass
+  volumeGroupSnapshotClassName: csi-groupsnapclass
   source:
     selector:
       matchLabels:

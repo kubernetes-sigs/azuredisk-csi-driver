@@ -83,6 +83,7 @@ type CSIDriver interface {
 	csi.ControllerServer
 	csi.NodeServer
 	csi.IdentityServer
+	csi.GroupControllerServer
 
 	Run(endpoint, kubeconfig string, disableAVSetNodes, testMode bool)
 }
@@ -288,7 +289,7 @@ func (d *Driver) Run(endpoint, kubeconfig string, disableAVSetNodes, testingMock
 
 	s := csicommon.NewNonBlockingGRPCServer()
 	// Driver d act as IdentityServer, ControllerServer and NodeServer
-	s.Start(endpoint, d, d, d, testingMock, d.enableOtelTracing)
+	s.Start(endpoint, d, d, d, d, testingMock, d.enableOtelTracing)
 	s.Wait()
 }
 
@@ -364,6 +365,11 @@ func (d *DriverCore) setControllerCapabilities(caps []*csi.ControllerServiceCapa
 // setNodeCapabilities sets the node capabilities field. It is intended for use with unit tests.
 func (d *DriverCore) setNodeCapabilities(nodeCaps []*csi.NodeServiceCapability) {
 	d.NSCap = nodeCaps
+}
+
+// setGroupControllerCapabilities sets the group controller capabilities field. It is intended for use with unit tests.
+func (d *DriverCore) setGroupControllerCapabilities(gcaps []*csi.GroupControllerServiceCapability) {
+	d.GCap = gcaps
 }
 
 // setName sets the Name field. It is intended for use with unit tests.

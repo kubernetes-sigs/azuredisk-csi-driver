@@ -34,7 +34,7 @@ func TestStart(t *testing.T) {
 	s := NewNonBlockingGRPCServer()
 	// sleep a while to avoid race condition in unit test
 	time.Sleep(time.Millisecond * 500)
-	s.Start("tcp://127.0.0.1:0", nil, nil, nil, true, false)
+	s.Start("tcp://127.0.0.1:0", nil, nil, nil, nil, true, false)
 	time.Sleep(time.Millisecond * 500)
 }
 
@@ -42,7 +42,7 @@ func TestStartWithOtelTracing(t *testing.T) {
 	s := NewNonBlockingGRPCServer()
 	// sleep a while to avoid race condition in unit test
 	time.Sleep(time.Millisecond * 500)
-	s.Start("tcp://127.0.0.1:0", nil, nil, nil, true, true)
+	s.Start("tcp://127.0.0.1:0", nil, nil, nil, nil, true, true)
 	time.Sleep(time.Millisecond * 500)
 }
 
@@ -52,7 +52,7 @@ func TestServe(t *testing.T) {
 	s.wg = sync.WaitGroup{}
 	//need to add one here as the actual also requires one.
 	s.wg.Add(1)
-	s.serve("tcp://127.0.0.1:0", nil, nil, nil, true, false)
+	s.serve("tcp://127.0.0.1:0", nil, nil, nil, nil, true, false)
 }
 
 func TestWait(t *testing.T) {
