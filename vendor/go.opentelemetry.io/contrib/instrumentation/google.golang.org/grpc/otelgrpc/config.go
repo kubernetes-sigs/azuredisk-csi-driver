@@ -15,14 +15,11 @@
 package otelgrpc // import "go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 
 import (
-	"context"
-
-	"google.golang.org/grpc/metadata"
-
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
-	"go.opentelemetry.io/otel/baggage"
+	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/propagation"
+	semconv "go.opentelemetry.io/otel/semconv/v1.17.0"
 	"go.opentelemetry.io/otel/trace"
 )
 
@@ -40,9 +37,17 @@ type Filter func(*InterceptorInfo) bool
 
 // config is a group of options for this instrumentation.
 type config struct {
-	Filter         Filter
-	Propagators    propagation.TextMapPropagator
-	TracerProvider trace.TracerProvider
+	Filter           Filter
+	Propagators      propagation.TextMapPropagator
+	TracerProvider   trace.TracerProvider
+	MeterProvider    metric.MeterProvider
+	SpanStartOptions []trace.SpanStartOption
+
+	ReceivedEvent bool
+	SentEvent     bool
+
+	meter             metric.Meter
+	rpcServerDuration metric.Int64Histogram
 }
 
 // Option applies an option value for a config.
@@ -55,10 +60,25 @@ func newConfig(opts []Option) *config {
 	c := &config{
 		Propagators:    otel.GetTextMapPropagator(),
 		TracerProvider: otel.GetTracerProvider(),
+		MeterProvider:  otel.GetMeterProvider(),
 	}
 	for _, o := range opts {
 		o.apply(c)
 	}
+
+	c.meter = c.MeterProvider.Meter(
+		instrumentationName,
+		metric.WithInstrumentationVersion(Version()),
+		metric.WithSchemaURL(semconv.SchemaURL),
+	)
+	var err error
+	c.rpcServerDuration, err = c.meter.Int64Histogram("rpc.server.duration",
+		metric.WithDescription("Measures the duration of inbound RPC."),
+		metric.WithUnit("ms"))
+	if err != nil {
+		otel.Handle(err)
+	}
+
 	return c
 }
 
@@ -105,59 +125,63 @@ func WithTracerProvider(tp trace.TracerProvider) Option {
 	return tracerProviderOption{tp: tp}
 }
 
-type metadataSupplier struct {
-	metadata *metadata.MD
-}
+type meterProviderOption struct{ mp metric.MeterProvider }
 
-// assert that metadataSupplier implements the TextMapCarrier interface.
-var _ propagation.TextMapCarrier = &metadataSupplier{}
-
-func (s *metadataSupplier) Get(key string) string {
-	values := s.metadata.Get(key)
-	if len(values) == 0 {
-		return ""
+func (o meterProviderOption) apply(c *config) {
+	if o.mp != nil {
+		c.MeterProvider = o.mp
 	}
-	return values[0]
 }
 
-func (s *metadataSupplier) Set(key string, value string) {
-	s.metadata.Set(key, value)
+// WithMeterProvider returns an Option to use the MeterProvider when
+// creating a Meter. If this option is not provide the global MeterProvider will be used.
+func WithMeterProvider(mp metric.MeterProvider) Option {
+	return meterProviderOption{mp: mp}
 }
 
-func (s *metadataSupplier) Keys() []string {
-	out := make([]string, 0, len(*s.metadata))
-	for key := range *s.metadata {
-		out = append(out, key)
+// Event type that can be recorded, see WithMessageEvents.
+type Event int
+
+// Different types of events that can be recorded, see WithMessageEvents.
+const (
+	ReceivedEvents Event = iota
+	SentEvents
+)
+
+type messageEventsProviderOption struct {
+	events []Event
+}
+
+func (m messageEventsProviderOption) apply(c *config) {
+	for _, e := range m.events {
+		switch e {
+		case ReceivedEvents:
+			c.ReceivedEvent = true
+		case SentEvents:
+			c.SentEvent = true
+		}
 	}
-	return out
 }
 
-// Inject injects correlation context and span context into the gRPC
-// metadata object. This function is meant to be used on outgoing
-// requests.
-func Inject(ctx context.Context, md *metadata.MD, opts ...Option) {
-	c := newConfig(opts)
-	inject(ctx, md, c.Propagators)
+// WithMessageEvents configures the Handler to record the specified events
+// (span.AddEvent) on spans. By default only summary attributes are added at the
+// end of the request.
+//
+// Valid events are:
+//   - ReceivedEvents: Record the number of bytes read after every gRPC read operation.
+//   - SentEvents: Record the number of bytes written after every gRPC write operation.
+func WithMessageEvents(events ...Event) Option {
+	return messageEventsProviderOption{events: events}
 }
 
-func inject(ctx context.Context, md *metadata.MD, propagators propagation.TextMapPropagator) {
-	propagators.Inject(ctx, &metadataSupplier{
-		metadata: md,
-	})
+type spanStartOption struct{ opts []trace.SpanStartOption }
+
+func (o spanStartOption) apply(c *config) {
+	c.SpanStartOptions = append(c.SpanStartOptions, o.opts...)
 }
 
-// Extract returns the correlation context and span context that
-// another service encoded in the gRPC metadata object with Inject.
-// This function is meant to be used on incoming requests.
-func Extract(ctx context.Context, md *metadata.MD, opts ...Option) (baggage.Baggage, trace.SpanContext) {
-	c := newConfig(opts)
-	return extract(ctx, md, c.Propagators)
-}
-
-func extract(ctx context.Context, md *metadata.MD, propagators propagation.TextMapPropagator) (baggage.Baggage, trace.SpanContext) {
-	ctx = propagators.Extract(ctx, &metadataSupplier{
-		metadata: md,
-	})
-
-	return baggage.FromContext(ctx), trace.SpanContextFromContext(ctx)
+// WithSpanOptions configures an additional set of
+// trace.SpanOptions, which are applied to each new span.
+func WithSpanOptions(opts ...trace.SpanStartOption) Option {
+	return spanStartOption{opts}
 }
