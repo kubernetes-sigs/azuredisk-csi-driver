@@ -73,6 +73,7 @@ type FakeDriver interface {
 	getVolumeLocks() *volumehelper.VolumeLocks
 	setControllerCapabilities([]*csi.ControllerServiceCapability)
 	setNodeCapabilities([]*csi.NodeServiceCapability)
+	setGroupControllerCapabilities([]*csi.GroupControllerServiceCapability)
 	setName(string)
 	setNodeID(string)
 	setVersion(version string)

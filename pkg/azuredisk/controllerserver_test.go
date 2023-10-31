@@ -948,6 +948,25 @@ func TestControllerGetCapabilities(t *testing.T) {
 	assert.NoError(t, err)
 }
 
+func TestGroupControllerGetCapabilities(t *testing.T) {
+	d, _ := NewFakeDriver(t)
+	gcapType := &csi.GroupControllerServiceCapability_Rpc{
+		Rpc: &csi.GroupControllerServiceCapability_RPC{
+			Type: csi.GroupControllerServiceCapability_RPC_UNKNOWN,
+		},
+	}
+	gcapList := []*csi.GroupControllerServiceCapability{{
+		Type: gcapType,
+	}}
+	d.setGroupControllerCapabilities(gcapList)
+	// Test valid request
+	req := csi.GroupControllerGetCapabilitiesRequest{}
+	resp, err := d.GroupControllerGetCapabilities(context.Background(), &req)
+	assert.NotNil(t, resp)
+	assert.Equal(t, resp.Capabilities[0].GetType(), gcapType)
+	assert.NoError(t, err)
+}
+
 func TestControllerExpandVolume(t *testing.T) {
 	stdVolSize := int64(5 * 1024 * 1024 * 1024)
 	stdCapRange := &csi.CapacityRange{RequiredBytes: stdVolSize}
