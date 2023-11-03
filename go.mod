@@ -34,13 +34,13 @@ require (
 	k8s.io/cloud-provider v0.28.1
 	k8s.io/component-base v0.28.1
 	k8s.io/klog/v2 v2.100.1
-	k8s.io/kubernetes v1.28.2
+	k8s.io/kubernetes v1.28.3
 	k8s.io/mount-utils v0.28.2
 	k8s.io/pod-security-admission v0.0.0
 	k8s.io/utils v0.0.0-20230726121419-3b25d923346b
 	sigs.k8s.io/cloud-provider-azure v1.27.1-0.20230825065334-8b1cf948b7ed
 	sigs.k8s.io/cloud-provider-azure/pkg/azclient v0.0.0-20231012171618-1890d8703623
-	sigs.k8s.io/yaml v1.3.0
+	sigs.k8s.io/yaml v1.4.0
 )
 
 require (
