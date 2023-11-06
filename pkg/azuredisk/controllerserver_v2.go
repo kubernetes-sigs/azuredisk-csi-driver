@@ -297,6 +297,11 @@ func (d *DriverV2) ControllerGetVolume(context.Context, *csi.ControllerGetVolume
 	return nil, status.Error(codes.Unimplemented, "")
 }
 
+// ControllerModifyVolume modify volume
+func (d *DriverV2) ControllerModifyVolume(context.Context, *csi.ControllerModifyVolumeRequest) (*csi.ControllerModifyVolumeResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "")
+}
+
 // ControllerPublishVolume attach an azure disk to a required node
 func (d *DriverV2) ControllerPublishVolume(ctx context.Context, req *csi.ControllerPublishVolumeRequest) (*csi.ControllerPublishVolumeResponse, error) {
 	diskURI := req.GetVolumeId()
