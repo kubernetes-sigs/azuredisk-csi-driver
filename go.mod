@@ -12,7 +12,7 @@ require (
 	github.com/container-storage-interface/spec v1.8.0
 	github.com/golang/mock v1.6.0
 	github.com/golang/protobuf v1.5.3
-	github.com/kubernetes-csi/csi-lib-utils v0.15.0-rc0
+	github.com/kubernetes-csi/csi-lib-utils v0.15.0
 	github.com/kubernetes-csi/csi-proxy/client v1.1.3
 	github.com/kubernetes-csi/external-snapshotter/client/v4 v4.2.0
 	github.com/onsi/ginkgo/v2 v2.13.0
@@ -34,7 +34,7 @@ require (
 	k8s.io/cloud-provider v0.28.1
 	k8s.io/component-base v0.28.1
 	k8s.io/klog/v2 v2.100.1
-	k8s.io/kubernetes v1.28.2
+	k8s.io/kubernetes v1.28.3
 	k8s.io/mount-utils v0.28.2
 	k8s.io/pod-security-admission v0.0.0
 	k8s.io/utils v0.0.0-20230726121419-3b25d923346b
