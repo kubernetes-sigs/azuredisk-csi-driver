@@ -22,13 +22,13 @@ require (
 	golang.org/x/net v0.17.0
 	google.golang.org/grpc v1.49.0
 	google.golang.org/protobuf v1.28.1
-	k8s.io/api v0.26.6
-	k8s.io/apimachinery v0.26.6
-	k8s.io/client-go v0.26.6
-	k8s.io/cloud-provider v0.26.6
-	k8s.io/component-base v0.26.6
+	k8s.io/api v0.26.8
+	k8s.io/apimachinery v0.26.8
+	k8s.io/client-go v0.26.8
+	k8s.io/cloud-provider v0.26.8
+	k8s.io/component-base v0.26.8
 	k8s.io/klog/v2 v2.90.1
-	k8s.io/kubernetes v1.26.6
+	k8s.io/kubernetes v1.26.8
 	k8s.io/mount-utils v0.27.6
 	k8s.io/utils v0.0.0-20230209194617-a36077c30491
 	sigs.k8s.io/cloud-provider-azure v1.26.1-0.20230307123634-631b3a4199f1
@@ -98,7 +98,7 @@ require (
 	github.com/prometheus/procfs v0.8.0 // indirect
 	github.com/spf13/cobra v1.6.1 // indirect
 	github.com/spf13/pflag v1.0.5 // indirect
-	go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.35.0 // indirect
+	go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.35.1 // indirect
 	go.opentelemetry.io/otel v1.10.0 // indirect
 	go.opentelemetry.io/otel/exporters/otlp/internal/retry v1.10.0 // indirect
 	go.opentelemetry.io/otel/exporters/otlp/otlptrace v1.10.0 // indirect
@@ -119,8 +119,8 @@ require (
 	gopkg.in/yaml.v2 v2.4.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 	k8s.io/apiextensions-apiserver v0.0.0 // indirect
-	k8s.io/apiserver v0.26.6 // indirect
-	k8s.io/component-helpers v0.26.6 // indirect
+	k8s.io/apiserver v0.26.8 // indirect
+	k8s.io/component-helpers v0.26.8 // indirect
 	k8s.io/kube-openapi v0.0.0-20221012153701-172d655c2280 // indirect
 	k8s.io/kubectl v0.0.0 // indirect
 	sigs.k8s.io/apiserver-network-proxy/konnectivity-client v0.0.37 // indirect
