@@ -7,7 +7,7 @@ github.com/Azure/azure-sdk-for-go/services/privatedns/mgmt/2018-09-01/privatedns
 github.com/Azure/azure-sdk-for-go/services/resources/mgmt/2017-05-10/resources
 github.com/Azure/azure-sdk-for-go/services/storage/mgmt/2021-09-01/storage
 github.com/Azure/azure-sdk-for-go/version
-# github.com/Azure/azure-sdk-for-go/sdk/azcore v1.8.0
+# github.com/Azure/azure-sdk-for-go/sdk/azcore v1.9.0
 ## explicit; go 1.18
 github.com/Azure/azure-sdk-for-go/sdk/azcore
 github.com/Azure/azure-sdk-for-go/sdk/azcore/arm
@@ -20,6 +20,7 @@ github.com/Azure/azure-sdk-for-go/sdk/azcore/internal/log
 github.com/Azure/azure-sdk-for-go/sdk/azcore/internal/pollers
 github.com/Azure/azure-sdk-for-go/sdk/azcore/internal/pollers/async
 github.com/Azure/azure-sdk-for-go/sdk/azcore/internal/pollers/body
+github.com/Azure/azure-sdk-for-go/sdk/azcore/internal/pollers/fake
 github.com/Azure/azure-sdk-for-go/sdk/azcore/internal/pollers/loc
 github.com/Azure/azure-sdk-for-go/sdk/azcore/internal/pollers/op
 github.com/Azure/azure-sdk-for-go/sdk/azcore/internal/shared
@@ -32,7 +33,7 @@ github.com/Azure/azure-sdk-for-go/sdk/azcore/tracing
 # github.com/Azure/azure-sdk-for-go/sdk/azidentity v1.4.0
 ## explicit; go 1.18
 github.com/Azure/azure-sdk-for-go/sdk/azidentity
-# github.com/Azure/azure-sdk-for-go/sdk/internal v1.3.0
+# github.com/Azure/azure-sdk-for-go/sdk/internal v1.5.0
 ## explicit; go 1.18
 github.com/Azure/azure-sdk-for-go/sdk/internal/diag
 github.com/Azure/azure-sdk-for-go/sdk/internal/errorinfo
@@ -1389,7 +1390,7 @@ k8s.io/kubectl/pkg/util/podutils
 # k8s.io/kubelet v0.28.0 => k8s.io/kubelet v0.28.1
 ## explicit; go 1.20
 k8s.io/kubelet/pkg/apis
-# k8s.io/kubernetes v1.28.2
+# k8s.io/kubernetes v1.28.3
 ## explicit; go 1.20
 k8s.io/kubernetes/pkg/api/legacyscheme
 k8s.io/kubernetes/pkg/api/service

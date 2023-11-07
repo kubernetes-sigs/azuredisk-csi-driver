@@ -4,7 +4,7 @@ go 1.20
 
 require (
 	github.com/Azure/azure-sdk-for-go v68.0.0+incompatible
-	github.com/Azure/azure-sdk-for-go/sdk/azcore v1.8.0
+	github.com/Azure/azure-sdk-for-go/sdk/azcore v1.9.0
 	github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute/v5 v5.2.0
 	github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/network/armnetwork/v4 v4.2.0
 	github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/resources/armresources v1.1.1
@@ -34,7 +34,7 @@ require (
 	k8s.io/cloud-provider v0.28.1
 	k8s.io/component-base v0.28.1
 	k8s.io/klog/v2 v2.100.1
-	k8s.io/kubernetes v1.28.2
+	k8s.io/kubernetes v1.28.3
 	k8s.io/mount-utils v0.28.2
 	k8s.io/pod-security-admission v0.0.0
 	k8s.io/utils v0.0.0-20230726121419-3b25d923346b
@@ -45,7 +45,7 @@ require (
 
 require (
 	github.com/Azure/azure-sdk-for-go/sdk/azidentity v1.4.0 // indirect
-	github.com/Azure/azure-sdk-for-go/sdk/internal v1.3.0 // indirect
+	github.com/Azure/azure-sdk-for-go/sdk/internal v1.5.0 // indirect
 	github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/containerservice/armcontainerservice/v4 v4.3.0 // indirect
 	github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/privatedns/armprivatedns v1.1.0 // indirect
 	github.com/Azure/go-autorest v14.2.0+incompatible // indirect
