@@ -17,6 +17,7 @@ limitations under the License.
 package e2e
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"log"
@@ -31,10 +32,12 @@ import (
 	"github.com/onsi/ginkgo/v2/reporters"
 	"github.com/onsi/gomega"
 	"github.com/pborman/uuid"
+	"k8s.io/klog/v2"
 	"k8s.io/kubernetes/test/e2e/framework"
 	"k8s.io/kubernetes/test/e2e/framework/config"
 	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azuredisk"
+	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
 	"sigs.k8s.io/azuredisk-csi-driver/test/e2e/driver"
 	"sigs.k8s.io/azuredisk-csi-driver/test/utils/azure"
 	"sigs.k8s.io/azuredisk-csi-driver/test/utils/credentials"
@@ -152,12 +155,22 @@ var _ = ginkgo.BeforeSuite(func(ctx ginkgo.SpecContext) {
 			DriverName:             consts.DefaultDriverName,
 			VolumeAttachLimit:      16,
 			EnablePerfOptimization: false,
+			KubeConfig:             os.Getenv(kubeconfigEnvVar),
+			TestingMock:            false,
+			DisableAVSetNodes:      false,
 		}
+		os.Setenv("AZURE_CREDENTIAL_FILE", credentials.TempAzureCredentialFilePath)
+		userAgent := azuredisk.GetUserAgent(driverOptions.DriverName, driverOptions.CustomUserAgent, driverOptions.UserAgentSuffix)
+		cloud, err := azureutils.GetCloudProvider(context.Background(), driverOptions.KubeConfig, driverOptions.CloudConfigSecretName, driverOptions.CloudConfigSecretNamespace,
+			userAgent, driverOptions.AllowEmptyCloudConfig, driverOptions.EnableTrafficManager, driverOptions.TrafficManagerPort)
+		if err != nil {
+			klog.Fatalf("failed to get Azure Cloud Provider, error: %v", err)
+		}
+		driverOptions.Cloud = cloud
 		azurediskDriver = azuredisk.NewDriver(&driverOptions)
-		kubeconfig := os.Getenv(kubeconfigEnvVar)
 		go func() {
-			os.Setenv("AZURE_CREDENTIAL_FILE", credentials.TempAzureCredentialFilePath)
-			azurediskDriver.Run(fmt.Sprintf("unix:///tmp/csi-%s.sock", uuid.NewUUID().String()), kubeconfig, false, false)
+
+			azurediskDriver.Run(fmt.Sprintf("unix:///tmp/csi-%s.sock", uuid.NewUUID().String()))
 		}()
 	}
 })

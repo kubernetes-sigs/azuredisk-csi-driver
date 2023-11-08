@@ -63,44 +63,19 @@ func NewDriver(options *DriverOptions) CSIDriver {
 // does not support optional driver plugin info manifest field. Refer to CSI spec for more details.
 func newDriverV2(options *DriverOptions) *DriverV2 {
 	klog.Warning("Using DriverV2")
-	driver := DriverV2{}
-	driver.Name = options.DriverName
-	driver.Version = driverVersion
-	driver.NodeID = options.NodeID
-	driver.VolumeAttachLimit = options.VolumeAttachLimit
-	driver.volumeLocks = volumehelper.NewVolumeLocks()
-	driver.perfOptimizationEnabled = options.EnablePerfOptimization
-	driver.cloudConfigSecretName = options.CloudConfigSecretName
-	driver.cloudConfigSecretNamespace = options.CloudConfigSecretNamespace
-	driver.customUserAgent = options.CustomUserAgent
-	driver.userAgentSuffix = options.UserAgentSuffix
-	driver.useCSIProxyGAInterface = options.UseCSIProxyGAInterface
-	driver.enableOtelTracing = options.EnableOtelTracing
-	driver.ioHandler = azureutils.NewOSIOHandler()
-	driver.hostUtil = hostutil.NewHostUtil()
-
-	topologyKey = fmt.Sprintf("topology.%s/zone", driver.Name)
-	return &driver
-}
-
-// Run driver initialization
-func (d *DriverV2) Run(endpoint, kubeconfig string, disableAVSetNodes, testingMock bool) {
-	versionMeta, err := GetVersionYAML(d.Name)
-	if err != nil {
-		klog.Fatalf("%v", err)
-	}
-	klog.Infof("\nDRIVER INFORMATION:\n-------------------\n%s\n\nStreaming logs below:", versionMeta)
-
-	userAgent := GetUserAgent(d.Name, d.customUserAgent, d.userAgentSuffix)
-	klog.V(2).Infof("driver userAgent: %s", userAgent)
-
-	cloud, err := azureutils.GetCloudProvider(context.Background(), kubeconfig, d.cloudConfigSecretName, d.cloudConfigSecretNamespace,
-		userAgent, d.allowEmptyCloudConfig, d.enableTrafficManager, d.trafficManagerPort)
-	if err != nil {
-		klog.Fatalf("failed to get Azure Cloud Provider, error: %v", err)
-	}
-	d.cloud = cloud
-
+	var err error
+	d := DriverV2{}
+	d.Name = options.DriverName
+	d.Version = driverVersion
+	d.NodeID = options.NodeID
+	d.VolumeAttachLimit = options.VolumeAttachLimit
+	d.volumeLocks = volumehelper.NewVolumeLocks()
+	d.perfOptimizationEnabled = options.EnablePerfOptimization
+	d.enableOtelTracing = options.EnableOtelTracing
+	d.ioHandler = azureutils.NewOSIOHandler()
+	d.hostUtil = hostutil.NewHostUtil()
+	d.testingMock = options.TestingMock
+	d.options = *options
 	if d.cloud != nil {
 		if d.vmType != "" {
 			klog.V(2).Infof("override VMType(%s) in cloud config as %s", d.cloud.VMType, d.vmType)
@@ -118,7 +93,7 @@ func (d *DriverV2) Run(endpoint, kubeconfig string, disableAVSetNodes, testingMo
 				d.cloud.DisableAvailabilitySetNodes = false
 			}
 
-			if d.cloud.VMType == consts.VMTypeVMSS && !d.cloud.DisableAvailabilitySetNodes && disableAVSetNodes {
+			if d.cloud.VMType == consts.VMTypeVMSS && !d.cloud.DisableAvailabilitySetNodes && options.DisableAVSetNodes {
 				klog.V(2).Infof("DisableAvailabilitySetNodes for controller since current VMType is vmss")
 				d.cloud.DisableAvailabilitySetNodes = true
 			}
@@ -135,7 +110,7 @@ func (d *DriverV2) Run(endpoint, kubeconfig string, disableAVSetNodes, testingMo
 		}
 	}
 
-	d.mounter, err = mounter.NewSafeMounter(d.enableWindowsHostProcess, d.useCSIProxyGAInterface)
+	d.mounter, err = mounter.NewSafeMounter(options.EnableWindowsHostProcess, options.UseCSIProxyGAInterface)
 	if err != nil {
 		klog.Fatalf("Failed to get safe mounter. Error: %v", err)
 	}
@@ -166,9 +141,20 @@ func (d *DriverV2) Run(endpoint, kubeconfig string, disableAVSetNodes, testingMo
 		csi.NodeServiceCapability_RPC_SINGLE_NODE_MULTI_WRITER,
 	})
 
+	topologyKey = fmt.Sprintf("topology.%s/zone", d.Name)
+	return &d
+}
+
+// Run driver initialization
+func (d *DriverV2) Run(endpoint string) {
+	versionMeta, err := GetVersionYAML(d.Name)
+	if err != nil {
+		klog.Fatalf("%v", err)
+	}
+	klog.Infof("\nDRIVER INFORMATION:\n-------------------\n%s\n\nStreaming logs below:", versionMeta)
 	s := csicommon.NewNonBlockingGRPCServer()
 	// Driver d act as IdentityServer, ControllerServer and NodeServer
-	s.Start(endpoint, d, d, d, testingMock, d.enableOtelTracing)
+	s.Start(endpoint, d, d, d, d.testingMock, d.enableOtelTracing)
 	s.Wait()
 }
 

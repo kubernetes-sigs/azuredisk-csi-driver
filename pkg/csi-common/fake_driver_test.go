@@ -24,9 +24,9 @@ import (
 
 func TestNewFakeCSIDriver(t *testing.T) {
 	driver := &CSIDriver{
-		Name:    fakeCSIDriverName,
-		Version: vendorVersion,
-		NodeID:  fakeNodeID,
+		Name:    "disk.csi.azure.com",
+		NodeID:  "fakeNodeID",
+		Version: "0.3.0",
 	}
 	result := NewFakeCSIDriver()
 	assert.Equal(t, driver, result)

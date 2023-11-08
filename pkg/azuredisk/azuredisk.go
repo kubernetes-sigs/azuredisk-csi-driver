@@ -76,6 +76,10 @@ type DriverOptions struct {
 	GetNodeIDFromIMDS            bool
 	EnableOtelTracing            bool
 	WaitForSnapshotReady         bool
+	KubeConfig                   string
+	DisableAVSetNodes            bool
+	TestingMock                  bool
+	Cloud                        *azure.Cloud
 }
 
 // CSIDriver defines the interface for a CSI driver.
@@ -84,7 +88,7 @@ type CSIDriver interface {
 	csi.NodeServer
 	csi.IdentityServer
 
-	Run(endpoint, kubeconfig string, disableAVSetNodes, testMode bool)
+	Run(endpoint string)
 }
 
 type hostUtil interface {
@@ -94,37 +98,25 @@ type hostUtil interface {
 // DriverCore contains fields common to both the V1 and V2 driver, and implements all interfaces of CSI drivers
 type DriverCore struct {
 	csicommon.CSIDriver
+	options                      DriverOptions
 	perfOptimizationEnabled      bool
-	cloudConfigSecretName        string
-	cloudConfigSecretNamespace   string
-	customUserAgent              string
-	userAgentSuffix              string
-	kubeconfig                   string
 	cloud                        *azure.Cloud
 	mounter                      *mount.SafeFormatAndMount
 	deviceHelper                 optimization.Interface
 	nodeInfo                     *optimization.NodeInfo
 	ioHandler                    azureutils.IOHandler
 	hostUtil                     hostUtil
-	useCSIProxyGAInterface       bool
 	enableDiskOnlineResize       bool
-	allowEmptyCloudConfig        bool
 	enableAsyncAttach            bool
-	enableListVolumes            bool
-	enableListSnapshots          bool
 	supportZone                  bool
 	getNodeInfoFromLabels        bool
 	enableDiskCapacityCheck      bool
-	disableUpdateCache           bool
-	enableTrafficManager         bool
-	trafficManagerPort           int64
-	vmssCacheTTLInSeconds        int64
 	attachDetachInitialDelayInMs int64
 	vmType                       string
-	enableWindowsHostProcess     bool
 	getNodeIDFromIMDS            bool
 	enableOtelTracing            bool
 	shouldWaitForSnapshotReady   bool
+	testingMock                  bool
 }
 
 // Driver is the v1 implementation of the Azure Disk CSI Driver.
@@ -144,33 +136,21 @@ func newDriverV1(options *DriverOptions) *Driver {
 	driver.NodeID = options.NodeID
 	driver.VolumeAttachLimit = options.VolumeAttachLimit
 	driver.perfOptimizationEnabled = options.EnablePerfOptimization
-	driver.cloudConfigSecretName = options.CloudConfigSecretName
-	driver.cloudConfigSecretNamespace = options.CloudConfigSecretNamespace
-	driver.customUserAgent = options.CustomUserAgent
-	driver.userAgentSuffix = options.UserAgentSuffix
-	driver.useCSIProxyGAInterface = options.UseCSIProxyGAInterface
 	driver.enableDiskOnlineResize = options.EnableDiskOnlineResize
-	driver.allowEmptyCloudConfig = options.AllowEmptyCloudConfig
 	driver.enableAsyncAttach = options.EnableAsyncAttach
-	driver.enableListVolumes = options.EnableListVolumes
-	driver.enableListSnapshots = options.EnableListVolumes
 	driver.supportZone = options.SupportZone
 	driver.getNodeInfoFromLabels = options.GetNodeInfoFromLabels
 	driver.enableDiskCapacityCheck = options.EnableDiskCapacityCheck
-	driver.disableUpdateCache = options.DisableUpdateCache
 	driver.attachDetachInitialDelayInMs = options.AttachDetachInitialDelayInMs
-	driver.enableTrafficManager = options.EnableTrafficManager
-	driver.trafficManagerPort = options.TrafficManagerPort
-	driver.vmssCacheTTLInSeconds = options.VMSSCacheTTLInSeconds
 	driver.vmType = options.VMType
-	driver.enableWindowsHostProcess = options.EnableWindowsHostProcess
 	driver.getNodeIDFromIMDS = options.GetNodeIDFromIMDS
 	driver.enableOtelTracing = options.EnableOtelTracing
 	driver.shouldWaitForSnapshotReady = options.WaitForSnapshotReady
 	driver.volumeLocks = volumehelper.NewVolumeLocks()
 	driver.ioHandler = azureutils.NewOSIOHandler()
 	driver.hostUtil = hostutil.NewHostUtil()
-
+	driver.testingMock = options.TestingMock
+	driver.options = *options
 	topologyKey = fmt.Sprintf("topology.%s/zone", driver.Name)
 
 	cache, err := azcache.NewTimedCache(5*time.Minute, func(key string) (interface{}, error) {
@@ -180,74 +160,54 @@ func newDriverV1(options *DriverOptions) *Driver {
 		klog.Fatalf("%v", err)
 	}
 	driver.getDiskThrottlingCache = cache
-	return &driver
-}
+	driver.cloud = options.Cloud
 
-// Run driver initialization
-func (d *Driver) Run(endpoint, kubeconfig string, disableAVSetNodes, testingMock bool) {
-	versionMeta, err := GetVersionYAML(d.Name)
-	if err != nil {
-		klog.Fatalf("%v", err)
-	}
-	klog.Infof("\nDRIVER INFORMATION:\n-------------------\n%s\n\nStreaming logs below:", versionMeta)
-
-	userAgent := GetUserAgent(d.Name, d.customUserAgent, d.userAgentSuffix)
-	klog.V(2).Infof("driver userAgent: %s", userAgent)
-
-	cloud, err := azureutils.GetCloudProvider(context.Background(), kubeconfig, d.cloudConfigSecretName, d.cloudConfigSecretNamespace,
-		userAgent, d.allowEmptyCloudConfig, d.enableTrafficManager, d.trafficManagerPort)
-	if err != nil {
-		klog.Fatalf("failed to get Azure Cloud Provider, error: %v", err)
-	}
-	d.cloud = cloud
-	d.kubeconfig = kubeconfig
-
-	if d.cloud != nil {
-		if d.vmType != "" {
-			klog.V(2).Infof("override VMType(%s) in cloud config as %s", d.cloud.VMType, d.vmType)
-			d.cloud.VMType = d.vmType
+	if driver.cloud != nil {
+		if driver.vmType != "" {
+			klog.V(2).Infof("override VMType(%s) in cloud config as %s", driver.cloud.VMType, driver.vmType)
+			driver.cloud.VMType = driver.vmType
 		}
 
-		if d.NodeID == "" {
+		if driver.NodeID == "" {
 			// Disable UseInstanceMetadata for controller to mitigate a timeout issue using IMDS
 			// https://github.com/kubernetes-sigs/azuredisk-csi-driver/issues/168
 			klog.V(2).Infof("disable UseInstanceMetadata for controller")
-			d.cloud.Config.UseInstanceMetadata = false
+			driver.cloud.Config.UseInstanceMetadata = false
 
-			if d.cloud.VMType == azurecloudconsts.VMTypeStandard && d.cloud.DisableAvailabilitySetNodes {
-				klog.V(2).Infof("set DisableAvailabilitySetNodes as false since VMType is %s", d.cloud.VMType)
-				d.cloud.DisableAvailabilitySetNodes = false
+			if driver.cloud.VMType == azurecloudconsts.VMTypeStandard && driver.cloud.DisableAvailabilitySetNodes {
+				klog.V(2).Infof("set DisableAvailabilitySetNodes as false since VMType is %s", driver.cloud.VMType)
+				driver.cloud.DisableAvailabilitySetNodes = false
 			}
 
-			if d.cloud.VMType == azurecloudconsts.VMTypeVMSS && !d.cloud.DisableAvailabilitySetNodes && disableAVSetNodes {
+			if driver.cloud.VMType == azurecloudconsts.VMTypeVMSS && !driver.cloud.DisableAvailabilitySetNodes && options.DisableAVSetNodes {
 				klog.V(2).Infof("DisableAvailabilitySetNodes for controller since current VMType is vmss")
-				d.cloud.DisableAvailabilitySetNodes = true
+				driver.cloud.DisableAvailabilitySetNodes = true
 			}
-			klog.V(2).Infof("cloud: %s, location: %s, rg: %s, VMType: %s, PrimaryScaleSetName: %s, PrimaryAvailabilitySetName: %s, DisableAvailabilitySetNodes: %v", d.cloud.Cloud, d.cloud.Location, d.cloud.ResourceGroup, d.cloud.VMType, d.cloud.PrimaryScaleSetName, d.cloud.PrimaryAvailabilitySetName, d.cloud.DisableAvailabilitySetNodes)
+			klog.V(2).Infof("cloud: %s, location: %s, rg: %s, VMType: %s, PrimaryScaleSetName: %s, PrimaryAvailabilitySetName: %s, DisableAvailabilitySetNodes: %v", driver.cloud.Cloud, driver.cloud.Location, driver.cloud.ResourceGroup, driver.cloud.VMType, driver.cloud.PrimaryScaleSetName, driver.cloud.PrimaryAvailabilitySetName, driver.cloud.DisableAvailabilitySetNodes)
 		}
 
-		if d.vmssCacheTTLInSeconds > 0 {
-			klog.V(2).Infof("reset vmssCacheTTLInSeconds as %d", d.vmssCacheTTLInSeconds)
-			d.cloud.VMCacheTTLInSeconds = int(d.vmssCacheTTLInSeconds)
-			d.cloud.VmssCacheTTLInSeconds = int(d.vmssCacheTTLInSeconds)
+		if options.VMSSCacheTTLInSeconds > 0 {
+			klog.V(2).Infof("reset vmssCacheTTLInSeconds as %d", options.VMSSCacheTTLInSeconds)
+			driver.cloud.VMCacheTTLInSeconds = int(options.VMSSCacheTTLInSeconds)
+			driver.cloud.VmssCacheTTLInSeconds = int(options.VMSSCacheTTLInSeconds)
 		}
 
-		if d.cloud.ManagedDiskController != nil {
-			d.cloud.DisableUpdateCache = d.disableUpdateCache
-			d.cloud.AttachDetachInitialDelayInMs = int(d.attachDetachInitialDelayInMs)
+		if driver.cloud.ManagedDiskController != nil {
+			driver.cloud.DisableUpdateCache = options.DisableUpdateCache
+			driver.cloud.AttachDetachInitialDelayInMs = int(driver.attachDetachInitialDelayInMs)
 		}
 	}
 
-	d.deviceHelper = optimization.NewSafeDeviceHelper()
+	driver.deviceHelper = optimization.NewSafeDeviceHelper()
 
-	if d.getPerfOptimizationEnabled() {
-		d.nodeInfo, err = optimization.NewNodeInfo(context.TODO(), d.getCloud(), d.NodeID)
+	if driver.getPerfOptimizationEnabled() {
+		driver.nodeInfo, err = optimization.NewNodeInfo(context.TODO(), driver.getCloud(), driver.NodeID)
 		if err != nil {
 			klog.Warningf("Failed to get node info. Error: %v", err)
 		}
 	}
 
-	d.mounter, err = mounter.NewSafeMounter(d.enableWindowsHostProcess, d.useCSIProxyGAInterface)
+	driver.mounter, err = mounter.NewSafeMounter(options.EnableWindowsHostProcess, options.UseCSIProxyGAInterface)
 	if err != nil {
 		klog.Fatalf("Failed to get safe mounter. Error: %v", err)
 	}
@@ -260,31 +220,40 @@ func (d *Driver) Run(endpoint, kubeconfig string, disableAVSetNodes, testingMock
 		csi.ControllerServiceCapability_RPC_EXPAND_VOLUME,
 		csi.ControllerServiceCapability_RPC_SINGLE_NODE_MULTI_WRITER,
 	}
-	if d.enableListVolumes {
+	if options.EnableListVolumes {
 		controllerCap = append(controllerCap, csi.ControllerServiceCapability_RPC_LIST_VOLUMES, csi.ControllerServiceCapability_RPC_LIST_VOLUMES_PUBLISHED_NODES)
 	}
-	if d.enableListSnapshots {
+	if options.EnableListSnapshots {
 		controllerCap = append(controllerCap, csi.ControllerServiceCapability_RPC_LIST_SNAPSHOTS)
 	}
 
-	d.AddControllerServiceCapabilities(controllerCap)
-	d.AddVolumeCapabilityAccessModes(
+	driver.AddControllerServiceCapabilities(controllerCap)
+	driver.AddVolumeCapabilityAccessModes(
 		[]csi.VolumeCapability_AccessMode_Mode{
 			csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER,
 			csi.VolumeCapability_AccessMode_SINGLE_NODE_READER_ONLY,
 			csi.VolumeCapability_AccessMode_SINGLE_NODE_SINGLE_WRITER,
 			csi.VolumeCapability_AccessMode_SINGLE_NODE_MULTI_WRITER,
 		})
-	d.AddNodeServiceCapabilities([]csi.NodeServiceCapability_RPC_Type{
+	driver.AddNodeServiceCapabilities([]csi.NodeServiceCapability_RPC_Type{
 		csi.NodeServiceCapability_RPC_STAGE_UNSTAGE_VOLUME,
 		csi.NodeServiceCapability_RPC_EXPAND_VOLUME,
 		csi.NodeServiceCapability_RPC_GET_VOLUME_STATS,
 		csi.NodeServiceCapability_RPC_SINGLE_NODE_MULTI_WRITER,
 	})
+	return &driver
+}
 
+// Run driver initialization
+func (d *Driver) Run(endpoint string) {
+	versionMeta, err := GetVersionYAML(d.Name)
+	if err != nil {
+		klog.Fatalf("%v", err)
+	}
+	klog.Infof("\nDRIVER INFORMATION:\n-------------------\n%s\n\nStreaming logs below:", versionMeta)
 	s := csicommon.NewNonBlockingGRPCServer()
 	// Driver d act as IdentityServer, ControllerServer and NodeServer
-	s.Start(endpoint, d, d, d, testingMock, d.enableOtelTracing)
+	s.Start(endpoint, d, d, d, d.testingMock, d.enableOtelTracing)
 	s.Wait()
 }
 

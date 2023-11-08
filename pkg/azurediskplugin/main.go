@@ -26,6 +26,7 @@ import (
 	"strings"
 
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azuredisk"
+	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
 
 	"k8s.io/component-base/metrics/legacyregistry"
 	"k8s.io/klog/v2"
@@ -135,13 +136,24 @@ func handle() {
 		GetNodeIDFromIMDS:            *getNodeIDFromIMDS,
 		EnableOtelTracing:            *enableOtelTracing,
 		WaitForSnapshotReady:         *waitForSnapshotReady,
+		KubeConfig:                   *kubeconfig,
+		DisableAVSetNodes:            *disableAVSetNodes,
+		TestingMock:                  false,
 	}
+	userAgent := azuredisk.GetUserAgent(driverOptions.DriverName, driverOptions.CustomUserAgent, driverOptions.UserAgentSuffix)
+	klog.V(2).Infof("driver userAgent: %s", userAgent)
+	cloud, err := azureutils.GetCloudProvider(context.Background(), driverOptions.KubeConfig, driverOptions.CloudConfigSecretName, driverOptions.CloudConfigSecretNamespace,
+		userAgent, driverOptions.AllowEmptyCloudConfig, driverOptions.EnableTrafficManager, driverOptions.TrafficManagerPort)
+	if err != nil {
+		klog.Fatalf("failed to get Azure Cloud Provider, error: %v", err)
+	}
+	driverOptions.Cloud = cloud
 	driver := azuredisk.NewDriver(&driverOptions)
+
 	if driver == nil {
 		klog.Fatalln("Failed to initialize azuredisk CSI Driver")
 	}
-	testingMock := false
-	driver.Run(*endpoint, *kubeconfig, *disableAVSetNodes, testingMock)
+	driver.Run(*endpoint)
 }
 
 func exportMetrics() {

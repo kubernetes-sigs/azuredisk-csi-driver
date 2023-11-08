@@ -65,14 +65,12 @@ func newFakeDriverV2(t *testing.T) (*fakeDriverV2, error) {
 	driver.supportZone = true
 	driver.ioHandler = azureutils.NewFakeIOHandler()
 	driver.hostUtil = azureutils.NewFakeHostUtil()
-	driver.useCSIProxyGAInterface = true
-	driver.allowEmptyCloudConfig = true
 
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
 	driver.cloud = azure.GetTestCloud(ctrl)
-	mounter, err := mounter.NewSafeMounter(driver.enableWindowsHostProcess, driver.useCSIProxyGAInterface)
+	mounter, err := mounter.NewSafeMounter(false, true)
 	if err != nil {
 		return nil, err
 	}
