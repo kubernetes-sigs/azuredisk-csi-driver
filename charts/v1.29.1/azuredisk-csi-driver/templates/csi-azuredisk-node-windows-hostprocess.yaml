@@ -60,9 +60,9 @@ spec:
       initContainers:
         - name: init
 {{- if hasPrefix "/" .Values.image.azuredisk.repository }}
-          image: "{{ .Values.image.baseRepo }}{{ .Values.image.azuredisk.repository }}:{{ .Values.image.azuredisk.tag }}-windows-hp"
+          image: "{{ .Values.image.baseRepo }}{{ .Values.image.azuredisk.repository }}:{{ .Values.image.azuredisk.tag }}.1-windows-hp"
 {{- else }}
-          image: "{{ .Values.image.azuredisk.repository }}:{{ .Values.image.azuredisk.tag }}-windows-hp"
+          image: "{{ .Values.image.azuredisk.repository }}:{{ .Values.image.azuredisk.tag }}.1-windows-hp"
 {{- end }}
           imagePullPolicy: {{ .Values.image.azuredisk.pullPolicy }}
           command:
@@ -98,9 +98,9 @@ spec:
           resources: {{- toYaml .Values.windows.resources.nodeDriverRegistrar | nindent 12 }}
         - name: azuredisk
 {{- if hasPrefix "/" .Values.image.azuredisk.repository }}
-          image: "{{ .Values.image.baseRepo }}{{ .Values.image.azuredisk.repository }}:{{ .Values.image.azuredisk.tag }}-windows-hp"
+          image: "{{ .Values.image.baseRepo }}{{ .Values.image.azuredisk.repository }}:{{ .Values.image.azuredisk.tag }}.1-windows-hp"
 {{- else }}
-          image: "{{ .Values.image.azuredisk.repository }}:{{ .Values.image.azuredisk.tag }}-windows-hp"
+          image: "{{ .Values.image.azuredisk.repository }}:{{ .Values.image.azuredisk.tag }}.1-windows-hp"
 {{- end }}
           command:
             - "azurediskplugin.exe"
