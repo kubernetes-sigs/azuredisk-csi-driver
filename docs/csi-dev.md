@@ -160,7 +160,7 @@ make push-manifest-azdiskschedulerextender
 curl https://raw.githubusercontent.com/helm/helm/master/scripts/get-helm-3 | bash
 helm install azuredisk-csi-driver charts/latest/azuredisk-csi-driver \
   --namespace kube-system \
-  --set image.azuredisk.repository=$REGISTRY/azuredisk-csi-driver \
+  --set image.azuredisk.repository=$REGISTRY/azuredisk-csi \
   --set image.azuredisk.tag=$IMAGE_VERSION \
   --set image.azuredisk.pullPolicy=Always
 ```
@@ -170,10 +170,10 @@ helm install azuredisk-csi-driver charts/latest/azuredisk-csi-driver \
 curl https://raw.githubusercontent.com/helm/helm/master/scripts/get-helm-3 | bash
 helm install azuredisk-csi-driver charts/latest-v2/azuredisk-csi-driver \
   --namespace kube-system \
-  --set image.azuredisk.repository=$REGISTRY/azuredisk-csi-driver \
+  --set image.azuredisk.repository=$REGISTRY/azuredisk-csi \
   --set image.azuredisk.tag=$IMAGE_VERSION \
   --set image.azuredisk.pullPolicy=Always \
-  --set image.schedulerExtender.repository=$REGISTRY/azuredisk-csi-driver \
+  --set image.schedulerExtender.repository=$REGISTRY/azuredisk-csi \
   --set image.schedulerExtender.tag=$IMAGE_VERSION \
   --set image.schedulerExtender.pullPolicy=Always
 ```
