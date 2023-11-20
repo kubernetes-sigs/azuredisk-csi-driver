@@ -48,7 +48,7 @@ func NewFakeSafeMounter() (*mount.SafeFormatAndMount, error) {
 }
 
 // Mount overrides mount.FakeMounter.Mount.
-func (f *FakeSafeMounter) Mount(source, target, fstype string, options []string) error {
+func (f *FakeSafeMounter) Mount(source, target, _ string, _ []string) error {
 	if strings.Contains(source, "error_mount") {
 		return fmt.Errorf("fake Mount: source error")
 	} else if strings.Contains(target, "error_mount") {
@@ -59,7 +59,7 @@ func (f *FakeSafeMounter) Mount(source, target, fstype string, options []string)
 }
 
 // MountSensitive overrides mount.FakeMounter.MountSensitive.
-func (f *FakeSafeMounter) MountSensitive(source, target, fstype string, options, sensitiveOptions []string) error {
+func (f *FakeSafeMounter) MountSensitive(source, target, _ string, _, _ []string) error {
 	if strings.Contains(source, "error_mount_sens") {
 		return fmt.Errorf("fake MountSensitive: source error")
 	} else if strings.Contains(target, "error_mount_sens") {
