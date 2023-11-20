@@ -36,7 +36,7 @@ type PreProvisionedInlineVolumeTest struct {
 
 func (t *PreProvisionedInlineVolumeTest) Run(client clientset.Interface, namespace *v1.Namespace) {
 	for _, pod := range t.Pods {
-		tpod, cleanup := pod.SetupWithInlineVolumes(client, namespace, t.CSIDriver, t.DiskURI, t.ReadOnly)
+		tpod, cleanup := pod.SetupWithInlineVolumes(client, namespace, t.DiskURI, t.ReadOnly)
 		// defer must be called here for resources not get removed before using them
 		for i := range cleanup {
 			defer cleanup[i]()
