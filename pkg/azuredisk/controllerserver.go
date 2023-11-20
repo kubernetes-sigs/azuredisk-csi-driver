@@ -1169,6 +1169,11 @@ func (d *Driver) CreateVolumeGroupSnapshot(ctx context.Context, req *csi.CreateV
 		if err != nil {
 			return nil, err
 		}
+		volumeGroupSnapshotNameHash := md5.Sum([]byte(volumeGroupSnapshotName))
+		klog.V(2).Infof("volumeGroupSnapshotNameHash: %s", volumeGroupSnapshotNameHash)
+		pvcNameHash := md5.Sum([]byte(pvcName))
+		klog.V(2).Infof("pvcNameHash: %s", pvcNameHash)
+		klog.V(2).Infof("time: %v", timestamppb.New(snapshot.SnapshotProperties.TimeCreated.ToTime()))
 		snapshotName := fmt.Sprintf("snapshot-%s%s-%s", md5.Sum([]byte(volumeGroupSnapshotName)), md5.Sum([]byte(pvcName)), timestamppb.New(snapshot.SnapshotProperties.TimeCreated.ToTime()))
 		snapshotNames = append(snapshotNames, snapshotName)
 

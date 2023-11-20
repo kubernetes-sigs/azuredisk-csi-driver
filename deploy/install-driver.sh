@@ -61,6 +61,7 @@ if [[ "$#" -gt 1 ]]; then
     kubectl apply -f $repo/crd-csi-snapshot.yaml
     kubectl apply -f $repo/rbac-csi-snapshot-controller.yaml
     kubectl apply -f $repo/csi-snapshot-controller.yaml
+    kubectl apply -f $repo/crd-csi-volumegroupsnapshot.yaml
   fi
 fi
 

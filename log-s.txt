@@ -1,0 +1,10 @@
+I1108 08:16:58.353583       1 main.go:109] Version: 8dc5dcb8ef1cd3a5445dad41bf606fb5a8d2d653
+I1108 08:17:00.478241       1 main.go:189] CSI driver name: "disk.csi.azure.com"
+I1108 08:17:00.478273       1 common.go:138] Probing CSI driver for readiness
+I1108 08:17:00.480600       1 main.go:227] Start NewCSISnapshotSideCarController with snapshotter [disk.csi.azure.com] kubeconfig [] csiTimeout [20m0s] csiAddress [/csi/csi.sock] resyncPeriod [15m0s] snapshotNamePrefix [snapshot] snapshotNameUUIDLength [824634126808]
+I1108 08:17:00.482356       1 snapshot_controller_base.go:140] EnableVolumeGroupSnapshots in NewCSISnapshotCommonController
+I1108 08:17:00.482880       1 leaderelection.go:250] attempting to acquire leader lease kube-system/external-snapshotter-leader-disk-csi-azure-com...
+I1108 08:17:00.536331       1 leaderelection.go:260] successfully acquired lease kube-system/external-snapshotter-leader-disk-csi-azure-com
+I1108 08:17:00.536761       1 leader_election.go:178] became leader, starting
+I1108 08:17:00.537328       1 snapshot_controller_base.go:177] Starting CSI snapshotter
+I1108 08:17:00.537481       1 snapshot_controller_base.go:183] EnableVolumeGroupSnapshots in Run

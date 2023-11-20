@@ -1,0 +1,10 @@
+I1109 06:52:31.365381       1 main.go:141] Version: 8dc5dcb8ef1cd3a5445dad41bf606fb5a8d2d653
+I1109 06:52:31.367617       1 main.go:190] Start NewCSISnapshotController with kubeconfig [] resyncPeriod [15m0s]
+I1109 06:52:31.368031       1 snapshot_controller_base.go:168] EnableVolumeGroupSnapshots in NewCSISnapshotCommonController
+I1109 06:52:31.515272       1 leaderelection.go:250] attempting to acquire leader lease kube-system/snapshot-controller-leader...
+I1109 06:52:48.562096       1 leaderelection.go:260] successfully acquired lease kube-system/snapshot-controller-leader
+I1109 06:52:48.562756       1 leader_election.go:178] became leader, starting
+I1109 06:52:48.564292       1 snapshot_controller_base.go:218] Starting snapshot controller
+I1109 06:52:48.564393       1 snapshot_controller_base.go:227] EnableVolumeGroupSnapshots in Run
+I1109 06:53:12.281537       1 groupsnapshot_controller_helper.go:727] createSnapshotContent: Creating group snapshot content for groupn snapshot default/new-group-snapshot-demo through the plugin ...
+I1109 06:53:12.310016       1 event.go:298] Event(v1.ObjectReference{Kind:"VolumeGroupSnapshot", Namespace:"default", Name:"new-group-snapshot-demo", UID:"6409749b-d2d6-4b6d-a8d6-9b2e350a9bbc", APIVersion:"groupsnapshot.storage.k8s.io/v1alpha1", ResourceVersion:"1040407", FieldPath:""}): type: 'Normal' reason: 'CreatingGroupSnapshot' Waiting for a group snapshot default/new-group-snapshot-demo to be created by the CSI driver.
