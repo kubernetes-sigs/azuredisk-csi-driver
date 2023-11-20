@@ -16,6 +16,7 @@ limitations under the License.
 
 package optimization
 
+//nolint:dupl
 var (
 	DiskSkuMap = map[string]map[string]DiskSkuInfo{
 		"premium_lrs": {
