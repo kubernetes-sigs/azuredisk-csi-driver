@@ -32,6 +32,7 @@ type DynamicallyProvisionedStatefulSetTest struct {
 	PodCheck  *PodExecCheck
 }
 
+//nolint:dupl
 func (t *DynamicallyProvisionedStatefulSetTest) Run(client clientset.Interface, namespace *v1.Namespace) {
 	tStatefulSet, cleanup := t.Pod.SetupStatefulset(client, namespace, t.CSIDriver, driver.GetParameters())
 	// defer must be called here for resources not get removed before using them

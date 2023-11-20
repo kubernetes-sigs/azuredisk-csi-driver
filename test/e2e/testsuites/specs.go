@@ -147,7 +147,7 @@ func (pod *PodDetails) SetupWithDynamicVolumesWithSubpath(client clientset.Inter
 	return tpod, cleanupFuncs
 }
 
-func (pod *PodDetails) SetupWithInlineVolumes(client clientset.Interface, namespace *v1.Namespace, csiDriver driver.PreProvisionedVolumeTestDriver, diskURI string, readOnly bool) (*TestPod, []func()) {
+func (pod *PodDetails) SetupWithInlineVolumes(client clientset.Interface, namespace *v1.Namespace, _ driver.PreProvisionedVolumeTestDriver, diskURI string, readOnly bool) (*TestPod, []func()) {
 	tpod := NewTestPod(client, namespace, pod.Cmd, pod.IsWindows, pod.WinServerVer)
 	cleanupFuncs := make([]func(), 0)
 	for n, v := range pod.Volumes {
