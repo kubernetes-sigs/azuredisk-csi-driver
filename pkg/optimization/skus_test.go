@@ -31,7 +31,7 @@ type fakeCloud struct {
 	fakecloud.Cloud
 }
 
-func (fake *fakeCloud) InstanceType(ctx context.Context, nodeName types.NodeName) (string, error) {
+func (fake *fakeCloud) InstanceType(_ context.Context, nodeName types.NodeName) (string, error) {
 	if instanceType, ok := fake.InstanceTypes[nodeName]; ok {
 		return instanceType, nil
 	}
