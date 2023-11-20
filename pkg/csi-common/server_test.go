@@ -30,7 +30,7 @@ func TestNewNonBlockingGRPCServer(t *testing.T) {
 	assert.NotNil(t, s)
 }
 
-func TestStart(t *testing.T) {
+func TestStart(_ *testing.T) {
 	s := NewNonBlockingGRPCServer()
 	// sleep a while to avoid race condition in unit test
 	time.Sleep(time.Millisecond * 500)
@@ -38,7 +38,7 @@ func TestStart(t *testing.T) {
 	time.Sleep(time.Millisecond * 500)
 }
 
-func TestStartWithOtelTracing(t *testing.T) {
+func TestStartWithOtelTracing(_ *testing.T) {
 	s := NewNonBlockingGRPCServer()
 	// sleep a while to avoid race condition in unit test
 	time.Sleep(time.Millisecond * 500)
@@ -46,7 +46,7 @@ func TestStartWithOtelTracing(t *testing.T) {
 	time.Sleep(time.Millisecond * 500)
 }
 
-func TestServe(t *testing.T) {
+func TestServe(_ *testing.T) {
 	s := nonBlockingGRPCServer{}
 	s.server = grpc.NewServer()
 	s.wg = sync.WaitGroup{}
@@ -55,20 +55,20 @@ func TestServe(t *testing.T) {
 	s.serve("tcp://127.0.0.1:0", nil, nil, nil, true, false)
 }
 
-func TestWait(t *testing.T) {
+func TestWait(_ *testing.T) {
 	s := nonBlockingGRPCServer{}
 	s.server = grpc.NewServer()
 	s.wg = sync.WaitGroup{}
 	s.Wait()
 }
 
-func TestStop(t *testing.T) {
+func TestStop(_ *testing.T) {
 	s := nonBlockingGRPCServer{}
 	s.server = grpc.NewServer()
 	s.Stop()
 }
 
-func TestForceStop(t *testing.T) {
+func TestForceStop(_ *testing.T) {
 	s := nonBlockingGRPCServer{}
 	s.server = grpc.NewServer()
 	s.ForceStop()
