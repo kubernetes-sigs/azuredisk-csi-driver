@@ -296,6 +296,7 @@ func TestWaitForSnapshot(t *testing.T) {
 				}
 			},
 		},
+		//nolint:dupl
 		{
 			name: "timeout for waiting snapshot copy cross region",
 			testFunc: func(t *testing.T) {
@@ -336,6 +337,7 @@ func TestWaitForSnapshot(t *testing.T) {
 				}
 			},
 		},
+		//nolint:dupl
 		{
 			name: "succeed for waiting snapshot copy cross region",
 			testFunc: func(t *testing.T) {
