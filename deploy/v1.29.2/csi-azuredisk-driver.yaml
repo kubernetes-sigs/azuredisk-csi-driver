@@ -1,0 +1,12 @@
+---
+apiVersion: storage.k8s.io/v1
+kind: CSIDriver
+metadata:
+  name: disk.csi.azure.com
+  annotations:
+    csiDriver: v1.29.0
+    snapshot: v6.2.1
+spec:
+  attachRequired: true
+  podInfoOnMount: false
+  fsGroupPolicy: File
