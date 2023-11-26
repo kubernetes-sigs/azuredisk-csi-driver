@@ -264,3 +264,61 @@ func TestVolumeLock(t *testing.T) {
 		}
 	}
 }
+
+func TestGetElementsInArray1NotInArray2(t *testing.T) {
+	testCases := []struct {
+		desc           string
+		array1         []int
+		array2         []int
+		expectedOutput []int
+	}{
+		{
+			desc:           "should return empty array when both arrays are empty",
+			array1:         []int{},
+			array2:         []int{},
+			expectedOutput: []int{},
+		},
+		{
+			desc:           "should return empty array when array1 is empty",
+			array1:         []int{},
+			array2:         []int{1, 2, 3},
+			expectedOutput: []int{},
+		},
+		{
+			desc:           "should return array1 when array2 is empty",
+			array1:         []int{1, 2, 3},
+			array2:         []int{},
+			expectedOutput: []int{1, 2, 3},
+		},
+		{
+			desc:           "should return empty array when array1 is subset of array2",
+			array1:         []int{1, 2},
+			array2:         []int{1, 2, 3},
+			expectedOutput: []int{},
+		},
+		{
+			desc:           "should return array1 when array2 is subset of array1",
+			array1:         []int{1, 2, 3},
+			array2:         []int{1, 2},
+			expectedOutput: []int{3},
+		},
+		{
+			desc:           "should return array1 when array2 is equal to array1",
+			array1:         []int{1, 2, 3},
+			array2:         []int{1, 2, 3},
+			expectedOutput: []int{},
+		},
+		{
+			desc:           "should return array1 when array2 is not equal to array1",
+			array1:         []int{1, 2, 3},
+			array2:         []int{1, 2, 4},
+			expectedOutput: []int{3},
+		},
+	}
+	for _, testCase := range testCases {
+		output := GetElementsInArray1NotInArray2(testCase.array1, testCase.array2)
+		if !reflect.DeepEqual(output, testCase.expectedOutput) {
+			t.Errorf("got: %v, expected: %v, desc: %v", output, testCase.expectedOutput, testCase.desc)
+		}
+	}
+}
