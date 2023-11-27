@@ -39,6 +39,7 @@ spec:
           volumeMounts:
             - name: persistent-storage
               mountPath: /mnt/azuredisk
+              readOnly: false
   updateStrategy:
     type: RollingUpdate
   selector:
