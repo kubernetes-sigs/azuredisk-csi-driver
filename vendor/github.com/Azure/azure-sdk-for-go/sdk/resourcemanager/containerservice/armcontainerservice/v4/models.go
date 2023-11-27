@@ -182,6 +182,15 @@ type CommandResultProperties struct {
 	StartedAt *time.Time
 }
 
+// CompatibleVersions - Version information about a product/service that is compatible with a service mesh revision.
+type CompatibleVersions struct {
+	// The product/service name.
+	Name *string
+
+	// Product/service versions compatible with a service mesh add-on revision.
+	Versions []*string
+}
+
 // CreationData - Data used when creating a target resource from a source resource.
 type CreationData struct {
 	// This is the ARM ID of the source object to be used to create the target object.
@@ -264,6 +273,75 @@ type ExtendedLocation struct {
 
 	// The type of the extended location.
 	Type *ExtendedLocationTypes
+}
+
+// IstioCertificateAuthority - Istio Service Mesh Certificate Authority (CA) configuration. For now, we only support plugin
+// certificates as described here https://aka.ms/asm-plugin-ca
+type IstioCertificateAuthority struct {
+	// Plugin certificates information for Service Mesh.
+	Plugin *IstioPluginCertificateAuthority
+}
+
+// IstioComponents - Istio components configuration.
+type IstioComponents struct {
+	// Istio egress gateways.
+	EgressGateways []*IstioEgressGateway
+
+	// Istio ingress gateways.
+	IngressGateways []*IstioIngressGateway
+}
+
+// IstioEgressGateway - Istio egress gateway configuration.
+type IstioEgressGateway struct {
+	// REQUIRED; Whether to enable the egress gateway.
+	Enabled *bool
+
+	// NodeSelector for scheduling the egress gateway.
+	NodeSelector map[string]*string
+}
+
+// IstioIngressGateway - Istio ingress gateway configuration. For now, we support up to one external ingress gateway named
+// aks-istio-ingressgateway-external and one internal ingress gateway named
+// aks-istio-ingressgateway-internal.
+type IstioIngressGateway struct {
+	// REQUIRED; Whether to enable the ingress gateway.
+	Enabled *bool
+
+	// REQUIRED; Mode of an ingress gateway.
+	Mode *IstioIngressGatewayMode
+}
+
+// IstioPluginCertificateAuthority - Plugin certificates information for Service Mesh.
+type IstioPluginCertificateAuthority struct {
+	// Certificate chain object name in Azure Key Vault.
+	CertChainObjectName *string
+
+	// Intermediate certificate object name in Azure Key Vault.
+	CertObjectName *string
+
+	// Intermediate certificate private key object name in Azure Key Vault.
+	KeyObjectName *string
+
+	// The resource ID of the Key Vault.
+	KeyVaultID *string
+
+	// Root certificate object name in Azure Key Vault.
+	RootCertObjectName *string
+}
+
+// IstioServiceMesh - Istio service mesh configuration.
+type IstioServiceMesh struct {
+	// Istio Service Mesh Certificate Authority (CA) configuration. For now, we only support plugin certificates as described
+	// here https://aka.ms/asm-plugin-ca
+	CertificateAuthority *IstioCertificateAuthority
+
+	// Istio components configuration.
+	Components *IstioComponents
+
+	// The list of revisions of the Istio control plane. When an upgrade is not in progress, this holds one value. When canary
+	// upgrade is in progress, this can only hold two consecutive values. For more
+	// information, see: https://learn.microsoft.com/en-us/azure/aks/istio-upgrade
+	Revisions []*string
 }
 
 // KubeletConfig - See AKS custom node configuration [https://docs.microsoft.com/azure/aks/custom-node-configuration] for
@@ -1233,6 +1311,9 @@ type ManagedClusterProperties struct {
 	// Security profile for the managed cluster.
 	SecurityProfile *ManagedClusterSecurityProfile
 
+	// Service mesh profile for a managed cluster.
+	ServiceMeshProfile *ServiceMeshProfile
+
 	// Information about a service principal identity for the cluster to use for manipulating Azure APIs.
 	ServicePrincipalProfile *ManagedClusterServicePrincipalProfile
 
@@ -1274,6 +1355,10 @@ type ManagedClusterProperties struct {
 
 	// READ-ONLY; The current provisioning state.
 	ProvisioningState *string
+
+	// READ-ONLY; The resourceUID uniquely identifies ManagedClusters that reuse ARM ResourceIds (i.e: create, delete, create
+	// sequence)
+	ResourceUID *string
 }
 
 // ManagedClusterPropertiesAutoScalerProfile - Parameters to be applied to the cluster-autoscaler when enabled
@@ -1532,6 +1617,89 @@ type ManagedServiceIdentityUserAssignedIdentitiesValue struct {
 
 	// READ-ONLY; The principal id of user assigned identity.
 	PrincipalID *string
+}
+
+// MeshRevision - Holds information on upgrades and compatibility for given major.minor mesh release.
+type MeshRevision struct {
+	// List of items this revision of service mesh is compatible with, and their associated versions.
+	CompatibleWith []*CompatibleVersions
+
+	// The revision of the mesh release.
+	Revision *string
+
+	// List of revisions available for upgrade of a specific mesh revision
+	Upgrades []*string
+}
+
+// MeshRevisionProfile - Mesh revision profile for a mesh.
+type MeshRevisionProfile struct {
+	// Mesh revision profile properties for a mesh
+	Properties *MeshRevisionProfileProperties
+
+	// READ-ONLY; Fully qualified resource ID for the resource. Ex - /subscriptions/{subscriptionId}/resourceGroups/{resourceGroupName}/providers/{resourceProviderNamespace}/{resourceType}/{resourceName}
+	ID *string
+
+	// READ-ONLY; The name of the resource
+	Name *string
+
+	// READ-ONLY; Azure Resource Manager metadata containing createdBy and modifiedBy information.
+	SystemData *SystemData
+
+	// READ-ONLY; The type of the resource. E.g. "Microsoft.Compute/virtualMachines" or "Microsoft.Storage/storageAccounts"
+	Type *string
+}
+
+// MeshRevisionProfileList - Holds an array of MeshRevisionsProfiles
+type MeshRevisionProfileList struct {
+	// Array of service mesh add-on revision profiles for all supported mesh modes.
+	Value []*MeshRevisionProfile
+
+	// READ-ONLY; The URL to get the next set of mesh revision profile.
+	NextLink *string
+}
+
+// MeshRevisionProfileProperties - Mesh revision profile properties for a mesh
+type MeshRevisionProfileProperties struct {
+	MeshRevisions []*MeshRevision
+}
+
+// MeshUpgradeProfile - Upgrade profile for given mesh.
+type MeshUpgradeProfile struct {
+	// Mesh upgrade profile properties for a major.minor release.
+	Properties *MeshUpgradeProfileProperties
+
+	// READ-ONLY; Fully qualified resource ID for the resource. Ex - /subscriptions/{subscriptionId}/resourceGroups/{resourceGroupName}/providers/{resourceProviderNamespace}/{resourceType}/{resourceName}
+	ID *string
+
+	// READ-ONLY; The name of the resource
+	Name *string
+
+	// READ-ONLY; Azure Resource Manager metadata containing createdBy and modifiedBy information.
+	SystemData *SystemData
+
+	// READ-ONLY; The type of the resource. E.g. "Microsoft.Compute/virtualMachines" or "Microsoft.Storage/storageAccounts"
+	Type *string
+}
+
+// MeshUpgradeProfileList - Holds an array of MeshUpgradeProfiles
+type MeshUpgradeProfileList struct {
+	// Array of supported service mesh add-on upgrade profiles.
+	Value []*MeshUpgradeProfile
+
+	// READ-ONLY; The URL to get the next set of mesh upgrade profile.
+	NextLink *string
+}
+
+// MeshUpgradeProfileProperties - Mesh upgrade profile properties for a major.minor release.
+type MeshUpgradeProfileProperties struct {
+	// List of items this revision of service mesh is compatible with, and their associated versions.
+	CompatibleWith []*CompatibleVersions
+
+	// The revision of the mesh release.
+	Revision *string
+
+	// List of revisions available for upgrade of a specific mesh revision
+	Upgrades []*string
 }
 
 // NetworkProfile - Profile of network configuration.
@@ -1817,6 +1985,15 @@ type Schedule struct {
 
 	// For schedules like: 'recur every Monday' or 'recur every 3 weeks on Wednesday'.
 	Weekly *WeeklySchedule
+}
+
+// ServiceMeshProfile - Service mesh profile for a managed cluster.
+type ServiceMeshProfile struct {
+	// REQUIRED; Mode of the service mesh.
+	Mode *ServiceMeshMode
+
+	// Istio service mesh configuration.
+	Istio *IstioServiceMesh
 }
 
 // Snapshot - A node pool snapshot resource.

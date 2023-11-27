@@ -10,7 +10,7 @@ package armcontainerservice
 
 const (
 	moduleName    = "armcontainerservice"
-	moduleVersion = "v4.3.0"
+	moduleVersion = "v4.4.0"
 )
 
 // AgentPoolMode - A cluster must have at least one 'System' Agent Pool at all times. For additional information on agent
@@ -206,6 +206,24 @@ func PossibleIPFamilyValues() []IPFamily {
 	return []IPFamily{
 		IPFamilyIPv4,
 		IPFamilyIPv6,
+	}
+}
+
+// IstioIngressGatewayMode - Mode of an ingress gateway.
+type IstioIngressGatewayMode string
+
+const (
+	// IstioIngressGatewayModeExternal - The ingress gateway is assigned a public IP address and is publicly accessible.
+	IstioIngressGatewayModeExternal IstioIngressGatewayMode = "External"
+	// IstioIngressGatewayModeInternal - The ingress gateway is assigned an internal IP address and cannot is accessed publicly.
+	IstioIngressGatewayModeInternal IstioIngressGatewayMode = "Internal"
+)
+
+// PossibleIstioIngressGatewayModeValues returns the possible values for the IstioIngressGatewayMode const type.
+func PossibleIstioIngressGatewayModeValues() []IstioIngressGatewayMode {
+	return []IstioIngressGatewayMode{
+		IstioIngressGatewayModeExternal,
+		IstioIngressGatewayModeInternal,
 	}
 }
 
@@ -721,6 +739,24 @@ func PossibleScaleSetPriorityValues() []ScaleSetPriority {
 	return []ScaleSetPriority{
 		ScaleSetPriorityRegular,
 		ScaleSetPrioritySpot,
+	}
+}
+
+// ServiceMeshMode - Mode of the service mesh.
+type ServiceMeshMode string
+
+const (
+	// ServiceMeshModeDisabled - Mesh is disabled.
+	ServiceMeshModeDisabled ServiceMeshMode = "Disabled"
+	// ServiceMeshModeIstio - Istio deployed as an AKS addon.
+	ServiceMeshModeIstio ServiceMeshMode = "Istio"
+)
+
+// PossibleServiceMeshModeValues returns the possible values for the ServiceMeshMode const type.
+func PossibleServiceMeshModeValues() []ServiceMeshMode {
+	return []ServiceMeshMode{
+		ServiceMeshModeDisabled,
+		ServiceMeshModeIstio,
 	}
 }
 
