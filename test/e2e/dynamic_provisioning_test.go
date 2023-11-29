@@ -1272,6 +1272,9 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 		skipIfTestingInWindowsCluster()
 		if isMultiZone {
 			skipIfNotZRSSupported()
+			if isCapzTest {
+				ginkgo.Skip("skip shared disk multi zone test on capz cluster")
+			}
 		}
 
 		pod := testsuites.PodDetails{
