@@ -133,7 +133,7 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 			},
 		}
 
-		if isMultiZone && !isUsingInTreeVolumePlugin {
+		if isMultiZone && !isUsingInTreeVolumePlugin && !isCapzTest {
 			test.StorageClassParameters = map[string]string{
 				"skuName":           "UltraSSD_LRS",
 				"cachingmode":       "None",
@@ -154,7 +154,7 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 		pods := []testsuites.PodDetails{
 			{
 				Cmd: convertToPowershellorCmdCommandIfNecessary("echo 'hello world' > /mnt/test-1/data && grep 'hello world' /mnt/test-1/data"),
-				Volumes: []testsuites.VolumeDetails{
+				Volumes: t.normalizeVolumes([]testsuites.VolumeDetails{
 					{
 						ClaimSize: "10Gi",
 						VolumeMount: testsuites.VolumeMountDetails{
@@ -163,7 +163,7 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 						},
 						VolumeAccessMode: v1.ReadWriteOnce,
 					},
-				},
+				}, isMultiZone),
 				IsWindows:    isWindowsCluster,
 				WinServerVer: winServerVer,
 			},
