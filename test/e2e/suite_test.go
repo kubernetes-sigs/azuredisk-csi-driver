@@ -59,6 +59,7 @@ var (
 	winServerVer              = os.Getenv(testWinServerVerEnvVar)
 	isAzureStackCloud         = strings.EqualFold(os.Getenv(cloudNameEnvVar), "AZURESTACKCLOUD")
 	isWindowsHPCDeployment    = strings.EqualFold(os.Getenv("WINDOWS_USE_HOST_PROCESS_CONTAINERS"), "true")
+	isCapzTest                = os.Getenv("NODE_MACHINE_TYPE") != ""
 	location                  string
 	supportsZRS               bool
 	supportsDynamicResize     bool
