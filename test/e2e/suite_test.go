@@ -59,6 +59,7 @@ var (
 	isWindowsCluster          = os.Getenv(testWindowsEnvVar) != ""
 	winServerVer              = os.Getenv(testWinServerVerEnvVar)
 	isAzureStackCloud         = strings.EqualFold(os.Getenv(cloudNameEnvVar), "AZURESTACKCLOUD")
+	isCapzTest                = os.Getenv("NODE_MACHINE_TYPE") != ""
 	location                  string
 	supportsZRS               bool
 	supportsDynamicResize     bool
