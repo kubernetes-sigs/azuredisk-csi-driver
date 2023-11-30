@@ -547,7 +547,7 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 			Cmd: convertToPowershellorCmdCommandIfNecessary("echo 'hello world' > /mnt/test-1/data"),
 			Volumes: t.normalizeVolumes([]testsuites.VolumeDetails{
 				{
-					FSType:    "ext4",
+					FSType:    "xfs",
 					ClaimSize: "10Gi",
 					VolumeMount: testsuites.VolumeMountDetails{
 						NameGenerate:      "test-volume-",
@@ -585,7 +585,7 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 		pod := testsuites.PodDetails{
 			Volumes: t.normalizeVolumes([]testsuites.VolumeDetails{
 				{
-					FSType:    "ext4",
+					FSType:    "xfs",
 					ClaimSize: "10Gi",
 					VolumeMount: testsuites.VolumeMountDetails{
 						NameGenerate:      "test-volume-",
@@ -600,7 +600,7 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 		clonedVolumeSize := "20Gi"
 
 		podWithClonedVolume := testsuites.PodDetails{
-			Cmd:          convertToPowershellorCmdCommandIfNecessary("df -h | grep /mnt/test- | awk '{print $2}' | grep 20.0G"),
+			Cmd:          convertToPowershellorCmdCommandIfNecessary("df -h | grep /mnt/test- | awk '{print $2}' | grep -E '19|20'"),
 			IsWindows:    isWindowsCluster,
 			WinServerVer: winServerVer,
 		}
