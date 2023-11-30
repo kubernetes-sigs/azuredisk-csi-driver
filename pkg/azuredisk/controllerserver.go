@@ -50,6 +50,7 @@ import (
 const (
 	waitForSnapshotCopyInterval = 5 * time.Second
 	waitForSnapshotCopyTimeout  = 10 * time.Minute
+	maxErrMsgLength             = 990
 )
 
 // listVolumeStatus explains the return status of `listVolumesByResourceGroup`
@@ -446,7 +447,11 @@ func (d *Driver) ControllerPublishVolume(ctx context.Context, req *csi.Controlle
 			}
 			if err != nil {
 				klog.Errorf("Attach volume %s to instance %s failed with %v", diskURI, nodeName, err)
-				return nil, status.Errorf(codes.Internal, "Attach volume %s to instance %s failed with %v", diskURI, nodeName, err)
+				errMsg := fmt.Sprintf("Attach volume %s to instance %s failed with %v", diskURI, nodeName, err)
+				if len(errMsg) > maxErrMsgLength {
+					errMsg = errMsg[:maxErrMsgLength]
+				}
+				return nil, status.Errorf(codes.Internal, errMsg)
 			}
 		}
 		klog.V(2).Infof("attach volume %s to node %s successfully", diskURI, nodeName)
@@ -493,7 +498,12 @@ func (d *Driver) ControllerUnpublishVolume(ctx context.Context, req *csi.Control
 		if strings.Contains(err.Error(), consts.ErrDiskNotFound) {
 			klog.Warningf("volume %s already detached from node %s", diskURI, nodeID)
 		} else {
-			return nil, status.Errorf(codes.Internal, "Could not detach volume %s from node %s: %v", diskURI, nodeID, err)
+			klog.Errorf("Could not detach volume %s from node %s: %v", diskURI, nodeID, err)
+			errMsg := fmt.Sprintf("Could not detach volume %s from node %s: %v", diskURI, nodeID, err)
+			if len(errMsg) > maxErrMsgLength {
+				errMsg = errMsg[:maxErrMsgLength]
+			}
+			return nil, status.Errorf(codes.Internal, errMsg)
 		}
 	}
 	klog.V(2).Infof("detach volume %s from node %s successfully", diskURI, nodeID)
