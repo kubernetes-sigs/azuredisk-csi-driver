@@ -62,7 +62,6 @@ var (
 	isCapzTest                = os.Getenv("NODE_MACHINE_TYPE") != ""
 	location                  string
 	supportsZRS               bool
-	supportsDynamicResize     bool
 )
 
 type testCmd struct {
@@ -98,36 +97,36 @@ var _ = ginkgo.BeforeSuite(func(ctx ginkgo.SpecContext) {
 		gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
 		location = creds.Location
-
-		if location == "westus2" || location == "westeurope" || location == "northeurope" || location == "francecentral" {
-			supportsZRS = true
-		}
-
-		dynamicResizeZones := []string{
-			"westcentralus",
-			"francesouth",
-			"westindia",
-			"norwaywest",
-			"eastasia",
-			"francecentral",
-			"germanywestcentral",
-			"japanwest",
+		supportZRSRegions := []string{
 			"southafricanorth",
-			"jioindiawest",
-			"canadacentral",
-			"australiacentral",
-			"japaneast",
-			"northeurope",
-			"centralindia",
-			"uaecentral",
-			"switzerlandwest",
+			"eastasia",
+			"southeastasia",
+			"australiaeast",
 			"brazilsouth",
-			"uksouth"}
-
-		supportsDynamicResize = false
-		for _, zone := range dynamicResizeZones {
-			if location == zone {
-				supportsDynamicResize = true
+			"westeurope",
+			"northeurope",
+			"francecentral",
+			"centralindia",
+			"italynorth",
+			"japaneast",
+			"koreacentral",
+			"norwayeast",
+			"polandcentral",
+			"qatarcentral",
+			"swedencentral",
+			"switzerlandnorth",
+			"uaenorth",
+			"uksouth",
+			"eastus",
+			"eastus2",
+			"southcentralus",
+			"westus2",
+			"westus3",
+		}
+		supportsZRS = false
+		for _, region := range supportZRSRegions {
+			if location == region {
+				supportsZRS = true
 				break
 			}
 		}
@@ -315,12 +314,6 @@ func skipIfOnAzureStackCloud() {
 func skipIfNotZRSSupported() {
 	if !supportsZRS {
 		ginkgo.Skip("test case not supported on regions without ZRS")
-	}
-}
-
-func skipIfNotDynamicallyResizeSuported() {
-	if !supportsDynamicResize {
-		ginkgo.Skip("test case not supported on regions without dynamic resize support")
 	}
 }
 
