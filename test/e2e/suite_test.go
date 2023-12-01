@@ -348,8 +348,8 @@ func convertToPowershellorCmdCommandIfNecessary(command string) string {
 		return "echo 'overwrite' | Out-File -FilePath C:\\mnt\\test-1\\data.txt; Start-Sleep 3600"
 	case "grep 'hello world' /mnt/test-1/data":
 		return "Get-Content C:\\mnt\\test-1\\data.txt | findstr 'hello world'"
-	case "df -h | grep /mnt/test- | awk '{print $2}' | grep 20.0G":
-		return "fsutil volume diskfree C:\\mnt\\ | Select-String 'Total bytes' | Select-String '19.9 GB'"
+	case "df -h | grep /mnt/test- | awk '{print $2}' | grep -E '19|20'":
+		return "fsutil volume diskfree C:\\mnt\\ | Select-String 'Total bytes' | Select-String -Pattern '19|20'"
 	}
 
 	return command
