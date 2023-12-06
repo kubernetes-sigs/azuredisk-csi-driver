@@ -22,8 +22,6 @@ import (
 	"os"
 	"time"
 
-	"github.com/Azure/azure-sdk-for-go/sdk/azcore/arm"
-	"github.com/Azure/azure-sdk-for-go/sdk/azcore/policy"
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/to"
 	compute "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute/v5"
 	network "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/network/armnetwork/v4"
@@ -50,21 +48,12 @@ type Client struct {
 
 func GetAzureClient(cloud, subscriptionID, clientID, tenantID, clientSecret string) (*Client, error) {
 	armConfig := &azclient.ARMClientConfig{
-		Cloud: cloud,
+		Cloud:    cloud,
+		TenantID: tenantID,
 	}
-	cloudConfig, err := azclient.GetAzureCloudConfig(armConfig)
-	if err != nil {
-		return nil, err
-	}
-	credProvider, err := azclient.NewAuthProvider(azclient.AzureAuthConfig{
-		TenantID:        tenantID,
+	credProvider, err := azclient.NewAuthProvider(armConfig, &azclient.AzureAuthConfig{
 		AADClientID:     clientID,
 		AADClientSecret: clientSecret,
-	}, &arm.ClientOptions{
-		AuxiliaryTenants: []string{tenantID},
-		ClientOptions: policy.ClientOptions{
-			Cloud: *cloudConfig,
-		},
 	})
 	if err != nil {
 		return nil, err
