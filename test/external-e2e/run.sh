@@ -22,7 +22,7 @@ PROJECT_ROOT=$(git rev-parse --show-toplevel)
 DRIVER="test"
 
 install_ginkgo () {
-    go install github.com/onsi/ginkgo/ginkgo@v1.14.0
+    go install github.com/onsi/ginkgo/v2/ginkgo@v2.13.2
 }
 
 setup_e2e_binaries() {
