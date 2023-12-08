@@ -42,14 +42,14 @@ func TestCheckDiskCapacity_V1(t *testing.T) {
 	}
 	d.getCloud().DisksClient.(*mockdiskclient.MockInterface).EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(disk, nil).AnyTimes()
 
-	d.setDiskThrottlingCache(consts.ThrottlingKey, "")
+	d.setThrottlingCache(consts.GetDiskThrottlingKey, "")
 	flag, _ := d.checkDiskCapacity(context.TODO(), "", resourceGroup, diskName, 11)
 	assert.Equal(t, flag, true)
 }
 
 func TestDriver_checkDiskExists_V1(t *testing.T) {
 	d, _ := NewFakeDriver(t)
-	d.setDiskThrottlingCache(consts.ThrottlingKey, "")
+	d.setThrottlingCache(consts.GetDiskThrottlingKey, "")
 	_, err := d.checkDiskExists(context.TODO(), "testurl/subscriptions/12/resourceGroups/23/providers/Microsoft.Compute/disks/name")
 	assert.Equal(t, err, nil)
 }

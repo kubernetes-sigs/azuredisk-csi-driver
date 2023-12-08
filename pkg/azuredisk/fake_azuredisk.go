@@ -25,6 +25,7 @@ import (
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/assert"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/mount-utils"
 	testingexec "k8s.io/utils/exec/testing"
 
@@ -92,7 +93,9 @@ type FakeDriver interface {
 	ensureMountPoint(string) (bool, error)
 	ensureBlockTargetFile(string) error
 	getDevicePathWithLUN(lunStr string) (string, error)
-	setDiskThrottlingCache(key string, value string)
+	setThrottlingCache(key string, value string)
+	getUsedLunsFromVolumeAttachments(context.Context, string) ([]int, error)
+	getUsedLunsFromNode(nodeName types.NodeName) ([]int, error)
 }
 
 type fakeDriverV1 struct {
@@ -131,7 +134,7 @@ func newFakeDriverV1(t *testing.T) (*fakeDriverV1, error) {
 	if err != nil {
 		return nil, err
 	}
-	driver.getDiskThrottlingCache = cache
+	driver.throttlingCache = cache
 	driver.deviceHelper = mockoptimization.NewMockInterface(ctrl)
 
 	driver.AddControllerServiceCapabilities(
@@ -163,8 +166,8 @@ func (d *fakeDriverV1) setNextCommandOutputScripts(scripts ...testingexec.FakeAc
 	d.mounter.Exec.(*mounter.FakeSafeMounter).SetNextCommandOutputScripts(scripts...)
 }
 
-func (d *fakeDriverV1) setDiskThrottlingCache(key string, value string) {
-	d.getDiskThrottlingCache.Set(key, value)
+func (d *fakeDriverV1) setThrottlingCache(key string, value string) {
+	d.throttlingCache.Set(key, value)
 }
 
 func createVolumeCapabilities(accessMode csi.VolumeCapability_AccessMode_Mode) []*csi.VolumeCapability {
