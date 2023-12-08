@@ -50,6 +50,7 @@ const (
 	waitForSnapshotReadyInterval = 5 * time.Second
 	waitForSnapshotReadyTimeout  = 10 * time.Minute
 	maxErrMsgLength              = 990
+	checkDiskLunThrottleLatency  = 1 * time.Second
 )
 
 // listVolumeStatus explains the return status of `listVolumesByResourceGroup`
@@ -432,6 +433,8 @@ func (d *Driver) ControllerPublishVolume(ctx context.Context, req *csi.Controlle
 		if cachingMode, err = azureutils.GetCachingMode(volumeContext); err != nil {
 			return nil, status.Errorf(codes.Internal, err.Error())
 		}
+
+		occupiedLuns := d.getOccupiedLunsFromNode(ctx, nodeName, diskURI)
 		klog.V(2).Infof("Trying to attach volume %s to node %s", diskURI, nodeName)
 
 		asyncAttach := isAsyncAttachEnabled(d.enableAsyncAttach, volumeContext)
@@ -440,7 +443,7 @@ func (d *Driver) ControllerPublishVolume(ctx context.Context, req *csi.Controlle
 			klog.V(2).Infof("attachDiskInitialDelayInMs is set to %d", attachDiskInitialDelay)
 			d.cloud.AttachDetachInitialDelayInMs = attachDiskInitialDelay
 		}
-		lun, err = d.cloud.AttachDisk(ctx, asyncAttach, diskName, diskURI, nodeName, cachingMode, disk)
+		lun, err = d.cloud.AttachDisk(ctx, asyncAttach, diskName, diskURI, nodeName, cachingMode, disk, occupiedLuns)
 		if err == nil {
 			klog.V(2).Infof("Attach operation successful: volume %s attached to node %s.", diskURI, nodeName)
 		} else {
@@ -455,7 +458,7 @@ func (d *Driver) ControllerPublishVolume(ctx context.Context, req *csi.Controlle
 					return nil, status.Errorf(codes.Internal, "Could not detach volume %s from node %s: %v", diskURI, derr.CurrentNode, err)
 				}
 				klog.V(2).Infof("Trying to attach volume %s to node %s again", diskURI, nodeName)
-				lun, err = d.cloud.AttachDisk(ctx, asyncAttach, diskName, diskURI, nodeName, cachingMode, disk)
+				lun, err = d.cloud.AttachDisk(ctx, asyncAttach, diskName, diskURI, nodeName, cachingMode, disk, occupiedLuns)
 			}
 			if err != nil {
 				klog.Errorf("Attach volume %s to instance %s failed with %v", diskURI, nodeName, err)
@@ -554,6 +557,38 @@ func (d *Driver) ValidateVolumeCapabilities(ctx context.Context, req *csi.Valida
 		Confirmed: &csi.ValidateVolumeCapabilitiesResponse_Confirmed{
 			VolumeCapabilities: volumeCapabilities,
 		}}, nil
+}
+
+// getOccupiedLunsFromNode returns the occupied luns from node
+func (d *Driver) getOccupiedLunsFromNode(ctx context.Context, nodeName types.NodeName, diskURI string) []int {
+	var occupiedLuns []int
+	if d.checkDiskLUNCollision && !d.isCheckDiskLunThrottled() {
+		now := time.Now()
+		if usedLunsFromVA, err := d.getUsedLunsFromVolumeAttachments(ctx, string(nodeName)); err == nil {
+			if len(usedLunsFromVA) > 0 {
+				if usedLunsFromNode, err := d.getUsedLunsFromNode(nodeName); err == nil {
+					occupiedLuns = volumehelper.GetElementsInArray1NotInArray2(usedLunsFromVA, usedLunsFromNode)
+					if len(occupiedLuns) > 0 {
+						klog.Warningf("node: %s, usedLuns from VolumeAttachments: %v, usedLuns from Node: %v, occupiedLuns: %v, disk: %s", nodeName, usedLunsFromVA, usedLunsFromNode, occupiedLuns, diskURI)
+					} else {
+						klog.V(6).Infof("node: %s, usedLuns from VolumeAttachments: %v, usedLuns from Node: %v, occupiedLuns: %v, disk: %s", nodeName, usedLunsFromVA, usedLunsFromNode, occupiedLuns, diskURI)
+					}
+				} else {
+					klog.Warningf("getUsedLunsFromNode(%s, %s) failed with %v", nodeName, diskURI, err)
+				}
+			}
+		} else {
+			klog.Warningf("getUsedLunsFromVolumeAttachments(%s, %s) failed with %v", nodeName, diskURI, err)
+		}
+		latency := time.Since(now)
+		if latency > checkDiskLunThrottleLatency {
+			klog.Warningf("checkDiskLun(%s) on node %s took %v (limit: %v), disable disk lun check temporarily", diskURI, nodeName, latency, checkDiskLunThrottleLatency)
+			d.throttlingCache.Set(consts.CheckDiskLunThrottlingKey, "")
+		} else {
+			klog.V(6).Infof("checkDiskLun(%s) on node %s took %v", diskURI, nodeName, latency)
+		}
+	}
+	return occupiedLuns
 }
 
 // ControllerGetCapabilities returns the capabilities of the Controller plugin
