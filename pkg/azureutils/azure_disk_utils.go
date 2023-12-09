@@ -35,18 +35,18 @@ import (
 	"github.com/pborman/uuid"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/util/sets"
+	clientset "k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/klog/v2"
-	"k8s.io/mount-utils"
-	"k8s.io/utils/pointer"
-
-	clientset "k8s.io/client-go/kubernetes"
 	api "k8s.io/kubernetes/pkg/apis/core"
 	volumeUtil "k8s.io/kubernetes/pkg/volume/util"
+	"k8s.io/mount-utils"
+	"k8s.io/utils/pointer"
 	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/optimization"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/util"
+	"sigs.k8s.io/cloud-provider-azure/pkg/azclient/configloader"
 	azclients "sigs.k8s.io/cloud-provider-azure/pkg/azureclients"
 	azure "sigs.k8s.io/cloud-provider-azure/pkg/provider"
 )
@@ -172,27 +172,28 @@ func GetCloudProviderFromClient(ctx context.Context, kubeClient *clientset.Clien
 	var config *azure.Config
 	var fromSecret bool
 	var err error
-	az := &azure.Cloud{
-		InitSecretConfig: azure.InitSecretConfig{
-			SecretName:      secretName,
-			SecretNamespace: secretNamespace,
-			CloudConfigKey:  "cloud-config",
-		},
-	}
+	az := &azure.Cloud{}
 	if kubeClient != nil {
-		klog.V(2).Infof("reading cloud config from secret %s/%s", az.SecretNamespace, az.SecretName)
-		az.KubeClient = kubeClient
-		config, err = az.GetConfigFromSecret()
+		klog.V(2).Infof("reading cloud config from secret %s/%s", secretNamespace, secretName)
+		config, err := configloader.Load[azure.Config](ctx, &configloader.K8sSecretLoaderConfig{
+			K8sSecretConfig: configloader.K8sSecretConfig{
+				SecretName:      secretName,
+				SecretNamespace: secretNamespace,
+				CloudConfigKey:  "cloud-config",
+			},
+			KubeClient: kubeClient,
+		}, nil)
+		if err != nil {
+			klog.V(2).Infof("InitializeCloudFromSecret: failed to get cloud config from secret %s/%s: %v", secretNamespace, secretName, err)
+		}
 		if err == nil && config != nil {
 			fromSecret = true
 		}
-		if err != nil {
-			klog.V(2).Infof("InitializeCloudFromSecret: failed to get cloud config from secret %s/%s: %v", az.SecretNamespace, az.SecretName, err)
-		}
+		az.KubeClient = kubeClient
 	}
 
 	if config == nil {
-		klog.V(2).Infof("could not read cloud config from secret %s/%s", az.SecretNamespace, az.SecretName)
+		klog.V(2).Infof("could not read cloud config from secret %s/%s", secretNamespace, secretName)
 		credFile, ok := os.LookupEnv(consts.DefaultAzureCredentialFileEnv)
 		if ok && strings.TrimSpace(credFile) != "" {
 			klog.V(2).Infof("%s env var set as %v", consts.DefaultAzureCredentialFileEnv, credFile)
