@@ -110,5 +110,5 @@ func (d *fakeDriverV2) setNextCommandOutputScripts(scripts ...testingexec.FakeAc
 	d.mounter.Exec.(*mounter.FakeSafeMounter).SetNextCommandOutputScripts(scripts...)
 }
 
-func (d *DriverV2) setDiskThrottlingCache(key string, value string) {
+func (d *DriverV2) setThrottlingCache(key string, value string) {
 }
