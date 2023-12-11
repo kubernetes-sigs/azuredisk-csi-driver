@@ -19,5 +19,8 @@ DriverInfo:
         volumeLimits: true
         snapshotDataSource: true
         pvcDataSource: true
+        singleNodeVolume: true
+        multiplePVsSameID: true
+        readWriteOncePod: true
     SupportedSizeRange:
         Min: 1Gi
