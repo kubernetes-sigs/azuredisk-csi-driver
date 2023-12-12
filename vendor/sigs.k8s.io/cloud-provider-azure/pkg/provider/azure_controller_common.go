@@ -32,7 +32,6 @@ import (
 
 	"k8s.io/apimachinery/pkg/types"
 	kwait "k8s.io/apimachinery/pkg/util/wait"
-	"k8s.io/client-go/util/flowcontrol"
 	cloudprovider "k8s.io/cloud-provider"
 	volerr "k8s.io/cloud-provider/volume/errors"
 	"k8s.io/klog/v2"
@@ -102,8 +101,6 @@ type controllerCommon struct {
 	// <nodeName, map<diskURI, *AttachDiskOptions/DetachDiskOptions>>
 	attachDiskMap sync.Map
 	detachDiskMap sync.Map
-	// attach/detach disk rate limiter
-	diskOpRateLimiter flowcontrol.RateLimiter
 	// DisableUpdateCache whether disable update cache in disk attach/detach
 	DisableUpdateCache bool
 	// DisableDiskLunCheck whether disable disk lun check after disk attach/detach
@@ -167,10 +164,9 @@ func (c *controllerCommon) getNodeVMSet(nodeName types.NodeName, crt azcache.Azu
 }
 
 // AttachDisk attaches a disk to vm
-// parameter async indicates whether allow multiple batch disk attach on one node in parallel
 // occupiedLuns is used to avoid conflict with other disk attach in k8s VolumeAttachments
 // return (lun, error)
-func (c *controllerCommon) AttachDisk(ctx context.Context, async bool, diskName, diskURI string, nodeName types.NodeName,
+func (c *controllerCommon) AttachDisk(ctx context.Context, diskName, diskURI string, nodeName types.NodeName,
 	cachingMode compute.CachingTypes, disk *compute.Disk, occupiedLuns []int) (int32, error) {
 	diskEncryptionSetID := ""
 	writeAcceleratorEnabled := false
@@ -267,7 +263,7 @@ func (c *controllerCommon) AttachDisk(ctx context.Context, async bool, diskName,
 		return -1, err
 	}
 
-	klog.V(2).Infof("Trying to attach volume %s lun %d to node %s, diskMap len:%d, %s", diskURI, lun, nodeName, len(diskMap), diskMap)
+	klog.V(2).Infof("Trying to attach volume %s lun %d to node %s, diskMap len:%d, %+v", diskURI, lun, nodeName, len(diskMap), diskMap)
 	if len(diskMap) == 0 {
 		if !c.DisableDiskLunCheck {
 			// always check disk lun after disk attach complete
@@ -300,17 +296,6 @@ func (c *controllerCommon) AttachDisk(ctx context.Context, async bool, diskName,
 		return -1, err
 	}
 	// err will be handled by waitForUpdateResult below
-
-	if async && c.diskOpRateLimiter.TryAccept() {
-		// unlock and wait for attach disk complete
-		unlock = true
-		c.lockMap.UnlockEntry(node)
-	} else {
-		if async {
-			klog.Warningf("azureDisk - switch to batch operation due to rate limited, QPS: %f", c.diskOpRateLimiter.QPS())
-		}
-	}
-
 	if err = c.waitForUpdateResult(ctx, vmset, nodeName, future, err); err != nil {
 		return -1, err
 	}
@@ -667,20 +652,6 @@ func (c *controllerCommon) DisksAreAttached(diskNames []string, nodeName types.N
 	}
 
 	return attached, nil
-}
-
-func filterDetachingDisks(unfilteredDisks []compute.DataDisk) []compute.DataDisk {
-	filteredDisks := []compute.DataDisk{}
-	for _, disk := range unfilteredDisks {
-		if disk.ToBeDetached != nil && *disk.ToBeDetached {
-			if disk.Name != nil {
-				klog.V(2).Infof("Filtering disk: %s with ToBeDetached flag set.", *disk.Name)
-			}
-		} else {
-			filteredDisks = append(filteredDisks, disk)
-		}
-	}
-	return filteredDisks
 }
 
 func (c *controllerCommon) filterNonExistingDisks(ctx context.Context, unfilteredDisks []compute.DataDisk) []compute.DataDisk {
