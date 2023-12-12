@@ -62,7 +62,6 @@ type DriverOptions struct {
 	UseCSIProxyGAInterface       bool
 	EnableDiskOnlineResize       bool
 	AllowEmptyCloudConfig        bool
-	EnableAsyncAttach            bool
 	EnableListVolumes            bool
 	EnableListSnapshots          bool
 	SupportZone                  bool
@@ -112,7 +111,6 @@ type DriverCore struct {
 	useCSIProxyGAInterface       bool
 	enableDiskOnlineResize       bool
 	allowEmptyCloudConfig        bool
-	enableAsyncAttach            bool
 	enableListVolumes            bool
 	enableListSnapshots          bool
 	supportZone                  bool
@@ -155,7 +153,6 @@ func newDriverV1(options *DriverOptions) *Driver {
 	driver.useCSIProxyGAInterface = options.UseCSIProxyGAInterface
 	driver.enableDiskOnlineResize = options.EnableDiskOnlineResize
 	driver.allowEmptyCloudConfig = options.AllowEmptyCloudConfig
-	driver.enableAsyncAttach = options.EnableAsyncAttach
 	driver.enableListVolumes = options.EnableListVolumes
 	driver.enableListSnapshots = options.EnableListVolumes
 	driver.supportZone = options.SupportZone

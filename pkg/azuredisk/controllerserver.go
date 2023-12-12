@@ -442,13 +442,12 @@ func (d *Driver) ControllerPublishVolume(ctx context.Context, req *csi.Controlle
 		occupiedLuns := d.getOccupiedLunsFromNode(ctx, nodeName, diskURI)
 		klog.V(2).Infof("Trying to attach volume %s to node %s", diskURI, nodeName)
 
-		asyncAttach := isAsyncAttachEnabled(d.enableAsyncAttach, volumeContext)
 		attachDiskInitialDelay := azureutils.GetAttachDiskInitialDelay(volumeContext)
 		if attachDiskInitialDelay > 0 {
 			klog.V(2).Infof("attachDiskInitialDelayInMs is set to %d", attachDiskInitialDelay)
 			d.cloud.AttachDetachInitialDelayInMs = attachDiskInitialDelay
 		}
-		lun, err = d.cloud.AttachDisk(ctx, asyncAttach, diskName, diskURI, nodeName, cachingMode, disk, occupiedLuns)
+		lun, err = d.cloud.AttachDisk(ctx, diskName, diskURI, nodeName, cachingMode, disk, occupiedLuns)
 		if err == nil {
 			klog.V(2).Infof("Attach operation successful: volume %s attached to node %s.", diskURI, nodeName)
 		} else {
@@ -463,7 +462,7 @@ func (d *Driver) ControllerPublishVolume(ctx context.Context, req *csi.Controlle
 					return nil, status.Errorf(codes.Internal, "Could not detach volume %s from node %s: %v", diskURI, derr.CurrentNode, err)
 				}
 				klog.V(2).Infof("Trying to attach volume %s to node %s again", diskURI, nodeName)
-				lun, err = d.cloud.AttachDisk(ctx, asyncAttach, diskName, diskURI, nodeName, cachingMode, disk, occupiedLuns)
+				lun, err = d.cloud.AttachDisk(ctx, diskName, diskURI, nodeName, cachingMode, disk, occupiedLuns)
 			}
 			if err != nil {
 				klog.Errorf("Attach volume %s to instance %s failed with %v", diskURI, nodeName, err)
@@ -1177,19 +1176,4 @@ func (d *Driver) getSnapshotInfo(snapshotID string) (snapshotName, resourceGroup
 		return "", "", "", fmt.Errorf("cannot get SubscriptionID from %s", snapshotID)
 	}
 	return snapshotName, resourceGroup, subsID, err
-}
-
-func isAsyncAttachEnabled(defaultValue bool, volumeContext map[string]string) bool {
-	for k, v := range volumeContext {
-		switch strings.ToLower(k) {
-		case consts.EnableAsyncAttachField:
-			if strings.EqualFold(v, consts.TrueValue) {
-				return true
-			}
-			if strings.EqualFold(v, consts.FalseValue) {
-				return false
-			}
-		}
-	}
-	return defaultValue
 }

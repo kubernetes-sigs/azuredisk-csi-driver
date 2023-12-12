@@ -116,7 +116,6 @@ type ManagedDiskParameters struct {
 	DiskIOPSReadWrite       string
 	DiskMBPSReadWrite       string
 	DiskName                string
-	EnableAsyncAttach       *bool
 	EnableBursting          *bool
 	PerformancePlus         *bool
 	FsType                  string
@@ -683,7 +682,7 @@ func ParseDiskParameters(parameters map[string]string) (ManagedDiskParameters, e
 		case consts.UserAgentField:
 			diskParams.UserAgent = v
 		case consts.EnableAsyncAttachField:
-			diskParams.VolumeContext[consts.EnableAsyncAttachField] = v
+			// no op, only for backward compatibility
 		case consts.ZonedField:
 			// no op, only for backward compatibility with in-tree driver
 		case consts.PerformancePlusField:
