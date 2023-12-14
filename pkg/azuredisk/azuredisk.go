@@ -52,40 +52,6 @@ import (
 	azure "sigs.k8s.io/cloud-provider-azure/pkg/provider"
 )
 
-// DriverOptions defines driver parameters specified in driver deployment
-type DriverOptions struct {
-	NodeID                       string
-	DriverName                   string
-	VolumeAttachLimit            int64
-	EnablePerfOptimization       bool
-	CloudConfigSecretName        string
-	CloudConfigSecretNamespace   string
-	CustomUserAgent              string
-	UserAgentSuffix              string
-	UseCSIProxyGAInterface       bool
-	EnableDiskOnlineResize       bool
-	AllowEmptyCloudConfig        bool
-	EnableListVolumes            bool
-	EnableListSnapshots          bool
-	SupportZone                  bool
-	GetNodeInfoFromLabels        bool
-	EnableDiskCapacityCheck      bool
-	DisableUpdateCache           bool
-	EnableTrafficManager         bool
-	TrafficManagerPort           int64
-	AttachDetachInitialDelayInMs int64
-	VMSSCacheTTLInSeconds        int64
-	VMType                       string
-	EnableWindowsHostProcess     bool
-	GetNodeIDFromIMDS            bool
-	EnableOtelTracing            bool
-	WaitForSnapshotReady         bool
-	CheckDiskLUNCollision        bool
-	Kubeconfig                   string
-	Endpoint                     string
-	DisableAVSetNodes            bool
-}
-
 // CSIDriver defines the interface for a CSI driver.
 type CSIDriver interface {
 	csi.ControllerServer
@@ -183,7 +149,10 @@ func newDriverV1(options *DriverOptions) *Driver {
 	driver.volumeLocks = volumehelper.NewVolumeLocks()
 	driver.ioHandler = azureutils.NewOSIOHandler()
 	driver.hostUtil = hostutil.NewHostUtil()
-
+	if driver.NodeID == "" {
+		// nodeid is not needed in controller component
+		klog.Warning("nodeid is empty")
+	}
 	topologyKey = fmt.Sprintf("topology.%s/zone", driver.Name)
 
 	cache, err := azcache.NewTimedCache(5*time.Minute, func(key string) (interface{}, error) {
@@ -294,14 +263,20 @@ func (d *Driver) Run(ctx context.Context) error {
 		csi.NodeServiceCapability_RPC_SINGLE_NODE_MULTI_WRITER,
 	})
 	grpcInterceptor := grpc.UnaryInterceptor(csicommon.LogGRPC)
-	if d.enableOtelTracing {
-		grpcInterceptor = grpc.ChainUnaryInterceptor(csicommon.LogGRPC, otelgrpc.UnaryServerInterceptor())
-	}
 	opts := []grpc.ServerOption{
 		grpcInterceptor,
 	}
-
 	if d.enableOtelTracing {
+		exporter, err := InitOtelTracing()
+		if err != nil {
+			klog.Fatalf("Failed to initialize otel tracing: %v", err)
+		}
+		// Exporter will flush traces on shutdown
+		defer func() {
+			if err := exporter.Shutdown(context.Background()); err != nil {
+				klog.Errorf("Could not shutdown otel exporter: %v", err)
+			}
+		}()
 		opts = append(opts, grpc.StatsHandler(otelgrpc.NewServerHandler()))
 	}
 

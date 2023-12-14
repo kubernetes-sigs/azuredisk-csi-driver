@@ -25,66 +25,33 @@ import (
 	"os"
 	"strings"
 
-	"sigs.k8s.io/azuredisk-csi-driver/pkg/azuredisk"
-
 	"k8s.io/component-base/metrics/legacyregistry"
 	"k8s.io/klog/v2"
-	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
+	"sigs.k8s.io/azuredisk-csi-driver/pkg/azuredisk"
 )
 
 func init() {
 	klog.InitFlags(nil)
+	driverOptions.AddFlags().VisitAll(func(f *flag.Flag) {
+		flag.CommandLine.Var(f.Value, f.Name, f.Usage)
+	})
 }
 
 var (
-	endpoint                     = flag.String("endpoint", "unix://tmp/csi.sock", "CSI endpoint")
-	nodeID                       = flag.String("nodeid", "", "node id")
-	version                      = flag.Bool("version", false, "Print the version and exit.")
-	metricsAddress               = flag.String("metrics-address", "", "export the metrics")
-	kubeconfig                   = flag.String("kubeconfig", "", "Absolute path to the kubeconfig file. Required only when running out of cluster.")
-	driverName                   = flag.String("drivername", consts.DefaultDriverName, "name of the driver")
-	volumeAttachLimit            = flag.Int64("volume-attach-limit", -1, "maximum number of attachable volumes per node")
-	supportZone                  = flag.Bool("support-zone", true, "boolean flag to get zone info in NodeGetInfo")
-	getNodeInfoFromLabels        = flag.Bool("get-node-info-from-labels", false, "boolean flag to get zone info from node labels in NodeGetInfo")
-	getNodeIDFromIMDS            = flag.Bool("get-nodeid-from-imds", false, "boolean flag to get NodeID from IMDS")
-	disableAVSetNodes            = flag.Bool("disable-avset-nodes", false, "disable DisableAvailabilitySetNodes in cloud config for controller")
-	vmType                       = flag.String("vm-type", "", "type of agent node. available values: vmss, standard")
-	enablePerfOptimization       = flag.Bool("enable-perf-optimization", false, "boolean flag to enable disk perf optimization")
-	cloudConfigSecretName        = flag.String("cloud-config-secret-name", "azure-cloud-provider", "cloud config secret name")
-	cloudConfigSecretNamespace   = flag.String("cloud-config-secret-namespace", "kube-system", "cloud config secret namespace")
-	customUserAgent              = flag.String("custom-user-agent", "", "custom userAgent")
-	userAgentSuffix              = flag.String("user-agent-suffix", "", "userAgent suffix")
-	useCSIProxyGAInterface       = flag.Bool("use-csiproxy-ga-interface", true, "boolean flag to enable csi-proxy GA interface on Windows")
-	enableDiskOnlineResize       = flag.Bool("enable-disk-online-resize", true, "boolean flag to enable disk online resize")
-	allowEmptyCloudConfig        = flag.Bool("allow-empty-cloud-config", true, "Whether allow running driver without cloud config")
-	enableListVolumes            = flag.Bool("enable-list-volumes", false, "boolean flag to enable ListVolumes on controller")
-	enableListSnapshots          = flag.Bool("enable-list-snapshots", false, "boolean flag to enable ListSnapshots on controller")
-	enableDiskCapacityCheck      = flag.Bool("enable-disk-capacity-check", false, "boolean flag to enable volume capacity check in CreateVolume")
-	disableUpdateCache           = flag.Bool("disable-update-cache", false, "boolean flag to disable update cache during disk attach/detach")
-	vmssCacheTTLInSeconds        = flag.Int64("vmss-cache-ttl-seconds", -1, "vmss cache TTL in seconds (600 by default)")
-	attachDetachInitialDelayInMs = flag.Int64("attach-detach-initial-delay-ms", 1000, "initial delay in milliseconds for batch disk attach/detach")
-	enableTrafficManager         = flag.Bool("enable-traffic-manager", false, "boolean flag to enable traffic manager")
-	trafficManagerPort           = flag.Int64("traffic-manager-port", 7788, "default traffic manager port")
-	enableWindowsHostProcess     = flag.Bool("enable-windows-host-process", false, "enable windows host process")
-	enableOtelTracing            = flag.Bool("enable-otel-tracing", false, "If set, enable opentelemetry tracing for the driver. The tracing is disabled by default. Configure the exporter endpoint with OTEL_EXPORTER_OTLP_ENDPOINT and other env variables, see https://opentelemetry.io/docs/specs/otel/configuration/sdk-environment-variables/#general-sdk-configuration.")
-	waitForSnapshotReady         = flag.Bool("wait-for-snapshot-ready", true, "boolean flag to wait for snapshot ready when creating snapshot in same region")
-	checkDiskLUNCollision        = flag.Bool("check-disk-lun-collision", false, "boolean flag to check disk lun collisio before attaching disk")
+	version        = flag.Bool("version", false, "Print the version and exit.")
+	metricsAddress = flag.String("metrics-address", "", "export the metrics")
+	driverOptions  azuredisk.DriverOptions
 )
 
 func main() {
 	flag.Parse()
 	if *version {
-		info, err := azuredisk.GetVersionYAML(*driverName)
+		info, err := azuredisk.GetVersionYAML(driverOptions.DriverName)
 		if err != nil {
 			klog.Fatalln(err)
 		}
 		fmt.Println(info) // nolint
 		os.Exit(0)
-	}
-
-	if *nodeID == "" {
-		// nodeid is not needed in controller component
-		klog.Warning("nodeid is empty")
 	}
 
 	exportMetrics()
@@ -93,52 +60,6 @@ func main() {
 }
 
 func handle() {
-	// Start tracing as soon as possible
-	if *enableOtelTracing {
-		exporter, err := azuredisk.InitOtelTracing()
-		if err != nil {
-			klog.Fatalf("Failed to initialize otel tracing: %v", err)
-		}
-		// Exporter will flush traces on shutdown
-		defer func() {
-			if err := exporter.Shutdown(context.Background()); err != nil {
-				klog.Errorf("Could not shutdown otel exporter: %v", err)
-			}
-		}()
-	}
-
-	driverOptions := azuredisk.DriverOptions{
-		NodeID:                       *nodeID,
-		DriverName:                   *driverName,
-		VolumeAttachLimit:            *volumeAttachLimit,
-		EnablePerfOptimization:       *enablePerfOptimization,
-		CloudConfigSecretName:        *cloudConfigSecretName,
-		CloudConfigSecretNamespace:   *cloudConfigSecretNamespace,
-		CustomUserAgent:              *customUserAgent,
-		UserAgentSuffix:              *userAgentSuffix,
-		UseCSIProxyGAInterface:       *useCSIProxyGAInterface,
-		EnableDiskOnlineResize:       *enableDiskOnlineResize,
-		AllowEmptyCloudConfig:        *allowEmptyCloudConfig,
-		EnableTrafficManager:         *enableTrafficManager,
-		TrafficManagerPort:           *trafficManagerPort,
-		EnableListVolumes:            *enableListVolumes,
-		EnableListSnapshots:          *enableListSnapshots,
-		SupportZone:                  *supportZone,
-		GetNodeInfoFromLabels:        *getNodeInfoFromLabels,
-		EnableDiskCapacityCheck:      *enableDiskCapacityCheck,
-		DisableUpdateCache:           *disableUpdateCache,
-		AttachDetachInitialDelayInMs: *attachDetachInitialDelayInMs,
-		VMSSCacheTTLInSeconds:        *vmssCacheTTLInSeconds,
-		VMType:                       *vmType,
-		EnableWindowsHostProcess:     *enableWindowsHostProcess,
-		GetNodeIDFromIMDS:            *getNodeIDFromIMDS,
-		EnableOtelTracing:            *enableOtelTracing,
-		WaitForSnapshotReady:         *waitForSnapshotReady,
-		CheckDiskLUNCollision:        *checkDiskLUNCollision,
-		Endpoint:                     *endpoint,
-		Kubeconfig:                   *kubeconfig,
-		DisableAVSetNodes:            *disableAVSetNodes,
-	}
 	driver := azuredisk.NewDriver(&driverOptions)
 	if driver == nil {
 		klog.Fatalln("Failed to initialize azuredisk CSI Driver")
