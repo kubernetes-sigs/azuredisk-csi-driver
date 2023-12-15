@@ -18,6 +18,7 @@ package azuredisk
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"reflect"
 	"strconv"
@@ -26,7 +27,9 @@ import (
 
 	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2022-08-01/compute"
 	"github.com/container-storage-interface/spec/lib/go/csi"
+	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 
+	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
@@ -78,6 +81,9 @@ type DriverOptions struct {
 	EnableOtelTracing            bool
 	WaitForSnapshotReady         bool
 	CheckDiskLUNCollision        bool
+	Kubeconfig                   string
+	Endpoint                     string
+	DisableAVSetNodes            bool
 }
 
 // CSIDriver defines the interface for a CSI driver.
@@ -86,7 +92,7 @@ type CSIDriver interface {
 	csi.NodeServer
 	csi.IdentityServer
 
-	Run(endpoint, kubeconfig string, disableAVSetNodes, testMode bool)
+	Run(ctx context.Context) error
 }
 
 type hostUtil interface {
@@ -127,6 +133,8 @@ type DriverCore struct {
 	enableOtelTracing            bool
 	shouldWaitForSnapshotReady   bool
 	checkDiskLUNCollision        bool
+	endpoint                     string
+	disableAVSetNodes            bool
 }
 
 // Driver is the v1 implementation of the Azure Disk CSI Driver.
@@ -169,6 +177,9 @@ func newDriverV1(options *DriverOptions) *Driver {
 	driver.enableOtelTracing = options.EnableOtelTracing
 	driver.shouldWaitForSnapshotReady = options.WaitForSnapshotReady
 	driver.checkDiskLUNCollision = options.CheckDiskLUNCollision
+	driver.endpoint = options.Endpoint
+	driver.disableAVSetNodes = options.DisableAVSetNodes
+	driver.kubeconfig = options.Kubeconfig
 	driver.volumeLocks = volumehelper.NewVolumeLocks()
 	driver.ioHandler = azureutils.NewOSIOHandler()
 	driver.hostUtil = hostutil.NewHostUtil()
@@ -186,7 +197,7 @@ func newDriverV1(options *DriverOptions) *Driver {
 }
 
 // Run driver initialization
-func (d *Driver) Run(endpoint, kubeconfig string, disableAVSetNodes, testingMock bool) {
+func (d *Driver) Run(ctx context.Context) error {
 	versionMeta, err := GetVersionYAML(d.Name)
 	if err != nil {
 		klog.Fatalf("%v", err)
@@ -196,13 +207,12 @@ func (d *Driver) Run(endpoint, kubeconfig string, disableAVSetNodes, testingMock
 	userAgent := GetUserAgent(d.Name, d.customUserAgent, d.userAgentSuffix)
 	klog.V(2).Infof("driver userAgent: %s", userAgent)
 
-	cloud, err := azureutils.GetCloudProvider(context.Background(), kubeconfig, d.cloudConfigSecretName, d.cloudConfigSecretNamespace,
+	cloud, err := azureutils.GetCloudProvider(context.Background(), d.kubeconfig, d.cloudConfigSecretName, d.cloudConfigSecretNamespace,
 		userAgent, d.allowEmptyCloudConfig, d.enableTrafficManager, d.trafficManagerPort)
 	if err != nil {
 		klog.Fatalf("failed to get Azure Cloud Provider, error: %v", err)
 	}
 	d.cloud = cloud
-	d.kubeconfig = kubeconfig
 
 	if d.cloud != nil {
 		if d.vmType != "" {
@@ -221,7 +231,7 @@ func (d *Driver) Run(endpoint, kubeconfig string, disableAVSetNodes, testingMock
 				d.cloud.DisableAvailabilitySetNodes = false
 			}
 
-			if d.cloud.VMType == azurecloudconsts.VMTypeVMSS && !d.cloud.DisableAvailabilitySetNodes && disableAVSetNodes {
+			if d.cloud.VMType == azurecloudconsts.VMTypeVMSS && !d.cloud.DisableAvailabilitySetNodes && d.disableAVSetNodes {
 				klog.V(2).Infof("DisableAvailabilitySetNodes for controller since current VMType is vmss")
 				d.cloud.DisableAvailabilitySetNodes = true
 			}
@@ -283,11 +293,39 @@ func (d *Driver) Run(endpoint, kubeconfig string, disableAVSetNodes, testingMock
 		csi.NodeServiceCapability_RPC_GET_VOLUME_STATS,
 		csi.NodeServiceCapability_RPC_SINGLE_NODE_MULTI_WRITER,
 	})
+	grpcInterceptor := grpc.UnaryInterceptor(csicommon.LogGRPC)
+	if d.enableOtelTracing {
+		grpcInterceptor = grpc.ChainUnaryInterceptor(csicommon.LogGRPC, otelgrpc.UnaryServerInterceptor())
+	}
+	opts := []grpc.ServerOption{
+		grpcInterceptor,
+	}
 
-	s := csicommon.NewNonBlockingGRPCServer()
+	if d.enableOtelTracing {
+		opts = append(opts, grpc.StatsHandler(otelgrpc.NewServerHandler()))
+	}
+
+	s := grpc.NewServer(opts...)
+	csi.RegisterIdentityServer(s, d)
+	csi.RegisterControllerServer(s, d)
+	csi.RegisterNodeServer(s, d)
+
+	go func() {
+		//graceful shutdown
+		<-ctx.Done()
+		s.GracefulStop()
+	}()
 	// Driver d act as IdentityServer, ControllerServer and NodeServer
-	s.Start(endpoint, d, d, d, testingMock, d.enableOtelTracing)
-	s.Wait()
+	listener, err := csicommon.Listen(ctx, d.endpoint)
+	if err != nil {
+		klog.Fatalf("failed to listen to endpoint, error: %v", err)
+	}
+	err = s.Serve(listener)
+	if errors.Is(err, grpc.ErrServerStopped) {
+		klog.Infof("gRPC server stopped serving")
+		return nil
+	}
+	return err
 }
 
 func (d *Driver) isGetDiskThrottled() bool {

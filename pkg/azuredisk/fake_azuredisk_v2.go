@@ -64,6 +64,9 @@ func newFakeDriverV2(ctrl *gomock.Controller) (*fakeDriverV2, error) {
 	driver.hostUtil = azureutils.NewFakeHostUtil()
 	driver.useCSIProxyGAInterface = true
 	driver.allowEmptyCloudConfig = true
+	driver.endpoint = "tcp://127.0.0.1:0"
+	driver.disableAVSetNodes = true
+	driver.kubeconfig = ""
 
 	driver.cloud = azure.GetTestCloud(ctrl)
 	mounter, err := mounter.NewSafeMounter(driver.enableWindowsHostProcess, driver.useCSIProxyGAInterface)

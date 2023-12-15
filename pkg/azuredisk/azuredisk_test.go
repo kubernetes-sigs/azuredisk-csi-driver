@@ -29,6 +29,7 @@ import (
 	"github.com/Azure/go-autorest/autorest/date"
 	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/assert"
+	"golang.org/x/sync/errgroup"
 	"google.golang.org/grpc/status"
 	"k8s.io/apimachinery/pkg/types"
 	clientset "k8s.io/client-go/kubernetes"
@@ -107,7 +108,14 @@ func TestRun(t *testing.T) {
 				cntl := gomock.NewController(t)
 				defer cntl.Finish()
 				d, _ := NewFakeDriver(cntl)
-				d.Run("tcp://127.0.0.1:0", "", true, true)
+				ctx, cancelFn := context.WithCancel(context.Background())
+				var routines errgroup.Group
+				routines.Go(func() error { return d.Run(ctx) })
+				time.Sleep(time.Millisecond * 500)
+				cancelFn()
+				time.Sleep(time.Millisecond * 500)
+				err := routines.Wait()
+				assert.Nil(t, err)
 			},
 		},
 		{
@@ -116,7 +124,14 @@ func TestRun(t *testing.T) {
 				cntl := gomock.NewController(t)
 				defer cntl.Finish()
 				d, _ := NewFakeDriver(cntl)
-				d.Run("tcp://127.0.0.1:0", "", true, true)
+				ctx, cancelFn := context.WithCancel(context.Background())
+				var routines errgroup.Group
+				routines.Go(func() error { return d.Run(ctx) })
+				time.Sleep(time.Millisecond * 500)
+				cancelFn()
+				time.Sleep(time.Millisecond * 500)
+				err := routines.Wait()
+				assert.Nil(t, err)
 			},
 		},
 		{
@@ -139,7 +154,14 @@ func TestRun(t *testing.T) {
 				d, _ := NewFakeDriver(cntl)
 				d.setCloud(&azure.Cloud{})
 				d.setNodeID("")
-				d.Run("tcp://127.0.0.1:0", "", true, true)
+				ctx, cancelFn := context.WithCancel(context.Background())
+				var routines errgroup.Group
+				routines.Go(func() error { return d.Run(ctx) })
+				time.Sleep(time.Millisecond * 500)
+				cancelFn()
+				time.Sleep(time.Millisecond * 500)
+				err := routines.Wait()
+				assert.Nil(t, err)
 			},
 		},
 		{
@@ -165,8 +187,16 @@ func TestRun(t *testing.T) {
 					EnablePerfOptimization: true,
 					VMSSCacheTTLInSeconds:  10,
 					VMType:                 "vmss",
+					Endpoint:               "tcp://127.0.0.1:0",
 				})
-				d.Run("tcp://127.0.0.1:0", "", true, true)
+				ctx, cancelFn := context.WithCancel(context.Background())
+				var routines errgroup.Group
+				routines.Go(func() error { return d.Run(ctx) })
+				time.Sleep(time.Millisecond * 500)
+				cancelFn()
+				time.Sleep(time.Millisecond * 500)
+				err := routines.Wait()
+				assert.Nil(t, err)
 			},
 		},
 	}

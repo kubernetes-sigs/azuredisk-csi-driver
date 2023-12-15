@@ -17,6 +17,7 @@ limitations under the License.
 package e2e
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"log"
@@ -152,12 +153,15 @@ var _ = ginkgo.BeforeSuite(func(ctx ginkgo.SpecContext) {
 			DriverName:             consts.DefaultDriverName,
 			VolumeAttachLimit:      16,
 			EnablePerfOptimization: false,
+			Kubeconfig:             os.Getenv(kubeconfigEnvVar),
+			Endpoint:               fmt.Sprintf("unix:///tmp/csi-%s.sock", string(uuid.NewUUID())),
 		}
 		azurediskDriver = azuredisk.NewDriver(&driverOptions)
-		kubeconfig := os.Getenv(kubeconfigEnvVar)
+
 		go func() {
 			os.Setenv("AZURE_CREDENTIAL_FILE", credentials.TempAzureCredentialFilePath)
-			azurediskDriver.Run(fmt.Sprintf("unix:///tmp/csi-%s.sock", string(uuid.NewUUID())), kubeconfig, false, false)
+			err := azurediskDriver.Run(context.Background())
+			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 		}()
 	}
 })
