@@ -20,11 +20,8 @@ limitations under the License.
 package azuredisk
 
 import (
-	"testing"
-
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	"github.com/golang/mock/gomock"
-	"github.com/stretchr/testify/assert"
 	"k8s.io/klog/v2"
 	testingexec "k8s.io/utils/exec/testing"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
@@ -40,20 +37,20 @@ type fakeDriverV2 struct {
 }
 
 // NewFakeDriver returns a driver implementation suitable for use in unit tests.
-func NewFakeDriver(t *testing.T) (FakeDriver, error) {
+func NewFakeDriver(ctrl *gomock.Controller) (FakeDriver, error) {
 	var d FakeDriver
 	var err error
 
 	if !*useDriverV2 {
-		d, err = newFakeDriverV1(t)
+		d, err = newFakeDriverV1(ctrl)
 	} else {
-		d, err = newFakeDriverV2(t)
+		d, err = newFakeDriverV2(ctrl)
 	}
 
 	return d, err
 }
 
-func newFakeDriverV2(t *testing.T) (*fakeDriverV2, error) {
+func newFakeDriverV2(ctrl *gomock.Controller) (*fakeDriverV2, error) {
 	klog.Warning("Using DriverV2")
 	driver := fakeDriverV2{}
 	driver.Name = fakeDriverName
@@ -67,9 +64,6 @@ func newFakeDriverV2(t *testing.T) (*fakeDriverV2, error) {
 	driver.hostUtil = azureutils.NewFakeHostUtil()
 	driver.useCSIProxyGAInterface = true
 	driver.allowEmptyCloudConfig = true
-
-	ctrl := gomock.NewController(t)
-	defer ctrl.Finish()
 
 	driver.cloud = azure.GetTestCloud(ctrl)
 	mounter, err := mounter.NewSafeMounter(driver.enableWindowsHostProcess, driver.useCSIProxyGAInterface)
@@ -97,11 +91,6 @@ func newFakeDriverV2(t *testing.T) (*fakeDriverV2, error) {
 		csi.NodeServiceCapability_RPC_STAGE_UNSTAGE_VOLUME,
 		csi.NodeServiceCapability_RPC_EXPAND_VOLUME,
 	})
-
-	nodeInfo := driver.getNodeInfo()
-	assert.NotEqual(t, nil, nodeInfo)
-	dh := driver.getDeviceHelper()
-	assert.NotEqual(t, nil, dh)
 
 	return &driver, nil
 }
