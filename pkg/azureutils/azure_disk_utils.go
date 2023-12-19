@@ -32,9 +32,9 @@ import (
 
 	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2022-08-01/compute"
 	"github.com/container-storage-interface/spec/lib/go/csi"
-	"github.com/pborman/uuid"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/util/sets"
+	"k8s.io/apimachinery/pkg/util/uuid"
 	clientset "k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
@@ -338,7 +338,7 @@ func CreateValidDiskName(volumeName string) string {
 	}
 	if !checkDiskName(diskName) || len(diskName) < diskNameMinLength {
 		// todo: get cluster name
-		diskName = volumeUtil.GenerateVolumeName("pvc-disk", uuid.NewUUID().String(), diskNameGenerateMaxLength)
+		diskName = volumeUtil.GenerateVolumeName("pvc-disk", string(uuid.NewUUID()), diskNameGenerateMaxLength)
 		klog.Warningf("the requested volume name (%q) is invalid, so it is regenerated as (%q)", volumeName, diskName)
 	}
 

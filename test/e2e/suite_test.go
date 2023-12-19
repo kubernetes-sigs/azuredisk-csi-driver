@@ -30,7 +30,7 @@ import (
 	"github.com/onsi/ginkgo/v2"
 	"github.com/onsi/ginkgo/v2/reporters"
 	"github.com/onsi/gomega"
-	"github.com/pborman/uuid"
+	"k8s.io/apimachinery/pkg/util/uuid"
 	"k8s.io/kubernetes/test/e2e/framework"
 	"k8s.io/kubernetes/test/e2e/framework/config"
 	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
@@ -157,7 +157,7 @@ var _ = ginkgo.BeforeSuite(func(ctx ginkgo.SpecContext) {
 		kubeconfig := os.Getenv(kubeconfigEnvVar)
 		go func() {
 			os.Setenv("AZURE_CREDENTIAL_FILE", credentials.TempAzureCredentialFilePath)
-			azurediskDriver.Run(fmt.Sprintf("unix:///tmp/csi-%s.sock", uuid.NewUUID().String()), kubeconfig, false, false)
+			azurediskDriver.Run(fmt.Sprintf("unix:///tmp/csi-%s.sock", string(uuid.NewUUID())), kubeconfig, false, false)
 		}()
 	}
 })
