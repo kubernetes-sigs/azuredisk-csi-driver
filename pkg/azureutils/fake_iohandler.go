@@ -104,11 +104,11 @@ func (handler *fakeIOHandler) ReadDir(dirname string) ([]os.FileInfo, error) {
 	return nil, fmt.Errorf("bad dir")
 }
 
-func (handler *fakeIOHandler) WriteFile(filename string, data []byte, perm os.FileMode) error {
+func (handler *fakeIOHandler) WriteFile(_ string, _ []byte, _ os.FileMode) error {
 	return nil
 }
 
-func (handler *fakeIOHandler) Readlink(name string) (string, error) {
+func (handler *fakeIOHandler) Readlink(_ string) (string, error) {
 	return "/dev/azure/disk/sda", nil
 }
 
