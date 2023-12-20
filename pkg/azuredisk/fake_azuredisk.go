@@ -18,13 +18,11 @@ package azuredisk
 
 import (
 	"context"
-	"testing"
 	"time"
 
 	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2022-08-01/compute"
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	"github.com/golang/mock/gomock"
-	"github.com/stretchr/testify/assert"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/mount-utils"
 	testingexec "k8s.io/utils/exec/testing"
@@ -102,7 +100,7 @@ type fakeDriverV1 struct {
 	Driver
 }
 
-func newFakeDriverV1(t *testing.T) (*fakeDriverV1, error) {
+func newFakeDriverV1(ctrl *gomock.Controller) (*fakeDriverV1, error) {
 	driver := fakeDriverV1{}
 	driver.Name = fakeDriverName
 	driver.Version = fakeDriverVersion
@@ -116,9 +114,6 @@ func newFakeDriverV1(t *testing.T) (*fakeDriverV1, error) {
 	driver.useCSIProxyGAInterface = true
 	driver.allowEmptyCloudConfig = true
 	driver.shouldWaitForSnapshotReady = true
-
-	ctrl := gomock.NewController(t)
-	defer ctrl.Finish()
 
 	driver.cloud = azure.GetTestCloud(ctrl)
 	mounter, err := mounter.NewSafeMounter(driver.enableWindowsHostProcess, driver.useCSIProxyGAInterface)
@@ -153,11 +148,6 @@ func newFakeDriverV1(t *testing.T) (*fakeDriverV1, error) {
 		csi.NodeServiceCapability_RPC_STAGE_UNSTAGE_VOLUME,
 		csi.NodeServiceCapability_RPC_EXPAND_VOLUME,
 	})
-
-	nodeInfo := driver.getNodeInfo()
-	assert.NotEqual(t, nil, nodeInfo)
-	dh := driver.getDeviceHelper()
-	assert.NotEqual(t, nil, dh)
 
 	return &driver, nil
 }

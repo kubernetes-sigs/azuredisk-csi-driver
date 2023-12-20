@@ -31,7 +31,9 @@ import (
 )
 
 func TestCheckDiskCapacity_V1(t *testing.T) {
-	d, _ := NewFakeDriver(t)
+	cntl := gomock.NewController(t)
+	defer cntl.Finish()
+	d, _ := NewFakeDriver(cntl)
 	size := int32(10)
 	diskName := "unit-test"
 	resourceGroup := "unit-test"
@@ -48,7 +50,9 @@ func TestCheckDiskCapacity_V1(t *testing.T) {
 }
 
 func TestDriver_checkDiskExists_V1(t *testing.T) {
-	d, _ := NewFakeDriver(t)
+	cntl := gomock.NewController(t)
+	defer cntl.Finish()
+	d, _ := NewFakeDriver(cntl)
 	d.setThrottlingCache(consts.GetDiskThrottlingKey, "")
 	_, err := d.checkDiskExists(context.TODO(), "testurl/subscriptions/12/resourceGroups/23/providers/Microsoft.Compute/disks/name")
 	assert.Equal(t, err, nil)

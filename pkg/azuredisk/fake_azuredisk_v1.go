@@ -19,9 +19,11 @@ limitations under the License.
 
 package azuredisk
 
-import "testing"
+import (
+	"github.com/golang/mock/gomock"
+)
 
 // NewFakeDriver returns a driver implementation suitable for use in unit tests.
-func NewFakeDriver(t *testing.T) (FakeDriver, error) {
+func NewFakeDriver(t *gomock.Controller) (FakeDriver, error) {
 	return newFakeDriverV1(t)
 }

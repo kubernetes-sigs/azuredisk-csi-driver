@@ -52,7 +52,9 @@ func TestNewDriverV1(t *testing.T) {
 }
 
 func TestCheckDiskCapacity(t *testing.T) {
-	d, _ := NewFakeDriver(t)
+	cntl := gomock.NewController(t)
+	defer cntl.Finish()
+	d, _ := NewFakeDriver(cntl)
 	size := int32(10)
 	diskName := "unit-test"
 	resourceGroup := "unit-test"
@@ -102,14 +104,18 @@ func TestRun(t *testing.T) {
 
 				t.Setenv(consts.DefaultAzureCredentialFileEnv, fakeCredFile)
 
-				d, _ := NewFakeDriver(t)
+				cntl := gomock.NewController(t)
+				defer cntl.Finish()
+				d, _ := NewFakeDriver(cntl)
 				d.Run("tcp://127.0.0.1:0", "", true, true)
 			},
 		},
 		{
 			name: "Successful run without cloud config",
 			testFunc: func(t *testing.T) {
-				d, _ := NewFakeDriver(t)
+				cntl := gomock.NewController(t)
+				defer cntl.Finish()
+				d, _ := NewFakeDriver(cntl)
 				d.Run("tcp://127.0.0.1:0", "", true, true)
 			},
 		},
@@ -128,7 +134,9 @@ func TestRun(t *testing.T) {
 
 				t.Setenv(consts.DefaultAzureCredentialFileEnv, fakeCredFile)
 
-				d, _ := NewFakeDriver(t)
+				cntl := gomock.NewController(t)
+				defer cntl.Finish()
+				d, _ := NewFakeDriver(cntl)
 				d.setCloud(&azure.Cloud{})
 				d.setNodeID("")
 				d.Run("tcp://127.0.0.1:0", "", true, true)
@@ -169,7 +177,9 @@ func TestRun(t *testing.T) {
 }
 
 func TestDriver_checkDiskExists(t *testing.T) {
-	d, _ := NewFakeDriver(t)
+	cntl := gomock.NewController(t)
+	defer cntl.Finish()
+	d, _ := NewFakeDriver(cntl)
 	_, err := d.checkDiskExists(context.TODO(), "testurl/subscriptions/12/providers/Microsoft.Compute/disks/name")
 	assert.NotEqual(t, err, nil)
 }
@@ -269,7 +279,9 @@ func TestWaitForSnapshot(t *testing.T) {
 		{
 			name: "snapshotID not valid",
 			testFunc: func(t *testing.T) {
-				d, _ := NewFakeDriver(t)
+				cntl := gomock.NewController(t)
+				defer cntl.Finish()
+				d, _ := NewFakeDriver(cntl)
 				subID := "subs"
 				resourceGroup := "rg"
 				intervel := 1 * time.Millisecond
@@ -302,7 +314,9 @@ func TestWaitForSnapshot(t *testing.T) {
 		{
 			name: "timeout for waiting snapshot copy cross region",
 			testFunc: func(t *testing.T) {
-				d, _ := NewFakeDriver(t)
+				cntl := gomock.NewController(t)
+				defer cntl.Finish()
+				d, _ := NewFakeDriver(cntl)
 				subID := "subs"
 				resourceGroup := "rg"
 				intervel := 1 * time.Millisecond
@@ -343,7 +357,9 @@ func TestWaitForSnapshot(t *testing.T) {
 		{
 			name: "succeed for waiting snapshot copy cross region",
 			testFunc: func(t *testing.T) {
-				d, _ := NewFakeDriver(t)
+				cntl := gomock.NewController(t)
+				defer cntl.Finish()
+				d, _ := NewFakeDriver(cntl)
 				subID := "subs"
 				resourceGroup := "rg"
 				intervel := 1 * time.Millisecond
@@ -431,7 +447,9 @@ func TestGetVMSSInstanceName(t *testing.T) {
 }
 
 func TestGetUsedLunsFromVolumeAttachments(t *testing.T) {
-	d, _ := NewFakeDriver(t)
+	cntl := gomock.NewController(t)
+	defer cntl.Finish()
+	d, _ := NewFakeDriver(cntl)
 	tests := []struct {
 		name                string
 		nodeName            string
@@ -457,7 +475,9 @@ func TestGetUsedLunsFromVolumeAttachments(t *testing.T) {
 }
 
 func TestGetUsedLunsFromNode(t *testing.T) {
-	d, _ := NewFakeDriver(t)
+	cntl := gomock.NewController(t)
+	defer cntl.Finish()
+	d, _ := NewFakeDriver(cntl)
 	vm := compute.VirtualMachine{}
 	dataDisks := make([]compute.DataDisk, 2)
 	dataDisks[0] = compute.DataDisk{Lun: pointer.Int32(int32(0)), Name: &testVolumeName}

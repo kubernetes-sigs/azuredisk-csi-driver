@@ -19,11 +19,14 @@ package azuredisk
 import (
 	"testing"
 
+	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/assert"
 )
 
 func TestNewFakeDriver(t *testing.T) {
-	d, err := NewFakeDriver(t)
+	cntl := gomock.NewController(t)
+	defer cntl.Finish()
+	d, err := NewFakeDriver(cntl)
 	assert.NotNil(t, d)
 	assert.Nil(t, err)
 }
