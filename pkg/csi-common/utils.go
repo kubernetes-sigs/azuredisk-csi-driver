@@ -62,6 +62,16 @@ func NewNodeServiceCapability(cap csi.NodeServiceCapability_RPC_Type) *csi.NodeS
 	}
 }
 
+func NewGroupControllerServiceCapability(gcap csi.GroupControllerServiceCapability_RPC_Type) *csi.GroupControllerServiceCapability {
+	return &csi.GroupControllerServiceCapability{
+		Type: &csi.GroupControllerServiceCapability_Rpc{
+			Rpc: &csi.GroupControllerServiceCapability_RPC{
+				Type: gcap,
+			},
+		},
+	}
+}
+
 func getLogLevel(method string) int32 {
 	if method == "/csi.v1.Identity/Probe" ||
 		method == "/csi.v1.Node/NodeGetCapabilities" ||

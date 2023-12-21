@@ -137,3 +137,42 @@ func isCSISnapshotReady(state string) (bool, error) {
 		return false, nil
 	}
 }
+
+func GenerateCSIVolumeGroupSnapshot(groupSnapshotID string, sourceVolumeIDs []string, snapshots []*compute.Snapshot) (*csi.VolumeGroupSnapshot, error) {
+	volumeGroupReady := true
+	snapshotList := []*csi.Snapshot{}
+	for idx, snapshot := range snapshots {
+		if snapshot == nil || snapshot.SnapshotProperties == nil {
+			return nil, fmt.Errorf("snapshot property is nil")
+		}
+
+		if snapshot.SnapshotProperties.TimeCreated == nil {
+			return nil, fmt.Errorf("TimeCreated of snapshot property is nil")
+		}
+
+		if snapshot.SnapshotProperties.DiskSizeGB == nil {
+			return nil, fmt.Errorf("diskSizeGB of snapshot property is nil")
+		}
+
+		ready, _ := isCSISnapshotReady(*snapshot.SnapshotProperties.ProvisioningState)
+		if !ready {
+			volumeGroupReady = false
+		}
+		if sourceVolumeIDs[idx] == "" {
+			sourceVolumeIDs[idx] = GetSourceVolumeID(snapshot)
+		}
+		snapshotList = append(snapshotList, &csi.Snapshot{
+			SizeBytes:      volumehelper.GiBToBytes(int64(*snapshot.SnapshotProperties.DiskSizeGB)),
+			SnapshotId:     *snapshot.ID,
+			SourceVolumeId: sourceVolumeIDs[idx],
+			CreationTime:   timestamppb.New(snapshot.SnapshotProperties.TimeCreated.ToTime()),
+			ReadyToUse:     ready,
+		})
+	}
+	return &csi.VolumeGroupSnapshot{
+		GroupSnapshotId: groupSnapshotID,
+		Snapshots:       snapshotList,
+		CreationTime:    timestamppb.New(snapshots[0].SnapshotProperties.TimeCreated.ToTime()),
+		ReadyToUse:      volumeGroupReady,
+	}, nil
+}
