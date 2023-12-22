@@ -135,13 +135,17 @@ func handle() {
 		EnableOtelTracing:            *enableOtelTracing,
 		WaitForSnapshotReady:         *waitForSnapshotReady,
 		CheckDiskLUNCollision:        *checkDiskLUNCollision,
+		Endpoint:                     *endpoint,
+		Kubeconfig:                   *kubeconfig,
+		DisableAVSetNodes:            *disableAVSetNodes,
 	}
 	driver := azuredisk.NewDriver(&driverOptions)
 	if driver == nil {
 		klog.Fatalln("Failed to initialize azuredisk CSI Driver")
 	}
-	testingMock := false
-	driver.Run(*endpoint, *kubeconfig, *disableAVSetNodes, testingMock)
+	if err := driver.Run(context.Background()); err != nil {
+		klog.Fatalf("Failed to run azuredisk CSI Driver: %v", err)
+	}
 }
 
 func exportMetrics() {
