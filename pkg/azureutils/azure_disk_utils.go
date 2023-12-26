@@ -18,7 +18,6 @@ package azureutils
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -36,7 +35,6 @@ import (
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/apimachinery/pkg/util/uuid"
 	clientset "k8s.io/client-go/kubernetes"
-	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/klog/v2"
 	api "k8s.io/kubernetes/pkg/apis/core"
@@ -166,7 +164,7 @@ func GetAttachDiskInitialDelay(attributes map[string]string) int {
 }
 
 // GetCloudProviderFromClient get Azure Cloud Provider
-func GetCloudProviderFromClient(ctx context.Context, kubeClient *clientset.Clientset, secretName, secretNamespace, userAgent string,
+func GetCloudProviderFromClient(ctx context.Context, kubeClient clientset.Interface, secretName, secretNamespace, userAgent string,
 	allowEmptyCloudConfig bool, enableTrafficMgr bool, trafficMgrPort int64) (*azure.Cloud, error) {
 	var config *azure.Config
 	var fromSecret bool
@@ -204,16 +202,9 @@ func GetCloudProviderFromClient(ctx context.Context, kubeClient *clientset.Clien
 			}
 			klog.V(2).Infof("use default %s env var: %v", consts.DefaultAzureCredentialFileEnv, credFile)
 		}
-
-		credFileConfig, err := os.Open(credFile)
+		config, err = configloader.Load[azure.Config](ctx, nil, &configloader.FileLoaderConfig{FilePath: credFile})
 		if err != nil {
 			klog.Warningf("load azure config from file(%s) failed with %v", credFile, err)
-		} else {
-			defer credFileConfig.Close()
-			klog.V(2).Infof("read cloud config from file: %s successfully", credFile)
-			if config, err = azure.ParseConfig(credFileConfig); err != nil {
-				klog.Warningf("parse config file(%s) failed with error: %v", credFile, err)
-			}
 		}
 	}
 
@@ -254,36 +245,8 @@ func GetCloudProviderFromClient(ctx context.Context, kubeClient *clientset.Clien
 	return az, nil
 }
 
-// GetCloudProviderFromConfig get Azure Cloud Provider
-func GetCloudProvider(ctx context.Context, kubeConfig, secretName, secretNamespace, userAgent string,
-	allowEmptyCloudConfig, enableTrafficMgr bool, trafficMgrPort int64) (*azure.Cloud, error) {
-	kubeClient, err := GetKubeClient(kubeConfig)
-	if err != nil {
-		klog.Warningf("get kubeconfig(%s) failed with error: %v", kubeConfig, err)
-		if !os.IsNotExist(err) && !errors.Is(err, rest.ErrNotInCluster) {
-			return nil, fmt.Errorf("failed to get KubeClient: %v", err)
-		}
-	}
-	return GetCloudProviderFromClient(ctx, kubeClient, secretName, secretNamespace, userAgent,
-		allowEmptyCloudConfig, enableTrafficMgr, trafficMgrPort)
-}
-
-// GetKubeConfig gets config object from config file
-func GetKubeConfig(kubeconfig string) (config *rest.Config, err error) {
-	if kubeconfig != "" {
-		if config, err = clientcmd.BuildConfigFromFlags("", kubeconfig); err != nil {
-			return nil, err
-		}
-	} else {
-		if config, err = rest.InClusterConfig(); err != nil {
-			return nil, err
-		}
-	}
-	return config, err
-}
-
-func GetKubeClient(kubeconfig string) (*clientset.Clientset, error) {
-	config, err := GetKubeConfig(kubeconfig)
+func GetKubeClient(kubeconfig string) (clientset.Interface, error) {
+	config, err := clientcmd.BuildConfigFromFlags("", kubeconfig)
 	if err != nil {
 		return nil, err
 	}

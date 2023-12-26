@@ -35,6 +35,7 @@ import (
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/client-go/kubernetes"
 	clientset "k8s.io/client-go/kubernetes"
 	"k8s.io/klog/v2"
 	"k8s.io/kubernetes/pkg/volume/util/hostutil"
@@ -73,7 +74,6 @@ type DriverCore struct {
 	cloudConfigSecretNamespace   string
 	customUserAgent              string
 	userAgentSuffix              string
-	kubeconfig                   string
 	cloud                        *azure.Cloud
 	mounter                      *mount.SafeFormatAndMount
 	deviceHelper                 optimization.Interface
@@ -101,6 +101,7 @@ type DriverCore struct {
 	checkDiskLUNCollision        bool
 	endpoint                     string
 	disableAVSetNodes            bool
+	kubeClient                   kubernetes.Interface
 }
 
 // Driver is the v1 implementation of the Azure Disk CSI Driver.
@@ -145,7 +146,6 @@ func newDriverV1(options *DriverOptions) *Driver {
 	driver.checkDiskLUNCollision = options.CheckDiskLUNCollision
 	driver.endpoint = options.Endpoint
 	driver.disableAVSetNodes = options.DisableAVSetNodes
-	driver.kubeconfig = options.Kubeconfig
 	driver.volumeLocks = volumehelper.NewVolumeLocks()
 	driver.ioHandler = azureutils.NewOSIOHandler()
 	driver.hostUtil = hostutil.NewHostUtil()
@@ -162,73 +162,68 @@ func newDriverV1(options *DriverOptions) *Driver {
 		klog.Fatalf("%v", err)
 	}
 	driver.throttlingCache = cache
-	return &driver
-}
-
-// Run driver initialization
-func (d *Driver) Run(ctx context.Context) error {
-	versionMeta, err := GetVersionYAML(d.Name)
-	if err != nil {
-		klog.Fatalf("%v", err)
-	}
-	klog.Infof("\nDRIVER INFORMATION:\n-------------------\n%s\n\nStreaming logs below:", versionMeta)
-
-	userAgent := GetUserAgent(d.Name, d.customUserAgent, d.userAgentSuffix)
+	userAgent := GetUserAgent(driver.Name, driver.customUserAgent, driver.userAgentSuffix)
 	klog.V(2).Infof("driver userAgent: %s", userAgent)
 
-	cloud, err := azureutils.GetCloudProvider(context.Background(), d.kubeconfig, d.cloudConfigSecretName, d.cloudConfigSecretNamespace,
-		userAgent, d.allowEmptyCloudConfig, d.enableTrafficManager, d.trafficManagerPort)
+	kubeClient, err := azureutils.GetKubeClient(options.Kubeconfig)
+	if err != nil {
+		klog.Warningf("get kubeconfig(%s) failed with error: %v", options.Kubeconfig, err)
+	}
+	driver.kubeClient = kubeClient
+
+	cloud, err := azureutils.GetCloudProviderFromClient(context.Background(), kubeClient, driver.cloudConfigSecretName, driver.cloudConfigSecretNamespace,
+		userAgent, driver.allowEmptyCloudConfig, driver.enableTrafficManager, driver.trafficManagerPort)
 	if err != nil {
 		klog.Fatalf("failed to get Azure Cloud Provider, error: %v", err)
 	}
-	d.cloud = cloud
+	driver.cloud = cloud
 
-	if d.cloud != nil {
-		if d.vmType != "" {
-			klog.V(2).Infof("override VMType(%s) in cloud config as %s", d.cloud.VMType, d.vmType)
-			d.cloud.VMType = d.vmType
+	if driver.cloud != nil {
+		if driver.vmType != "" {
+			klog.V(2).Infof("override VMType(%s) in cloud config as %s", driver.cloud.VMType, driver.vmType)
+			driver.cloud.VMType = driver.vmType
 		}
 
-		if d.NodeID == "" {
+		if driver.NodeID == "" {
 			// Disable UseInstanceMetadata for controller to mitigate a timeout issue using IMDS
 			// https://github.com/kubernetes-sigs/azuredisk-csi-driver/issues/168
 			klog.V(2).Infof("disable UseInstanceMetadata for controller")
-			d.cloud.Config.UseInstanceMetadata = false
+			driver.cloud.Config.UseInstanceMetadata = false
 
-			if d.cloud.VMType == azurecloudconsts.VMTypeStandard && d.cloud.DisableAvailabilitySetNodes {
-				klog.V(2).Infof("set DisableAvailabilitySetNodes as false since VMType is %s", d.cloud.VMType)
-				d.cloud.DisableAvailabilitySetNodes = false
+			if driver.cloud.VMType == azurecloudconsts.VMTypeStandard && driver.cloud.DisableAvailabilitySetNodes {
+				klog.V(2).Infof("set DisableAvailabilitySetNodes as false since VMType is %s", driver.cloud.VMType)
+				driver.cloud.DisableAvailabilitySetNodes = false
 			}
 
-			if d.cloud.VMType == azurecloudconsts.VMTypeVMSS && !d.cloud.DisableAvailabilitySetNodes && d.disableAVSetNodes {
+			if driver.cloud.VMType == azurecloudconsts.VMTypeVMSS && !driver.cloud.DisableAvailabilitySetNodes && driver.disableAVSetNodes {
 				klog.V(2).Infof("DisableAvailabilitySetNodes for controller since current VMType is vmss")
-				d.cloud.DisableAvailabilitySetNodes = true
+				driver.cloud.DisableAvailabilitySetNodes = true
 			}
-			klog.V(2).Infof("cloud: %s, location: %s, rg: %s, VMType: %s, PrimaryScaleSetName: %s, PrimaryAvailabilitySetName: %s, DisableAvailabilitySetNodes: %v", d.cloud.Cloud, d.cloud.Location, d.cloud.ResourceGroup, d.cloud.VMType, d.cloud.PrimaryScaleSetName, d.cloud.PrimaryAvailabilitySetName, d.cloud.DisableAvailabilitySetNodes)
+			klog.V(2).Infof("cloud: %s, location: %s, rg: %s, VMType: %s, PrimaryScaleSetName: %s, PrimaryAvailabilitySetName: %s, DisableAvailabilitySetNodes: %v", driver.cloud.Cloud, driver.cloud.Location, driver.cloud.ResourceGroup, driver.cloud.VMType, driver.cloud.PrimaryScaleSetName, driver.cloud.PrimaryAvailabilitySetName, driver.cloud.DisableAvailabilitySetNodes)
 		}
 
-		if d.vmssCacheTTLInSeconds > 0 {
-			klog.V(2).Infof("reset vmssCacheTTLInSeconds as %d", d.vmssCacheTTLInSeconds)
-			d.cloud.VMCacheTTLInSeconds = int(d.vmssCacheTTLInSeconds)
-			d.cloud.VmssCacheTTLInSeconds = int(d.vmssCacheTTLInSeconds)
+		if driver.vmssCacheTTLInSeconds > 0 {
+			klog.V(2).Infof("reset vmssCacheTTLInSeconds as %d", driver.vmssCacheTTLInSeconds)
+			driver.cloud.VMCacheTTLInSeconds = int(driver.vmssCacheTTLInSeconds)
+			driver.cloud.VmssCacheTTLInSeconds = int(driver.vmssCacheTTLInSeconds)
 		}
 
-		if d.cloud.ManagedDiskController != nil {
-			d.cloud.DisableUpdateCache = d.disableUpdateCache
-			d.cloud.AttachDetachInitialDelayInMs = int(d.attachDetachInitialDelayInMs)
+		if driver.cloud.ManagedDiskController != nil {
+			driver.cloud.DisableUpdateCache = driver.disableUpdateCache
+			driver.cloud.AttachDetachInitialDelayInMs = int(driver.attachDetachInitialDelayInMs)
 		}
 	}
 
-	d.deviceHelper = optimization.NewSafeDeviceHelper()
+	driver.deviceHelper = optimization.NewSafeDeviceHelper()
 
-	if d.getPerfOptimizationEnabled() {
-		d.nodeInfo, err = optimization.NewNodeInfo(context.TODO(), d.getCloud(), d.NodeID)
+	if driver.getPerfOptimizationEnabled() {
+		driver.nodeInfo, err = optimization.NewNodeInfo(context.TODO(), driver.getCloud(), driver.NodeID)
 		if err != nil {
 			klog.Warningf("Failed to get node info. Error: %v", err)
 		}
 	}
 
-	d.mounter, err = mounter.NewSafeMounter(d.enableWindowsHostProcess, d.useCSIProxyGAInterface)
+	driver.mounter, err = mounter.NewSafeMounter(driver.enableWindowsHostProcess, driver.useCSIProxyGAInterface)
 	if err != nil {
 		klog.Fatalf("Failed to get safe mounter. Error: %v", err)
 	}
@@ -241,27 +236,38 @@ func (d *Driver) Run(ctx context.Context) error {
 		csi.ControllerServiceCapability_RPC_EXPAND_VOLUME,
 		csi.ControllerServiceCapability_RPC_SINGLE_NODE_MULTI_WRITER,
 	}
-	if d.enableListVolumes {
+	if driver.enableListVolumes {
 		controllerCap = append(controllerCap, csi.ControllerServiceCapability_RPC_LIST_VOLUMES, csi.ControllerServiceCapability_RPC_LIST_VOLUMES_PUBLISHED_NODES)
 	}
-	if d.enableListSnapshots {
+	if driver.enableListSnapshots {
 		controllerCap = append(controllerCap, csi.ControllerServiceCapability_RPC_LIST_SNAPSHOTS)
 	}
 
-	d.AddControllerServiceCapabilities(controllerCap)
-	d.AddVolumeCapabilityAccessModes(
+	driver.AddControllerServiceCapabilities(controllerCap)
+	driver.AddVolumeCapabilityAccessModes(
 		[]csi.VolumeCapability_AccessMode_Mode{
 			csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER,
 			csi.VolumeCapability_AccessMode_SINGLE_NODE_READER_ONLY,
 			csi.VolumeCapability_AccessMode_SINGLE_NODE_SINGLE_WRITER,
 			csi.VolumeCapability_AccessMode_SINGLE_NODE_MULTI_WRITER,
 		})
-	d.AddNodeServiceCapabilities([]csi.NodeServiceCapability_RPC_Type{
+	driver.AddNodeServiceCapabilities([]csi.NodeServiceCapability_RPC_Type{
 		csi.NodeServiceCapability_RPC_STAGE_UNSTAGE_VOLUME,
 		csi.NodeServiceCapability_RPC_EXPAND_VOLUME,
 		csi.NodeServiceCapability_RPC_GET_VOLUME_STATS,
 		csi.NodeServiceCapability_RPC_SINGLE_NODE_MULTI_WRITER,
 	})
+	return &driver
+}
+
+// Run driver initialization
+func (d *Driver) Run(ctx context.Context) error {
+	versionMeta, err := GetVersionYAML(d.Name)
+	if err != nil {
+		klog.Fatalf("%v", err)
+	}
+	klog.Infof("\nDRIVER INFORMATION:\n-------------------\n%s\n\nStreaming logs below:", versionMeta)
+
 	grpcInterceptor := grpc.UnaryInterceptor(csicommon.LogGRPC)
 	opts := []grpc.ServerOption{
 		grpcInterceptor,
