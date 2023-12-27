@@ -105,6 +105,7 @@ func newDriverV2(options *DriverOptions) *DriverV2 {
 	driver.cloud = cloud
 
 	if driver.cloud != nil {
+		driver.diskController = NewManagedDiskController(driver.cloud)
 		if driver.vmType != "" {
 			klog.V(2).Infof("override VMType(%s) in cloud config as %s", driver.cloud.VMType, driver.vmType)
 			driver.cloud.VMType = driver.vmType

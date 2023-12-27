@@ -120,6 +120,8 @@ func newFakeDriverV1(ctrl *gomock.Controller) (*fakeDriverV1, error) {
 	driver.kubeClient = fake.NewSimpleClientset()
 
 	driver.cloud = azure.GetTestCloud(ctrl)
+	driver.diskController = NewManagedDiskController(driver.cloud)
+
 	mounter, err := mounter.NewSafeMounter(driver.enableWindowsHostProcess, driver.useCSIProxyGAInterface)
 	if err != nil {
 		return nil, err
