@@ -34,7 +34,7 @@ require (
 	k8s.io/cloud-provider v0.28.4
 	k8s.io/component-base v0.28.4
 	k8s.io/klog/v2 v2.110.1
-	k8s.io/kubernetes v1.28.4
+	k8s.io/kubernetes v1.28.5
 	k8s.io/mount-utils v0.28.4
 	k8s.io/pod-security-admission v0.0.0
 	k8s.io/utils v0.0.0-20231127182322-b307cd553661
