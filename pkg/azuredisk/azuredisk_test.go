@@ -48,6 +48,8 @@ func TestNewDriverV1(t *testing.T) {
 		DriverName:             consts.DefaultDriverName,
 		VolumeAttachLimit:      16,
 		EnablePerfOptimization: false,
+		Kubeconfig:             "",
+		AllowEmptyCloudConfig:  true,
 	})
 	assert.NotNil(t, d)
 }

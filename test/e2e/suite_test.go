@@ -86,7 +86,6 @@ var _ = ginkgo.BeforeSuite(func(ctx ginkgo.SpecContext) {
 	}
 	handleFlags()
 	framework.AfterReadingAllFlags(&framework.TestContext)
-
 	// Default storage driver configuration is CSI. Freshly built
 	// CSI driver is installed for that case.
 	if isTestingMigration || !isUsingInTreeVolumePlugin {
@@ -156,10 +155,10 @@ var _ = ginkgo.BeforeSuite(func(ctx ginkgo.SpecContext) {
 			Kubeconfig:             os.Getenv(kubeconfigEnvVar),
 			Endpoint:               fmt.Sprintf("unix:///tmp/csi-%s.sock", string(uuid.NewUUID())),
 		}
+		os.Setenv("AZURE_CREDENTIAL_FILE", credentials.TempAzureCredentialFilePath)
 		azurediskDriver = azuredisk.NewDriver(&driverOptions)
 
 		go func() {
-			os.Setenv("AZURE_CREDENTIAL_FILE", credentials.TempAzureCredentialFilePath)
 			err := azurediskDriver.Run(context.Background())
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 		}()
@@ -257,7 +256,6 @@ var _ = ginkgo.AfterSuite(func(ctx ginkgo.SpecContext) {
 			}
 			execTestCmd([]testCmd{uninstallDriver})
 		}
-
 		err := credentials.DeleteAzureCredentialFile()
 		gomega.Expect(err).NotTo(gomega.HaveOccurred())
 	}

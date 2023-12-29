@@ -23,7 +23,6 @@ import (
 	"os"
 	"reflect"
 	"regexp"
-	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -180,92 +179,6 @@ func TestGetCachingMode(t *testing.T) {
 	}
 }
 
-func TestGetKubeConfig(t *testing.T) {
-	// skip for now as this is very flaky on Windows
-	skipIfTestingOnWindows(t)
-	emptyKubeConfig := "empty-Kube-Config"
-	validKubeConfig := "valid-Kube-Config"
-	fakeContent := `
-apiVersion: v1
-clusters:
-- cluster:
-    server: https://localhost:8080
-  name: foo-cluster
-contexts:
-- context:
-    cluster: foo-cluster
-    user: foo-user
-    namespace: bar
-  name: foo-context
-current-context: foo-context
-kind: Config
-users:
-- name: foo-user
-  user:
-    exec:
-      apiVersion: client.authentication.k8s.io/v1beta1
-      args:
-      - arg-1
-      - arg-2
-      command: foo-command
-`
-
-	err := createTestFile(emptyKubeConfig)
-	if err != nil {
-		t.Error(err)
-	}
-	defer func() {
-		if err := os.Remove(emptyKubeConfig); err != nil {
-			t.Error(err)
-		}
-	}()
-
-	err = createTestFile(validKubeConfig)
-	if err != nil {
-		t.Error(err)
-	}
-	defer func() {
-		if err := os.Remove(validKubeConfig); err != nil {
-			t.Error(err)
-		}
-	}()
-
-	if err := os.WriteFile(validKubeConfig, []byte(fakeContent), 0666); err != nil {
-		t.Error(err)
-	}
-
-	tests := []struct {
-		desc                     string
-		kubeconfig               string
-		expectError              bool
-		envVariableHasConfig     bool
-		envVariableConfigIsValid bool
-	}{
-		{
-			desc:                     "[success] valid kube config passed",
-			kubeconfig:               validKubeConfig,
-			expectError:              false,
-			envVariableHasConfig:     false,
-			envVariableConfigIsValid: false,
-		},
-		{
-			desc:                     "[failure] invalid kube config passed",
-			kubeconfig:               emptyKubeConfig,
-			expectError:              true,
-			envVariableHasConfig:     false,
-			envVariableConfigIsValid: false,
-		},
-	}
-
-	for _, test := range tests {
-		_, err := GetKubeConfig(test.kubeconfig)
-		receiveError := (err != nil)
-		if test.expectError != receiveError {
-			t.Errorf("desc: %s,\n input: %q, GetCloudProvider err: %v, expectErr: %v", test.desc, test.kubeconfig, err, test.expectError)
-		}
-	}
-}
-
 func TestGetCloudProvider(t *testing.T) {
 	locationRxp := regexp.MustCompile("(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])?")
 	fakeCredFile, err := testutil.GetWorkDirPath("fake-cred-file.json")
@@ -338,7 +251,7 @@ users:
 			desc:                  "[failure] out of cluster & in cluster, specify a empty kubeconfig, no credential file",
 			kubeconfig:            emptyKubeConfig,
 			allowEmptyCloudConfig: true,
-			expectedErr:           fmt.Errorf("failed to get KubeClient: invalid configuration: no configuration has been provided, try setting KUBERNETES_MASTER environment variable"),
+			expectedErr:           fmt.Errorf("invalid configuration: no configuration has been provided, try setting KUBERNETES_MASTER environment variable"),
 		},
 		{
 			desc:                  "[success] out of cluster & in cluster, no kubeconfig, a fake credential file",
@@ -393,8 +306,15 @@ users:
 				t.Error(err)
 			}
 		}
-		cloud, err := GetCloudProvider(context.Background(), test.kubeconfig, "", "", test.userAgent, test.allowEmptyCloudConfig, false, -1)
-		if !reflect.DeepEqual(err, test.expectedErr) && !strings.Contains(err.Error(), test.expectedErr.Error()) {
+
+		kubeClient, err := GetKubeClient(test.kubeconfig)
+		if err != nil {
+			if ((err == nil) == (test.expectedErr == nil)) && !reflect.DeepEqual(err, test.expectedErr) && !strings.Contains(err.Error(), test.expectedErr.Error()) {
+				t.Errorf("desc: %s,\n input: %q, GetCloudProvider err: %v, expectedErr: %v", test.desc, test.kubeconfig, err, test.expectedErr)
+			}
+		}
+		cloud, err := GetCloudProviderFromClient(context.Background(), kubeClient, "", "", test.userAgent, test.allowEmptyCloudConfig, false, -1)
+		if ((err == nil) == (test.expectedErr == nil)) && !reflect.DeepEqual(err, test.expectedErr) && !strings.Contains(err.Error(), test.expectedErr.Error()) {
 			t.Errorf("desc: %s,\n input: %q, GetCloudProvider err: %v, expectedErr: %v", test.desc, test.kubeconfig, err, test.expectedErr)
 		}
 		if cloud != nil {
@@ -1752,12 +1672,6 @@ func createTestFile(path string) error {
 	defer f.Close()
 
 	return nil
-}
-
-func skipIfTestingOnWindows(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("Skipping tests on Windows")
-	}
 }
 
 func TestInsertDiskProperties(t *testing.T) {

@@ -24,16 +24,16 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"os"
 	"reflect"
 
 	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2022-08-01/compute"
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
-
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
-
+	"k8s.io/client-go/rest"
 	"k8s.io/klog/v2"
 	"k8s.io/kubernetes/pkg/volume/util/hostutil"
 
@@ -81,7 +81,6 @@ func newDriverV2(options *DriverOptions) *DriverV2 {
 	driver.enableOtelTracing = options.EnableOtelTracing
 	driver.ioHandler = azureutils.NewOSIOHandler()
 	driver.hostUtil = hostutil.NewHostUtil()
-	driver.kubeconfig = options.Kubeconfig
 	driver.disableAVSetNodes = options.DisableAVSetNodes
 	driver.endpoint = options.Endpoint
 
@@ -89,7 +88,16 @@ func newDriverV2(options *DriverOptions) *DriverV2 {
 	userAgent := GetUserAgent(driver.Name, driver.customUserAgent, driver.userAgentSuffix)
 	klog.V(2).Infof("driver userAgent: %s", userAgent)
 
-	cloud, err := azureutils.GetCloudProvider(context.Background(), driver.kubeconfig, driver.cloudConfigSecretName, driver.cloudConfigSecretNamespace,
+	kubeClient, err := azureutils.GetKubeClient(options.Kubeconfig)
+	if err != nil {
+		klog.Warningf("get kubeconfig(%s) failed with error: %v", options.Kubeconfig, err)
+		if !os.IsNotExist(err) && !errors.Is(err, rest.ErrNotInCluster) {
+			klog.Fatalf("failed to get KubeClient: %v", err)
+		}
+	}
+	driver.kubeClient = kubeClient
+
+	cloud, err := azureutils.GetCloudProviderFromClient(context.Background(), kubeClient, driver.cloudConfigSecretName, driver.cloudConfigSecretNamespace,
 		userAgent, driver.allowEmptyCloudConfig, driver.enableTrafficManager, driver.trafficManagerPort)
 	if err != nil {
 		klog.Fatalf("failed to get Azure Cloud Provider, error: %v", err)

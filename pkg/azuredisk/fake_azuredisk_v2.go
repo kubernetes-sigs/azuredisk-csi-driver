@@ -22,6 +22,7 @@ package azuredisk
 import (
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	"github.com/golang/mock/gomock"
+	"k8s.io/client-go/kubernetes/fake"
 	"k8s.io/klog/v2"
 	testingexec "k8s.io/utils/exec/testing"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
@@ -66,7 +67,7 @@ func newFakeDriverV2(ctrl *gomock.Controller) (*fakeDriverV2, error) {
 	driver.allowEmptyCloudConfig = true
 	driver.endpoint = "tcp://127.0.0.1:0"
 	driver.disableAVSetNodes = true
-	driver.kubeconfig = ""
+	driver.kubeClient = fake.NewSimpleClientset()
 
 	driver.cloud = azure.GetTestCloud(ctrl)
 	mounter, err := mounter.NewSafeMounter(driver.enableWindowsHostProcess, driver.useCSIProxyGAInterface)
