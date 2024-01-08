@@ -20,7 +20,7 @@ limitations under the License.
 package azuredisk
 
 import (
-	"github.com/golang/mock/gomock"
+	"go.uber.org/mock/gomock"
 )
 
 // NewFakeDriver returns a driver implementation suitable for use in unit tests.

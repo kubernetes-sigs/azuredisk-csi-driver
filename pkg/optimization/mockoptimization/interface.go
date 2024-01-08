@@ -23,7 +23,7 @@ package mockoptimization
 import (
 	reflect "reflect"
 
-	gomock "github.com/golang/mock/gomock"
+	gomock "go.uber.org/mock/gomock"
 	optimization "sigs.k8s.io/azuredisk-csi-driver/pkg/optimization"
 )
 
