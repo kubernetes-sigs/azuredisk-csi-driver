@@ -21,7 +21,7 @@ package azuredisk
 
 import (
 	"github.com/container-storage-interface/spec/lib/go/csi"
-	"github.com/golang/mock/gomock"
+	"go.uber.org/mock/gomock"
 	"k8s.io/client-go/kubernetes/fake"
 	"k8s.io/klog/v2"
 	testingexec "k8s.io/utils/exec/testing"

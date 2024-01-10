@@ -84,8 +84,7 @@ var _ = ginkgo.BeforeSuite(func(ctx ginkgo.SpecContext) {
 		kubeconfig := filepath.Join(os.Getenv("HOME"), ".kube", "config")
 		os.Setenv(kubeconfigEnvVar, kubeconfig)
 	}
-	handleFlags()
-	framework.AfterReadingAllFlags(&framework.TestContext)
+
 	// Default storage driver configuration is CSI. Freshly built
 	// CSI driver is installed for that case.
 	if isTestingMigration || !isUsingInTreeVolumePlugin {
@@ -351,11 +350,13 @@ func convertToPowershellorCmdCommandIfNecessary(command string) string {
 }
 
 // handleFlags sets up all flags and parses the command line.
-func handleFlags() {
+func TestMain(m *testing.M) {
 	config.CopyFlags(config.Flags, flag.CommandLine)
 	framework.RegisterCommonFlags(flag.CommandLine)
 	framework.RegisterClusterFlags(flag.CommandLine)
+	framework.AfterReadingAllFlags(&framework.TestContext)
 	flag.Parse()
+	os.Exit(m.Run())
 }
 
 func getFSType(IsWindowsCluster bool) string {
