@@ -447,7 +447,7 @@ func (d *Driver) ControllerPublishVolume(ctx context.Context, req *csi.Controlle
 			klog.V(2).Infof("attachDiskInitialDelayInMs is set to %d", attachDiskInitialDelay)
 			d.cloud.AttachDetachInitialDelayInMs = attachDiskInitialDelay
 		}
-		lun, err = d.cloud.AttachDisk(ctx, diskName, diskURI, nodeName, cachingMode, disk, occupiedLuns)
+		lun, err = d.diskController.AttachDisk(ctx, diskName, diskURI, nodeName, cachingMode, disk, occupiedLuns)
 		if err == nil {
 			klog.V(2).Infof("Attach operation successful: volume %s attached to node %s.", diskURI, nodeName)
 		} else {
@@ -458,11 +458,11 @@ func (d *Driver) ControllerPublishVolume(ctx context.Context, req *csi.Controlle
 					return nil, err
 				}
 				klog.Warningf("volume %s is already attached to node %s, try detach first", diskURI, derr.CurrentNode)
-				if err = d.cloud.DetachDisk(ctx, diskName, diskURI, derr.CurrentNode); err != nil {
+				if err = d.diskController.DetachDisk(ctx, diskName, diskURI, derr.CurrentNode); err != nil {
 					return nil, status.Errorf(codes.Internal, "Could not detach volume %s from node %s: %v", diskURI, derr.CurrentNode, err)
 				}
 				klog.V(2).Infof("Trying to attach volume %s to node %s again", diskURI, nodeName)
-				lun, err = d.cloud.AttachDisk(ctx, diskName, diskURI, nodeName, cachingMode, disk, occupiedLuns)
+				lun, err = d.diskController.AttachDisk(ctx, diskName, diskURI, nodeName, cachingMode, disk, occupiedLuns)
 			}
 			if err != nil {
 				klog.Errorf("Attach volume %s to instance %s failed with %v", diskURI, nodeName, err)
@@ -513,7 +513,7 @@ func (d *Driver) ControllerUnpublishVolume(ctx context.Context, req *csi.Control
 
 	klog.V(2).Infof("Trying to detach volume %s from node %s", diskURI, nodeID)
 
-	if err := d.cloud.DetachDisk(ctx, diskName, diskURI, nodeName); err != nil {
+	if err := d.diskController.DetachDisk(ctx, diskName, diskURI, nodeName); err != nil {
 		if strings.Contains(err.Error(), consts.ErrDiskNotFound) {
 			klog.Warningf("volume %s already detached from node %s", diskURI, nodeID)
 		} else {
@@ -848,7 +848,7 @@ func (d *Driver) ControllerExpandVolume(ctx context.Context, req *csi.Controller
 	}()
 
 	klog.V(2).Infof("begin to expand azure disk(%s) with new size(%d)", diskURI, requestSize.Value())
-	newSize, err := d.cloud.ResizeDisk(ctx, diskURI, oldSize, requestSize, d.enableDiskOnlineResize)
+	newSize, err := d.diskController.ResizeDisk(ctx, diskURI, oldSize, requestSize, d.enableDiskOnlineResize)
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to resize disk(%s) with error(%v)", diskURI, err)
 	}

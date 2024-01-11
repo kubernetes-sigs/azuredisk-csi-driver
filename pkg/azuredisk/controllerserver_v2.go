@@ -196,7 +196,7 @@ func (d *DriverV2) CreateVolume(ctx context.Context, req *csi.CreateVolumeReques
 	}
 
 	diskParams.VolumeContext[consts.RequestedSizeGib] = strconv.Itoa(requestGiB)
-	volumeOptions := &azure.ManagedDiskOptions{
+	volumeOptions := &ManagedDiskOptions{
 		AvailabilityZone:    selectedAvailabilityZone,
 		BurstingEnabled:     diskParams.EnableBursting,
 		DiskEncryptionSetID: diskParams.DiskEncryptionSetID,
@@ -231,7 +231,7 @@ func (d *DriverV2) CreateVolume(ctx context.Context, req *csi.CreateVolumeReques
 		mc.ObserveOperationWithResult(isOperationSucceeded, consts.VolumeID, diskURI)
 	}()
 
-	diskURI, err = d.cloud.CreateManagedDisk(ctx, volumeOptions)
+	diskURI, err = d.diskController.CreateManagedDisk(ctx, volumeOptions)
 	if err != nil {
 		if strings.Contains(err.Error(), consts.NotFound) {
 			return nil, status.Error(codes.NotFound, err.Error())
@@ -378,17 +378,17 @@ func (d *DriverV2) ControllerPublishVolume(ctx context.Context, req *csi.Control
 		}
 		klog.V(2).Infof("Trying to attach volume %s to node %s", diskURI, nodeName)
 
-		lun, err = d.cloud.AttachDisk(ctx, diskName, diskURI, nodeName, cachingMode, disk, nil)
+		lun, err = d.diskController.AttachDisk(ctx, diskName, diskURI, nodeName, cachingMode, disk, nil)
 		if err == nil {
 			klog.V(2).Infof("Attach operation successful: volume %s attached to node %s.", diskURI, nodeName)
 		} else {
 			if derr, ok := err.(*volerr.DanglingAttachError); ok {
 				klog.Warningf("volume %s is already attached to node %s, try detach first", diskURI, derr.CurrentNode)
-				if err = d.cloud.DetachDisk(ctx, diskName, diskURI, derr.CurrentNode); err != nil {
+				if err = d.diskController.DetachDisk(ctx, diskName, diskURI, derr.CurrentNode); err != nil {
 					return nil, status.Errorf(codes.Internal, "Could not detach volume %s from node %s: %v", diskURI, derr.CurrentNode, err)
 				}
 				klog.V(2).Infof("Trying to attach volume %s to node %s again", diskURI, nodeName)
-				lun, err = d.cloud.AttachDisk(ctx, diskName, diskURI, nodeName, cachingMode, disk, nil)
+				lun, err = d.diskController.AttachDisk(ctx, diskName, diskURI, nodeName, cachingMode, disk, nil)
 			}
 			if err != nil {
 				klog.Errorf("Attach volume %s to instance %s failed with %v", diskURI, nodeName, err)
@@ -435,7 +435,7 @@ func (d *DriverV2) ControllerUnpublishVolume(ctx context.Context, req *csi.Contr
 
 	klog.V(2).Infof("Trying to detach volume %s from node %s", diskURI, nodeID)
 
-	if err := d.cloud.DetachDisk(ctx, diskName, diskURI, nodeName); err != nil {
+	if err := d.diskController.DetachDisk(ctx, diskName, diskURI, nodeName); err != nil {
 		if strings.Contains(err.Error(), consts.ErrDiskNotFound) {
 			klog.Warningf("volume %s already detached from node %s", diskURI, nodeID)
 		} else {
@@ -732,7 +732,7 @@ func (d *DriverV2) ControllerExpandVolume(ctx context.Context, req *csi.Controll
 	oldSize := *resource.NewQuantity(int64(*result.DiskProperties.DiskSizeGB), resource.BinarySI)
 
 	klog.V(2).Infof("begin to expand azure disk(%s) with new size(%d)", diskURI, requestSize.Value())
-	newSize, err := d.cloud.ResizeDisk(ctx, diskURI, oldSize, requestSize, d.enableDiskOnlineResize)
+	newSize, err := d.diskController.ResizeDisk(ctx, diskURI, oldSize, requestSize, d.enableDiskOnlineResize)
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to resize disk(%s) with error(%v)", diskURI, err)
 	}
