@@ -27,6 +27,9 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
+	"github.com/Azure/azure-sdk-for-go/sdk/azcore/to"
+	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute/v5"
 	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2022-08-01/compute"
 	"github.com/Azure/go-autorest/autorest/azure"
 
@@ -37,6 +40,7 @@ import (
 	"k8s.io/klog/v2"
 	"k8s.io/utils/pointer"
 
+	"sigs.k8s.io/cloud-provider-azure/pkg/azclient"
 	azcache "sigs.k8s.io/cloud-provider-azure/pkg/cache"
 	"sigs.k8s.io/cloud-provider-azure/pkg/consts"
 	"sigs.k8s.io/cloud-provider-azure/pkg/provider"
@@ -95,9 +99,10 @@ var (
 )
 
 type controllerCommon struct {
-	diskStateMap sync.Map // <diskURI, attaching/detaching state>
-	lockMap      *lockMap
-	cloud        *provider.Cloud
+	diskStateMap  sync.Map // <diskURI, attaching/detaching state>
+	lockMap       *lockMap
+	cloud         *provider.Cloud
+	clientFactory azclient.ClientFactory
 	// disk queue that is waiting for attach or detach on specific node
 	// <nodeName, map<diskURI, *provider.AttachDiskOptions/DetachDiskOptions>>
 	attachDiskMap sync.Map
@@ -122,14 +127,14 @@ type ExtendedLocation struct {
 // occupiedLuns is used to avoid conflict with other disk attach in k8s VolumeAttachments
 // return (lun, error)
 func (c *controllerCommon) AttachDisk(ctx context.Context, diskName, diskURI string, nodeName types.NodeName,
-	cachingMode compute.CachingTypes, disk *compute.Disk, occupiedLuns []int) (int32, error) {
+	cachingMode armcompute.CachingTypes, disk *armcompute.Disk, occupiedLuns []int) (int32, error) {
 	diskEncryptionSetID := ""
 	writeAcceleratorEnabled := false
 
 	// there is possibility that disk is nil when GetDisk is throttled
 	// don't check disk state when GetDisk is throttled
 	if disk != nil {
-		if disk.ManagedBy != nil && (disk.MaxShares == nil || *disk.MaxShares <= 1) {
+		if disk.ManagedBy != nil && (disk.Properties == nil || disk.Properties.MaxShares == nil || *disk.Properties.MaxShares <= 1) {
 			vmset, err := c.cloud.GetNodeVMSet(nodeName, azcache.CacheReadTypeUnsafe)
 			if err != nil {
 				return -1, err
@@ -155,22 +160,22 @@ func (c *controllerCommon) AttachDisk(ctx context.Context, diskName, diskURI str
 			return -1, volerr.NewDanglingError(attachErr, attachedNode, "")
 		}
 
-		if disk.DiskProperties != nil {
-			if disk.DiskProperties.DiskSizeGB != nil && *disk.DiskProperties.DiskSizeGB >= diskCachingLimit && cachingMode != compute.CachingTypesNone {
+		if disk.Properties != nil {
+			if disk.Properties.DiskSizeGB != nil && *disk.Properties.DiskSizeGB >= diskCachingLimit && cachingMode != armcompute.CachingTypesNone {
 				// Disk Caching is not supported for disks 4 TiB and larger
 				// https://docs.microsoft.com/en-us/azure/virtual-machines/premium-storage-performance#disk-caching
-				cachingMode = compute.CachingTypesNone
+				cachingMode = armcompute.CachingTypesNone
 				klog.Warningf("size of disk(%s) is %dGB which is bigger than limit(%dGB), set cacheMode as None",
-					diskURI, *disk.DiskProperties.DiskSizeGB, diskCachingLimit)
+					diskURI, *disk.Properties.DiskSizeGB, diskCachingLimit)
 			}
 
-			if disk.DiskProperties.Encryption != nil &&
-				disk.DiskProperties.Encryption.DiskEncryptionSetID != nil {
-				diskEncryptionSetID = *disk.DiskProperties.Encryption.DiskEncryptionSetID
+			if disk.Properties.Encryption != nil &&
+				disk.Properties.Encryption.DiskEncryptionSetID != nil {
+				diskEncryptionSetID = *disk.Properties.Encryption.DiskEncryptionSetID
 			}
 
-			if disk.DiskProperties.DiskState != compute.Unattached && (disk.MaxShares == nil || *disk.MaxShares <= 1) {
-				return -1, fmt.Errorf("state of disk(%s) is %s, not in expected %s state", diskURI, disk.DiskProperties.DiskState, compute.Unattached)
+			if disk.Properties.DiskState != nil && *disk.Properties.DiskState != armcompute.DiskStateUnattached && (disk.Properties.MaxShares == nil || *disk.Properties.MaxShares <= 1) {
+				return -1, fmt.Errorf("state of disk(%s) is %s, not in expected %s state", diskURI, *disk.Properties.DiskState, armcompute.DiskStateUnattached)
 			}
 		}
 
@@ -184,7 +189,7 @@ func (c *controllerCommon) AttachDisk(ctx context.Context, diskName, diskURI str
 	options := provider.AttachDiskOptions{
 		Lun:                     -1,
 		DiskName:                diskName,
-		CachingMode:             cachingMode,
+		CachingMode:             compute.CachingTypes(cachingMode),
 		DiskEncryptionSetID:     diskEncryptionSetID,
 		WriteAcceleratorEnabled: writeAcceleratorEnabled,
 	}
@@ -469,7 +474,7 @@ func (c *controllerCommon) cleanDetachDiskRequests(nodeName string) (map[string]
 }
 
 // GetNodeDataDisks invokes vmSet interfaces to get data disks for the node.
-func (c *controllerCommon) GetNodeDataDisks(nodeName types.NodeName, crt azcache.AzureCacheReadType) ([]compute.DataDisk, *string, error) {
+func (c *controllerCommon) GetNodeDataDisks(nodeName types.NodeName, crt azcache.AzureCacheReadType) ([]*armcompute.DataDisk, *string, error) {
 	vmset, err := c.cloud.GetNodeVMSet(nodeName, crt)
 	if err != nil {
 		return nil, nil, err
@@ -611,8 +616,8 @@ func (c *controllerCommon) DisksAreAttached(diskNames []string, nodeName types.N
 	return attached, nil
 }
 
-func (c *controllerCommon) filterNonExistingDisks(ctx context.Context, unfilteredDisks []compute.DataDisk) []compute.DataDisk {
-	filteredDisks := []compute.DataDisk{}
+func (c *controllerCommon) filterNonExistingDisks(ctx context.Context, unfilteredDisks []*armcompute.DataDisk) []*armcompute.DataDisk {
+	filteredDisks := []*armcompute.DataDisk{}
 	for _, disk := range unfilteredDisks {
 		filter := false
 		if disk.ManagedDisk != nil && disk.ManagedDisk.ID != nil {
@@ -643,13 +648,17 @@ func (c *controllerCommon) checkDiskExists(ctx context.Context, diskURI string) 
 		return false, err
 	}
 
-	if _, rerr := c.cloud.DisksClient.Get(ctx, subsID, resourceGroup, diskName); rerr != nil {
-		if rerr.HTTPStatusCode == http.StatusNotFound {
+	diskClient, err := c.clientFactory.GetDiskClientForSub(subsID)
+	if err != nil {
+		return false, err
+	}
+	if _, err := diskClient.Get(ctx, resourceGroup, diskName); err != nil {
+		var respErr = &azcore.ResponseError{}
+		if errors.As(err, &respErr) && respErr.StatusCode == http.StatusNotFound {
 			return false, nil
 		}
-		return false, rerr.Error()
+		return false, err
 	}
-
 	return true, nil
 }
 
@@ -658,10 +667,10 @@ func vmUpdateRequired(future *azure.Future, err error) bool {
 	return configAccepted(future) && errCode == consts.OperationPreemptedErrorCode
 }
 
-func getValidCreationData(subscriptionID, resourceGroup string, options *ManagedDiskOptions) (compute.CreationData, error) {
+func getValidCreationData(subscriptionID, resourceGroup string, options *ManagedDiskOptions) (armcompute.CreationData, error) {
 	if options.SourceResourceID == "" {
-		return compute.CreationData{
-			CreateOption:    compute.Empty,
+		return armcompute.CreationData{
+			CreateOption:    to.Ptr(armcompute.DiskCreateOptionEmpty),
 			PerformancePlus: options.PerformancePlus,
 		}, nil
 	}
@@ -678,8 +687,8 @@ func getValidCreationData(subscriptionID, resourceGroup string, options *Managed
 			sourceResourceID = fmt.Sprintf(managedDiskPath, subscriptionID, resourceGroup, sourceResourceID)
 		}
 	default:
-		return compute.CreationData{
-			CreateOption:    compute.Empty,
+		return armcompute.CreationData{
+			CreateOption:    to.Ptr(armcompute.DiskCreateOptionEmpty),
 			PerformancePlus: options.PerformancePlus,
 		}, nil
 	}
@@ -687,12 +696,12 @@ func getValidCreationData(subscriptionID, resourceGroup string, options *Managed
 	splits := strings.Split(sourceResourceID, "/")
 	if len(splits) > 9 {
 		if options.SourceType == sourceSnapshot {
-			return compute.CreationData{}, fmt.Errorf("sourceResourceID(%s) is invalid, correct format: %s", sourceResourceID, diskSnapshotPathRE)
+			return armcompute.CreationData{}, fmt.Errorf("sourceResourceID(%s) is invalid, correct format: %s", sourceResourceID, diskSnapshotPathRE)
 		}
-		return compute.CreationData{}, fmt.Errorf("sourceResourceID(%s) is invalid, correct format: %s", sourceResourceID, managedDiskPathRE)
+		return armcompute.CreationData{}, fmt.Errorf("sourceResourceID(%s) is invalid, correct format: %s", sourceResourceID, managedDiskPathRE)
 	}
-	return compute.CreationData{
-		CreateOption:     compute.Copy,
+	return armcompute.CreationData{
+		CreateOption:     to.Ptr(armcompute.DiskCreateOptionCopy),
 		SourceResourceID: &sourceResourceID,
 		PerformancePlus:  options.PerformancePlus,
 	}, nil

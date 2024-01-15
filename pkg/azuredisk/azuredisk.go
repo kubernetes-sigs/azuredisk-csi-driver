@@ -25,7 +25,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2022-08-01/compute"
+	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute/v5"
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 
@@ -48,6 +48,7 @@ import (
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/mounter"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/optimization"
 	volumehelper "sigs.k8s.io/azuredisk-csi-driver/pkg/util"
+	"sigs.k8s.io/cloud-provider-azure/pkg/azclient"
 	azcache "sigs.k8s.io/cloud-provider-azure/pkg/cache"
 	azurecloudconsts "sigs.k8s.io/cloud-provider-azure/pkg/consts"
 	azure "sigs.k8s.io/cloud-provider-azure/pkg/provider"
@@ -75,6 +76,7 @@ type DriverCore struct {
 	customUserAgent              string
 	userAgentSuffix              string
 	cloud                        *azure.Cloud
+	clientFactory                azclient.ClientFactory
 	diskController               *ManagedDiskController
 	mounter                      *mount.SafeFormatAndMount
 	deviceHelper                 optimization.Interface
@@ -183,6 +185,7 @@ func newDriverV1(options *DriverOptions) *Driver {
 		driver.diskController = NewManagedDiskController(driver.cloud)
 		driver.diskController.DisableUpdateCache = driver.disableUpdateCache
 		driver.diskController.AttachDetachInitialDelayInMs = int(driver.attachDetachInitialDelayInMs)
+		driver.clientFactory = driver.cloud.ComputeClientFactory
 		if driver.vmType != "" {
 			klog.V(2).Infof("override VMType(%s) in cloud config as %s", driver.cloud.VMType, driver.vmType)
 			driver.cloud.VMType = driver.vmType
@@ -326,7 +329,7 @@ func (d *Driver) isCheckDiskLunThrottled() bool {
 	return cache != nil
 }
 
-func (d *Driver) checkDiskExists(ctx context.Context, diskURI string) (*compute.Disk, error) {
+func (d *Driver) checkDiskExists(ctx context.Context, diskURI string) (*armcompute.Disk, error) {
 	diskName, err := azureutils.GetDiskName(diskURI)
 	if err != nil {
 		return nil, err
@@ -342,17 +345,15 @@ func (d *Driver) checkDiskExists(ctx context.Context, diskURI string) (*compute.
 		return nil, nil
 	}
 	subsID := azureutils.GetSubscriptionIDFromURI(diskURI)
-	disk, rerr := d.cloud.DisksClient.Get(ctx, subsID, resourceGroup, diskName)
-	if rerr != nil {
-		if rerr.IsThrottled() || strings.Contains(rerr.RawError.Error(), consts.RateLimited) {
-			klog.Warningf("checkDiskExists(%s) is throttled with error: %v", diskURI, rerr.Error())
-			d.throttlingCache.Set(consts.GetDiskThrottlingKey, "")
-			return nil, nil
-		}
-		return nil, rerr.Error()
+	diskClient, err := d.diskController.clientFactory.GetDiskClientForSub(subsID)
+	if err != nil {
+		return nil, err
 	}
-
-	return &disk, nil
+	disk, err := diskClient.Get(ctx, resourceGroup, diskName)
+	if err != nil {
+		return nil, err
+	}
+	return disk, nil
 }
 
 func (d *Driver) checkDiskCapacity(ctx context.Context, subsID, resourceGroup, diskName string, requestGiB int) (bool, error) {
@@ -360,18 +361,16 @@ func (d *Driver) checkDiskCapacity(ctx context.Context, subsID, resourceGroup, d
 		klog.Warningf("skip checkDiskCapacity(%s, %s) since it's still in throttling", resourceGroup, diskName)
 		return true, nil
 	}
-
-	disk, rerr := d.cloud.DisksClient.Get(ctx, subsID, resourceGroup, diskName)
+	diskClient, err := d.clientFactory.GetDiskClientForSub(subsID)
+	if err != nil {
+		return false, err
+	}
+	disk, err := diskClient.Get(ctx, resourceGroup, diskName)
 	// Because we can not judge the reason of the error. Maybe the disk does not exist.
 	// So here we do not handle the error.
-	if rerr == nil {
-		if !reflect.DeepEqual(disk, compute.Disk{}) && disk.DiskSizeGB != nil && int(*disk.DiskSizeGB) != requestGiB {
-			return false, status.Errorf(codes.AlreadyExists, "the request volume already exists, but its capacity(%v) is different from (%v)", *disk.DiskProperties.DiskSizeGB, requestGiB)
-		}
-	} else {
-		if rerr.IsThrottled() || strings.Contains(rerr.RawError.Error(), consts.RateLimited) {
-			klog.Warningf("checkDiskCapacity(%s, %s) is throttled with error: %v", resourceGroup, diskName, rerr.Error())
-			d.throttlingCache.Set(consts.GetDiskThrottlingKey, "")
+	if err == nil {
+		if !reflect.DeepEqual(disk, armcompute.Disk{}) && disk.Properties.DiskSizeGB != nil && int(*disk.Properties.DiskSizeGB) != requestGiB {
+			return false, status.Errorf(codes.AlreadyExists, "the request volume already exists, but its capacity(%v) is different from (%v)", *disk.Properties.DiskSizeGB, requestGiB)
 		}
 	}
 	return true, nil

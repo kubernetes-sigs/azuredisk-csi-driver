@@ -25,6 +25,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute/v5"
 	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2022-08-01/compute"
 	"github.com/Azure/go-autorest/autorest/date"
 	"github.com/stretchr/testify/assert"
@@ -35,7 +36,8 @@ import (
 	clientset "k8s.io/client-go/kubernetes"
 	"k8s.io/utils/pointer"
 	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
-	"sigs.k8s.io/cloud-provider-azure/pkg/azureclients/diskclient/mockdiskclient"
+	"sigs.k8s.io/cloud-provider-azure/pkg/azclient/diskclient/mock_diskclient"
+	"sigs.k8s.io/cloud-provider-azure/pkg/azclient/mock_azclient"
 	"sigs.k8s.io/cloud-provider-azure/pkg/azureclients/snapshotclient/mocksnapshotclient"
 	"sigs.k8s.io/cloud-provider-azure/pkg/azureclients/vmclient/mockvmclient"
 	azure "sigs.k8s.io/cloud-provider-azure/pkg/provider"
@@ -61,12 +63,14 @@ func TestCheckDiskCapacity(t *testing.T) {
 	size := int32(10)
 	diskName := "unit-test"
 	resourceGroup := "unit-test"
-	disk := compute.Disk{
-		DiskProperties: &compute.DiskProperties{
+	disk := &armcompute.Disk{
+		Properties: &armcompute.DiskProperties{
 			DiskSizeGB: &size,
 		},
 	}
-	d.getCloud().DisksClient.(*mockdiskclient.MockInterface).EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(disk, nil).AnyTimes()
+	diskClient := mock_diskclient.NewMockInterface(cntl)
+	d.getClientFactory().(*mock_azclient.MockClientFactory).EXPECT().GetDiskClientForSub("").Return(diskClient, nil).AnyTimes()
+	diskClient.EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any()).Return(disk, nil).AnyTimes()
 	flag, err := d.checkDiskCapacity(context.TODO(), "", resourceGroup, diskName, 10)
 	assert.Equal(t, flag, true)
 	assert.Nil(t, err)

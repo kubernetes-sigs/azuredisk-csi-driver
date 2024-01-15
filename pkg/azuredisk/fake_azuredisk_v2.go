@@ -30,6 +30,7 @@ import (
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/mounter"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/optimization/mockoptimization"
 	volumehelper "sigs.k8s.io/azuredisk-csi-driver/pkg/util"
+	"sigs.k8s.io/cloud-provider-azure/pkg/azclient"
 	azure "sigs.k8s.io/cloud-provider-azure/pkg/provider"
 )
 
@@ -71,6 +72,7 @@ func newFakeDriverV2(ctrl *gomock.Controller) (*fakeDriverV2, error) {
 
 	driver.cloud = azure.GetTestCloud(ctrl)
 	driver.diskController = NewManagedDiskController(driver.cloud)
+	driver.clientFactory = driver.cloud.ComputeClientFactory
 
 	mounter, err := mounter.NewSafeMounter(driver.enableWindowsHostProcess, driver.useCSIProxyGAInterface)
 	if err != nil {
@@ -103,6 +105,9 @@ func newFakeDriverV2(ctrl *gomock.Controller) (*fakeDriverV2, error) {
 
 func (d *fakeDriverV2) setNextCommandOutputScripts(scripts ...testingexec.FakeAction) {
 	d.mounter.Exec.(*mounter.FakeSafeMounter).SetNextCommandOutputScripts(scripts...)
+}
+func (d *fakeDriverV2) getClientFactory() azclient.ClientFactory {
+	return d.clientFactory
 }
 
 func (d *DriverV2) setThrottlingCache(key string, value string) {
