@@ -181,6 +181,8 @@ func newDriverV1(options *DriverOptions) *Driver {
 
 	if driver.cloud != nil {
 		driver.diskController = NewManagedDiskController(driver.cloud)
+		driver.diskController.DisableUpdateCache = driver.disableUpdateCache
+		driver.diskController.AttachDetachInitialDelayInMs = int(driver.attachDetachInitialDelayInMs)
 		if driver.vmType != "" {
 			klog.V(2).Infof("override VMType(%s) in cloud config as %s", driver.cloud.VMType, driver.vmType)
 			driver.cloud.VMType = driver.vmType
@@ -208,11 +210,6 @@ func newDriverV1(options *DriverOptions) *Driver {
 			klog.V(2).Infof("reset vmssCacheTTLInSeconds as %d", driver.vmssCacheTTLInSeconds)
 			driver.cloud.VMCacheTTLInSeconds = int(driver.vmssCacheTTLInSeconds)
 			driver.cloud.VmssCacheTTLInSeconds = int(driver.vmssCacheTTLInSeconds)
-		}
-
-		if driver.cloud.ManagedDiskController != nil {
-			driver.cloud.DisableUpdateCache = driver.disableUpdateCache
-			driver.cloud.AttachDetachInitialDelayInMs = int(driver.attachDetachInitialDelayInMs)
 		}
 	}
 
@@ -538,7 +535,7 @@ func (d *DriverCore) getUsedLunsFromVolumeAttachments(ctx context.Context, nodeN
 
 // getUsedLunsFromNode returns a list of sorted used luns from Node
 func (d *DriverCore) getUsedLunsFromNode(nodeName types.NodeName) ([]int, error) {
-	disks, _, err := d.cloud.GetNodeDataDisks(nodeName, azcache.CacheReadTypeDefault)
+	disks, _, err := d.diskController.GetNodeDataDisks(nodeName, azcache.CacheReadTypeDefault)
 	if err != nil {
 		klog.Errorf("error of getting data disks for node %s: %v", nodeName, err)
 		return nil, err

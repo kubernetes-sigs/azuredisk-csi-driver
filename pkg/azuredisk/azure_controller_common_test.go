@@ -265,7 +265,6 @@ func TestCommonAttachDisk(t *testing.T) {
 		tt := test
 		t.Run(tt.desc, func(t *testing.T) {
 			testCloud := provider.GetTestCloud(ctrl)
-			testCloud.DisableDiskLunCheck = true
 			diskURI := fmt.Sprintf("/subscriptions/%s/resourceGroups/%s/providers/Microsoft.Compute/disks/%s",
 				testCloud.SubscriptionID, testCloud.ResourceGroup, test.diskName)
 			if tt.isBadDiskURI {

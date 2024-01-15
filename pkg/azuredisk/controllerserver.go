@@ -120,6 +120,7 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 	}
 
 	localCloud := d.cloud
+	localDiskController := d.diskController
 
 	if diskParams.UserAgent != "" {
 		localCloud, err = azureutils.GetCloudProviderFromClient(ctx, d.kubeClient, d.cloudConfigSecretName, d.cloudConfigSecretNamespace, diskParams.UserAgent,
@@ -127,6 +128,16 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 		if err != nil {
 			return nil, status.Errorf(codes.Internal, "create cloud with UserAgent(%s) failed with: (%s)", diskParams.UserAgent, err)
 		}
+		localDiskController = &ManagedDiskController{
+			controllerCommon: &controllerCommon{
+				cloud:               localCloud,
+				lockMap:             newLockMap(),
+				DisableDiskLunCheck: true,
+			},
+		}
+		localDiskController.DisableUpdateCache = d.disableUpdateCache
+		localDiskController.AttachDetachInitialDelayInMs = int(d.attachDetachInitialDelayInMs)
+
 	}
 	if azureutils.IsAzureStackCloud(localCloud.Config.Cloud, localCloud.Config.DisableAzureStackCloud) {
 		if diskParams.MaxShares > 1 {
@@ -254,7 +265,7 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 	}
 
 	diskParams.VolumeContext[consts.RequestedSizeGib] = strconv.Itoa(requestGiB)
-	volumeOptions := &azure.ManagedDiskOptions{
+	volumeOptions := &ManagedDiskOptions{
 		AvailabilityZone:    diskZone,
 		BurstingEnabled:     diskParams.EnableBursting,
 		DiskEncryptionSetID: diskParams.DiskEncryptionSetID,
@@ -292,7 +303,7 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 		mc.ObserveOperationWithResult(isOperationSucceeded, consts.VolumeID, diskURI)
 	}()
 
-	diskURI, err = localCloud.CreateManagedDisk(ctx, volumeOptions)
+	diskURI, err = localDiskController.CreateManagedDisk(ctx, volumeOptions)
 	if err != nil {
 		if strings.Contains(err.Error(), consts.NotFound) {
 			return nil, status.Error(codes.NotFound, err.Error())
@@ -343,7 +354,7 @@ func (d *Driver) DeleteVolume(ctx context.Context, req *csi.DeleteVolumeRequest)
 	}()
 
 	klog.V(2).Infof("deleting azure disk(%s)", diskURI)
-	err := d.cloud.DeleteManagedDisk(ctx, diskURI)
+	err := d.diskController.DeleteManagedDisk(ctx, diskURI)
 	klog.V(2).Infof("delete azure disk(%s) returned with %v", diskURI, err)
 	isOperationSucceeded = (err == nil)
 	return &csi.DeleteVolumeResponse{}, err
@@ -403,7 +414,7 @@ func (d *Driver) ControllerPublishVolume(ctx context.Context, req *csi.Controlle
 		mc.ObserveOperationWithResult(isOperationSucceeded, consts.VolumeID, diskURI, consts.Node, string(nodeName))
 	}()
 
-	lun, vmState, err := d.cloud.GetDiskLun(diskName, diskURI, nodeName)
+	lun, vmState, err := d.diskController.GetDiskLun(diskName, diskURI, nodeName)
 	if err == cloudprovider.InstanceNotFound {
 		return nil, status.Error(codes.NotFound, fmt.Sprintf("failed to get azure instance id for node %q (%v)", nodeName, err))
 	}
@@ -423,7 +434,7 @@ func (d *Driver) ControllerPublishVolume(ctx context.Context, req *csi.Controlle
 	if err == nil {
 		if vmState != nil && strings.ToLower(*vmState) == "failed" {
 			klog.Warningf("VM(%s) is in failed state, update VM first", nodeName)
-			if err := d.cloud.UpdateVM(ctx, nodeName); err != nil {
+			if err := d.diskController.UpdateVM(ctx, nodeName); err != nil {
 				return nil, status.Errorf(codes.Internal, "update instance %q failed with %v", nodeName, err)
 			}
 		}
@@ -445,7 +456,7 @@ func (d *Driver) ControllerPublishVolume(ctx context.Context, req *csi.Controlle
 		attachDiskInitialDelay := azureutils.GetAttachDiskInitialDelay(volumeContext)
 		if attachDiskInitialDelay > 0 {
 			klog.V(2).Infof("attachDiskInitialDelayInMs is set to %d", attachDiskInitialDelay)
-			d.cloud.AttachDetachInitialDelayInMs = attachDiskInitialDelay
+			d.diskController.AttachDetachInitialDelayInMs = attachDiskInitialDelay
 		}
 		lun, err = d.diskController.AttachDisk(ctx, diskName, diskURI, nodeName, cachingMode, disk, occupiedLuns)
 		if err == nil {

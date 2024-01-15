@@ -461,8 +461,13 @@ func TestGetDisk(t *testing.T) {
 
 	for i, test := range testCases {
 		testCloud := provider.GetTestCloud(ctrl)
-		managedDiskController := testCloud.ManagedDiskController
-
+		managedDiskController := &ManagedDiskController{
+			controllerCommon: &controllerCommon{
+				cloud:               testCloud,
+				lockMap:             newLockMap(),
+				DisableDiskLunCheck: true,
+			},
+		}
 		mockDisksClient := testCloud.DisksClient.(*mockdiskclient.MockInterface)
 		if test.diskName == fakeGetDiskFailed {
 			mockDisksClient.EXPECT().Get(gomock.Any(), "", testCloud.ResourceGroup, test.diskName).Return(test.existedDisk, &retry.Error{RawError: fmt.Errorf("Get Disk failed")}).AnyTimes()
@@ -562,7 +567,13 @@ func TestResizeDisk(t *testing.T) {
 
 	for i, test := range testCases {
 		testCloud := provider.GetTestCloud(ctrl)
-		managedDiskController := testCloud.ManagedDiskController
+		managedDiskController := &ManagedDiskController{
+			controllerCommon: &controllerCommon{
+				cloud:               testCloud,
+				lockMap:             newLockMap(),
+				DisableDiskLunCheck: true,
+			},
+		}
 		diskURI := fmt.Sprintf("/subscriptions/%s/resourceGroups/%s/providers/Microsoft.Compute/disks/%s",
 			testCloud.SubscriptionID, testCloud.ResourceGroup, *test.existedDisk.Name)
 
