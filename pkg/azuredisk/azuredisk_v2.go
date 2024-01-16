@@ -106,6 +106,8 @@ func newDriverV2(options *DriverOptions) *DriverV2 {
 
 	if driver.cloud != nil {
 		driver.diskController = NewManagedDiskController(driver.cloud)
+		driver.diskController.DisableUpdateCache = driver.disableUpdateCache
+		driver.diskController.AttachDetachInitialDelayInMs = int(driver.attachDetachInitialDelayInMs)
 		if driver.vmType != "" {
 			klog.V(2).Infof("override VMType(%s) in cloud config as %s", driver.cloud.VMType, driver.vmType)
 			driver.cloud.VMType = driver.vmType

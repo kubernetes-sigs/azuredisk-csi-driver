@@ -286,7 +286,7 @@ func (d *DriverV2) DeleteVolume(ctx context.Context, req *csi.DeleteVolumeReques
 	}()
 
 	klog.V(2).Infof("deleting azure disk(%s)", diskURI)
-	err := d.cloud.DeleteManagedDisk(ctx, diskURI)
+	err := d.diskController.DeleteManagedDisk(ctx, diskURI)
 	klog.V(2).Infof("delete azure disk(%s) returned with %v", diskURI, err)
 	isOperationSucceeded = (err == nil)
 	return &csi.DeleteVolumeResponse{}, err
@@ -346,7 +346,7 @@ func (d *DriverV2) ControllerPublishVolume(ctx context.Context, req *csi.Control
 		mc.ObserveOperationWithResult(isOperationSucceeded, consts.VolumeID, diskURI, consts.Node, string(nodeName))
 	}()
 
-	lun, vmState, err := d.cloud.GetDiskLun(diskName, diskURI, nodeName)
+	lun, vmState, err := d.diskController.GetDiskLun(diskName, diskURI, nodeName)
 	if err == cloudprovider.InstanceNotFound {
 		return nil, status.Error(codes.NotFound, fmt.Sprintf("failed to get azure instance id for node %q (%v)", nodeName, err))
 	}
@@ -361,7 +361,7 @@ func (d *DriverV2) ControllerPublishVolume(ctx context.Context, req *csi.Control
 	if err == nil {
 		if vmState != nil && strings.ToLower(*vmState) == "failed" {
 			klog.Warningf("VM(%s) is in failed state, update VM first", nodeName)
-			if err := d.cloud.UpdateVM(ctx, nodeName); err != nil {
+			if err := d.diskController.UpdateVM(ctx, nodeName); err != nil {
 				return nil, status.Errorf(codes.Internal, "update instance %q failed with %v", nodeName, err)
 			}
 		}
