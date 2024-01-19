@@ -27,7 +27,7 @@ import (
 	"os"
 	"reflect"
 
-	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2022-08-01/compute"
+	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute/v5"
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 	"google.golang.org/grpc"
@@ -108,6 +108,7 @@ func newDriverV2(options *DriverOptions) *DriverV2 {
 		driver.diskController = NewManagedDiskController(driver.cloud)
 		driver.diskController.DisableUpdateCache = driver.disableUpdateCache
 		driver.diskController.AttachDetachInitialDelayInMs = int(driver.attachDetachInitialDelayInMs)
+		driver.clientFactory = driver.cloud.ComputeClientFactory
 		if driver.vmType != "" {
 			klog.V(2).Infof("override VMType(%s) in cloud config as %s", driver.cloud.VMType, driver.vmType)
 			driver.cloud.VMType = driver.vmType
@@ -212,7 +213,7 @@ func (d *DriverV2) Run(ctx context.Context) error {
 	return err
 }
 
-func (d *DriverV2) checkDiskExists(ctx context.Context, diskURI string) (*compute.Disk, error) {
+func (d *DriverV2) checkDiskExists(ctx context.Context, diskURI string) (*armcompute.Disk, error) {
 	diskName, err := azureutils.GetDiskName(diskURI)
 	if err != nil {
 		return nil, err
@@ -224,21 +225,30 @@ func (d *DriverV2) checkDiskExists(ctx context.Context, diskURI string) (*comput
 	}
 
 	subsID := azureutils.GetSubscriptionIDFromURI(diskURI)
-	disk, rerr := d.cloud.DisksClient.Get(ctx, subsID, resourceGroup, diskName)
-	if rerr != nil {
-		return nil, rerr.Error()
+	diskClient, err := d.clientFactory.GetDiskClientForSub(subsID)
+	if err != nil {
+		return nil, err
 	}
 
-	return &disk, nil
+	disk, err := diskClient.Get(ctx, resourceGroup, diskName)
+	if err != nil {
+		return nil, err
+	}
+
+	return disk, nil
 }
 
 func (d *DriverV2) checkDiskCapacity(ctx context.Context, subsID, resourceGroup, diskName string, requestGiB int) (bool, error) {
-	disk, err := d.cloud.DisksClient.Get(ctx, subsID, resourceGroup, diskName)
+	diskClient, err := d.clientFactory.GetDiskClientForSub(subsID)
+	if err != nil {
+		return false, err
+	}
+	disk, err := diskClient.Get(ctx, resourceGroup, diskName)
 	// Because we can not judge the reason of the error. Maybe the disk does not exist.
 	// So here we do not handle the error.
 	if err == nil {
-		if !reflect.DeepEqual(disk, compute.Disk{}) && disk.DiskSizeGB != nil && int(*disk.DiskSizeGB) != requestGiB {
-			return false, status.Errorf(codes.AlreadyExists, "the request volume already exists, but its capacity(%v) is different from (%v)", *disk.DiskProperties.DiskSizeGB, requestGiB)
+		if !reflect.DeepEqual(disk, &armcompute.Disk{}) && disk.Properties != nil && disk.Properties.DiskSizeGB != nil && int(*disk.Properties.DiskSizeGB) != requestGiB {
+			return false, status.Errorf(codes.AlreadyExists, "the request volume already exists, but its capacity(%v) is different from (%v)", *disk.Properties.DiskSizeGB, requestGiB)
 		}
 	}
 	return true, nil

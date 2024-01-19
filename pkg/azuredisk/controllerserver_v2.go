@@ -27,6 +27,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute/v5"
 	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2022-08-01/compute"
 	"github.com/container-storage-interface/spec/lib/go/csi"
 
@@ -128,7 +129,7 @@ func (d *DriverV2) CreateVolume(ctx context.Context, req *csi.CreateVolumeReques
 	if _, err := azureutils.NormalizeCachingMode(diskParams.CachingMode); err != nil {
 		return nil, status.Error(codes.InvalidArgument, err.Error())
 	}
-	if skuName == compute.PremiumV2LRS {
+	if skuName == armcompute.DiskStorageAccountTypesPremiumV2LRS {
 		// PremiumV2LRS only supports None caching mode
 		azureutils.SetKeyValueInMap(diskParams.VolumeContext, consts.CachingModeField, string(v1.AzureDataDiskCachingNone))
 	}
@@ -372,7 +373,7 @@ func (d *DriverV2) ControllerPublishVolume(ctx context.Context, req *csi.Control
 			strings.Contains(strings.ToLower(err.Error()), consts.ClientThrottled) {
 			return nil, status.Errorf(codes.Internal, err.Error())
 		}
-		var cachingMode compute.CachingTypes
+		var cachingMode armcompute.CachingTypes
 		if cachingMode, err = azureutils.GetCachingMode(volumeContext); err != nil {
 			return nil, status.Errorf(codes.Internal, err.Error())
 		}
@@ -622,9 +623,10 @@ func (d *DriverV2) listVolumesInNodeResourceGroup(ctx context.Context, start, ma
 
 // listVolumesByResourceGroup is a helper function that updates the ListVolumeResponse_Entry slice and returns number of total visited volumes, number of volumes that needs to be visited and an error if found
 func (d *DriverV2) listVolumesByResourceGroup(ctx context.Context, resourceGroup string, entries []*csi.ListVolumesResponse_Entry, start, maxEntries int, volSet map[string]bool) listVolumeStatus {
-	disks, derr := d.cloud.DisksClient.ListByResourceGroup(ctx, "", resourceGroup)
+	diskClient := d.clientFactory.GetDiskClient()
+	disks, derr := diskClient.List(ctx, resourceGroup)
 	if derr != nil {
-		return listVolumeStatus{err: status.Errorf(codes.Internal, "ListVolumes on rg(%s) failed with error: %v", resourceGroup, derr.Error())}
+		return listVolumeStatus{err: status.Errorf(codes.Internal, "ListVolumes on rg(%s) failed with error: %s", resourceGroup, derr.Error())}
 	}
 	// if volSet is initialized but is empty, return
 	if volSet != nil && len(volSet) == 0 {
@@ -658,7 +660,7 @@ func (d *DriverV2) listVolumesByResourceGroup(ctx context.Context, resourceGroup
 			continue
 		}
 		// HyperVGeneration property is only setup for os disks. Only the non os disks should be included in the list
-		if disk.DiskProperties == nil || disk.DiskProperties.HyperVGeneration == "" {
+		if disk.Properties == nil || disk.Properties.HyperVGeneration == nil || *disk.Properties.HyperVGeneration == "" {
 			nodeList := []string{}
 
 			if disk.ManagedBy != nil {
@@ -722,14 +724,18 @@ func (d *DriverV2) ControllerExpandVolume(ctx context.Context, req *csi.Controll
 	}()
 
 	subsID := azureutils.GetSubscriptionIDFromURI(diskURI)
-	result, rerr := d.cloud.DisksClient.Get(ctx, subsID, resourceGroup, diskName)
-	if rerr != nil {
-		return nil, status.Errorf(codes.Internal, "could not get the disk(%s) under rg(%s) with error(%v)", diskName, resourceGroup, rerr.Error())
+	diskClient, err := d.clientFactory.GetDiskClientForSub(subsID)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "could not get disk client for subscription(%s) with error(%v)", subsID, err)
 	}
-	if result.DiskProperties.DiskSizeGB == nil {
+	result, err := diskClient.Get(ctx, resourceGroup, diskName)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "could not get the disk(%s) under rg(%s) with error(%v)", diskName, resourceGroup, err)
+	}
+	if result.Properties.DiskSizeGB == nil {
 		return nil, status.Errorf(codes.Internal, "could not get size of the disk(%s)", diskName)
 	}
-	oldSize := *resource.NewQuantity(int64(*result.DiskProperties.DiskSizeGB), resource.BinarySI)
+	oldSize := *resource.NewQuantity(int64(*result.Properties.DiskSizeGB), resource.BinarySI)
 
 	klog.V(2).Infof("begin to expand azure disk(%s) with new size(%d)", diskURI, requestSize.Value())
 	newSize, err := d.diskController.ResizeDisk(ctx, diskURI, oldSize, requestSize, d.enableDiskOnlineResize)
@@ -952,26 +958,30 @@ func (d *DriverV2) GetSourceDiskSize(ctx context.Context, subsID, resourceGroup,
 	if curDepth > maxDepth {
 		return nil, status.Error(codes.Internal, fmt.Sprintf("current depth (%d) surpassed the max depth (%d) while searching for the source disk size", curDepth, maxDepth))
 	}
-	result, rerr := d.cloud.DisksClient.Get(ctx, subsID, resourceGroup, diskName)
-	if rerr != nil {
-		return nil, rerr.Error()
+	diskClient, err := d.clientFactory.GetDiskClientForSub(subsID)
+	if err != nil {
+		return nil, status.Error(codes.Internal, err.Error())
 	}
-	if result.DiskProperties == nil {
+	result, err := diskClient.Get(ctx, resourceGroup, diskName)
+	if err != nil {
+		return nil, err
+	}
+	if result.Properties == nil {
 		return nil, status.Error(codes.Internal, fmt.Sprintf("DiskProperty not found for disk (%s) in resource group (%s)", diskName, resourceGroup))
 	}
 
-	if result.DiskProperties.CreationData != nil && (*result.DiskProperties.CreationData).CreateOption == "Copy" {
+	if result.Properties.CreationData != nil && result.Properties.CreationData.CreateOption != nil && *result.Properties.CreationData.CreateOption == armcompute.DiskCreateOptionCopy {
 		klog.V(2).Infof("Clone source disk has a parent source")
-		sourceResourceID := *result.DiskProperties.CreationData.SourceResourceID
+		sourceResourceID := *result.Properties.CreationData.SourceResourceID
 		parentResourceGroup, _ := azureutils.GetResourceGroupFromURI(sourceResourceID)
 		parentDiskName := path.Base(sourceResourceID)
 		return d.GetSourceDiskSize(ctx, subsID, parentResourceGroup, parentDiskName, curDepth+1, maxDepth)
 	}
 
-	if (*result.DiskProperties).DiskSizeGB == nil {
+	if (*result.Properties).DiskSizeGB == nil {
 		return nil, status.Error(codes.Internal, fmt.Sprintf("DiskSizeGB for disk (%s) in resourcegroup (%s) is nil", diskName, resourceGroup))
 	}
-	return (*result.DiskProperties).DiskSizeGB, nil
+	return (*result.Properties).DiskSizeGB, nil
 }
 
 // The format of snapshot id is /subscriptions/xxx/resourceGroups/xxx/providers/Microsoft.Compute/snapshots/snapshot-xxx-xxx.

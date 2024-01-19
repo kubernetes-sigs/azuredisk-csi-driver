@@ -29,7 +29,8 @@ import (
 	"time"
 	"unicode"
 
-	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2022-08-01/compute"
+	"github.com/Azure/azure-sdk-for-go/sdk/azcore/to"
+	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute/v5"
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/util/sets"
@@ -52,8 +53,8 @@ import (
 const (
 	azurePublicCloud                          = "AZUREPUBLICCLOUD"
 	azureStackCloud                           = "AZURESTACKCLOUD"
-	azurePublicCloudDefaultStorageAccountType = compute.StandardSSDLRS
-	azureStackCloudDefaultStorageAccountType  = compute.StandardLRS
+	azurePublicCloudDefaultStorageAccountType = armcompute.DiskStorageAccountTypesStandardSSDLRS
+	azureStackCloudDefaultStorageAccountType  = armcompute.DiskStorageAccountTypesStandardLRS
 	defaultAzureDataDiskCachingMode           = v1.AzureDataDiskCachingReadOnly
 	// default IOPS Caps & Throughput Cap (MBps) per https://docs.microsoft.com/en-us/azure/virtual-machines/linux/disks-ultra-ssd
 	// see https://docs.microsoft.com/en-us/rest/api/compute/disks/createorupdate#uri-parameters
@@ -132,7 +133,7 @@ type ManagedDiskParameters struct {
 	Zoned                   string
 }
 
-func GetCachingMode(attributes map[string]string) (compute.CachingTypes, error) {
+func GetCachingMode(attributes map[string]string) (armcompute.CachingTypes, error) {
 	var (
 		cachingMode v1.AzureDataDiskCachingMode
 		err         error
@@ -146,7 +147,7 @@ func GetCachingMode(attributes map[string]string) (compute.CachingTypes, error) 
 	}
 
 	cachingMode, err = NormalizeCachingMode(cachingMode)
-	return compute.CachingTypes(cachingMode), err
+	return armcompute.CachingTypes(cachingMode), err
 }
 
 // GetAttachDiskInitialDelay gttachDiskInitialDelay from attributes
@@ -353,10 +354,10 @@ func GetSubscriptionIDFromURI(diskURI string) string {
 	return ""
 }
 
-func GetValidCreationData(subscriptionID, resourceGroup, sourceResourceID, sourceType string) (compute.CreationData, error) {
+func GetValidCreationData(subscriptionID, resourceGroup, sourceResourceID, sourceType string) (armcompute.CreationData, error) {
 	if sourceResourceID == "" {
-		return compute.CreationData{
-			CreateOption: compute.Empty,
+		return armcompute.CreationData{
+			CreateOption: to.Ptr(armcompute.DiskCreateOptionEmpty),
 		}, nil
 	}
 
@@ -371,21 +372,21 @@ func GetValidCreationData(subscriptionID, resourceGroup, sourceResourceID, sourc
 			sourceResourceID = fmt.Sprintf(consts.ManagedDiskPath, subscriptionID, resourceGroup, sourceResourceID)
 		}
 	default:
-		return compute.CreationData{
-			CreateOption: compute.Empty,
+		return armcompute.CreationData{
+			CreateOption: to.Ptr(armcompute.DiskCreateOptionEmpty),
 		}, nil
 	}
 
 	splits := strings.Split(sourceResourceID, "/")
 	if len(splits) > 9 {
 		if sourceType == consts.SourceSnapshot {
-			return compute.CreationData{}, fmt.Errorf("sourceResourceID(%s) is invalid, correct format: %s", sourceResourceID, diskSnapshotPathRE)
+			return armcompute.CreationData{}, fmt.Errorf("sourceResourceID(%s) is invalid, correct format: %s", sourceResourceID, diskSnapshotPathRE)
 		}
 
-		return compute.CreationData{}, fmt.Errorf("sourceResourceID(%s) is invalid, correct format: %s", sourceResourceID, consts.ManagedDiskPathRE)
+		return armcompute.CreationData{}, fmt.Errorf("sourceResourceID(%s) is invalid, correct format: %s", sourceResourceID, consts.ManagedDiskPathRE)
 	}
-	return compute.CreationData{
-		CreateOption:     compute.Copy,
+	return armcompute.CreationData{
+		CreateOption:     to.Ptr(armcompute.DiskCreateOptionCopy),
 		SourceResourceID: &sourceResourceID,
 	}, nil
 }
@@ -484,33 +485,33 @@ func NormalizeCachingMode(cachingMode v1.AzureDataDiskCachingMode) (v1.AzureData
 	return cachingMode, nil
 }
 
-func NormalizeNetworkAccessPolicy(networkAccessPolicy string) (compute.NetworkAccessPolicy, error) {
+func NormalizeNetworkAccessPolicy(networkAccessPolicy string) (armcompute.NetworkAccessPolicy, error) {
 	if networkAccessPolicy == "" {
-		return compute.NetworkAccessPolicy(networkAccessPolicy), nil
+		return armcompute.NetworkAccessPolicy(networkAccessPolicy), nil
 	}
-	policy := compute.NetworkAccessPolicy(networkAccessPolicy)
-	for _, s := range compute.PossibleNetworkAccessPolicyValues() {
+	policy := armcompute.NetworkAccessPolicy(networkAccessPolicy)
+	for _, s := range armcompute.PossibleNetworkAccessPolicyValues() {
 		if policy == s {
 			return policy, nil
 		}
 	}
-	return "", fmt.Errorf("azureDisk - %s is not supported NetworkAccessPolicy. Supported values are %s", networkAccessPolicy, compute.PossibleNetworkAccessPolicyValues())
+	return "", fmt.Errorf("azureDisk - %s is not supported NetworkAccessPolicy. Supported values are %s", networkAccessPolicy, armcompute.PossibleNetworkAccessPolicyValues())
 }
 
-func NormalizePublicNetworkAccess(publicNetworkAccess string) (compute.PublicNetworkAccess, error) {
+func NormalizePublicNetworkAccess(publicNetworkAccess string) (armcompute.PublicNetworkAccess, error) {
 	if publicNetworkAccess == "" {
-		return compute.PublicNetworkAccess(publicNetworkAccess), nil
+		return armcompute.PublicNetworkAccess(publicNetworkAccess), nil
 	}
-	access := compute.PublicNetworkAccess(publicNetworkAccess)
-	for _, s := range compute.PossiblePublicNetworkAccessValues() {
+	access := armcompute.PublicNetworkAccess(publicNetworkAccess)
+	for _, s := range armcompute.PossiblePublicNetworkAccessValues() {
 		if access == s {
 			return access, nil
 		}
 	}
-	return "", fmt.Errorf("azureDisk - %s is not supported PublicNetworkAccess. Supported values are %s", publicNetworkAccess, compute.PossiblePublicNetworkAccessValues())
+	return "", fmt.Errorf("azureDisk - %s is not supported PublicNetworkAccess. Supported values are %s", publicNetworkAccess, armcompute.PossiblePublicNetworkAccessValues())
 }
 
-func NormalizeStorageAccountType(storageAccountType, cloud string, disableAzureStackCloud bool) (compute.DiskStorageAccountTypes, error) {
+func NormalizeStorageAccountType(storageAccountType, cloud string, disableAzureStackCloud bool) (armcompute.DiskStorageAccountTypes, error) {
 	if storageAccountType == "" {
 		if IsAzureStackCloud(cloud, disableAzureStackCloud) {
 			return azureStackCloudDefaultStorageAccountType, nil
@@ -518,10 +519,10 @@ func NormalizeStorageAccountType(storageAccountType, cloud string, disableAzureS
 		return azurePublicCloudDefaultStorageAccountType, nil
 	}
 
-	sku := compute.DiskStorageAccountTypes(storageAccountType)
-	supportedSkuNames := compute.PossibleDiskStorageAccountTypesValues()
+	sku := armcompute.DiskStorageAccountTypes(storageAccountType)
+	supportedSkuNames := armcompute.PossibleDiskStorageAccountTypesValues()
 	if IsAzureStackCloud(cloud, disableAzureStackCloud) {
-		supportedSkuNames = []compute.DiskStorageAccountTypes{compute.StandardLRS, compute.PremiumLRS}
+		supportedSkuNames = []armcompute.DiskStorageAccountTypes{armcompute.DiskStorageAccountTypesStandardLRS, armcompute.DiskStorageAccountTypesPremiumLRS}
 	}
 	for _, s := range supportedSkuNames {
 		if sku == s {
@@ -536,7 +537,7 @@ func ValidateDiskEncryptionType(encryptionType string) error {
 	if encryptionType == "" {
 		return nil
 	}
-	supportedTypes := compute.PossibleEncryptionTypeValues()
+	supportedTypes := armcompute.PossibleEncryptionTypeValues()
 	for _, s := range supportedTypes {
 		if encryptionType == string(s) {
 			return nil
@@ -549,7 +550,7 @@ func ValidateDataAccessAuthMode(dataAccessAuthMode string) error {
 	if dataAccessAuthMode == "" {
 		return nil
 	}
-	supportedModes := compute.PossibleDataAccessAuthModeValues()
+	supportedModes := armcompute.PossibleDataAccessAuthModeValues()
 	for _, s := range supportedModes {
 		if dataAccessAuthMode == string(s) {
 			return nil
@@ -669,9 +670,9 @@ func ParseDiskParameters(parameters map[string]string) (ManagedDiskParameters, e
 		}
 	}
 
-	if strings.EqualFold(diskParams.AccountType, string(compute.PremiumV2LRS)) {
+	if strings.EqualFold(diskParams.AccountType, string(armcompute.DiskStorageAccountTypesPremiumV2LRS)) {
 		if diskParams.CachingMode != "" && !strings.EqualFold(string(diskParams.CachingMode), string(v1.AzureDataDiskCachingNone)) {
-			return diskParams, fmt.Errorf("cachingMode %s is not supported for %s", diskParams.CachingMode, compute.PremiumV2LRS)
+			return diskParams, fmt.Errorf("cachingMode %s is not supported for %s", diskParams.CachingMode, armcompute.DiskStorageAccountTypesPremiumV2LRS)
 		}
 	}
 
@@ -725,18 +726,18 @@ func checkDiskName(diskName string) bool {
 	return true
 }
 
-// InsertDiskProperties: insert disk properties to map
-func InsertDiskProperties(disk *compute.Disk, publishConext map[string]string) {
+// InsertProperties: insert disk properties to map
+func InsertDiskProperties(disk *armcompute.Disk, publishConext map[string]string) {
 	if disk == nil || publishConext == nil {
 		return
 	}
 
-	if disk.Sku != nil {
-		publishConext[consts.SkuNameField] = string(disk.Sku.Name)
+	if disk.SKU != nil {
+		publishConext[consts.SkuNameField] = string(*disk.SKU.Name)
 	}
-	prop := disk.DiskProperties
+	prop := disk.Properties
 	if prop != nil {
-		publishConext[consts.NetworkAccessPolicyField] = string(prop.NetworkAccessPolicy)
+		publishConext[consts.NetworkAccessPolicyField] = string(*prop.NetworkAccessPolicy)
 		if prop.DiskIOPSReadWrite != nil {
 			publishConext[consts.DiskIOPSReadWriteField] = strconv.Itoa(int(*prop.DiskIOPSReadWrite))
 		}

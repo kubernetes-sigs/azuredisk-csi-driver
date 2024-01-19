@@ -17,10 +17,12 @@ limitations under the License.
 package azuredisk
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io/ioutil"
 	"net/http"
 	"reflect"
 	"strconv"
@@ -28,18 +30,21 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
+	"github.com/Azure/azure-sdk-for-go/sdk/azcore/to"
+	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute/v5"
 	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2022-08-01/compute"
 	"github.com/Azure/go-autorest/autorest/azure"
 	autorestmocks "github.com/Azure/go-autorest/autorest/mocks"
 	"github.com/stretchr/testify/assert"
 	"go.uber.org/mock/gomock"
-
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/wait"
 	cloudprovider "k8s.io/cloud-provider"
 	"k8s.io/utils/pointer"
 
-	"sigs.k8s.io/cloud-provider-azure/pkg/azureclients/diskclient/mockdiskclient"
+	"sigs.k8s.io/cloud-provider-azure/pkg/azclient/diskclient/mock_diskclient"
+	"sigs.k8s.io/cloud-provider-azure/pkg/azclient/mock_azclient"
 	"sigs.k8s.io/cloud-provider-azure/pkg/azureclients/vmclient/mockvmclient"
 	"sigs.k8s.io/cloud-provider-azure/pkg/consts"
 	"sigs.k8s.io/cloud-provider-azure/pkg/provider"
@@ -114,7 +119,7 @@ func TestCommonAttachDisk(t *testing.T) {
 	testCases := []struct {
 		desc                 string
 		diskName             string
-		existedDisk          *compute.Disk
+		existedDisk          *armcompute.Disk
 		nodeName             types.NodeName
 		vmList               map[string]string
 		isDataDisksFull      bool
@@ -143,7 +148,7 @@ func TestCommonAttachDisk(t *testing.T) {
 			desc:        "LUN -1 and error shall be returned if there's no such instance corresponding to given nodeName",
 			nodeName:    "vm1",
 			diskName:    "disk-name",
-			existedDisk: &compute.Disk{Name: pointer.String("disk-name")},
+			existedDisk: &armcompute.Disk{Name: pointer.String("disk-name")},
 			expectedLun: -1,
 			expectErr:   true,
 		},
@@ -153,7 +158,7 @@ func TestCommonAttachDisk(t *testing.T) {
 			nodeName:        "vm1",
 			isDataDisksFull: true,
 			diskName:        "disk-name",
-			existedDisk:     &compute.Disk{Name: pointer.String("disk-name")},
+			existedDisk:     &armcompute.Disk{Name: pointer.String("disk-name")},
 			expectedLun:     -1,
 			expectErr:       true,
 		},
@@ -162,11 +167,11 @@ func TestCommonAttachDisk(t *testing.T) {
 			vmList:   map[string]string{"vm1": "PowerState/Running"},
 			nodeName: "vm1",
 			diskName: "disk-name",
-			existedDisk: &compute.Disk{Name: pointer.String("disk-name"),
-				DiskProperties: &compute.DiskProperties{
-					Encryption: &compute.Encryption{DiskEncryptionSetID: &diskEncryptionSetID, Type: compute.EncryptionTypeEncryptionAtRestWithCustomerKey},
+			existedDisk: &armcompute.Disk{Name: pointer.String("disk-name"),
+				Properties: &armcompute.DiskProperties{
+					Encryption: &armcompute.Encryption{DiskEncryptionSetID: &diskEncryptionSetID, Type: to.Ptr(armcompute.EncryptionTypeEncryptionAtRestWithCustomerKey)},
 					DiskSizeGB: pointer.Int32(4096),
-					DiskState:  compute.Unattached,
+					DiskState:  to.Ptr(armcompute.DiskStateUnattached),
 				},
 				Tags: testTags},
 			expectedLun: 3,
@@ -178,11 +183,11 @@ func TestCommonAttachDisk(t *testing.T) {
 			vmList:   map[string]string{"vm1": "PowerState/Running"},
 			nodeName: "vm1",
 			diskName: "disk-name",
-			existedDisk: &compute.Disk{Name: pointer.String("disk-name"),
-				DiskProperties: &compute.DiskProperties{
-					Encryption: &compute.Encryption{DiskEncryptionSetID: &diskEncryptionSetID, Type: compute.EncryptionTypeEncryptionAtRestWithCustomerKey},
+			existedDisk: &armcompute.Disk{Name: pointer.String("disk-name"),
+				Properties: &armcompute.DiskProperties{
+					Encryption: &armcompute.Encryption{DiskEncryptionSetID: &diskEncryptionSetID, Type: to.Ptr(armcompute.EncryptionTypeEncryptionAtRestWithCustomerKey)},
 					DiskSizeGB: pointer.Int32(4096),
-					DiskState:  compute.Attached,
+					DiskState:  to.Ptr(armcompute.DiskStateAttached),
 				},
 				Tags: testTags},
 			expectedLun: -1,
@@ -193,7 +198,7 @@ func TestCommonAttachDisk(t *testing.T) {
 			vmList:      map[string]string{"vm1": "PowerState/Running"},
 			nodeName:    "vm1",
 			diskName:    "disk-name",
-			existedDisk: &compute.Disk{Name: pointer.String("disk-name"), ManagedBy: pointer.String(goodInstanceID), DiskProperties: &compute.DiskProperties{MaxShares: &maxShare}},
+			existedDisk: &armcompute.Disk{Name: pointer.String("disk-name"), ManagedBy: pointer.String(goodInstanceID), Properties: &armcompute.DiskProperties{MaxShares: &maxShare}},
 			expectedLun: -1,
 			expectErr:   true,
 		},
@@ -295,7 +300,7 @@ func TestCommonAttachDisk(t *testing.T) {
 				lockMap:             newLockMap(),
 				DisableDiskLunCheck: true,
 			}
-			lun, err := testdiskController.AttachDisk(ctx, test.diskName, diskURI, tt.nodeName, compute.CachingTypesReadOnly, tt.existedDisk, nil)
+			lun, err := testdiskController.AttachDisk(ctx, test.diskName, diskURI, tt.nodeName, armcompute.CachingTypesReadOnly, tt.existedDisk, nil)
 
 			assert.Equal(t, tt.expectedLun, lun, "TestCase[%d]: %s", i, tt.desc)
 			assert.Equal(t, tt.expectErr, err != nil, "TestCase[%d]: %s, return error: %v", i, tt.desc, err)
@@ -616,7 +621,7 @@ func TestGetValidCreationData(t *testing.T) {
 		resourceGroup    string
 		sourceResourceID string
 		sourceType       string
-		expected1        compute.CreationData
+		expected1        armcompute.CreationData
 		expected2        error
 	}{
 		{
@@ -624,8 +629,8 @@ func TestGetValidCreationData(t *testing.T) {
 			resourceGroup:    "",
 			sourceResourceID: "",
 			sourceType:       "",
-			expected1: compute.CreationData{
-				CreateOption: compute.Empty,
+			expected1: armcompute.CreationData{
+				CreateOption: to.Ptr(armcompute.DiskCreateOptionEmpty),
 			},
 			expected2: nil,
 		},
@@ -634,8 +639,8 @@ func TestGetValidCreationData(t *testing.T) {
 			resourceGroup:    "",
 			sourceResourceID: "/subscriptions/xxx/resourceGroups/xxx/providers/Microsoft.Compute/snapshots/xxx",
 			sourceType:       sourceSnapshot,
-			expected1: compute.CreationData{
-				CreateOption:     compute.Copy,
+			expected1: armcompute.CreationData{
+				CreateOption:     to.Ptr(armcompute.DiskCreateOptionCopy),
 				SourceResourceID: &sourceResourceSnapshotID,
 			},
 			expected2: nil,
@@ -645,8 +650,8 @@ func TestGetValidCreationData(t *testing.T) {
 			resourceGroup:    "xxx",
 			sourceResourceID: "xxx",
 			sourceType:       sourceSnapshot,
-			expected1: compute.CreationData{
-				CreateOption:     compute.Copy,
+			expected1: armcompute.CreationData{
+				CreateOption:     to.Ptr(armcompute.DiskCreateOptionCopy),
 				SourceResourceID: &sourceResourceSnapshotID,
 			},
 			expected2: nil,
@@ -656,7 +661,7 @@ func TestGetValidCreationData(t *testing.T) {
 			resourceGroup:    "",
 			sourceResourceID: "/subscriptions/23/providers/Microsoft.Compute/disks/name",
 			sourceType:       sourceSnapshot,
-			expected1:        compute.CreationData{},
+			expected1:        armcompute.CreationData{},
 			expected2:        fmt.Errorf("sourceResourceID(%s) is invalid, correct format: %s", "/subscriptions//resourceGroups//providers/Microsoft.Compute/snapshots//subscriptions/23/providers/Microsoft.Compute/disks/name", diskSnapshotPathRE),
 		},
 		{
@@ -664,7 +669,7 @@ func TestGetValidCreationData(t *testing.T) {
 			resourceGroup:    "",
 			sourceResourceID: "http://test.com/vhds/name",
 			sourceType:       sourceSnapshot,
-			expected1:        compute.CreationData{},
+			expected1:        armcompute.CreationData{},
 			expected2:        fmt.Errorf("sourceResourceID(%s) is invalid, correct format: %s", "/subscriptions//resourceGroups//providers/Microsoft.Compute/snapshots/http://test.com/vhds/name", diskSnapshotPathRE),
 		},
 		{
@@ -672,7 +677,7 @@ func TestGetValidCreationData(t *testing.T) {
 			resourceGroup:    "",
 			sourceResourceID: "/subscriptions/xxx/snapshots/xxx",
 			sourceType:       sourceSnapshot,
-			expected1:        compute.CreationData{},
+			expected1:        armcompute.CreationData{},
 			expected2:        fmt.Errorf("sourceResourceID(%s) is invalid, correct format: %s", "/subscriptions//resourceGroups//providers/Microsoft.Compute/snapshots//subscriptions/xxx/snapshots/xxx", diskSnapshotPathRE),
 		},
 		{
@@ -680,7 +685,7 @@ func TestGetValidCreationData(t *testing.T) {
 			resourceGroup:    "",
 			sourceResourceID: "/subscriptions/xxx/resourceGroups/xxx/providers/Microsoft.Compute/snapshots/xxx/snapshots/xxx/snapshots/xxx",
 			sourceType:       sourceSnapshot,
-			expected1:        compute.CreationData{},
+			expected1:        armcompute.CreationData{},
 			expected2:        fmt.Errorf("sourceResourceID(%s) is invalid, correct format: %s", "/subscriptions/xxx/resourceGroups/xxx/providers/Microsoft.Compute/snapshots/xxx/snapshots/xxx/snapshots/xxx", diskSnapshotPathRE),
 		},
 		{
@@ -688,8 +693,8 @@ func TestGetValidCreationData(t *testing.T) {
 			resourceGroup:    "",
 			sourceResourceID: "xxx",
 			sourceType:       "",
-			expected1: compute.CreationData{
-				CreateOption: compute.Empty,
+			expected1: armcompute.CreationData{
+				CreateOption: to.Ptr(armcompute.DiskCreateOptionEmpty),
 			},
 			expected2: nil,
 		},
@@ -698,8 +703,8 @@ func TestGetValidCreationData(t *testing.T) {
 			resourceGroup:    "",
 			sourceResourceID: "/subscriptions/xxx/resourceGroups/xxx/providers/Microsoft.Compute/disks/xxx",
 			sourceType:       sourceVolume,
-			expected1: compute.CreationData{
-				CreateOption:     compute.Copy,
+			expected1: armcompute.CreationData{
+				CreateOption:     to.Ptr(armcompute.DiskCreateOptionCopy),
 				SourceResourceID: &sourceResourceVolumeID,
 			},
 			expected2: nil,
@@ -709,8 +714,8 @@ func TestGetValidCreationData(t *testing.T) {
 			resourceGroup:    "xxx",
 			sourceResourceID: "xxx",
 			sourceType:       sourceVolume,
-			expected1: compute.CreationData{
-				CreateOption:     compute.Copy,
+			expected1: armcompute.CreationData{
+				CreateOption:     to.Ptr(armcompute.DiskCreateOptionCopy),
 				SourceResourceID: &sourceResourceVolumeID,
 			},
 			expected2: nil,
@@ -720,7 +725,7 @@ func TestGetValidCreationData(t *testing.T) {
 			resourceGroup:    "",
 			sourceResourceID: "/subscriptions/xxx/resourceGroups/xxx/providers/Microsoft.Compute/snapshots/xxx",
 			sourceType:       sourceVolume,
-			expected1:        compute.CreationData{},
+			expected1:        armcompute.CreationData{},
 			expected2:        fmt.Errorf("sourceResourceID(%s) is invalid, correct format: %s", "/subscriptions//resourceGroups//providers/Microsoft.Compute/disks//subscriptions/xxx/resourceGroups/xxx/providers/Microsoft.Compute/snapshots/xxx", managedDiskPathRE),
 		},
 	}
@@ -745,18 +750,27 @@ func TestCheckDiskExists(t *testing.T) {
 	defer cancel()
 
 	testCloud := provider.GetTestCloud(ctrl)
+	mockFactory := mock_azclient.NewMockClientFactory(ctrl)
 	common := &controllerCommon{
-		cloud:   testCloud,
-		lockMap: newLockMap(),
+		cloud:         testCloud,
+		clientFactory: mockFactory,
+		lockMap:       newLockMap(),
 	}
 	// create a new disk before running test
 	newDiskName := "newdisk"
 	newDiskURI := fmt.Sprintf("/subscriptions/%s/resourceGroups/%s/providers/Microsoft.Compute/disks/%s",
 		testCloud.SubscriptionID, testCloud.ResourceGroup, newDiskName)
 
-	mockDisksClient := testCloud.DisksClient.(*mockdiskclient.MockInterface)
-	mockDisksClient.EXPECT().Get(gomock.Any(), gomock.Any(), testCloud.ResourceGroup, newDiskName).Return(compute.Disk{}, nil).AnyTimes()
-	mockDisksClient.EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Not(testCloud.ResourceGroup), gomock.Any()).Return(compute.Disk{}, &retry.Error{HTTPStatusCode: http.StatusNotFound, RawError: cloudprovider.InstanceNotFound}).AnyTimes()
+	mockDisksClient := mock_diskclient.NewMockInterface(ctrl)
+	mockFactory.EXPECT().GetDiskClientForSub(gomock.Any()).Return(mockDisksClient, nil).AnyTimes()
+	mockDisksClient.EXPECT().Get(gomock.Any(), testCloud.ResourceGroup, newDiskName).Return(&armcompute.Disk{}, nil).AnyTimes()
+	mockDisksClient.EXPECT().Get(gomock.Any(), gomock.Not(testCloud.ResourceGroup), gomock.Any()).Return(&armcompute.Disk{}, &azcore.ResponseError{
+		StatusCode: http.StatusNotFound,
+		RawResponse: &http.Response{
+			StatusCode: http.StatusNotFound,
+			Body:       ioutil.NopCloser(bytes.NewReader([]byte{})),
+		},
+	}).AnyTimes()
 
 	testCases := []struct {
 		diskURI        string
@@ -795,9 +809,11 @@ func TestFilterNonExistingDisksWithSpecialHTTPStatusCode(t *testing.T) {
 	defer cancel()
 
 	testCloud := provider.GetTestCloud(ctrl)
+	mockFactory := mock_azclient.NewMockClientFactory(ctrl)
 	common := &controllerCommon{
-		cloud:   testCloud,
-		lockMap: newLockMap(),
+		cloud:         testCloud,
+		clientFactory: mockFactory,
+		lockMap:       newLockMap(),
 	}
 	// create a new disk before running test
 	diskURIPrefix := fmt.Sprintf("/subscriptions/%s/resourceGroups/%s/providers/Microsoft.Compute/disks/",
@@ -805,13 +821,20 @@ func TestFilterNonExistingDisksWithSpecialHTTPStatusCode(t *testing.T) {
 	newDiskName := "specialdisk"
 	newDiskURI := diskURIPrefix + newDiskName
 
-	mockDisksClient := testCloud.DisksClient.(*mockdiskclient.MockInterface)
-	mockDisksClient.EXPECT().Get(gomock.Any(), testCloud.SubscriptionID, testCloud.ResourceGroup, gomock.Eq(newDiskName)).Return(compute.Disk{}, &retry.Error{HTTPStatusCode: http.StatusBadRequest, RawError: cloudprovider.InstanceNotFound}).AnyTimes()
+	mockDisksClient := mock_diskclient.NewMockInterface(ctrl)
+	mockFactory.EXPECT().GetDiskClientForSub(gomock.Any()).Return(mockDisksClient, nil).AnyTimes()
+	mockDisksClient.EXPECT().Get(gomock.Any(), testCloud.ResourceGroup, gomock.Eq(newDiskName)).Return(&armcompute.Disk{}, &azcore.ResponseError{
+		StatusCode: http.StatusBadRequest,
+		RawResponse: &http.Response{
+			StatusCode: http.StatusBadRequest,
+			Body:       ioutil.NopCloser(bytes.NewReader([]byte{})),
+		},
+	}).AnyTimes()
 
-	disks := []compute.DataDisk{
+	disks := []*armcompute.DataDisk{
 		{
 			Name: &newDiskName,
-			ManagedDisk: &compute.ManagedDiskParameters{
+			ManagedDisk: &armcompute.ManagedDiskParameters{
 				ID: &newDiskURI,
 			},
 		},
