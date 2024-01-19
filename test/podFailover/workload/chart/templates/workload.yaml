@@ -47,7 +47,7 @@ stringData:
   AZURE_TENANT_ID: {{ .Values.azureTenantId }}
 ---
 {{- end }}
-{{- if .Values.storageClass }}
+{{- if and .Values.storageClass .Values.storageClass.create }}
 apiVersion: storage.k8s.io/v1
 kind: StorageClass
 metadata:
