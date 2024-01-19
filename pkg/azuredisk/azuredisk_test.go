@@ -27,7 +27,6 @@ import (
 
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute/v5"
 	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2022-08-01/compute"
-	"github.com/Azure/go-autorest/autorest/date"
 	"github.com/stretchr/testify/assert"
 	"go.uber.org/mock/gomock"
 	"golang.org/x/sync/errgroup"
@@ -38,10 +37,9 @@ import (
 	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 	"sigs.k8s.io/cloud-provider-azure/pkg/azclient/diskclient/mock_diskclient"
 	"sigs.k8s.io/cloud-provider-azure/pkg/azclient/mock_azclient"
-	"sigs.k8s.io/cloud-provider-azure/pkg/azureclients/snapshotclient/mocksnapshotclient"
+	"sigs.k8s.io/cloud-provider-azure/pkg/azclient/snapshotclient/mock_snapshotclient"
 	"sigs.k8s.io/cloud-provider-azure/pkg/azureclients/vmclient/mockvmclient"
 	azure "sigs.k8s.io/cloud-provider-azure/pkg/provider"
-	"sigs.k8s.io/cloud-provider-azure/pkg/retry"
 )
 
 func TestNewDriverV1(t *testing.T) {
@@ -323,17 +321,15 @@ func TestWaitForSnapshot(t *testing.T) {
 				intervel := 1 * time.Millisecond
 				timeout := 10 * time.Millisecond
 				snapshotID := "test"
-				snapshot := compute.Snapshot{
-					SnapshotProperties: &compute.SnapshotProperties{},
-					ID:                 &snapshotID}
+				snapshot := &armcompute.Snapshot{
+					Properties: &armcompute.SnapshotProperties{},
+					ID:         &snapshotID}
 				ctrl := gomock.NewController(t)
 				defer ctrl.Finish()
-				mockSnapshotClient := mocksnapshotclient.NewMockInterface(ctrl)
-				d.getCloud().SnapshotsClient = mockSnapshotClient
-				rerr := &retry.Error{
-					RawError: fmt.Errorf("invalid snapshotID"),
-				}
-				mockSnapshotClient.EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(snapshot, rerr).AnyTimes()
+				mockSnapshotClient := mock_snapshotclient.NewMockInterface(ctrl)
+				d.getClientFactory().(*mock_azclient.MockClientFactory).EXPECT().GetSnapshotClientForSub(subID).Return(mockSnapshotClient, nil).AnyTimes()
+
+				mockSnapshotClient.EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any()).Return(snapshot, fmt.Errorf("invalid snapshotID")).AnyTimes()
 				err := d.waitForSnapshotReady(context.Background(), subID, resourceGroup, snapshotID, intervel, timeout)
 
 				wantErr := true
@@ -362,21 +358,22 @@ func TestWaitForSnapshot(t *testing.T) {
 				snapshotID := "test"
 				location := "loc"
 				provisioningState := "succeeded"
-				snapshot := compute.Snapshot{
-					SnapshotProperties: &compute.SnapshotProperties{
-						TimeCreated:       &date.Time{},
+				snapshot := &armcompute.Snapshot{
+					Properties: &armcompute.SnapshotProperties{
+						TimeCreated:       &time.Time{},
 						ProvisioningState: &provisioningState,
 						DiskSizeGB:        &DiskSize,
-						CreationData:      &compute.CreationData{SourceResourceID: &volumeID},
-						CompletionPercent: pointer.Float64(0.0),
+						CreationData:      &armcompute.CreationData{SourceResourceID: &volumeID},
+						CompletionPercent: pointer.Float32(0.0),
 					},
 					Location: &location,
 					ID:       &snapshotID}
 				ctrl := gomock.NewController(t)
 				defer ctrl.Finish()
-				mockSnapshotClient := mocksnapshotclient.NewMockInterface(ctrl)
-				d.getCloud().SnapshotsClient = mockSnapshotClient
-				mockSnapshotClient.EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(snapshot, nil).AnyTimes()
+				mockSnapshotClient := mock_snapshotclient.NewMockInterface(ctrl)
+				d.getClientFactory().(*mock_azclient.MockClientFactory).EXPECT().GetSnapshotClientForSub(subID).Return(mockSnapshotClient, nil).AnyTimes()
+
+				mockSnapshotClient.EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any()).Return(snapshot, nil).AnyTimes()
 				err := d.waitForSnapshotReady(context.Background(), subID, resourceGroup, snapshotID, intervel, timeout)
 
 				wantErr := true
@@ -405,21 +402,21 @@ func TestWaitForSnapshot(t *testing.T) {
 				snapshotID := "test"
 				location := "loc"
 				provisioningState := "succeeded"
-				snapshot := compute.Snapshot{
-					SnapshotProperties: &compute.SnapshotProperties{
-						TimeCreated:       &date.Time{},
+				snapshot := &armcompute.Snapshot{
+					Properties: &armcompute.SnapshotProperties{
+						TimeCreated:       &time.Time{},
 						ProvisioningState: &provisioningState,
 						DiskSizeGB:        &DiskSize,
-						CreationData:      &compute.CreationData{SourceResourceID: &volumeID},
-						CompletionPercent: pointer.Float64(100.0),
+						CreationData:      &armcompute.CreationData{SourceResourceID: &volumeID},
+						CompletionPercent: pointer.Float32(100.0),
 					},
 					Location: &location,
 					ID:       &snapshotID}
 				ctrl := gomock.NewController(t)
 				defer ctrl.Finish()
-				mockSnapshotClient := mocksnapshotclient.NewMockInterface(ctrl)
-				d.getCloud().SnapshotsClient = mockSnapshotClient
-				mockSnapshotClient.EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(snapshot, nil).AnyTimes()
+				mockSnapshotClient := mock_snapshotclient.NewMockInterface(ctrl)
+				d.getClientFactory().(*mock_azclient.MockClientFactory).EXPECT().GetSnapshotClientForSub(subID).Return(mockSnapshotClient, nil).AnyTimes()
+				mockSnapshotClient.EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any()).Return(snapshot, nil).AnyTimes()
 				err := d.waitForSnapshotReady(context.Background(), subID, resourceGroup, snapshotID, intervel, timeout)
 
 				wantErr := false

@@ -29,7 +29,6 @@ import (
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/to"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute/v5"
-	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2022-08-01/compute"
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -570,13 +569,13 @@ func TestGetSourceVolumeID(t *testing.T) {
 	SourceResourceID := "test"
 
 	tests := []struct {
-		snapshot *compute.Snapshot
+		snapshot *armcompute.Snapshot
 		expected string
 	}{
 		{
-			snapshot: &compute.Snapshot{
-				SnapshotProperties: &compute.SnapshotProperties{
-					CreationData: &compute.CreationData{
+			snapshot: &armcompute.Snapshot{
+				Properties: &armcompute.SnapshotProperties{
+					CreationData: &armcompute.CreationData{
 						SourceResourceID: &SourceResourceID,
 					},
 				},
@@ -584,21 +583,21 @@ func TestGetSourceVolumeID(t *testing.T) {
 			expected: "test",
 		},
 		{
-			snapshot: &compute.Snapshot{
-				SnapshotProperties: &compute.SnapshotProperties{
-					CreationData: &compute.CreationData{},
+			snapshot: &armcompute.Snapshot{
+				Properties: &armcompute.SnapshotProperties{
+					CreationData: &armcompute.CreationData{},
 				},
 			},
 			expected: "",
 		},
 		{
-			snapshot: &compute.Snapshot{
-				SnapshotProperties: &compute.SnapshotProperties{},
+			snapshot: &armcompute.Snapshot{
+				Properties: &armcompute.SnapshotProperties{},
 			},
 			expected: "",
 		},
 		{
-			snapshot: &compute.Snapshot{},
+			snapshot: &armcompute.Snapshot{},
 			expected: "",
 		},
 		{
@@ -1698,7 +1697,7 @@ func TestInsertDiskProperties(t *testing.T) {
 				SKU: &armcompute.DiskSKU{Name: to.Ptr(armcompute.DiskStorageAccountTypesPremiumLRS)},
 			},
 			inputMap:    map[string]string{},
-			expectedMap: map[string]string{"skuname": string(compute.PremiumLRS)},
+			expectedMap: map[string]string{"skuname": string(armcompute.DiskStorageAccountTypesPremiumLRS)},
 		},
 		{
 			desc: "DiskProperties",
@@ -1717,8 +1716,8 @@ func TestInsertDiskProperties(t *testing.T) {
 			},
 			inputMap: map[string]string{},
 			expectedMap: map[string]string{
-				consts.SkuNameField:             string(compute.StandardSSDLRS),
-				consts.NetworkAccessPolicyField: string(compute.AllowPrivate),
+				consts.SkuNameField:             string(armcompute.DiskStorageAccountTypesStandardSSDLRS),
+				consts.NetworkAccessPolicyField: string(armcompute.NetworkAccessPolicyAllowPrivate),
 				consts.DiskIOPSReadWriteField:   "6400",
 				consts.DiskMBPSReadWriteField:   "100",
 				consts.LogicalSectorSizeField:   "512",

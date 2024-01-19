@@ -21,11 +21,11 @@ import (
 	"fmt"
 	"reflect"
 	"testing"
+	"time"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/to"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute/v5"
 	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2022-08-01/compute"
-	"github.com/Azure/go-autorest/autorest/date"
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	"github.com/stretchr/testify/assert"
 	"go.uber.org/mock/gomock"
@@ -41,7 +41,7 @@ import (
 	volumehelper "sigs.k8s.io/azuredisk-csi-driver/pkg/util"
 	"sigs.k8s.io/cloud-provider-azure/pkg/azclient/diskclient/mock_diskclient"
 	"sigs.k8s.io/cloud-provider-azure/pkg/azclient/mock_azclient"
-	"sigs.k8s.io/cloud-provider-azure/pkg/azureclients/snapshotclient/mocksnapshotclient"
+	"sigs.k8s.io/cloud-provider-azure/pkg/azclient/snapshotclient/mock_snapshotclient"
 	"sigs.k8s.io/cloud-provider-azure/pkg/azureclients/vmclient/mockvmclient"
 	azure "sigs.k8s.io/cloud-provider-azure/pkg/provider"
 	"sigs.k8s.io/cloud-provider-azure/pkg/retry"
@@ -1274,15 +1274,12 @@ func TestCreateSnapshot(t *testing.T) {
 				d.setCloud(&azure.Cloud{})
 				ctrl := gomock.NewController(t)
 				defer ctrl.Finish()
-				mockSnapshotClient := mocksnapshotclient.NewMockInterface(ctrl)
-				d.getCloud().SnapshotsClient = mockSnapshotClient
-				rerr := &retry.Error{
-					RawError: fmt.Errorf("test"),
-				}
-				mockSnapshotClient.EXPECT().CreateOrUpdate(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(rerr).AnyTimes()
+				mockSnapshotClient := mock_snapshotclient.NewMockInterface(ctrl)
+				d.getClientFactory().(*mock_azclient.MockClientFactory).EXPECT().GetSnapshotClientForSub(gomock.Any()).Return(mockSnapshotClient, nil).AnyTimes()
+				mockSnapshotClient.EXPECT().CreateOrUpdate(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, fmt.Errorf("test")).AnyTimes()
 
 				_, err := d.CreateSnapshot(context.Background(), req)
-				expectedErr := status.Errorf(codes.Internal, "create snapshot error: Retriable: false, RetryAfter: 0s, HTTPStatusCode: 0, RawError: test")
+				expectedErr := status.Errorf(codes.Internal, "create snapshot error: test")
 				if !reflect.DeepEqual(err, expectedErr) {
 					t.Errorf("actualErr: (%v), expectedErr: (%v)", err, expectedErr)
 				}
@@ -1304,14 +1301,11 @@ func TestCreateSnapshot(t *testing.T) {
 				d.setCloud(&azure.Cloud{})
 				ctrl := gomock.NewController(t)
 				defer ctrl.Finish()
-				mockSnapshotClient := mocksnapshotclient.NewMockInterface(ctrl)
-				d.getCloud().SnapshotsClient = mockSnapshotClient
-				rerr := &retry.Error{
-					RawError: fmt.Errorf("existing disk"),
-				}
-				mockSnapshotClient.EXPECT().CreateOrUpdate(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(rerr).AnyTimes()
+				mockSnapshotClient := mock_snapshotclient.NewMockInterface(ctrl)
+				d.getClientFactory().(*mock_azclient.MockClientFactory).EXPECT().GetSnapshotClientForSub(gomock.Any()).Return(mockSnapshotClient, nil).AnyTimes()
+				mockSnapshotClient.EXPECT().CreateOrUpdate(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, fmt.Errorf("existing disk")).AnyTimes()
 				_, err := d.CreateSnapshot(context.Background(), req)
-				expectedErr := status.Errorf(codes.AlreadyExists, "request snapshot(snapname) under rg(rg) already exists, but the SourceVolumeId is different, error details: Retriable: false, RetryAfter: 0s, HTTPStatusCode: 0, RawError: existing disk")
+				expectedErr := status.Errorf(codes.AlreadyExists, "request snapshot(snapname) under rg(rg) already exists, but the SourceVolumeId is different, error details: existing disk")
 				if !reflect.DeepEqual(err, expectedErr) {
 					t.Errorf("actualErr: (%v), expectedErr: (%v)", err, expectedErr)
 				}
@@ -1333,16 +1327,14 @@ func TestCreateSnapshot(t *testing.T) {
 				d.setCloud(&azure.Cloud{})
 				ctrl := gomock.NewController(t)
 				defer ctrl.Finish()
-				mockSnapshotClient := mocksnapshotclient.NewMockInterface(ctrl)
-				d.getCloud().SnapshotsClient = mockSnapshotClient
-				rerr := &retry.Error{
-					RawError: fmt.Errorf("get snapshot error"),
-				}
-				snapshot := compute.Snapshot{}
-				mockSnapshotClient.EXPECT().CreateOrUpdate(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
-				mockSnapshotClient.EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(snapshot, rerr).AnyTimes()
+				mockSnapshotClient := mock_snapshotclient.NewMockInterface(ctrl)
+				d.getClientFactory().(*mock_azclient.MockClientFactory).EXPECT().GetSnapshotClientForSub(gomock.Any()).Return(mockSnapshotClient, nil).AnyTimes()
+
+				snapshot := &armcompute.Snapshot{}
+				mockSnapshotClient.EXPECT().CreateOrUpdate(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, nil).AnyTimes()
+				mockSnapshotClient.EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any()).Return(snapshot, fmt.Errorf("get snapshot error")).AnyTimes()
 				_, err := d.CreateSnapshot(context.Background(), req)
-				expectedErr := status.Errorf(codes.Internal, "waitForSnapshotReady(, rg, unit-test) failed with Retriable: false, RetryAfter: 0s, HTTPStatusCode: 0, RawError: get snapshot error")
+				expectedErr := status.Errorf(codes.Internal, "waitForSnapshotReady(, rg, unit-test) failed with get snapshot error")
 				if !reflect.DeepEqual(err, expectedErr) {
 					t.Errorf("actualErr: (%v), expectedErr: (%v)", err, expectedErr)
 				}
@@ -1364,28 +1356,28 @@ func TestCreateSnapshot(t *testing.T) {
 				d.setCloud(&azure.Cloud{})
 				ctrl := gomock.NewController(t)
 				defer ctrl.Finish()
-				mockSnapshotClient := mocksnapshotclient.NewMockInterface(ctrl)
-				d.getCloud().SnapshotsClient = mockSnapshotClient
+				mockSnapshotClient := mock_snapshotclient.NewMockInterface(ctrl)
+				d.getClientFactory().(*mock_azclient.MockClientFactory).EXPECT().GetSnapshotClientForSub(gomock.Any()).Return(mockSnapshotClient, nil).AnyTimes()
 				provisioningState := "succeeded"
 				DiskSize := int32(10)
 				snapshotID := "test"
-				snapshot := compute.Snapshot{
-					SnapshotProperties: &compute.SnapshotProperties{
-						TimeCreated:       &date.Time{},
+				snapshot := &armcompute.Snapshot{
+					Properties: &armcompute.SnapshotProperties{
+						TimeCreated:       &time.Time{},
 						ProvisioningState: &provisioningState,
 						DiskSizeGB:        &DiskSize,
 					},
 					ID: &snapshotID,
 				}
 
-				mockSnapshotClient.EXPECT().CreateOrUpdate(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
-				mockSnapshotClient.EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(snapshot, nil).AnyTimes()
+				mockSnapshotClient.EXPECT().CreateOrUpdate(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, nil).AnyTimes()
+				mockSnapshotClient.EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any()).Return(snapshot, nil).AnyTimes()
 				actualresponse, err := d.CreateSnapshot(context.Background(), req)
-				tp := timestamppb.New(snapshot.SnapshotProperties.TimeCreated.ToTime())
+				tp := timestamppb.New(*snapshot.Properties.TimeCreated)
 				ready := true
 				expectedresponse := &csi.CreateSnapshotResponse{
 					Snapshot: &csi.Snapshot{
-						SizeBytes:      volumehelper.GiBToBytes(int64(*snapshot.SnapshotProperties.DiskSizeGB)),
+						SizeBytes:      volumehelper.GiBToBytes(int64(*snapshot.Properties.DiskSizeGB)),
 						SnapshotId:     *snapshot.ID,
 						SourceVolumeId: req.SourceVolumeId,
 						CreationTime:   tp,
@@ -1449,16 +1441,13 @@ func TestDeleteSnapshot(t *testing.T) {
 				d.setCloud(&azure.Cloud{})
 				ctrl := gomock.NewController(t)
 				defer ctrl.Finish()
-				mockSnapshotClient := mocksnapshotclient.NewMockInterface(ctrl)
-				d.getCloud().SnapshotsClient = mockSnapshotClient
+				mockSnapshotClient := mock_snapshotclient.NewMockInterface(ctrl)
+				d.getClientFactory().(*mock_azclient.MockClientFactory).EXPECT().GetSnapshotClientForSub(gomock.Any()).Return(mockSnapshotClient, nil).AnyTimes()
 				req := &csi.DeleteSnapshotRequest{
 					SnapshotId: "testurl/subscriptions/12/resourceGroups/23/providers/Microsoft.Compute/snapshots/snapshot-name",
 				}
-				rerr := &retry.Error{
-					RawError: fmt.Errorf("get snapshot error"),
-				}
-				mockSnapshotClient.EXPECT().Delete(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(rerr).AnyTimes()
-				expectedErr := status.Errorf(codes.Internal, "delete snapshot error: Retriable: false, RetryAfter: 0s, HTTPStatusCode: 0, RawError: get snapshot error")
+				mockSnapshotClient.EXPECT().Delete(gomock.Any(), gomock.Any(), gomock.Any()).Return(fmt.Errorf("get snapshot error")).AnyTimes()
+				expectedErr := status.Errorf(codes.Internal, "delete snapshot error: get snapshot error")
 				_, err := d.DeleteSnapshot(context.Background(), req)
 				if !reflect.DeepEqual(err, expectedErr) {
 					t.Errorf("actualErr: (%v), expectedErr: (%v)", err, expectedErr)
@@ -1474,12 +1463,12 @@ func TestDeleteSnapshot(t *testing.T) {
 				d.setCloud(&azure.Cloud{})
 				ctrl := gomock.NewController(t)
 				defer ctrl.Finish()
-				mockSnapshotClient := mocksnapshotclient.NewMockInterface(ctrl)
-				d.getCloud().SnapshotsClient = mockSnapshotClient
+				mockSnapshotClient := mock_snapshotclient.NewMockInterface(ctrl)
+				d.getClientFactory().(*mock_azclient.MockClientFactory).EXPECT().GetSnapshotClientForSub(gomock.Any()).Return(mockSnapshotClient, nil).AnyTimes()
 				req := &csi.DeleteSnapshotRequest{
 					SnapshotId: "testurl/subscriptions/12/resourceGroups/23/providers/Microsoft.Compute/snapshots/snapshot-name",
 				}
-				mockSnapshotClient.EXPECT().Delete(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
+				mockSnapshotClient.EXPECT().Delete(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
 				_, err := d.DeleteSnapshot(context.Background(), req)
 				if !reflect.DeepEqual(err, nil) {
 					t.Errorf("actualErr: (%v), expectedErr: nil)", err)
@@ -1523,18 +1512,15 @@ func TestGetSnapshotByID(t *testing.T) {
 				d.setCloud(&azure.Cloud{})
 				ctrl := gomock.NewController(t)
 				defer ctrl.Finish()
-				mockSnapshotClient := mocksnapshotclient.NewMockInterface(ctrl)
-				d.getCloud().SnapshotsClient = mockSnapshotClient
-				rerr := &retry.Error{
-					RawError: fmt.Errorf("test"),
-				}
+				mockSnapshotClient := mock_snapshotclient.NewMockInterface(ctrl)
+				d.getClientFactory().(*mock_azclient.MockClientFactory).EXPECT().GetSnapshotClientForSub(gomock.Any()).Return(mockSnapshotClient, nil).AnyTimes()
 				snapshotID := "testurl/subscriptions/23/providers/Microsoft.Compute/snapshots/snapshot-name"
-				snapshot := compute.Snapshot{
-					SnapshotProperties: &compute.SnapshotProperties{},
-					ID:                 &snapshotID,
+				snapshot := &armcompute.Snapshot{
+					Properties: &armcompute.SnapshotProperties{},
+					ID:         &snapshotID,
 				}
 				snapshotVolumeID := "unit-test"
-				mockSnapshotClient.EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(snapshot, rerr).AnyTimes()
+				mockSnapshotClient.EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any()).Return(snapshot, fmt.Errorf("test")).AnyTimes()
 				expectedErr := status.Errorf(codes.Internal, "could not get snapshot name from testurl/subscriptions/23/providers/Microsoft.Compute/snapshots/snapshot-name, correct format: (?i).*/subscriptions/(?:.*)/resourceGroups/(?:.*)/providers/Microsoft.Compute/snapshots/(.+)")
 				_, err := d.getSnapshotByID(context.Background(), d.getCloud().SubscriptionID, d.getCloud().ResourceGroup, snapshotID, snapshotVolumeID)
 				if !reflect.DeepEqual(err, expectedErr) {
@@ -1581,9 +1567,9 @@ func TestListSnapshots(t *testing.T) {
 				provisioningState := "succeeded"
 				DiskSize := int32(10)
 				snapshotID := "test"
-				snapshot := compute.Snapshot{
-					SnapshotProperties: &compute.SnapshotProperties{
-						TimeCreated:       &date.Time{},
+				snapshot := &armcompute.Snapshot{
+					Properties: &armcompute.SnapshotProperties{
+						TimeCreated:       &time.Time{},
 						ProvisioningState: &provisioningState,
 						DiskSizeGB:        &DiskSize,
 					},
@@ -1591,9 +1577,9 @@ func TestListSnapshots(t *testing.T) {
 				}
 				ctrl := gomock.NewController(t)
 				defer ctrl.Finish()
-				mockSnapshotClient := mocksnapshotclient.NewMockInterface(ctrl)
-				d.getCloud().SnapshotsClient = mockSnapshotClient
-				mockSnapshotClient.EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(snapshot, nil).AnyTimes()
+				mockSnapshotClient := mock_snapshotclient.NewMockInterface(ctrl)
+				d.getClientFactory().(*mock_azclient.MockClientFactory).EXPECT().GetSnapshotClientForSub(gomock.Any()).Return(mockSnapshotClient, nil).AnyTimes()
+				mockSnapshotClient.EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any()).Return(snapshot, nil).AnyTimes()
 				expectedErr := error(nil)
 				_, err := d.ListSnapshots(context.TODO(), &req)
 				if !reflect.DeepEqual(err, expectedErr) {
@@ -1608,18 +1594,15 @@ func TestListSnapshots(t *testing.T) {
 				cntl := gomock.NewController(t)
 				defer cntl.Finish()
 				d, _ := NewFakeDriver(cntl)
-				snapshot := compute.Snapshot{}
-				snapshots := []compute.Snapshot{}
+				snapshot := &armcompute.Snapshot{}
+				snapshots := []*armcompute.Snapshot{}
 				snapshots = append(snapshots, snapshot)
 				ctrl := gomock.NewController(t)
 				defer ctrl.Finish()
-				rerr := &retry.Error{
-					RawError: fmt.Errorf("test"),
-				}
-				mockSnapshotClient := mocksnapshotclient.NewMockInterface(ctrl)
-				d.getCloud().SnapshotsClient = mockSnapshotClient
-				mockSnapshotClient.EXPECT().ListByResourceGroup(gomock.Any(), gomock.Any(), gomock.Any()).Return(snapshots, rerr).AnyTimes()
-				expectedErr := status.Error(codes.Internal, "Unknown list snapshot error: Retriable: false, RetryAfter: 0s, HTTPStatusCode: 0, RawError: test")
+				mockSnapshotClient := mock_snapshotclient.NewMockInterface(ctrl)
+				d.getClientFactory().(*mock_azclient.MockClientFactory).EXPECT().GetSnapshotClient().Return(mockSnapshotClient).AnyTimes()
+				mockSnapshotClient.EXPECT().List(gomock.Any(), gomock.Any()).Return(snapshots, fmt.Errorf("test")).AnyTimes()
+				expectedErr := status.Error(codes.Internal, "Unknown list snapshot error: test")
 				_, err := d.ListSnapshots(context.TODO(), &req)
 				if !reflect.DeepEqual(err, expectedErr) {
 					t.Errorf("actualErr: (%v), expectedErr: (%v)", err, expectedErr)
@@ -1633,14 +1616,14 @@ func TestListSnapshots(t *testing.T) {
 				cntl := gomock.NewController(t)
 				defer cntl.Finish()
 				d, _ := NewFakeDriver(cntl)
-				snapshot := compute.Snapshot{}
-				snapshots := []compute.Snapshot{}
+				snapshot := &armcompute.Snapshot{}
+				snapshots := []*armcompute.Snapshot{}
 				snapshots = append(snapshots, snapshot)
 				ctrl := gomock.NewController(t)
 				defer ctrl.Finish()
-				mockSnapshotClient := mocksnapshotclient.NewMockInterface(ctrl)
-				d.getCloud().SnapshotsClient = mockSnapshotClient
-				mockSnapshotClient.EXPECT().ListByResourceGroup(gomock.Any(), gomock.Any(), gomock.Any()).Return(snapshots, nil).AnyTimes()
+				mockSnapshotClient := mock_snapshotclient.NewMockInterface(ctrl)
+				d.getClientFactory().(*mock_azclient.MockClientFactory).EXPECT().GetSnapshotClient().Return(mockSnapshotClient).AnyTimes()
+				mockSnapshotClient.EXPECT().List(gomock.Any(), gomock.Any()).Return(snapshots, nil).AnyTimes()
 				expectedErr := fmt.Errorf("failed to generate snapshot entry: snapshot property is nil")
 				_, err := d.ListSnapshots(context.TODO(), &req)
 				if !reflect.DeepEqual(err, expectedErr) {
@@ -1659,22 +1642,22 @@ func TestListSnapshots(t *testing.T) {
 				DiskSize := int32(10)
 				snapshotID := "test"
 				provisioningState := "succeeded"
-				snapshot1 := compute.Snapshot{
-					SnapshotProperties: &compute.SnapshotProperties{
-						TimeCreated:       &date.Time{},
+				snapshot1 := &armcompute.Snapshot{
+					Properties: &armcompute.SnapshotProperties{
+						TimeCreated:       &time.Time{},
 						ProvisioningState: &provisioningState,
 						DiskSizeGB:        &DiskSize,
-						CreationData:      &compute.CreationData{SourceResourceID: &volumeID},
+						CreationData:      &armcompute.CreationData{SourceResourceID: &volumeID},
 					},
 					ID: &snapshotID}
-				snapshot2 := compute.Snapshot{}
-				snapshots := []compute.Snapshot{}
+				snapshot2 := &armcompute.Snapshot{}
+				snapshots := []*armcompute.Snapshot{}
 				snapshots = append(snapshots, snapshot1, snapshot2)
 				ctrl := gomock.NewController(t)
 				defer ctrl.Finish()
-				mockSnapshotClient := mocksnapshotclient.NewMockInterface(ctrl)
-				d.getCloud().SnapshotsClient = mockSnapshotClient
-				mockSnapshotClient.EXPECT().ListByResourceGroup(gomock.Any(), gomock.Any(), gomock.Any()).Return(snapshots, nil).AnyTimes()
+				mockSnapshotClient := mock_snapshotclient.NewMockInterface(ctrl)
+				d.getClientFactory().(*mock_azclient.MockClientFactory).EXPECT().GetSnapshotClient().Return(mockSnapshotClient).AnyTimes()
+				mockSnapshotClient.EXPECT().List(gomock.Any(), gomock.Any()).Return(snapshots, nil).AnyTimes()
 				snapshotsResponse, _ := d.ListSnapshots(context.TODO(), &req)
 				if len(snapshotsResponse.Entries) != 1 {
 					t.Errorf("actualNumberOfEntries: (%v), expectedNumberOfEntries: (%v)", len(snapshotsResponse.Entries), 1)
