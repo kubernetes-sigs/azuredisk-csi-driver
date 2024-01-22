@@ -450,19 +450,23 @@ func (d *DriverCore) getHostUtil() hostUtil {
 }
 
 // getSnapshotCompletionPercent returns the completion percent of snapshot
-func (d *DriverCore) getSnapshotCompletionPercent(ctx context.Context, subsID, resourceGroup, snapshotName string) (float64, error) {
-	copySnapshot, rerr := d.cloud.SnapshotsClient.Get(ctx, subsID, resourceGroup, snapshotName)
-	if rerr != nil {
-		return 0.0, rerr.Error()
+func (d *DriverCore) getSnapshotCompletionPercent(ctx context.Context, subsID, resourceGroup, snapshotName string) (float32, error) {
+	snapshotClient, err := d.clientFactory.GetSnapshotClientForSub(subsID)
+	if err != nil {
+		return 0.0, err
+	}
+	copySnapshot, err := snapshotClient.Get(ctx, resourceGroup, snapshotName)
+	if err != nil {
+		return 0.0, err
 	}
 
-	if copySnapshot.SnapshotProperties == nil || copySnapshot.SnapshotProperties.CompletionPercent == nil {
+	if copySnapshot.Properties == nil || copySnapshot.Properties.CompletionPercent == nil {
 		// If CompletionPercent is nil, it means the snapshot is complete
 		klog.V(2).Infof("snapshot(%s) under rg(%s) has no SnapshotProperties or CompletionPercent is nil", snapshotName, resourceGroup)
 		return 100.0, nil
 	}
 
-	return *copySnapshot.SnapshotProperties.CompletionPercent, nil
+	return *copySnapshot.Properties.CompletionPercent, nil
 }
 
 // waitForSnapshotReady wait for completionPercent of snapshot is 100.0
@@ -472,7 +476,7 @@ func (d *DriverCore) waitForSnapshotReady(ctx context.Context, subsID, resourceG
 		return err
 	}
 
-	if completionPercent >= float64(100.0) {
+	if completionPercent >= float32(100.0) {
 		klog.V(2).Infof("snapshot(%s) under rg(%s) complete", snapshotName, resourceGroup)
 		return nil
 	}
@@ -487,7 +491,7 @@ func (d *DriverCore) waitForSnapshotReady(ctx context.Context, subsID, resourceG
 				return err
 			}
 
-			if completionPercent >= float64(100.0) {
+			if completionPercent >= float32(100.0) {
 				klog.V(2).Infof("snapshot(%s) under rg(%s) complete", snapshotName, resourceGroup)
 				return nil
 			}

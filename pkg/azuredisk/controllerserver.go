@@ -25,8 +25,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Azure/azure-sdk-for-go/sdk/azcore/to"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute/v5"
-	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2022-08-01/compute"
 	"github.com/container-storage-interface/spec/lib/go/csi"
 
 	"google.golang.org/grpc/codes"
@@ -957,10 +957,10 @@ func (d *Driver) CreateSnapshot(ctx context.Context, req *csi.CreateSnapshotRequ
 		tags[k] = &value
 	}
 
-	snapshot := compute.Snapshot{
-		SnapshotProperties: &compute.SnapshotProperties{
-			CreationData: &compute.CreationData{
-				CreateOption:     compute.Copy,
+	snapshot := armcompute.Snapshot{
+		Properties: &armcompute.SnapshotProperties{
+			CreationData: &armcompute.CreationData{
+				CreateOption:     to.Ptr(armcompute.DiskCreateOptionCopy),
 				SourceResourceID: &sourceVolumeID,
 			},
 			Incremental: &incremental,
@@ -973,7 +973,7 @@ func (d *Driver) CreateSnapshot(ctx context.Context, req *csi.CreateSnapshotRequ
 		if err := azureutils.ValidateDataAccessAuthMode(dataAccessAuthMode); err != nil {
 			return nil, status.Error(codes.InvalidArgument, err.Error())
 		}
-		snapshot.SnapshotProperties.DataAccessAuthMode = compute.DataAccessAuthMode(dataAccessAuthMode)
+		snapshot.Properties.DataAccessAuthMode = to.Ptr(armcompute.DataAccessAuthMode(dataAccessAuthMode))
 	}
 
 	if acquired := d.volumeLocks.TryAcquire(snapshotName); !acquired {
@@ -1002,13 +1002,17 @@ func (d *Driver) CreateSnapshot(ctx context.Context, req *csi.CreateSnapshotRequ
 	}()
 
 	klog.V(2).Infof("begin to create snapshot(%s, incremental: %v) under rg(%s) region(%s)", snapshotName, incremental, resourceGroup, d.cloud.Location)
-	if rerr := d.cloud.SnapshotsClient.CreateOrUpdate(ctx, subsID, resourceGroup, snapshotName, snapshot); rerr != nil {
-		if strings.Contains(rerr.Error().Error(), "existing disk") {
-			return nil, status.Error(codes.AlreadyExists, fmt.Sprintf("request snapshot(%s) under rg(%s) already exists, but the SourceVolumeId is different, error details: %v", snapshotName, resourceGroup, rerr.Error()))
+	snapshotClient, err := d.clientFactory.GetSnapshotClientForSub(subsID)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "could not get snapshot client for subscription(%s) with error(%v)", subsID, err)
+	}
+	if _, err := snapshotClient.CreateOrUpdate(ctx, resourceGroup, snapshotName, snapshot); err != nil {
+		if strings.Contains(err.Error(), "existing disk") {
+			return nil, status.Error(codes.AlreadyExists, fmt.Sprintf("request snapshot(%s) under rg(%s) already exists, but the SourceVolumeId is different, error details: %v", snapshotName, resourceGroup, err))
 		}
 
-		azureutils.SleepIfThrottled(rerr.Error(), consts.SnapshotOpThrottlingSleepSec)
-		return nil, status.Error(codes.Internal, fmt.Sprintf("create snapshot error: %v", rerr.Error()))
+		azureutils.SleepIfThrottled(err, consts.SnapshotOpThrottlingSleepSec)
+		return nil, status.Error(codes.Internal, fmt.Sprintf("create snapshot error: %v", err.Error()))
 	}
 
 	if d.shouldWaitForSnapshotReady {
@@ -1025,24 +1029,24 @@ func (d *Driver) CreateSnapshot(ctx context.Context, req *csi.CreateSnapshotRequ
 
 	if crossRegionSnapshotName != "" {
 		copySnapshot := snapshot
-		if copySnapshot.SnapshotProperties == nil {
-			copySnapshot.SnapshotProperties = &compute.SnapshotProperties{}
+		if copySnapshot.Properties == nil {
+			copySnapshot.Properties = &armcompute.SnapshotProperties{}
 		}
-		if copySnapshot.SnapshotProperties.CreationData == nil {
-			copySnapshot.SnapshotProperties.CreationData = &compute.CreationData{}
+		if copySnapshot.Properties.CreationData == nil {
+			copySnapshot.Properties.CreationData = &armcompute.CreationData{}
 		}
-		copySnapshot.SnapshotProperties.CreationData.SourceResourceID = &csiSnapshot.SnapshotId
-		copySnapshot.SnapshotProperties.CreationData.CreateOption = compute.CopyStart
+		copySnapshot.Properties.CreationData.SourceResourceID = &csiSnapshot.SnapshotId
+		copySnapshot.Properties.CreationData.CreateOption = to.Ptr(armcompute.DiskCreateOptionCopyStart)
 		copySnapshot.Location = &location
 
 		klog.V(2).Infof("begin to create snapshot(%s, incremental: %v) under rg(%s) region(%s)", crossRegionSnapshotName, incremental, resourceGroup, location)
-		if rerr := d.cloud.SnapshotsClient.CreateOrUpdate(ctx, subsID, resourceGroup, crossRegionSnapshotName, copySnapshot); rerr != nil {
-			if strings.Contains(rerr.Error().Error(), "existing disk") {
-				return nil, status.Error(codes.AlreadyExists, fmt.Sprintf("request snapshot(%s) under rg(%s) already exists, but the SourceVolumeId is different, error details: %v", crossRegionSnapshotName, resourceGroup, rerr.Error()))
+		if _, err := snapshotClient.CreateOrUpdate(ctx, resourceGroup, crossRegionSnapshotName, copySnapshot); err != nil {
+			if strings.Contains(err.Error(), "existing disk") {
+				return nil, status.Error(codes.AlreadyExists, fmt.Sprintf("request snapshot(%s) under rg(%s) already exists, but the SourceVolumeId is different, error details: %v", crossRegionSnapshotName, resourceGroup, err))
 			}
 
-			azureutils.SleepIfThrottled(rerr.Error(), consts.SnapshotOpThrottlingSleepSec)
-			return nil, status.Error(codes.Internal, fmt.Sprintf("create snapshot error: %v", rerr.Error()))
+			azureutils.SleepIfThrottled(err, consts.SnapshotOpThrottlingSleepSec)
+			return nil, status.Error(codes.Internal, fmt.Sprintf("create snapshot error: %v", err))
 		}
 		klog.V(2).Infof("create snapshot(%s) under rg(%s) region(%s) successfully", crossRegionSnapshotName, resourceGroup, location)
 
@@ -1051,9 +1055,9 @@ func (d *Driver) CreateSnapshot(ctx context.Context, req *csi.CreateSnapshotRequ
 		}
 
 		klog.V(2).Infof("begin to delete snapshot(%s) under rg(%s) region(%s)", snapshotName, resourceGroup, d.cloud.Location)
-		if rerr := d.cloud.SnapshotsClient.Delete(ctx, subsID, resourceGroup, snapshotName); rerr != nil {
-			klog.Errorf("delete snapshot error: %v", rerr.Error())
-			azureutils.SleepIfThrottled(rerr.Error(), consts.SnapshotOpThrottlingSleepSec)
+		if err = snapshotClient.Delete(ctx, resourceGroup, snapshotName); err != nil {
+			klog.Errorf("delete snapshot error: %v", err)
+			azureutils.SleepIfThrottled(err, consts.SnapshotOpThrottlingSleepSec)
 		} else {
 			klog.V(2).Infof("delete snapshot(%s) under rg(%s) region(%s) successfully", snapshotName, resourceGroup, d.cloud.Location)
 		}
@@ -1097,9 +1101,13 @@ func (d *Driver) DeleteSnapshot(ctx context.Context, req *csi.DeleteSnapshotRequ
 	}()
 
 	klog.V(2).Infof("begin to delete snapshot(%s) under rg(%s)", snapshotName, resourceGroup)
-	if rerr := d.cloud.SnapshotsClient.Delete(ctx, subsID, resourceGroup, snapshotName); rerr != nil {
-		azureutils.SleepIfThrottled(rerr.Error(), consts.SnapshotOpThrottlingSleepSec)
-		return nil, status.Error(codes.Internal, fmt.Sprintf("delete snapshot error: %v", rerr.Error()))
+	snapshotClient, err := d.clientFactory.GetSnapshotClientForSub(subsID)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "could not get snapshot client for subscription(%s) with error(%v)", subsID, err)
+	}
+	if err := snapshotClient.Delete(ctx, resourceGroup, snapshotName); err != nil {
+		azureutils.SleepIfThrottled(err, consts.SnapshotOpThrottlingSleepSec)
+		return nil, status.Error(codes.Internal, fmt.Sprintf("delete snapshot error: %v", err))
 	}
 	klog.V(2).Infof("delete snapshot(%s) under rg(%s) successfully", snapshotName, resourceGroup)
 	isOperationSucceeded = true
@@ -1127,9 +1135,9 @@ func (d *Driver) ListSnapshots(ctx context.Context, req *csi.ListSnapshotsReques
 		}
 		return listSnapshotResp, nil
 	}
-
+	snapshotClient := d.clientFactory.GetSnapshotClient()
 	// no SnapshotId is set, return all snapshots that satisfy the request.
-	snapshots, err := d.cloud.SnapshotsClient.ListByResourceGroup(ctx, "", d.cloud.ResourceGroup)
+	snapshots, err := snapshotClient.List(ctx, d.cloud.ResourceGroup)
 	if err != nil {
 		return nil, status.Error(codes.Internal, fmt.Sprintf("Unknown list snapshot error: %v", err.Error()))
 	}
@@ -1146,13 +1154,16 @@ func (d *Driver) getSnapshotByID(ctx context.Context, subsID, resourceGroup, sna
 			return nil, status.Errorf(codes.Internal, err.Error())
 		}
 	}
-
-	snapshot, rerr := d.cloud.SnapshotsClient.Get(ctx, subsID, resourceGroup, snapshotName)
-	if rerr != nil {
-		return nil, status.Error(codes.Internal, fmt.Sprintf("get snapshot %s from rg(%s) error: %v", snapshotName, resourceGroup, rerr.Error()))
+	snapshotClient, err := d.clientFactory.GetSnapshotClientForSub(subsID)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "could not get snapshot client for subscription(%s) with error(%v)", subsID, err)
+	}
+	snapshot, err := snapshotClient.Get(ctx, resourceGroup, snapshotName)
+	if err != nil {
+		return nil, status.Error(codes.Internal, fmt.Sprintf("get snapshot %s from rg(%s) error: %v", snapshotName, resourceGroup, err))
 	}
 
-	return azureutils.GenerateCSISnapshot(sourceVolumeID, &snapshot)
+	return azureutils.GenerateCSISnapshot(sourceVolumeID, snapshot)
 }
 
 // GetSourceDiskSize recursively searches for the sourceDisk and returns: sourceDisk disk size, error
