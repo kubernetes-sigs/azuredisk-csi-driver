@@ -989,10 +989,12 @@ func (t *TestPod) GetZoneForVolume(ctx context.Context, index int) string {
 	framework.ExpectNoError(err)
 
 	zone := ""
-	for _, term := range pv.Spec.NodeAffinity.Required.NodeSelectorTerms {
-		for _, ex := range term.MatchExpressions {
-			if ex.Key == "topology.disk.csi.azure.com/zone" && ex.Operator == v1.NodeSelectorOpIn {
-				zone = ex.Values[0]
+	if pv.Spec.NodeAffinity == nil || pv.Spec.NodeAffinity.Required == nil {
+		for _, term := range pv.Spec.NodeAffinity.Required.NodeSelectorTerms {
+			for _, ex := range term.MatchExpressions {
+				if ex.Key == "topology.disk.csi.azure.com/zone" && ex.Operator == v1.NodeSelectorOpIn {
+					zone = ex.Values[0]
+				}
 			}
 		}
 	}
