@@ -174,7 +174,7 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 	requirement := req.GetAccessibilityRequirements()
 	diskZone := azureutils.PickAvailabilityZone(requirement, diskParams.Location, topologyKey)
 	accessibleTopology := []*csi.Topology{}
-	if skuName == compute.StandardSSDZRS || skuName == compute.PremiumZRS {
+	if strings.HasSuffix(string(skuName), "ZRS") || strings.HasSuffix(string(skuName), "zrs") {
 		klog.V(2).Infof("diskZone(%s) is reset as empty since disk(%s) is ZRS(%s)", diskZone, diskParams.DiskName, skuName)
 		diskZone = ""
 		// make volume scheduled on all 3 availability zones
