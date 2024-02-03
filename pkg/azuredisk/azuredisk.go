@@ -54,6 +54,7 @@ type DriverOptions struct {
 	NodeID                       string
 	DriverName                   string
 	VolumeAttachLimit            int64
+	ReservedDataDiskSlotNum      int64
 	EnablePerfOptimization       bool
 	CloudConfigSecretName        string
 	CloudConfigSecretNamespace   string
@@ -147,6 +148,7 @@ func newDriverV1(options *DriverOptions) *Driver {
 	driver.Version = driverVersion
 	driver.NodeID = options.NodeID
 	driver.VolumeAttachLimit = options.VolumeAttachLimit
+	driver.ReservedDataDiskSlotNum = options.ReservedDataDiskSlotNum
 	driver.perfOptimizationEnabled = options.EnablePerfOptimization
 	driver.cloudConfigSecretName = options.CloudConfigSecretName
 	driver.cloudConfigSecretNamespace = options.CloudConfigSecretNamespace
