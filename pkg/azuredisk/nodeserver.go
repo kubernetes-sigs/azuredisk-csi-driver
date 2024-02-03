@@ -392,7 +392,7 @@ func (d *Driver) NodeGetInfo(ctx context.Context, _ *csi.NodeGetInfoRequest) (*c
 		if instanceType == "" {
 			instanceType = instanceTypeFromLabels
 		}
-		maxDataDiskCount = getMaxDataDiskCount(instanceType)
+		maxDataDiskCount = getMaxDataDiskCount(instanceType) - d.ReservedDataDiskSlotNum
 	}
 
 	nodeID := d.NodeID

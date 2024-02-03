@@ -28,6 +28,7 @@ type DriverOptions struct {
 	NodeID                     string
 	DriverName                 string
 	VolumeAttachLimit          int64
+	ReservedDataDiskSlotNum    int64
 	EnablePerfOptimization     bool
 	CloudConfigSecretName      string
 	CloudConfigSecretNamespace string
@@ -67,6 +68,7 @@ func (o *DriverOptions) AddFlags() *flag.FlagSet {
 	fs.StringVar(&o.NodeID, "nodeid", "", "node id")
 	fs.StringVar(&o.DriverName, "drivername", consts.DefaultDriverName, "name of the driver")
 	fs.Int64Var(&o.VolumeAttachLimit, "volume-attach-limit", -1, "maximum number of attachable volumes per node")
+	fs.Int64Var(&o.ReservedDataDiskSlotNum, "reserved-data-disk-slot-num", 0, "reserved data disk slot number per node")
 	fs.BoolVar(&o.EnablePerfOptimization, "enable-perf-optimization", false, "boolean flag to enable disk perf optimization")
 	fs.StringVar(&o.CloudConfigSecretName, "cloud-config-secret-name", "azure-cloud-provider", "cloud config secret name")
 	fs.StringVar(&o.CloudConfigSecretNamespace, "cloud-config-secret-namespace", "kube-system", "cloud config secret namespace")
