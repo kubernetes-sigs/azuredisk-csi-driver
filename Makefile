@@ -111,14 +111,6 @@ sanity-test: azuredisk
 sanity-test-v2: azuredisk-v2
 	go test -v -timeout=30m ./test/sanity --temp-use-driver-v2
 
-.PHONY: integration-test
-integration-test: azuredisk
-	go test -v -timeout=30m ./test/integration
-
-.PHONY: integration-test-v2
-integration-test-v2: azuredisk-v2
-	go test -v -timeout=30m ./test/integration --temp-use-driver-v2
-
 .PHONY: e2e-bootstrap
 e2e-bootstrap: install-helm
 ifdef WINDOWS_USE_HOST_PROCESS_CONTAINERS
