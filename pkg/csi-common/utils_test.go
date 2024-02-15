@@ -21,6 +21,7 @@ import (
 	"context"
 	"flag"
 	"os"
+	"runtime"
 	"testing"
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
@@ -235,6 +236,10 @@ func TestGetLogLevel(t *testing.T) {
 }
 
 func TestListen(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Skip test on Windows")
+	}
+
 	tests := []struct {
 		name     string
 		endpoint string
