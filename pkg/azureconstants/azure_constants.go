@@ -96,6 +96,7 @@ const (
 	DummyBlockDevicePathLinux         = "/sys/block/sda"
 	// define different sleep time when hit throttling
 	SnapshotOpThrottlingSleepSec = 50
+	MaxThrottlingSleepSec        = 1200
 )
 
 var (
