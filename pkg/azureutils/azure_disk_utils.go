@@ -758,11 +758,33 @@ func InsertDiskProperties(disk *compute.Disk, publishConext map[string]string) {
 	}
 }
 
-func SleepIfThrottled(err error, sleepSec int) {
+func SleepIfThrottled(err error, defaultSleepSec int) {
 	if err != nil && strings.Contains(strings.ToLower(err.Error()), strings.ToLower(consts.TooManyRequests)) || strings.Contains(strings.ToLower(err.Error()), consts.ClientThrottled) {
-		klog.Warningf("sleep %d more seconds, waiting for throttling complete", sleepSec)
-		time.Sleep(time.Duration(sleepSec) * time.Second)
+		retryAfter := getRetryAfterSeconds(err)
+		if retryAfter == 0 {
+			retryAfter = defaultSleepSec
+		}
+		klog.Warningf("sleep %d more seconds, waiting for throttling complete", retryAfter)
+		time.Sleep(time.Duration(retryAfter) * time.Second)
 	}
+}
+
+// getRetryAfterSeconds returns the number of seconds to wait from the error message
+func getRetryAfterSeconds(err error) int {
+	if err == nil {
+		return 0
+	}
+	re := regexp.MustCompile(`RetryAfter: (\d+)s`)
+	match := re.FindStringSubmatch(err.Error())
+	if len(match) > 1 {
+		if retryAfter, err := strconv.Atoi(match[1]); err == nil {
+			if retryAfter > consts.MaxThrottlingSleepSec {
+				return consts.MaxThrottlingSleepSec
+			}
+			return retryAfter
+		}
+	}
+	return 0
 }
 
 // SetKeyValueInMap set key/value pair in map
