@@ -52,9 +52,7 @@ import (
 )
 
 var (
-	operationPreemptedError      = retry.NewError(false, errors.New(`Code="OperationPreempted" Message="Operation execution has been preempted by a more recent operation."`))
-	conflictingUserInputError    = retry.NewError(false, errors.New(`Code="ConflictingUserInput" Message="Cannot attach the disk pvc-xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxx to VM /subscriptions/xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxx/resourceGroups/test-rg/providers/Microsoft.Compute/virtualMachineScaleSets/aks-nodepool0-00000000-vmss/virtualMachines/aks-nodepool0-00000000-vmss_0 because it is already attached to VM /subscriptions/xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxx/resourceGroups/test-rg/providers/Microsoft.Compute/virtualMachineScaleSets/aks-nodepool0-00000000-vmss/virtualMachines/aks-nodepool0-00000000-vmss_1. A disk can be attached to only one VM at a time."`))
-	vmExtensionProvisioningError = retry.NewError(false, errors.New(`Code="VMExtensionProvisioningError" Message="Multiple VM extensions failed to be provisioned on the VM. Please see the VM extension instance view for other failures. The first extension failed due to the error: VM 'aks-nodepool0-00000000-vmss_00' has not reported status for VM agent or extensions. Verify that the OS is up and healthy, the VM has a running VM agent, and that it can establish outbound connections to Azure storage. Please refer to https://aka.ms/vmextensionlinuxtroubleshoot for additional VM agent troubleshooting information."`))
+	conflictingUserInputError = retry.NewError(false, errors.New(`Code="ConflictingUserInput" Message="Cannot attach the disk pvc-xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxx to VM /subscriptions/xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxx/resourceGroups/test-rg/providers/Microsoft.Compute/virtualMachineScaleSets/aks-nodepool0-00000000-vmss/virtualMachines/aks-nodepool0-00000000-vmss_0 because it is already attached to VM /subscriptions/xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxx/resourceGroups/test-rg/providers/Microsoft.Compute/virtualMachineScaleSets/aks-nodepool0-00000000-vmss/virtualMachines/aks-nodepool0-00000000-vmss_1. A disk can be attached to only one VM at a time."`))
 )
 
 func fakeUpdateAsync(statusCode int) func(context.Context, string, string, compute.VirtualMachineUpdate, string) (*azure.Future, *retry.Error) {
@@ -127,7 +125,6 @@ func TestCommonAttachDisk(t *testing.T) {
 		isDiskUsed           bool
 		setup                func(testCloud *provider.Cloud, expectedVMs []compute.VirtualMachine, statusCode int, result *retry.Error)
 		expectErr            bool
-		isAcceptedErr        bool
 		isContextDeadlineErr bool
 		statusCode           int
 		waitResult           *retry.Error
@@ -203,16 +200,15 @@ func TestCommonAttachDisk(t *testing.T) {
 			expectErr:   true,
 		},
 		{
-			desc:          "should return a PartialUpdateError type when storage configuration was accepted but wait fails with an error",
-			vmList:        map[string]string{"vm1": "PowerState/Running"},
-			nodeName:      "vm1",
-			diskName:      "disk-name",
-			existedDisk:   nil,
-			expectedLun:   -1,
-			expectErr:     true,
-			statusCode:    200,
-			waitResult:    conflictingUserInputError,
-			isAcceptedErr: true,
+			desc:        "should return a PartialUpdateError type when storage configuration was accepted but wait fails with an error",
+			vmList:      map[string]string{"vm1": "PowerState/Running"},
+			nodeName:    "vm1",
+			diskName:    "disk-name",
+			existedDisk: nil,
+			expectedLun: -1,
+			expectErr:   true,
+			statusCode:  200,
+			waitResult:  conflictingUserInputError,
 		},
 		{
 			desc:        "should not return a PartialUpdateError type when storage configuration was not accepted",
@@ -224,45 +220,6 @@ func TestCommonAttachDisk(t *testing.T) {
 			expectErr:   true,
 			statusCode:  400,
 			waitResult:  conflictingUserInputError,
-		},
-		{
-			desc:        "should retry on OperationPreempted error and succeed",
-			vmList:      map[string]string{"vm1": "PowerState/Running"},
-			nodeName:    "vm1",
-			diskName:    "disk-name",
-			existedDisk: nil,
-			expectedLun: 3,
-			expectErr:   false,
-			statusCode:  200,
-			waitResult:  operationPreemptedError,
-			setup: func(testCloud *provider.Cloud, expectedVMs []compute.VirtualMachine, statusCode int, result *retry.Error) {
-				defaultSetup(testCloud, expectedVMs, statusCode, result)
-				mockVMsClient := testCloud.VirtualMachinesClient.(*mockvmclient.MockInterface)
-				mockVMsClient.EXPECT().UpdateAsync(gomock.Any(), testCloud.ResourceGroup, gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(fakeUpdateAsync(200)).AnyTimes()
-				gomock.InOrder(
-					mockVMsClient.EXPECT().WaitForUpdateResult(gomock.Any(), gomock.Any(), testCloud.ResourceGroup, gomock.Any()).Return(nil, result),
-					mockVMsClient.EXPECT().WaitForUpdateResult(gomock.Any(), gomock.Any(), testCloud.ResourceGroup, gomock.Any()).Return(nil, nil),
-				)
-			},
-		},
-		{
-			desc:        "should retry on OperationPreempted error until context deadline and return context.DeadlineExceeded error",
-			vmList:      map[string]string{"vm1": "PowerState/Running"},
-			nodeName:    "vm1",
-			diskName:    "disk-name",
-			existedDisk: nil,
-			expectedLun: -1,
-			expectErr:   true,
-			statusCode:  200,
-			waitResult:  operationPreemptedError,
-			setup: func(testCloud *provider.Cloud, expectedVMs []compute.VirtualMachine, statusCode int, result *retry.Error) {
-				defaultSetup(testCloud, expectedVMs, statusCode, result)
-				mockVMsClient := testCloud.VirtualMachinesClient.(*mockvmclient.MockInterface)
-				mockVMsClient.EXPECT().UpdateAsync(gomock.Any(), testCloud.ResourceGroup, gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(fakeUpdateAsync(200)).AnyTimes()
-				mockVMsClient.EXPECT().WaitForUpdateResult(gomock.Any(), gomock.Any(), testCloud.ResourceGroup, gomock.Any()).Return(nil, result).AnyTimes()
-			},
-			contextDuration:      time.Second,
-			isContextDeadlineErr: true,
 		},
 	}
 
@@ -304,14 +261,6 @@ func TestCommonAttachDisk(t *testing.T) {
 
 			assert.Equal(t, tt.expectedLun, lun, "TestCase[%d]: %s", i, tt.desc)
 			assert.Equal(t, tt.expectErr, err != nil, "TestCase[%d]: %s, return error: %v", i, tt.desc, err)
-
-			if tt.isAcceptedErr {
-				assert.IsType(t, &retry.PartialUpdateError{}, err)
-			} else {
-				var partialUpdateError *retry.PartialUpdateError
-				ok := errors.As(err, &partialUpdateError)
-				assert.False(t, ok, "the returned error should not be AcceptedError type")
-			}
 
 			assert.Equal(t, tt.isContextDeadlineErr, errors.Is(err, context.DeadlineExceeded))
 		})
@@ -1022,126 +971,6 @@ func TestDetachDiskRequestFuncs(t *testing.T) {
 			assert.Equal(t, strings.Contains(diskURI, test.diskURI), true, "TestCase[%d]: %s", i, test.desc)
 			assert.Equal(t, strings.Contains(diskName, test.diskName), true, "TestCase[%d]: %s", i, test.desc)
 		}
-	}
-}
-
-func TestGetAzureErrorCode(t *testing.T) {
-	testCases := []struct {
-		desc           string
-		err            error
-		expectedResult string
-	}{
-		{
-			desc:           "should return OperationPreempted",
-			err:            operationPreemptedError.Error(),
-			expectedResult: consts.OperationPreemptedErrorCode,
-		},
-		{
-			desc:           "should return VMExtensionprovisioning",
-			err:            vmExtensionProvisioningError.Error(),
-			expectedResult: "VMExtensionProvisioningError",
-		},
-		{
-			desc:           "should return ConflictingUserInput",
-			err:            conflictingUserInputError.Error(),
-			expectedResult: "ConflictingUserInput",
-		},
-	}
-	for i, test := range testCases {
-		tt := test
-		t.Run(tt.desc, func(t *testing.T) {
-			result := getAzureErrorCode(test.err)
-			assert.Equal(t, test.expectedResult, result, "TestCase[%d]", i, result)
-		})
-	}
-}
-
-func TestVmUpdateRequired(t *testing.T) {
-	ctrl := gomock.NewController(t)
-	defer ctrl.Finish()
-
-	r := autorestmocks.NewResponseWithStatus("200", 200) //nolint:bodyclose
-	r.Request.Method = http.MethodPut
-
-	acceptedFuture, _ := azure.NewFutureFromResponse(r)
-
-	r = autorestmocks.NewResponseWithStatus("400", 400) //nolint:bodyclose
-	r.Request.Method = http.MethodPut
-
-	rejectedFuture, _ := azure.NewFutureFromResponse(r)
-
-	testCases := []struct {
-		desc           string
-		configAccepted bool
-		err            error
-		expectedResult bool
-	}{
-		{
-			desc:           "should return true if OperationPreemption error is returned with a http status code 2xx",
-			configAccepted: true,
-			err:            operationPreemptedError.Error(),
-			expectedResult: true,
-		},
-		{
-			desc:           "should return false if OperationPreemption error is returned with a http status code != 2xx",
-			configAccepted: false,
-			err:            operationPreemptedError.Error(),
-			expectedResult: false,
-		},
-		{
-			desc:           "should return false if ConflictingUserInputError error is returned even if http status code == 2xx",
-			configAccepted: true,
-			err:            conflictingUserInputError.Error(),
-			expectedResult: false,
-		},
-	}
-	for i, test := range testCases {
-		tt := test
-		t.Run(tt.desc, func(t *testing.T) {
-			var future *azure.Future
-			if tt.configAccepted {
-				future = &acceptedFuture
-			} else {
-				future = &rejectedFuture
-			}
-			result := vmUpdateRequired(future, test.err)
-			assert.Equalf(t, test.expectedResult, result, "TestCase[%d] returned %v", i, result)
-		})
-	}
-}
-
-func TestConfigAccepted(t *testing.T) {
-	ctrl := gomock.NewController(t)
-	defer ctrl.Finish()
-
-	testCases := []struct {
-		desc           string
-		statusCode     int
-		expectedResult bool
-	}{
-		{
-			desc:           "should return true if HTTP status code is 2xx",
-			statusCode:     200,
-			expectedResult: true,
-		},
-		{
-			desc:           "should return false if HTTP status code is not 2xx",
-			statusCode:     400,
-			expectedResult: false,
-		},
-	}
-
-	for i, testCase := range testCases {
-		tt := testCase
-		t.Run(tt.desc, func(t *testing.T) {
-			r := autorestmocks.NewResponseWithStatus(strconv.Itoa(tt.statusCode), tt.statusCode) //nolint:bodyclose
-			r.Request.Method = http.MethodPut
-
-			future, _ := azure.NewFutureFromResponse(r)
-
-			result := configAccepted(&future)
-			assert.Equalf(t, tt.expectedResult, result, "TestCase[%d] returned %v", i, result)
-		})
 	}
 }
 

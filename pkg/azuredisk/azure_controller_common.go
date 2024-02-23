@@ -31,7 +31,6 @@ import (
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/to"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute/v5"
 	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2022-08-01/compute"
-	"github.com/Azure/go-autorest/autorest/azure"
 
 	"k8s.io/apimachinery/pkg/types"
 	kwait "k8s.io/apimachinery/pkg/util/wait"
@@ -44,7 +43,6 @@ import (
 	azcache "sigs.k8s.io/cloud-provider-azure/pkg/cache"
 	"sigs.k8s.io/cloud-provider-azure/pkg/consts"
 	"sigs.k8s.io/cloud-provider-azure/pkg/provider"
-	"sigs.k8s.io/cloud-provider-azure/pkg/retry"
 )
 
 const (
@@ -60,10 +58,6 @@ const (
 	sourceVolume           = "volume"
 	attachDiskMapKeySuffix = "attachdiskmap"
 	detachDiskMapKeySuffix = "detachdiskmap"
-
-	updateVMRetryDuration = time.Duration(1) * time.Second
-	updateVMRetryFactor   = 3.0
-	updateVMRetrySteps    = 5
 
 	// default initial delay in milliseconds for batch disk attach/detach
 	defaultAttachDetachInitialDelayInMs = 1000
@@ -86,16 +80,9 @@ var defaultBackOff = kwait.Backoff{
 	Jitter:   0.0,
 }
 
-var updateVMBackoff = kwait.Backoff{
-	Duration: updateVMRetryDuration,
-	Factor:   updateVMRetryFactor,
-	Steps:    updateVMRetrySteps,
-}
-
 var (
 	managedDiskPathRE  = regexp.MustCompile(`.*/subscriptions/(?:.*)/resourceGroups/(?:.*)/providers/Microsoft.Compute/disks/(.+)`)
 	diskSnapshotPathRE = regexp.MustCompile(`.*/subscriptions/(?:.*)/resourceGroups/(?:.*)/providers/Microsoft.Compute/snapshots/(.+)`)
-	errorCodeRE        = regexp.MustCompile(`Code="(.*?)".*`)
 )
 
 type controllerCommon struct {
@@ -250,14 +237,15 @@ func (c *controllerCommon) AttachDisk(ctx context.Context, diskName, diskURI str
 		}
 	}()
 
-	var future *azure.Future
-	future, err = vmset.AttachDisk(ctx, nodeName, diskMap)
+	err = vmset.AttachDisk(ctx, nodeName, diskMap)
 	if err != nil {
-		return -1, err
-	}
-	// err will be handled by waitForUpdateResult below
-	if err = c.waitForUpdateResult(ctx, vmset, nodeName, future, err); err != nil {
-		return -1, err
+		if IsOperationPreempted(err) {
+			klog.Errorf("Retry VM Update on node (%s) due to error (%v)", nodeName, err)
+			err = vmset.UpdateVM(ctx, nodeName)
+		}
+		if err != nil {
+			return -1, err
+		}
 	}
 
 	if !c.DisableDiskLunCheck {
@@ -269,33 +257,6 @@ func (c *controllerCommon) AttachDisk(ctx context.Context, diskName, diskURI str
 		lun = diskLun
 	}
 	return lun, nil
-}
-
-// waitForUpdateResult handles asynchronous VM update operations and retries with backoff if OperationPreempted error is observed
-func (c *controllerCommon) waitForUpdateResult(ctx context.Context, vmset provider.VMSet, nodeName types.NodeName, future *azure.Future, updateErr error) (err error) {
-	err = updateErr
-	if err == nil {
-		err = vmset.WaitForUpdateResult(ctx, future, nodeName, "attach_disk")
-	}
-
-	if vmUpdateRequired(future, err) {
-		if derr := kwait.ExponentialBackoffWithContext(ctx, updateVMBackoff, func(ctx context.Context) (bool, error) {
-			klog.Errorf("Retry VM Update on node (%s) due to error (%v)", nodeName, err)
-			future, err = vmset.UpdateVMAsync(ctx, nodeName)
-			if err == nil {
-				err = vmset.WaitForUpdateResult(ctx, future, nodeName, "attach_disk")
-			}
-			return !vmUpdateRequired(future, err), nil
-		}); derr != nil {
-			err = derr
-			return
-		}
-	}
-
-	if err != nil && configAccepted(future) {
-		err = retry.NewPartialUpdateError(err.Error())
-	}
-	return
 }
 
 // insertAttachDiskRequest return (attachDiskRequestQueueLength, error)
@@ -662,9 +623,8 @@ func (c *controllerCommon) checkDiskExists(ctx context.Context, diskURI string) 
 	return true, nil
 }
 
-func vmUpdateRequired(future *azure.Future, err error) bool {
-	errCode := getAzureErrorCode(err)
-	return configAccepted(future) && errCode == consts.OperationPreemptedErrorCode
+func IsOperationPreempted(err error) bool {
+	return strings.Contains(err.Error(), consts.OperationPreemptedErrorCode)
 }
 
 func getValidCreationData(subscriptionID, resourceGroup string, options *ManagedDiskOptions) (armcompute.CreationData, error) {
@@ -713,22 +673,4 @@ func isInstanceNotFoundError(err error) bool {
 		return true
 	}
 	return strings.Contains(errMsg, errStatusCode400) && strings.Contains(errMsg, errInvalidParameter) && strings.Contains(errMsg, errTargetInstanceIds)
-}
-
-// getAzureErrorCode uses regex to parse out the error code encapsulated in the error string.
-func getAzureErrorCode(err error) string {
-	if err == nil {
-		return ""
-	}
-	matches := errorCodeRE.FindStringSubmatch(err.Error())
-	if matches == nil {
-		return ""
-	}
-	return matches[1]
-}
-
-// configAccepted returns true if storage profile change had been committed (i.e. HTTP status code == 2xx) and returns false otherwise.
-func configAccepted(future *azure.Future) bool {
-	// if status code indicates success, the storage profile change was committed
-	return future != nil && future.Response() != nil && future.Response().StatusCode/100 == 2 //nolint:bodyclose
 }
