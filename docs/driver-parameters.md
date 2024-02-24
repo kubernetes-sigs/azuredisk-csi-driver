@@ -2,14 +2,21 @@
 
 <details><summary>required permissions for CSI driver controller</summary>
 <pre>
-"Microsoft.Resources/subscriptions/resourceGroups/read",
-"Microsoft.Compute/disks/*",
-"Microsoft.Compute/snapshots/*",
-"Microsoft.Compute/virtualMachines/write",
-"Microsoft.Compute/virtualMachines/*/read",
-"Microsoft.Compute/virtualMachineScaleSets/virtualMachines/write",
-"Microsoft.Compute/virtualMachineScaleSets/*/read",
-"Microsoft.Compute/virtualMachineScaleSets/read" 
+Microsoft.Compute/disks/read
+Microsoft.Compute/disks/write
+Microsoft.Compute/disks/delete
+Microsoft.Compute/snapshots/read
+Microsoft.Compute/snapshots/write
+Microsoft.Compute/snapshots/delete
+Microsoft.Compute/virtualMachines/write
+Microsoft.Compute/virtualMachines/read
+Microsoft.Compute/virtualMachineScaleSets/virtualMachines/write
+Microsoft.Compute/virtualMachineScaleSets/virtualMachines/read
+Microsoft.Compute/virtualMachineScaleSets/read
+Microsoft.Compute/locations/operations/read
+Microsoft.Compute/locations/DiskOperations/read
+Microsoft.Resources/subscriptions/resourceGroups/Microsoft.Compute/read
+Microsoft.Resources/subscriptions/resourceGroups/Microsoft.Compute/*/read
 </pre>
 </details>
 
@@ -21,10 +28,10 @@
 
 Name | Meaning | Available Value | Mandatory | Default value
 --- | --- | --- | --- | ---
-skuName | azure disk storage account type (alias: `storageAccountType`)| `Standard_LRS`, `Premium_LRS`, `StandardSSD_LRS`, `UltraSSD_LRS`, `Premium_ZRS`, `StandardSSD_ZRS`, `PremiumV2_LRS`<br>(Note: [PremiumV2_LRS](https://learn.microsoft.com/en-us/azure/virtual-machines/disks-deploy-premium-v2) only supports `None` caching mode) | No | `StandardSSD_LRS`
+skuName | azure disk storage account type (alias: `storageAccountType`)| `Standard_LRS`, `Premium_LRS`, `StandardSSD_LRS`, `UltraSSD_LRS`, `Premium_ZRS`, `StandardSSD_ZRS`, `PremiumV2_LRS`<br>(Note: [PremiumV2_LRS](https://learn.microsoft.com/en-us/azure/virtual-machines/disks-deploy-premium-v2) and [UltraSSD_LRS](https://learn.microsoft.com/en-us/azure/virtual-machines/disks-enable-ultra-ssd) only support `None` caching mode) | No | `StandardSSD_LRS`
 kind | managed or unmanaged(blob based) disk | `managed` (`dedicated`, `shared` are deprecated) | No | `managed`
 fsType | File System Type | `ext4`, `ext3`, `ext2`, `xfs`, `btrfs` on Linux, `ntfs` on Windows | No | `ext4` on Linux, `ntfs` on Windows
-cachingMode | [Azure Data Disk Host Cache Setting](https://docs.microsoft.com/en-us/azure/virtual-machines/windows/premium-storage-performance#disk-caching) | `None`, `ReadOnly`, `ReadWrite`<br>(`ReadWrite` caching mode is deprecated, `PremiumV2_LRS` only supports `None` caching mode) | No | `ReadOnly`
+cachingMode | [Azure Data Disk Host Cache Setting](https://docs.microsoft.com/en-us/azure/virtual-machines/windows/premium-storage-performance#disk-caching) | `None`, `ReadOnly`, `ReadWrite`<br>(`ReadWrite` caching mode is deprecated, [PremiumV2_LRS](https://learn.microsoft.com/en-us/azure/virtual-machines/disks-deploy-premium-v2) and [UltraSSD_LRS](https://learn.microsoft.com/en-us/azure/virtual-machines/disks-enable-ultra-ssd) only support `None` caching mode) | No | `ReadOnly`
 location | specify Azure region in which Azure disk will be created, region name should only have lower-case letter or digit number. | `eastus2`, `westus`, etc. | No | if empty, driver will use the same region name as current k8s cluster
 resourceGroup | specify the resource group in which azure disk will be created | existing resource group name | No | if empty, driver will use the same resource group name as current k8s cluster
 DiskIOPSReadWrite | [UltraSSD](https://learn.microsoft.com/en-us/azure/virtual-machines/disks-types#ultra-disks), [PremiumV2_LRS](https://learn.microsoft.com/en-us/azure/virtual-machines/disks-types#premium-ssd-v2-preview) disk IOPS capability |  | No | `500` for UltraSSD
