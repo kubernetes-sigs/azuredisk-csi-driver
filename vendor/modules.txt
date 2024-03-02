@@ -263,7 +263,7 @@ github.com/google/gofuzz/bytesource
 # github.com/google/pprof v0.0.0-20230602010524-ada837c32108
 ## explicit; go 1.19
 github.com/google/pprof/profile
-# github.com/google/uuid v1.5.0
+# github.com/google/uuid v1.6.0
 ## explicit
 github.com/google/uuid
 # github.com/gorilla/websocket v1.5.0
