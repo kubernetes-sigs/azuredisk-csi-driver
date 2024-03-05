@@ -102,6 +102,7 @@ type DriverCore struct {
 	enableOtelTracing            bool
 	shouldWaitForSnapshotReady   bool
 	checkDiskLUNCollision        bool
+	forceDetachBackoff           bool
 	endpoint                     string
 	disableAVSetNodes            bool
 	kubeClient                   kubernetes.Interface
@@ -147,6 +148,7 @@ func newDriverV1(options *DriverOptions) *Driver {
 	driver.enableOtelTracing = options.EnableOtelTracing
 	driver.shouldWaitForSnapshotReady = options.WaitForSnapshotReady
 	driver.checkDiskLUNCollision = options.CheckDiskLUNCollision
+	driver.forceDetachBackoff = options.ForceDetachBackoff
 	driver.endpoint = options.Endpoint
 	driver.disableAVSetNodes = options.DisableAVSetNodes
 	driver.volumeLocks = volumehelper.NewVolumeLocks()
@@ -185,6 +187,7 @@ func newDriverV1(options *DriverOptions) *Driver {
 		driver.diskController = NewManagedDiskController(driver.cloud)
 		driver.diskController.DisableUpdateCache = driver.disableUpdateCache
 		driver.diskController.AttachDetachInitialDelayInMs = int(driver.attachDetachInitialDelayInMs)
+		driver.diskController.ForceDetachBackoff = driver.forceDetachBackoff
 		driver.clientFactory = driver.cloud.ComputeClientFactory
 		if driver.vmType != "" {
 			klog.V(2).Infof("override VMType(%s) in cloud config as %s", driver.cloud.VMType, driver.vmType)

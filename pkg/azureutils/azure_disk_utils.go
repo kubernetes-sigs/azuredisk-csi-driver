@@ -758,7 +758,7 @@ func InsertDiskProperties(disk *armcompute.Disk, publishConext map[string]string
 }
 
 func SleepIfThrottled(err error, defaultSleepSec int) {
-	if err != nil && strings.Contains(strings.ToLower(err.Error()), strings.ToLower(consts.TooManyRequests)) || strings.Contains(strings.ToLower(err.Error()), consts.ClientThrottled) {
+	if err != nil && IsThrottlingError(err) {
 		retryAfter := getRetryAfterSeconds(err)
 		if retryAfter == 0 {
 			retryAfter = defaultSleepSec
@@ -766,6 +766,14 @@ func SleepIfThrottled(err error, defaultSleepSec int) {
 		klog.Warningf("sleep %d more seconds, waiting for throttling complete", retryAfter)
 		time.Sleep(time.Duration(retryAfter) * time.Second)
 	}
+}
+
+func IsThrottlingError(err error) bool {
+	if err != nil {
+		errMsg := strings.ToLower(err.Error())
+		return strings.Contains(errMsg, strings.ToLower(consts.TooManyRequests)) || strings.Contains(errMsg, consts.ClientThrottled)
+	}
+	return false
 }
 
 // getRetryAfterSeconds returns the number of seconds to wait from the error message
