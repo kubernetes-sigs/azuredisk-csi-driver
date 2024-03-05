@@ -39,6 +39,7 @@ import (
 	"k8s.io/klog/v2"
 	"k8s.io/utils/pointer"
 
+	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
 	"sigs.k8s.io/cloud-provider-azure/pkg/azclient"
 	azcache "sigs.k8s.io/cloud-provider-azure/pkg/cache"
 	"sigs.k8s.io/cloud-provider-azure/pkg/consts"
@@ -100,6 +101,7 @@ type controllerCommon struct {
 	DisableDiskLunCheck bool
 	// AttachDetachInitialDelayInMs determines initial delay in milliseconds for batch disk attach/detach
 	AttachDetachInitialDelayInMs int
+	ForceDetachBackoff           bool
 }
 
 // ExtendedLocation contains additional info about the location of resources.
@@ -344,12 +346,16 @@ func (c *controllerCommon) DetachDisk(ctx context.Context, diskName, diskURI str
 	if len(diskMap) > 0 {
 		c.diskStateMap.Store(disk, "detaching")
 		defer c.diskStateMap.Delete(disk)
-		if err = vmset.DetachDisk(ctx, nodeName, diskMap); err != nil {
+		if err = vmset.DetachDisk(ctx, nodeName, diskMap, false); err != nil {
 			if isInstanceNotFoundError(err) {
 				// if host doesn't exist, no need to detach
 				klog.Warningf("azureDisk - got InstanceNotFoundError(%v), DetachDisk(%s) will assume disk is already detached",
 					err, diskURI)
 				return nil
+			}
+			if c.ForceDetachBackoff && !azureutils.IsThrottlingError(err) {
+				klog.Errorf("azureDisk - DetachDisk(%s) from node %s failed with error: %v, retry with force detach", diskURI, nodeName, err)
+				err = vmset.DetachDisk(ctx, nodeName, diskMap, true)
 			}
 		}
 	}

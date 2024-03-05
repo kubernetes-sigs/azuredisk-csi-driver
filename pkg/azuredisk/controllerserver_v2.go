@@ -369,8 +369,7 @@ func (d *DriverV2) ControllerPublishVolume(ctx context.Context, req *csi.Control
 		// Volume is already attached to node.
 		klog.V(2).Infof("Attach operation is successful. volume %s is already attached to node %s at lun %d.", diskURI, nodeName, lun)
 	} else {
-		if strings.Contains(strings.ToLower(err.Error()), strings.ToLower(consts.TooManyRequests)) ||
-			strings.Contains(strings.ToLower(err.Error()), consts.ClientThrottled) {
+		if azureutils.IsThrottlingError(err) {
 			return nil, status.Errorf(codes.Internal, err.Error())
 		}
 		var cachingMode armcompute.CachingTypes
