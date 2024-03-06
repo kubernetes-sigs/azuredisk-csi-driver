@@ -93,7 +93,7 @@ func (o *DriverOptions) AddFlags() *flag.FlagSet {
 	fs.BoolVar(&o.EnableWindowsHostProcess, "enable-windows-host-process", false, "enable windows host process")
 	fs.BoolVar(&o.GetNodeIDFromIMDS, "get-nodeid-from-imds", false, "boolean flag to get NodeID from IMDS")
 	fs.BoolVar(&o.WaitForSnapshotReady, "wait-for-snapshot-ready", true, "boolean flag to wait for snapshot ready when creating snapshot in same region")
-	fs.BoolVar(&o.CheckDiskLUNCollision, "check-disk-lun-collision", false, "boolean flag to check disk lun collisio before attaching disk")
+	fs.BoolVar(&o.CheckDiskLUNCollision, "check-disk-lun-collision", true, "boolean flag to check disk lun collisio before attaching disk")
 	fs.StringVar(&o.Kubeconfig, "kubeconfig", "", "Absolute path to the kubeconfig file. Required only when running out of cluster.")
 	fs.BoolVar(&o.DisableAVSetNodes, "disable-avset-nodes", false, "disable DisableAvailabilitySetNodes in cloud config for controller")
 	fs.StringVar(&o.Endpoint, "endpoint", "unix://tmp/csi.sock", "CSI endpoint")
