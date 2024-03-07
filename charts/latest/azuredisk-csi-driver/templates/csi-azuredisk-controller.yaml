@@ -199,6 +199,9 @@ spec:
             - "--traffic-manager-port={{ .Values.controller.trafficManagerPort }}"
             - "--enable-otel-tracing={{ .Values.controller.otelTracing.enabled }}"
             - "--check-disk-lun-collision=true"
+            {{- range $value := .Values.controller.extraArgs }}
+            - {{ $value | quote }}
+            {{- end }}
           ports:
             - containerPort: {{ .Values.controller.livenessProbe.healthPort }}
               name: healthz
