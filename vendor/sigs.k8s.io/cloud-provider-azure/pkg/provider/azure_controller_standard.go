@@ -179,6 +179,7 @@ func (as *availabilitySet) DetachDisk(ctx context.Context, nodeName types.NodeNa
 				// found the disk
 				klog.V(2).Infof("azureDisk - detach disk: name %s uri %s", diskName, diskURI)
 				disks[i].ToBeDetached = pointer.Bool(true)
+				disks[i].DetachOption = compute.ForceDetach
 				bFoundDisk = true
 			}
 		}
