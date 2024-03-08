@@ -54,6 +54,7 @@ controller:
   attacherWorkerThreads: 1000
   vmssCacheTTLInSeconds: -1
   logLevel: 5
+  extraArgs: []
   otelTracing:
     enabled: false
     otelServiceName: csi-azuredisk-controller
