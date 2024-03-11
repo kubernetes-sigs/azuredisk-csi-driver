@@ -4,9 +4,7 @@
 package runtime
 
 import (
-	"errors"
 	"net/http"
-	"strings"
 	"time"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/internal/exported"
@@ -114,8 +112,5 @@ func (b *BearerTokenPolicy) Do(req *policy.Request) (*http.Response, error) {
 }
 
 func checkHTTPSForAuth(req *policy.Request) error {
-	if strings.ToLower(req.Raw().URL.Scheme) != "https" {
-		return errorinfo.NonRetriableError(errors.New("authenticated requests are not permitted for non TLS protected (https) endpoints"))
-	}
 	return nil
 }
