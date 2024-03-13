@@ -185,40 +185,14 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 		return nil, status.Error(codes.InvalidArgument, err.Error())
 	}
 
-	requirement := req.GetAccessibilityRequirements()
-	diskZone := azureutils.PickAvailabilityZone(requirement, diskParams.Location, topologyKey)
+	diskZone := azureutils.PickAvailabilityZone(req.GetAccessibilityRequirements(), diskParams.Location, topologyKey)
 	accessibleTopology := []*csi.Topology{}
-	if strings.HasSuffix(string(skuName), "ZRS") || strings.HasSuffix(string(skuName), "zrs") {
-		klog.V(2).Infof("diskZone(%s) is reset as empty since disk(%s) is ZRS(%s)", diskZone, diskParams.DiskName, skuName)
-		diskZone = ""
-		// make volume scheduled on all 3 availability zones
-		for i := 1; i <= 3; i++ {
-			topology := &csi.Topology{
-				Segments: map[string]string{topologyKey: fmt.Sprintf("%s-%d", diskParams.Location, i)},
-			}
-			accessibleTopology = append(accessibleTopology, topology)
-		}
-		// make volume scheduled on all non-zone nodes
-		topology := &csi.Topology{
-			Segments: map[string]string{topologyKey: ""},
-		}
-		accessibleTopology = append(accessibleTopology, topology)
-	} else {
-		accessibleTopology = []*csi.Topology{
-			{
-				Segments: map[string]string{topologyKey: diskZone},
-			},
-		}
-	}
 
 	if d.enableDiskCapacityCheck {
 		if ok, err := d.checkDiskCapacity(ctx, diskParams.SubscriptionID, diskParams.ResourceGroup, diskParams.DiskName, requestGiB); !ok {
 			return nil, err
 		}
 	}
-
-	klog.V(2).Infof("begin to create azure disk(%s) account type(%s) rg(%s) location(%s) size(%d) diskZone(%v) maxShares(%d)",
-		diskParams.DiskName, skuName, diskParams.ResourceGroup, diskParams.Location, requestGiB, diskZone, diskParams.MaxShares)
 
 	contentSource := &csi.VolumeContentSource{}
 
@@ -251,12 +225,50 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 				},
 			}
 			subsID := azureutils.GetSubscriptionIDFromURI(sourceID)
-			if sourceGiB, _ := d.GetSourceDiskSize(ctx, subsID, diskParams.ResourceGroup, path.Base(sourceID), 0, consts.SourceDiskSearchMaxDepth); sourceGiB != nil && *sourceGiB < int32(requestGiB) {
-				diskParams.VolumeContext[consts.ResizeRequired] = strconv.FormatBool(true)
+			sourceGiB, disk, err := d.GetSourceDiskSize(ctx, subsID, diskParams.ResourceGroup, path.Base(sourceID), 0, consts.SourceDiskSearchMaxDepth)
+			if err == nil {
+				if sourceGiB != nil && *sourceGiB < int32(requestGiB) {
+					diskParams.VolumeContext[consts.ResizeRequired] = strconv.FormatBool(true)
+					klog.V(2).Infof("source disk(%s) size(%d) is less than requested size(%d), set resizeRequired as true", sourceID, *sourceGiB, requestGiB)
+				}
+				if disk != nil && len(disk.Zones) == 1 {
+					if disk.Zones[0] != nil {
+						diskZone = fmt.Sprintf("%s-%s", diskParams.Location, *disk.Zones[0])
+						klog.V(2).Infof("source disk(%s) is in zone(%s), set diskZone as %s", sourceID, *disk.Zones[0], diskZone)
+					}
+				}
+			} else {
+				klog.Warningf("failed to get source disk(%s) size, err: %v", sourceID, err)
 			}
 			metricsRequest = "controller_create_volume_from_volume"
 		}
 	}
+
+	if strings.HasSuffix(strings.ToLower(string(skuName)), "zrs") {
+		klog.V(2).Infof("diskZone(%s) is reset as empty since disk(%s) is ZRS(%s)", diskZone, diskParams.DiskName, skuName)
+		diskZone = ""
+		// make volume scheduled on all 3 availability zones
+		for i := 1; i <= 3; i++ {
+			topology := &csi.Topology{
+				Segments: map[string]string{topologyKey: fmt.Sprintf("%s-%d", diskParams.Location, i)},
+			}
+			accessibleTopology = append(accessibleTopology, topology)
+		}
+		// make volume scheduled on all non-zone nodes
+		topology := &csi.Topology{
+			Segments: map[string]string{topologyKey: ""},
+		}
+		accessibleTopology = append(accessibleTopology, topology)
+	} else {
+		accessibleTopology = []*csi.Topology{
+			{
+				Segments: map[string]string{topologyKey: diskZone},
+			},
+		}
+	}
+
+	klog.V(2).Infof("begin to create azure disk(%s) account type(%s) rg(%s) location(%s) size(%d) diskZone(%v) maxShares(%d)",
+		diskParams.DiskName, skuName, diskParams.ResourceGroup, diskParams.Location, requestGiB, diskZone, diskParams.MaxShares)
 
 	if skuName == armcompute.DiskStorageAccountTypesUltraSSDLRS {
 		if diskParams.DiskIOPSReadWrite == "" && diskParams.DiskMBPSReadWrite == "" {
@@ -1167,20 +1179,20 @@ func (d *Driver) getSnapshotByID(ctx context.Context, subsID, resourceGroup, sna
 }
 
 // GetSourceDiskSize recursively searches for the sourceDisk and returns: sourceDisk disk size, error
-func (d *Driver) GetSourceDiskSize(ctx context.Context, subsID, resourceGroup, diskName string, curDepth, maxDepth int) (*int32, error) {
+func (d *Driver) GetSourceDiskSize(ctx context.Context, subsID, resourceGroup, diskName string, curDepth, maxDepth int) (*int32, *armcompute.Disk, error) {
 	if curDepth > maxDepth {
-		return nil, status.Error(codes.Internal, fmt.Sprintf("current depth (%d) surpassed the max depth (%d) while searching for the source disk size", curDepth, maxDepth))
+		return nil, nil, status.Error(codes.Internal, fmt.Sprintf("current depth (%d) surpassed the max depth (%d) while searching for the source disk size", curDepth, maxDepth))
 	}
 	diskClient, err := d.clientFactory.GetDiskClientForSub(subsID)
 	if err != nil {
-		return nil, status.Error(codes.Internal, err.Error())
+		return nil, nil, status.Error(codes.Internal, err.Error())
 	}
 	result, err := diskClient.Get(ctx, resourceGroup, diskName)
 	if err != nil {
-		return nil, err
+		return nil, result, err
 	}
 	if result.Properties == nil {
-		return nil, status.Error(codes.Internal, fmt.Sprintf("DiskProperty not found for disk (%s) in resource group (%s)", diskName, resourceGroup))
+		return nil, result, status.Error(codes.Internal, fmt.Sprintf("DiskProperty not found for disk (%s) in resource group (%s)", diskName, resourceGroup))
 	}
 
 	if result.Properties.CreationData != nil && result.Properties.CreationData.CreateOption != nil && *result.Properties.CreationData.CreateOption == armcompute.DiskCreateOptionCopy {
@@ -1192,9 +1204,9 @@ func (d *Driver) GetSourceDiskSize(ctx context.Context, subsID, resourceGroup, d
 	}
 
 	if (*result.Properties).DiskSizeGB == nil {
-		return nil, status.Error(codes.Internal, fmt.Sprintf("DiskSizeGB for disk (%s) in resourcegroup (%s) is nil", diskName, resourceGroup))
+		return nil, result, status.Error(codes.Internal, fmt.Sprintf("DiskSizeGB for disk (%s) in resourcegroup (%s) is nil", diskName, resourceGroup))
 	}
-	return (*result.Properties).DiskSizeGB, nil
+	return (*result.Properties).DiskSizeGB, result, nil
 }
 
 // The format of snapshot id is /subscriptions/xxx/resourceGroups/xxx/providers/Microsoft.Compute/snapshots/snapshot-xxx-xxx.
