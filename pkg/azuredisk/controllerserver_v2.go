@@ -190,7 +190,7 @@ func (d *DriverV2) CreateVolume(ctx context.Context, req *csi.CreateVolumeReques
 			}
 
 			subsID := azureutils.GetSubscriptionIDFromURI(sourceID)
-			if sourceGiB, _ := d.GetSourceDiskSize(ctx, subsID, diskParams.ResourceGroup, path.Base(sourceID), 0, consts.SourceDiskSearchMaxDepth); sourceGiB != nil && *sourceGiB < int32(requestGiB) {
+			if sourceGiB, _, _ := d.GetSourceDiskSize(ctx, subsID, diskParams.ResourceGroup, path.Base(sourceID), 0, consts.SourceDiskSearchMaxDepth); sourceGiB != nil && *sourceGiB < int32(requestGiB) {
 				diskParams.VolumeContext[consts.ResizeRequired] = strconv.FormatBool(true)
 			}
 		}
@@ -963,20 +963,20 @@ func (d *DriverV2) getSnapshotByID(ctx context.Context, subsID, resourceGroup, s
 }
 
 // GetSourceDiskSize recursively searches for the sourceDisk and returns: sourceDisk disk size, error
-func (d *DriverV2) GetSourceDiskSize(ctx context.Context, subsID, resourceGroup, diskName string, curDepth, maxDepth int) (*int32, error) {
+func (d *DriverV2) GetSourceDiskSize(ctx context.Context, subsID, resourceGroup, diskName string, curDepth, maxDepth int) (*int32, *armcompute.Disk, error) {
 	if curDepth > maxDepth {
-		return nil, status.Error(codes.Internal, fmt.Sprintf("current depth (%d) surpassed the max depth (%d) while searching for the source disk size", curDepth, maxDepth))
+		return nil, nil, status.Error(codes.Internal, fmt.Sprintf("current depth (%d) surpassed the max depth (%d) while searching for the source disk size", curDepth, maxDepth))
 	}
 	diskClient, err := d.clientFactory.GetDiskClientForSub(subsID)
 	if err != nil {
-		return nil, status.Error(codes.Internal, err.Error())
+		return nil, nil, status.Error(codes.Internal, err.Error())
 	}
 	result, err := diskClient.Get(ctx, resourceGroup, diskName)
 	if err != nil {
-		return nil, err
+		return nil, result, err
 	}
 	if result.Properties == nil {
-		return nil, status.Error(codes.Internal, fmt.Sprintf("DiskProperty not found for disk (%s) in resource group (%s)", diskName, resourceGroup))
+		return nil, result, status.Error(codes.Internal, fmt.Sprintf("DiskProperty not found for disk (%s) in resource group (%s)", diskName, resourceGroup))
 	}
 
 	if result.Properties.CreationData != nil && result.Properties.CreationData.CreateOption != nil && *result.Properties.CreationData.CreateOption == armcompute.DiskCreateOptionCopy {
@@ -988,9 +988,9 @@ func (d *DriverV2) GetSourceDiskSize(ctx context.Context, subsID, resourceGroup,
 	}
 
 	if (*result.Properties).DiskSizeGB == nil {
-		return nil, status.Error(codes.Internal, fmt.Sprintf("DiskSizeGB for disk (%s) in resourcegroup (%s) is nil", diskName, resourceGroup))
+		return nil, result, status.Error(codes.Internal, fmt.Sprintf("DiskSizeGB for disk (%s) in resourcegroup (%s) is nil", diskName, resourceGroup))
 	}
-	return (*result.Properties).DiskSizeGB, nil
+	return (*result.Properties).DiskSizeGB, result, nil
 }
 
 // The format of snapshot id is /subscriptions/xxx/resourceGroups/xxx/providers/Microsoft.Compute/snapshots/snapshot-xxx-xxx.

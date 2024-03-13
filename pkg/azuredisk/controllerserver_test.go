@@ -2130,7 +2130,7 @@ func TestGetSourceDiskSize(t *testing.T) {
 				cntl := gomock.NewController(t)
 				defer cntl.Finish()
 				d, _ := NewFakeDriver(cntl)
-				_, err := d.GetSourceDiskSize(context.Background(), "", "test-rg", "test-disk", 2, 1)
+				_, _, err := d.GetSourceDiskSize(context.Background(), "", "test-rg", "test-disk", 2, 1)
 				expectedErr := status.Errorf(codes.Internal, "current depth (2) surpassed the max depth (1) while searching for the source disk size")
 				if !reflect.DeepEqual(err, expectedErr) {
 					t.Errorf("actualErr: (%v), expectedErr: (%v)", err, expectedErr)
@@ -2148,7 +2148,7 @@ func TestGetSourceDiskSize(t *testing.T) {
 				d.getClientFactory().(*mock_azclient.MockClientFactory).EXPECT().GetDiskClientForSub(gomock.Any()).Return(diskClient, nil).AnyTimes()
 				diskClient.EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any()).Return(disk, nil).AnyTimes()
 
-				_, err := d.GetSourceDiskSize(context.Background(), "", "test-rg", "test-disk", 0, 1)
+				_, _, err := d.GetSourceDiskSize(context.Background(), "", "test-rg", "test-disk", 0, 1)
 				expectedErr := status.Error(codes.Internal, "DiskProperty not found for disk (test-disk) in resource group (test-rg)")
 				if !reflect.DeepEqual(err, expectedErr) {
 					t.Errorf("actualErr: (%v), expectedErr: (%v)", err, expectedErr)
@@ -2168,7 +2168,7 @@ func TestGetSourceDiskSize(t *testing.T) {
 				diskClient := mock_diskclient.NewMockInterface(cntl)
 				d.getClientFactory().(*mock_azclient.MockClientFactory).EXPECT().GetDiskClientForSub(gomock.Any()).Return(diskClient, nil).AnyTimes()
 				diskClient.EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any()).Return(disk, nil).AnyTimes()
-				_, err := d.GetSourceDiskSize(context.Background(), "", "test-rg", "test-disk", 0, 1)
+				_, _, err := d.GetSourceDiskSize(context.Background(), "", "test-rg", "test-disk", 0, 1)
 				expectedErr := status.Error(codes.Internal, "DiskSizeGB for disk (test-disk) in resourcegroup (test-rg) is nil")
 				if !reflect.DeepEqual(err, expectedErr) {
 					t.Errorf("actualErr: (%v), expectedErr: (%v)", err, expectedErr)
@@ -2191,7 +2191,7 @@ func TestGetSourceDiskSize(t *testing.T) {
 				diskClient := mock_diskclient.NewMockInterface(cntl)
 				d.getClientFactory().(*mock_azclient.MockClientFactory).EXPECT().GetDiskClientForSub(gomock.Any()).Return(diskClient, nil).AnyTimes()
 				diskClient.EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any()).Return(disk, nil).AnyTimes()
-				size, _ := d.GetSourceDiskSize(context.Background(), "", "test-rg", "test-disk", 0, 1)
+				size, _, _ := d.GetSourceDiskSize(context.Background(), "", "test-rg", "test-disk", 0, 1)
 				expectedOutput := diskSizeGB
 				if *size != expectedOutput {
 					t.Errorf("actualOutput: (%v), expectedOutput: (%v)", *size, expectedOutput)
@@ -2227,7 +2227,7 @@ func TestGetSourceDiskSize(t *testing.T) {
 				diskClient := mock_diskclient.NewMockInterface(cntl)
 				d.getClientFactory().(*mock_azclient.MockClientFactory).EXPECT().GetDiskClientForSub(gomock.Any()).Return(diskClient, nil).AnyTimes()
 				diskClient.EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any()).Return(disk1, nil).Return(disk2, nil).AnyTimes()
-				size, _ := d.GetSourceDiskSize(context.Background(), "", "test-rg", "test-disk-1", 0, 2)
+				size, _, _ := d.GetSourceDiskSize(context.Background(), "", "test-rg", "test-disk-1", 0, 2)
 				expectedOutput := diskSizeGB2
 				if *size != expectedOutput {
 					t.Errorf("actualOutput: (%v), expectedOutput: (%v)", *size, expectedOutput)
