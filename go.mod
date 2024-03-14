@@ -9,7 +9,7 @@ require (
 	github.com/Azure/go-autorest/autorest/date v0.3.0
 	github.com/container-storage-interface/spec v1.7.0
 	github.com/golang/mock v1.6.0
-	github.com/golang/protobuf v1.5.3
+	github.com/golang/protobuf v1.5.4
 	github.com/google/gofuzz v1.2.0 // indirect
 	github.com/imdario/mergo v0.3.11 // indirect
 	github.com/kubernetes-csi/csi-lib-utils v0.13.0
@@ -21,7 +21,7 @@ require (
 	github.com/stretchr/testify v1.8.4
 	golang.org/x/net v0.18.0
 	google.golang.org/grpc v1.59.0
-	google.golang.org/protobuf v1.31.0
+	google.golang.org/protobuf v1.33.0
 	k8s.io/api v0.27.8
 	k8s.io/apimachinery v0.27.8
 	k8s.io/cloud-provider v0.27.8
