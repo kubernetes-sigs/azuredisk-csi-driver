@@ -11,29 +11,15 @@ This driver allows Kubernetes to access [Azure Disk](https://azure.microsoft.com
 
 Disclaimer: Deploying this driver manually is not an officially supported Microsoft product. For a fully managed and supported experience on Kubernetes, use [AKS with the managed Azure disk csi driver](https://learn.microsoft.com/en-us/azure/aks/azure-disk-csi).
 
-### Project status
-
-V1: GA
-
-V2: Preview
+### Project status: GA
 
 ### Container Images & Kubernetes Compatibility
-
-#### V1
-
 |Driver Version  |Image                                                      | supported k8s version |
 |----------------|-----------------------------------------------------------|-----------------------|
 |`master` branch |mcr.microsoft.com/k8s/csi/azuredisk-csi:latest             | 1.21+                 |
 |v1.30.0         |mcr.microsoft.com/oss/kubernetes-csi/azuredisk-csi:v1.30.0 | 1.21+                 |
 |v1.29.2         |mcr.microsoft.com/oss/kubernetes-csi/azuredisk-csi:v1.29.2 | 1.21+                 |
 |v1.28.5         |mcr.microsoft.com/oss/kubernetes-csi/azuredisk-csi:v1.28.5 | 1.21+                 |
-
-#### V2
-
-|Driver Version  |Image                                                            | supported k8s version |
-|----------------|-----------------------------------------------------------------|-----------------------|
-|`main_v2` branch|                                                                 | 1.21+                 |
-|v2.0.0-beta.6   |mcr.microsoft.com/oss/kubernetes-csi/azuredisk-csi:v2.0.0-beta.6 | 1.21+                 |
 
 ### Driver parameters
 
@@ -61,10 +47,6 @@ Please refer to [`disk.csi.azure.com` driver parameters](./docs/driver-parameter
    - [AKS](https://learn.microsoft.com/en-us/azure/aks/csi-storage-drivers)
    - [Azure RedHat OpenShift](https://docs.openshift.com/container-platform/4.11/storage/container_storage_interface/persistent-storage-csi-azure.html)
 
-### Install Azure Disk CSI Driver V2 on a Kubernetes cluster (Preview)
-
-- install via [helm charts](./charts)
-
 ### Examples
 
 - [Basic usage](./deploy/example/e2e_usage.md)
@@ -82,11 +64,6 @@ Please refer to [`disk.csi.azure.com` driver parameters](./docs/driver-parameter
 - [fsGroupPolicy](./deploy/example/fsgroup)
 - [Workload identity](./docs/workload-identity.md)
 - [Advanced disk performance tuning (Preview)](./docs/perf-profiles.md)
-
-#### New in V2
-
-- [Attachments Replicas for Faster Pod Failover (Preview)](./docs/design-v2.md)
-  - See [pod failover demo](./deploy/example/failover/README.md) for example configuration.
 
 ### Troubleshooting
 
