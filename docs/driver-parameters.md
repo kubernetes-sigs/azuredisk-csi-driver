@@ -22,8 +22,6 @@ Microsoft.Resources/subscriptions/resourceGroups/Microsoft.Compute/*/read
 
 ## Dynamic Provisioning
 
-### V1 Parameters
-
 > get an [example](../deploy/example/storageclass-azuredisk-csi.yaml)
 
 Name | Meaning | Available Value | Mandatory | Default value
@@ -61,18 +59,6 @@ subscriptionID | specify Azure subscription ID in which Azure disk will be creat
     kubernetes.io-created-for-pvc-name: pvc-azuredisk
     kubernetes.io-created-for-pvc-namespace: default
     ```
-
-### New or Updated Parameters for V2
-
-In addition to the parameters supported by the V1 driver, Azure Disk CSI driver V2 adds or modifies the following parameters:
-
-Name | Meaning | Available Value | Mandatory | Default value
---- | --- | --- | --- | ---
-enableAsyncAttach | The V2 driver uses a different strategy to manage Azure API throttling and ignores this parameter. | N/A | No | N/A
-maxShares | The total number of shared disk mounts allowed for the disk. Setting the value to 2 or more enables attachment replicas. | Supported values depend on the disk size. See [Share an Azure managed disk](https://docs.microsoft.com/en-us/azure/virtual-machines/disks-shared) for supported values. | No | 1
-maxMountReplicaCount | The number of replicas attachments to maintain. | This value must be in the range `[0..(maxShares - 1)]` | No        | If `accessMode` is `ReadWriteMany`, the default is `0`. Otherwise, the default is `maxShares - 1` |
-
-> NOTE: Setting the `maxShares` parameter to a value greater than 1 enables faster pod failover through attachment replicas. See the [Azure CSI Driver V2](./design-v2.md) document for more details. See the [failover demo](../deploy/example/failover/README.md) for an example of how to use attachment replicas and ZRS disks for a better pod failover experience.
 
 ## Static Provisioning (bring your own Azure Disk)
 
