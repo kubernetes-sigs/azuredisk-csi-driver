@@ -10,7 +10,7 @@ require (
 	github.com/Azure/go-autorest/autorest/date v0.3.0
 	github.com/container-storage-interface/spec v1.8.0
 	github.com/golang/mock v1.6.0
-	github.com/golang/protobuf v1.5.3
+	github.com/golang/protobuf v1.5.4
 	github.com/jongio/azidext/go/azidext v0.5.0
 	github.com/kubernetes-csi/csi-lib-utils v0.15.0
 	github.com/kubernetes-csi/csi-proxy/client v1.1.3
@@ -27,7 +27,7 @@ require (
 	go.opentelemetry.io/otel/sdk v1.20.0
 	golang.org/x/net v0.18.0
 	google.golang.org/grpc v1.59.0
-	google.golang.org/protobuf v1.31.0
+	google.golang.org/protobuf v1.33.0
 	k8s.io/api v0.28.4
 	k8s.io/apimachinery v0.28.4
 	k8s.io/client-go v0.28.4
