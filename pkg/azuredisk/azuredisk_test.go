@@ -187,17 +187,9 @@ func TestRun(t *testing.T) {
 					EnablePerfOptimization: true,
 					VMSSCacheTTLInSeconds:  10,
 					VMType:                 "vmss",
-					Endpoint:               "tcp://127.0.0.1:0",
 				})
 
-				ctx, cancel := context.WithCancel(context.Background())
-				ch := make(chan error)
-				go func() {
-					err := d.Run(ctx)
-					ch <- err
-				}()
-				cancel()
-				assert.Nil(t, <-ch)
+				d.Run("tcp://127.0.0.1:0", "", true, true)
 				assert.Equal(t, d.cloud.UseFederatedWorkloadIdentityExtension, true)
 				assert.Equal(t, d.cloud.AADFederatedTokenFile, "fake-token-file")
 				assert.Equal(t, d.cloud.AADClientID, "123456")
