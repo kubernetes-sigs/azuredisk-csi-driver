@@ -203,6 +203,49 @@ func TestRun(t *testing.T) {
 				assert.Nil(t, err)
 			},
 		},
+		{
+			name: "Successful run with federated workload identity azure client",
+			testFunc: func(t *testing.T) {
+				if err := os.WriteFile(fakeCredFile, []byte(fakeCredContent), 0666); err != nil {
+					t.Error(err)
+				}
+
+				defer func() {
+					if err := os.Remove(fakeCredFile); err != nil {
+						t.Error(err)
+					}
+				}()
+
+				t.Setenv(consts.DefaultAzureCredentialFileEnv, fakeCredFile)
+				t.Setenv("AZURE_TENANT_ID", "1234")
+				t.Setenv("AZURE_CLIENT_ID", "123456")
+				t.Setenv("AZURE_FEDERATED_TOKEN_FILE", "fake-token-file")
+
+				d := newDriverV1(&DriverOptions{
+					NodeID:                 "",
+					DriverName:             consts.DefaultDriverName,
+					EnableListVolumes:      true,
+					EnableListSnapshots:    true,
+					EnablePerfOptimization: true,
+					VMSSCacheTTLInSeconds:  10,
+					VMType:                 "vmss",
+					Endpoint:               "tcp://127.0.0.1:0",
+				})
+
+				ctx, cancel := context.WithCancel(context.Background())
+				ch := make(chan error)
+				go func() {
+					err := d.Run(ctx)
+					ch <- err
+				}()
+				cancel()
+				assert.Nil(t, <-ch)
+				assert.Equal(t, d.cloud.UseFederatedWorkloadIdentityExtension, true)
+				assert.Equal(t, d.cloud.AADFederatedTokenFile, "fake-token-file")
+				assert.Equal(t, d.cloud.AADClientID, "123456")
+				assert.Equal(t, d.cloud.TenantID, "1234")
+			},
+		},
 	}
 
 	for _, tc := range testCases {
