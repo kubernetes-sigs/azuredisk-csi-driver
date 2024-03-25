@@ -592,6 +592,10 @@ func (d *Driver) ValidateVolumeCapabilities(ctx context.Context, req *csi.Valida
 func (d *Driver) getOccupiedLunsFromNode(ctx context.Context, nodeName types.NodeName, diskURI string) []int {
 	var occupiedLuns []int
 	if d.checkDiskLUNCollision && !d.isCheckDiskLunThrottled() {
+		timer := time.AfterFunc(checkDiskLunThrottleLatency, func() {
+			klog.Warningf("checkDiskLun(%s) on node %s took longer than %v, disable disk lun check temporarily", diskURI, nodeName, checkDiskLunThrottleLatency)
+			d.checkDiskLunThrottlingCache.Set(consts.CheckDiskLunThrottlingKey, "")
+		})
 		now := time.Now()
 		if usedLunsFromVA, err := d.getUsedLunsFromVolumeAttachments(ctx, string(nodeName)); err == nil {
 			if len(usedLunsFromVA) > 0 {
@@ -611,9 +615,9 @@ func (d *Driver) getOccupiedLunsFromNode(ctx context.Context, nodeName types.Nod
 		}
 		latency := time.Since(now)
 		if latency > checkDiskLunThrottleLatency {
-			klog.Warningf("checkDiskLun(%s) on node %s took %v (limit: %v), disable disk lun check temporarily", diskURI, nodeName, latency, checkDiskLunThrottleLatency)
-			d.throttlingCache.Set(consts.CheckDiskLunThrottlingKey, "")
+			klog.Warningf("checkDiskLun(%s) on node %s took %v (limit: %v)", diskURI, nodeName, latency, checkDiskLunThrottleLatency)
 		} else {
+			timer.Stop() // cancel the timer
 			klog.V(6).Infof("checkDiskLun(%s) on node %s took %v", diskURI, nodeName, latency)
 		}
 	}
