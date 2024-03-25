@@ -114,6 +114,8 @@ type Driver struct {
 	volumeLocks *volumehelper.VolumeLocks
 	// a timed cache for throttling
 	throttlingCache azcache.Resource
+	// a timed cache for disk lun collision check throttling
+	checkDiskLunThrottlingCache azcache.Resource
 }
 
 // newDriverV1 Creates a NewCSIDriver object. Assumes vendor version is equal to driver version &
@@ -160,13 +162,15 @@ func newDriverV1(options *DriverOptions) *Driver {
 	}
 	topologyKey = fmt.Sprintf("topology.%s/zone", driver.Name)
 
-	cache, err := azcache.NewTimedCache(5*time.Minute, func(key string) (interface{}, error) {
-		return nil, nil
-	}, false)
-	if err != nil {
+	getter := func(key string) (interface{}, error) { return nil, nil }
+	var err error
+	if driver.throttlingCache, err = azcache.NewTimedCache(5*time.Minute, getter, false); err != nil {
 		klog.Fatalf("%v", err)
 	}
-	driver.throttlingCache = cache
+	if driver.checkDiskLunThrottlingCache, err = azcache.NewTimedCache(30*time.Minute, getter, false); err != nil {
+		klog.Fatalf("%v", err)
+	}
+
 	userAgent := GetUserAgent(driver.Name, driver.customUserAgent, driver.userAgentSuffix)
 	klog.V(2).Infof("driver userAgent: %s", userAgent)
 
