@@ -139,6 +139,7 @@ func newFakeDriverV1(ctrl *gomock.Controller) (*fakeDriverV1, error) {
 		return nil, err
 	}
 	driver.throttlingCache = cache
+	driver.checkDiskLunThrottlingCache = cache
 	driver.deviceHelper = mockoptimization.NewMockInterface(ctrl)
 
 	driver.AddControllerServiceCapabilities(
