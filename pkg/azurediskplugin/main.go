@@ -70,7 +70,7 @@ var (
 	enableWindowsHostProcess     = flag.Bool("enable-windows-host-process", false, "enable windows host process")
 	enableOtelTracing            = flag.Bool("enable-otel-tracing", false, "If set, enable opentelemetry tracing for the driver. The tracing is disabled by default. Configure the exporter endpoint with OTEL_EXPORTER_OTLP_ENDPOINT and other env variables, see https://opentelemetry.io/docs/specs/otel/configuration/sdk-environment-variables/#general-sdk-configuration.")
 	waitForSnapshotReady         = flag.Bool("wait-for-snapshot-ready", true, "boolean flag to wait for snapshot ready when creating snapshot in same region")
-	checkDiskLUNCollision        = flag.Bool("check-disk-lun-collision", false, "boolean flag to check disk lun collisio before attaching disk")
+	checkDiskLUNCollision        = flag.Bool("check-disk-lun-collision", true, "boolean flag to check disk lun collisio before attaching disk")
 )
 
 func main() {
