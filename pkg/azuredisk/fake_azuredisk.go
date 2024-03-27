@@ -135,6 +135,7 @@ func newFakeDriverV1(t *testing.T) (*fakeDriverV1, error) {
 		return nil, err
 	}
 	driver.throttlingCache = cache
+	driver.checkDiskLunThrottlingCache = cache
 	driver.deviceHelper = mockoptimization.NewMockInterface(ctrl)
 
 	driver.AddControllerServiceCapabilities(
