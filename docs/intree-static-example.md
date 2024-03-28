@@ -109,6 +109,13 @@ Events:
 [...]
 ```
 
+### Tips
+ - The commands below can be used to verify the presence of in-tree volumes in the cluster:
+```console
+kubectl get pod -o yaml -A | grep azureDisk: | wc -l  # get in-tree inline volume number in pods
+kubectl get pv -o yaml | grep azureDisk: | wc -l  # get in-tree volume number in pv
+```
+
 ## Using Azure tags
 
 For more details on using Azure tags, see [Use Azure tags in Azure Kubernetes Service (AKS)][use-tags].
