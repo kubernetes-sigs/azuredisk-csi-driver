@@ -109,6 +109,18 @@ func TestConvertTagsToMap(t *testing.T) {
 			expectedOutput: nil,
 			expectedError:  true,
 		},
+		{
+			desc:           "should return error for invalid characters in key",
+			tags:           "key/1=value1,<bar",
+			expectedOutput: nil,
+			expectedError:  true,
+		},
+		{
+			desc:           "should return success for special characters in value",
+			tags:           "key1=value1,key2=<>%&?/.",
+			expectedOutput: map[string]string{"key1": "value1", "key2": "<>%&?/."},
+			expectedError:  false,
+		},
 	}
 
 	for i, c := range testCases {
