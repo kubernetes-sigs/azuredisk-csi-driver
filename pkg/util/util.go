@@ -96,6 +96,10 @@ func ConvertTagsToMap(tags string) (map[string]string, error) {
 		if key == "" {
 			return nil, fmt.Errorf("Tags '%s' are invalid, the format should like: 'key1=value1,key2=value2'", tags)
 		}
+		// <>%&?/. are not allowed in tag key
+		if strings.ContainsAny(key, "<>%&?/.") {
+			return nil, fmt.Errorf("Tag key '%s' contains invalid characters", key)
+		}
 		value := strings.TrimSpace(kv[1])
 		m[key] = value
 	}
