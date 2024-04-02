@@ -131,11 +131,13 @@ func GetAzureCloudConfig(armConfig *ARMClientConfig) (*cloud.Configuration, erro
 	if armConfig == nil {
 		return &cloud.AzurePublic, nil
 	}
-	if armConfig.ResourceManagerEndpoint != "" {
-		return AzureCloudConfigFromURL(armConfig.ResourceManagerEndpoint)
+	config, err := AzureCloudConfigOverrideFromEnv(AzureCloudConfigFromName(armConfig.Cloud))
+	if err == nil && len(armConfig.ResourceManagerEndpoint) > 0 {
+		svcConfig := config.Services[cloud.ResourceManager]
+		svcConfig.Endpoint = armConfig.ResourceManagerEndpoint
+		config.Services[cloud.ResourceManager] = svcConfig
 	}
-
-	return AzureCloudConfigOverrideFromEnv(AzureCloudConfigFromName(armConfig.Cloud))
+	return config, err
 }
 
 // Environment represents a set of endpoints for each of Azure's Clouds.
