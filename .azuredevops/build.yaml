@@ -1,0 +1,39 @@
+trigger: none
+
+pool:
+  name: azure-agents
+  vmImage: ubuntu-latest
+
+parameters:
+  - name: IMAGE_VERSION_TAG
+    displayName: Version Tag for Docker images
+    type: string
+
+variables:
+  - group: microservice-variables
+  - name: Agent.Source.Git.ShallowFetchDepth
+    value: 0
+
+stages:
+  - stage: image
+    displayName: Docker image
+    jobs:
+      - job: azurediskpluginv2
+        displayName: Build and push Docker image azurediskpluginv2
+        steps:
+          - task: Docker@2
+            displayName: Build image
+            inputs:
+              command: build
+              Dockerfile: build/azurediskpluginv2/Dockerfile
+              buildContext: $(System.DefaultWorkingDirectory)
+              repository: $(Build.Repository.Name)
+              containerRegistry: $(CONTAINER_REGISTRY)
+              tags: ${{ parameters.IMAGE_VERSION_TAG }}
+          - task: Docker@2
+            displayName: Push azurediskpluginv2 image to ACR
+            inputs:
+              command: push
+              repository: $(Build.Repository.Name)
+              containerRegistry: $(CONTAINER_REGISTRY)
+              tags: ${{ parameters.IMAGE_VERSION_TAG }}
