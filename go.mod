@@ -40,7 +40,7 @@ require (
 	k8s.io/pod-security-admission v0.0.0
 	k8s.io/utils v0.0.0-20231127182322-b307cd553661
 	sigs.k8s.io/cloud-provider-azure v1.29.1-0.20240303182306-a20684d9eb38
-	sigs.k8s.io/cloud-provider-azure/pkg/azclient v0.0.7
+	sigs.k8s.io/cloud-provider-azure/pkg/azclient v0.0.8
 	sigs.k8s.io/cloud-provider-azure/pkg/azclient/configloader v0.0.2
 	sigs.k8s.io/yaml v1.4.0
 )
@@ -48,6 +48,8 @@ require (
 require (
 	github.com/Azure/azure-sdk-for-go/sdk/azidentity v1.5.1 // indirect
 	github.com/Azure/azure-sdk-for-go/sdk/internal v1.5.2 // indirect
+	github.com/Azure/azure-sdk-for-go/sdk/keyvault/azsecrets v0.12.0 // indirect
+	github.com/Azure/azure-sdk-for-go/sdk/keyvault/internal v0.7.1 // indirect
 	github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/containerregistry/armcontainerregistry v1.2.0 // indirect
 	github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/containerservice/armcontainerservice/v4 v4.8.0 // indirect
 	github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/keyvault/armkeyvault v1.4.0 // indirect
