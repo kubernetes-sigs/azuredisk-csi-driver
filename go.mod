@@ -26,7 +26,7 @@ require (
 	go.opentelemetry.io/otel/sdk v1.24.0
 	go.uber.org/mock v0.4.0
 	golang.org/x/net v0.22.0
-	golang.org/x/sync v0.6.0
+	golang.org/x/sync v0.7.0
 	google.golang.org/grpc v1.62.1
 	google.golang.org/protobuf v1.33.0
 	k8s.io/api v0.29.3
@@ -40,7 +40,7 @@ require (
 	k8s.io/pod-security-admission v0.0.0
 	k8s.io/utils v0.0.0-20231127182322-b307cd553661
 	sigs.k8s.io/cloud-provider-azure v1.29.1-0.20240401064333-15fadde40d38
-	sigs.k8s.io/cloud-provider-azure/pkg/azclient v0.0.7
+	sigs.k8s.io/cloud-provider-azure/pkg/azclient v0.0.10
 	sigs.k8s.io/cloud-provider-azure/pkg/azclient/configloader v0.0.2
 	sigs.k8s.io/yaml v1.4.0
 )
@@ -48,6 +48,8 @@ require (
 require (
 	github.com/Azure/azure-sdk-for-go/sdk/azidentity v1.5.1 // indirect
 	github.com/Azure/azure-sdk-for-go/sdk/internal v1.5.2 // indirect
+	github.com/Azure/azure-sdk-for-go/sdk/keyvault/azsecrets v0.12.0 // indirect
+	github.com/Azure/azure-sdk-for-go/sdk/keyvault/internal v0.7.1 // indirect
 	github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/containerregistry/armcontainerregistry v1.2.0 // indirect
 	github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/containerservice/armcontainerservice/v4 v4.8.0 // indirect
 	github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/keyvault/armkeyvault v1.4.0 // indirect
