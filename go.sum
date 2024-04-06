@@ -609,6 +609,10 @@ github.com/Azure/azure-sdk-for-go/sdk/azidentity v1.5.1 h1:sO0/P7g68FrryJzljemN+
 github.com/Azure/azure-sdk-for-go/sdk/azidentity v1.5.1/go.mod h1:h8hyGFDsU5HMivxiS2iYFZsgDbU9OnnJ163x5UGVKYo=
 github.com/Azure/azure-sdk-for-go/sdk/internal v1.5.2 h1:LqbJ/WzJUwBf8UiaSzgX7aMclParm9/5Vgp+TY51uBQ=
 github.com/Azure/azure-sdk-for-go/sdk/internal v1.5.2/go.mod h1:yInRyqWXAuaPrgI7p70+lDDgh3mlBohis29jGMISnmc=
+github.com/Azure/azure-sdk-for-go/sdk/keyvault/azsecrets v0.12.0 h1:xnO4sFyG8UH2fElBkcqLTOZsAajvKfnSlgBBW8dXYjw=
+github.com/Azure/azure-sdk-for-go/sdk/keyvault/azsecrets v0.12.0/go.mod h1:XD3DIOOVgBCO03OleB1fHjgktVRFxlT++KwKgIOewdM=
+github.com/Azure/azure-sdk-for-go/sdk/keyvault/internal v0.7.1 h1:FbH3BbSb4bvGluTesZZ+ttN/MDsnMmQP36OSnDuSXqw=
+github.com/Azure/azure-sdk-for-go/sdk/keyvault/internal v0.7.1/go.mod h1:9V2j0jn9jDEkCkv8w/bKTNppX/d0FVA1ud77xCIP4KA=
 github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute/v5 v5.6.0 h1:ui3YNbxfW7J3tTFIZMH6LIGRjCngp+J+nIFlnizfNTE=
 github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute/v5 v5.6.0/go.mod h1:gZmgV+qBqygoznvqo2J9oKZAFziqhLZ2xE/WVUmzkHA=
 github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/containerregistry/armcontainerregistry v1.2.0 h1:DWlwvVV5r/Wy1561nZ3wrpI1/vDIBRY/Wd1HWaRBZWA=
@@ -1403,8 +1407,8 @@ golang.org/x/sync v0.0.0-20220929204114-8fcdb60fdcc0/go.mod h1:RxMgew5VJxzue5/jJ
 golang.org/x/sync v0.1.0/go.mod h1:RxMgew5VJxzue5/jJTE5uejpjVlOe/izrB70Jof72aM=
 golang.org/x/sync v0.2.0/go.mod h1:RxMgew5VJxzue5/jJTE5uejpjVlOe/izrB70Jof72aM=
 golang.org/x/sync v0.3.0/go.mod h1:FU7BRWz2tNW+3quACPkgCx/L+uEAv1htQ0V83Z9Rj+Y=
-golang.org/x/sync v0.6.0 h1:5BMeUDZ7vkXGfEr1x9B4bRcTH4lpkTkpdh0T/J+qjbQ=
-golang.org/x/sync v0.6.0/go.mod h1:Czt+wKu1gCyEFDUtn0jG5QVvpJ6rzVqr5aXyt9drQfk=
+golang.org/x/sync v0.7.0 h1:YsImfSBoP9QPYL0xyKJPq0gcaJdG3rInoqxTWbfQu9M=
+golang.org/x/sync v0.7.0/go.mod h1:Czt+wKu1gCyEFDUtn0jG5QVvpJ6rzVqr5aXyt9drQfk=
 golang.org/x/sys v0.0.0-20180830151530-49385e6e1522/go.mod h1:STP8DvDyc/dI5b8T5hshtkjS+E42TnysNCUPdjciGhY=
 golang.org/x/sys v0.0.0-20180905080454-ebe1bf3edb33/go.mod h1:STP8DvDyc/dI5b8T5hshtkjS+E42TnysNCUPdjciGhY=
 golang.org/x/sys v0.0.0-20180909124046-d0be0721c37e/go.mod h1:STP8DvDyc/dI5b8T5hshtkjS+E42TnysNCUPdjciGhY=
@@ -2039,8 +2043,8 @@ sigs.k8s.io/apiserver-network-proxy/konnectivity-client v0.28.0 h1:TgtAeesdhpm2S
 sigs.k8s.io/apiserver-network-proxy/konnectivity-client v0.28.0/go.mod h1:VHVDI/KrK4fjnV61bE2g3sA7tiETLn8sooImelsCx3Y=
 sigs.k8s.io/cloud-provider-azure v1.29.1-0.20240401064333-15fadde40d38 h1:vO1Hm+bkN5+rQBxupkSyPT9vRSzKsF2Dde2/wIpKWHc=
 sigs.k8s.io/cloud-provider-azure v1.29.1-0.20240401064333-15fadde40d38/go.mod h1:P9469h4lNzbAy86lAdxstlALSdmCHaTuhJTaVAgdfkI=
-sigs.k8s.io/cloud-provider-azure/pkg/azclient v0.0.7 h1:2i90v/+RL6UmN9zE8bDxEy8DpEdIK9WiwmrGS6XoDgk=
-sigs.k8s.io/cloud-provider-azure/pkg/azclient v0.0.7/go.mod h1:4rMNajTN5xEbeVGFWfAeqorkednAmXM5/d8OK+ux+tY=
+sigs.k8s.io/cloud-provider-azure/pkg/azclient v0.0.10 h1:bI+ZLfnsvExyxk/mmwmOnFHbfRyv0kc0Zk5sVh+w75A=
+sigs.k8s.io/cloud-provider-azure/pkg/azclient v0.0.10/go.mod h1:WxbuPyPqXd+yNIkWNJ/gyjAZp/DXKGHDOdZH6DXsKRs=
 sigs.k8s.io/cloud-provider-azure/pkg/azclient/configloader v0.0.2 h1:quGUBBYzHpEXd6PSNUS9UpheEcwW+AbDtZBIAuzS0jM=
 sigs.k8s.io/cloud-provider-azure/pkg/azclient/configloader v0.0.2/go.mod h1:XG0A5DEGP8oKo97GeDAcd2rXOCVX22JeHNLpiDVgfZg=
 sigs.k8s.io/json v0.0.0-20221116044647-bc3834ca7abd h1:EDPBXCAspyGV4jQlpZSudPeMmr1bNJefnuqLsRAsHZo=
