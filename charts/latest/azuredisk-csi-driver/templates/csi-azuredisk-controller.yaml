@@ -158,7 +158,7 @@ spec:
           args:
             - --csi-address=/csi/csi.sock
             - --probe-timeout=3s
-            - --health-port={{ .Values.controller.livenessProbe.healthPort }}
+            - --http-endpoint=localhost:{{ .Values.controller.livenessProbe.healthPort }}
             - --v=2
           volumeMounts:
             - name: socket-dir
@@ -200,17 +200,15 @@ spec:
             - "--enable-otel-tracing={{ .Values.controller.otelTracing.enabled }}"
             - "--check-disk-lun-collision=true"
           ports:
-            - containerPort: {{ .Values.controller.livenessProbe.healthPort }}
-              name: healthz
-              protocol: TCP
             - containerPort: {{ .Values.controller.metricsPort }}
               name: metrics
               protocol: TCP
           livenessProbe:
             failureThreshold: 5
             httpGet:
+              host: localhost
               path: /healthz
-              port: healthz
+              port: {{ .Values.controller.livenessProbe.healthPort }}
             initialDelaySeconds: 30
             timeoutSeconds: 10
             periodSeconds: 30
