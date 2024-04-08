@@ -232,17 +232,15 @@ func GetVolumeIDFromTargetPath(mount string) (string, error) {
 }
 
 func getTarget(mount string) (string, error) {
-	cmd := "(Get-Item -Path $Env:mount).Target"
-	out, err := azureutils.RunPowershellCmd(cmd, fmt.Sprintf("mount=%s", mount))
-	if err != nil || len(out) == 0 {
-		return "", fmt.Errorf("error getting volume from mount. cmd: %s, output: %s, error: %v", cmd, string(out), err)
+	target, err := os.Readlink(mount)
+	if err != nil {
+		return "", err
 	}
-	volumeString := strings.TrimSpace(string(out))
-	if !strings.HasPrefix(volumeString, "Volume") {
-		return getTarget(volumeString)
+	if !strings.HasPrefix(target, "Volume") {
+		return getTarget(target)
 	}
 
-	return ensureVolumePrefix(volumeString), nil
+	return ensureVolumePrefix(target), nil
 }
 
 // GetVolumeIDFromTargetPath returns the volume id of a given target path.
