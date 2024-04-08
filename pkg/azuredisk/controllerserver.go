@@ -43,6 +43,7 @@ import (
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/optimization"
 	volumehelper "sigs.k8s.io/azuredisk-csi-driver/pkg/util"
+	azureconsts "sigs.k8s.io/cloud-provider-azure/pkg/consts"
 	"sigs.k8s.io/cloud-provider-azure/pkg/metrics"
 	azure "sigs.k8s.io/cloud-provider-azure/pkg/provider"
 )
@@ -456,8 +457,8 @@ func (d *Driver) ControllerPublishVolume(ctx context.Context, req *csi.Controlle
 		// Volume is already attached to node.
 		klog.V(2).Infof("Attach operation is successful. volume %s is already attached to node %s at lun %d.", diskURI, nodeName, lun)
 	} else {
-		if azureutils.IsThrottlingError(err) {
-			return nil, status.Errorf(codes.Internal, err.Error())
+		if !strings.Contains(err.Error(), azureconsts.CannotFindDiskLUN) {
+			return nil, status.Errorf(codes.Internal, "could not get disk lun for volume %s: %v", diskURI, err)
 		}
 		var cachingMode armcompute.CachingTypes
 		if cachingMode, err = azureutils.GetCachingMode(volumeContext); err != nil {
