@@ -236,6 +236,7 @@ func getTarget(mount string) (string, error) {
 	if err != nil {
 		return "", err
 	}
+	klog.V(2).Infof("Readlink: %s", target)
 	if !strings.HasPrefix(target, "Volume") {
 		return getTarget(target)
 	}
