@@ -46,7 +46,7 @@ spec:
           args:
             - "--csi-address=$(CSI_ENDPOINT)"
             - "--probe-timeout=3s"
-            - "--http-endpoint=localhost:29603"
+            - "--health-port=29603"
             - "--v=2"
           env:
             - name: CSI_ENDPOINT
@@ -102,12 +102,15 @@ spec:
             - "--nodeid=$(KUBE_NODE_NAME)"
             - "--allow-empty-cloud-config=true"
             - "--get-node-info-from-labels=false"
+          ports:
+            - containerPort: 29603
+              name: healthz
+              protocol: TCP
           livenessProbe:
             failureThreshold: 5
             httpGet:
-              host: localhost
               path: /healthz
-              port: 29603
+              port: healthz
             initialDelaySeconds: 30
             timeoutSeconds: 10
             periodSeconds: 30
