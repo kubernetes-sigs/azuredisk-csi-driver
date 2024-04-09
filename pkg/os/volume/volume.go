@@ -228,10 +228,13 @@ func GetDiskNumberFromVolumeID(volumeID string) (uint32, error) {
 
 // GetVolumeIDFromTargetPath - gets the volume ID given a mount point, the function is recursive until it find a volume or errors out
 func GetVolumeIDFromTargetPath(mount string) (string, error) {
-	return getTarget(mount)
+	return getTarget(mount, 5 /*max depth*/)
 }
 
-func getTarget(mount string) (string, error) {
+func getTarget(mount string, depth int) (string, error) {
+	if depth == 0 {
+		return "", fmt.Errorf("maximum depth reached on mount %s", mount)
+	}
 	cmd := "(Get-Item -Path $Env:mount).Target"
 	out, err := azureutils.RunPowershellCmd(cmd, fmt.Sprintf("mount=%s", mount))
 	if err != nil || len(out) == 0 {
@@ -239,7 +242,7 @@ func getTarget(mount string) (string, error) {
 	}
 	volumeString := strings.TrimSpace(string(out))
 	if !strings.HasPrefix(volumeString, "Volume") {
-		return getTarget(volumeString)
+		return getTarget(volumeString, depth-1)
 	}
 
 	return ensureVolumePrefix(volumeString), nil
