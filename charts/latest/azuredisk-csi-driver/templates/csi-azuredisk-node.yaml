@@ -75,7 +75,7 @@ spec:
           args:
             - --csi-address=/csi/csi.sock
             - --probe-timeout=3s
-            - --health-port={{ .Values.node.livenessProbe.healthPort }}
+            - --http-endpoint=localhost:{{ .Values.node.livenessProbe.healthPort }}
             - --v=2
           resources: {{- toYaml .Values.linux.resources.livenessProbe | nindent 12 }}
         - name: node-driver-registrar
@@ -130,15 +130,12 @@ spec:
             - "--support-zone={{ .Values.node.supportZone }}"
             - "--get-node-info-from-labels={{ .Values.linux.getNodeInfoFromLabels }}"
             - "--get-nodeid-from-imds={{ .Values.node.getNodeIDFromIMDS }}"
-          ports:
-            - containerPort: {{ .Values.node.livenessProbe.healthPort }}
-              name: healthz
-              protocol: TCP
           livenessProbe:
             failureThreshold: 5
             httpGet:
+              host: localhost
               path: /healthz
-              port: healthz
+              port: {{ .Values.node.livenessProbe.healthPort }}
             initialDelaySeconds: 30
             timeoutSeconds: 10
             periodSeconds: 30
