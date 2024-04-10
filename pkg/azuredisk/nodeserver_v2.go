@@ -405,7 +405,7 @@ func (d *DriverV2) NodeGetVolumeStats(ctx context.Context, req *csi.NodeGetVolum
 		return nil, status.Error(codes.InvalidArgument, "NodeGetVolumeStats volume path was empty")
 	}
 
-	volUsage, err := GetVolumeStats(ctx, d.mounter, req.VolumePath, d.hostUtil)
+	volUsage, err := d.GetVolumeStats(ctx, d.mounter, req.VolumeId, req.VolumePath, d.hostUtil)
 	return &csi.NodeGetVolumeStatsResponse{
 		Usage: volUsage,
 	}, err
