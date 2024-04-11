@@ -445,6 +445,9 @@ func (d *Driver) NodeGetVolumeStats(ctx context.Context, req *csi.NodeGetVolumeS
 	}
 
 	volUsage, err := d.GetVolumeStats(ctx, d.mounter, req.VolumeId, req.VolumePath, d.hostUtil)
+	if err != nil {
+		klog.Errorf("NodeGetVolumeStats: failed to get volume stats for volume %s path %s: %v", req.VolumeId, req.VolumePath, err)
+	}
 	return &csi.NodeGetVolumeStatsResponse{
 		Usage: volUsage,
 	}, err
