@@ -119,6 +119,6 @@ func rescanAllVolumes(io azureutils.IOHandler) error {
 	return nil
 }
 
-func GetVolumeStats(ctx context.Context, m *mount.SafeFormatAndMount, target string, hostutil hostUtil) ([]*csi.VolumeUsage, error) {
+func (d *DriverCore) GetVolumeStats(ctx context.Context, m *mount.SafeFormatAndMount, volumeID, target string, hostutil hostUtil) ([]*csi.VolumeUsage, error) {
 	return []*csi.VolumeUsage{}, nil
 }
