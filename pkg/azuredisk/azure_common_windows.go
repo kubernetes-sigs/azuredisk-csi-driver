@@ -25,12 +25,14 @@ import (
 	"strconv"
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
+	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"k8s.io/klog/v2"
 	"k8s.io/mount-utils"
 
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/mounter"
+	azcache "sigs.k8s.io/cloud-provider-azure/pkg/cache"
 )
 
 func formatAndMount(source, target, fstype string, options []string, m *mount.SafeFormatAndMount) error {
@@ -162,9 +164,22 @@ func rescanAllVolumes(io azureutils.IOHandler) error {
 	return nil
 }
 
-func GetVolumeStats(ctx context.Context, m *mount.SafeFormatAndMount, target string, hostutil hostUtil) ([]*csi.VolumeUsage, error) {
+func (d *DriverCore) GetVolumeStats(ctx context.Context, m *mount.SafeFormatAndMount, volumeID, target string, hostutil hostUtil) ([]*csi.VolumeUsage, error) {
+	// check if the volume stats is cached
+	cache, err := d.volStatsCache.Get(volumeID, azcache.CacheReadTypeDefault)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, err.Error())
+	}
+	if cache != nil {
+		volUsage := cache.(csi.VolumeUsage)
+		klog.V(6).Infof("NodeGetVolumeStats: volume stats for volume %s path %s is cached", volumeID, target)
+		return []*csi.VolumeUsage{&volUsage}, nil
+	}
+
 	if proxy, ok := m.Interface.(mounter.CSIProxyMounter); ok {
 		volUsage, err := proxy.GetVolumeStats(ctx, target)
+		// cache the volume stats per volume
+		d.volStatsCache.Set(volumeID, *volUsage)
 		return []*csi.VolumeUsage{volUsage}, err
 	}
 	return []*csi.VolumeUsage{}, fmt.Errorf("could not cast to csi proxy class")
