@@ -74,6 +74,7 @@ type DriverOptions struct {
 	TrafficManagerPort           int64
 	AttachDetachInitialDelayInMs int64
 	VMSSCacheTTLInSeconds        int64
+	VolStatsCacheExpireInMinutes int64
 	VMType                       string
 	EnableWindowsHostProcess     bool
 	GetNodeIDFromIMDS            bool
@@ -123,6 +124,7 @@ type DriverCore struct {
 	enableTrafficManager         bool
 	trafficManagerPort           int64
 	vmssCacheTTLInSeconds        int64
+	volStatsCacheExpireInMinutes int64
 	attachDetachInitialDelayInMs int64
 	vmType                       string
 	enableWindowsHostProcess     bool
@@ -130,6 +132,8 @@ type DriverCore struct {
 	enableOtelTracing            bool
 	shouldWaitForSnapshotReady   bool
 	checkDiskLUNCollision        bool
+	// a timed cache storing volume stats <volumeID, volumeStats>
+	volStatsCache azcache.Resource
 }
 
 // Driver is the v1 implementation of the Azure Disk CSI Driver.
@@ -170,6 +174,7 @@ func newDriverV1(options *DriverOptions) *Driver {
 	driver.enableTrafficManager = options.EnableTrafficManager
 	driver.trafficManagerPort = options.TrafficManagerPort
 	driver.vmssCacheTTLInSeconds = options.VMSSCacheTTLInSeconds
+	driver.volStatsCacheExpireInMinutes = options.VolStatsCacheExpireInMinutes
 	driver.vmType = options.VMType
 	driver.enableWindowsHostProcess = options.EnableWindowsHostProcess
 	driver.getNodeIDFromIMDS = options.GetNodeIDFromIMDS
@@ -188,6 +193,12 @@ func newDriverV1(options *DriverOptions) *Driver {
 		klog.Fatalf("%v", err)
 	}
 	if driver.checkDiskLunThrottlingCache, err = azcache.NewTimedCache(30*time.Minute, getter, false); err != nil {
+		klog.Fatalf("%v", err)
+	}
+	if options.VolStatsCacheExpireInMinutes <= 0 {
+		options.VolStatsCacheExpireInMinutes = 10 // default expire in 10 minutes
+	}
+	if driver.volStatsCache, err = azcache.NewTimedCache(time.Duration(options.VolStatsCacheExpireInMinutes)*time.Minute, getter, false); err != nil {
 		klog.Fatalf("%v", err)
 	}
 	return &driver
