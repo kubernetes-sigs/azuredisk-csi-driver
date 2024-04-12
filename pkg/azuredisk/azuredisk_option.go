@@ -50,6 +50,7 @@ type DriverOptions struct {
 	TrafficManagerPort           int64
 	AttachDetachInitialDelayInMs int64
 	VMSSCacheTTLInSeconds        int64
+	VolStatsCacheExpireInMinutes int64
 	VMType                       string
 	EnableWindowsHostProcess     bool
 	GetNodeIDFromIMDS            bool
@@ -90,6 +91,7 @@ func (o *DriverOptions) AddFlags() *flag.FlagSet {
 	fs.Int64Var(&o.TrafficManagerPort, "traffic-manager-port", 7788, "default traffic manager port")
 	fs.Int64Var(&o.AttachDetachInitialDelayInMs, "attach-detach-initial-delay-ms", 1000, "initial delay in milliseconds for batch disk attach/detach")
 	fs.Int64Var(&o.VMSSCacheTTLInSeconds, "vmss-cache-ttl-seconds", -1, "vmss cache TTL in seconds (600 by default)")
+	fs.Int64Var(&o.VolStatsCacheExpireInMinutes, "vol-stats-cache-expire-in-minutes", 10, "The cache expire time in minutes for volume stats cache")
 	fs.StringVar(&o.VMType, "vm-type", "", "type of agent node. available values: vmss, standard")
 	fs.BoolVar(&o.EnableWindowsHostProcess, "enable-windows-host-process", false, "enable windows host process")
 	fs.BoolVar(&o.GetNodeIDFromIMDS, "get-nodeid-from-imds", false, "boolean flag to get NodeID from IMDS")
