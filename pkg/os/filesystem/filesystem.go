@@ -17,7 +17,6 @@ limitations under the License.
 package filesystem
 
 import (
-	"context"
 	"fmt"
 	"os"
 	"regexp"
@@ -78,16 +77,6 @@ func PathExists(path string) (bool, error) {
 		return false, err
 	}
 	return pathExists(path)
-}
-
-func PathValid(_ context.Context, path string) (bool, error) {
-	cmd := `Test-Path $Env:remotepath`
-	output, err := util.RunPowershellCmd(cmd, fmt.Sprintf("remotepath=%s", path))
-	if err != nil {
-		return false, fmt.Errorf("returned output: %s, error: %v", string(output), err)
-	}
-
-	return strings.HasPrefix(strings.ToLower(string(output)), "true"), nil
 }
 
 func ValidatePathWindows(path string) error {
