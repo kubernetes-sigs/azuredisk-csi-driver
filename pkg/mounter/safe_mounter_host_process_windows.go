@@ -27,6 +27,9 @@ import (
 	"strings"
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
+	"golang.org/x/sys/windows"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 	"k8s.io/klog/v2"
 	mount "k8s.io/mount-utils"
 
@@ -234,22 +237,28 @@ func (mounter *winMounter) ResizeVolume(devicePath string) error {
 	return volume.ResizeVolume(devicePath, 0)
 }
 
+// GetFreeSpace returns the free space of the volume in bytes, total size of the volume in bytes and the used space of the volume in bytes
+func GetFreeSpace(path string) (int64, int64, int64, error) {
+	var totalNumberOfBytes, totalNumberOfFreeBytes uint64
+	dirName := windows.StringToUTF16Ptr(path)
+	if err := windows.GetDiskFreeSpaceEx(dirName, nil, &totalNumberOfBytes, &totalNumberOfFreeBytes); err != nil {
+		return 0, 0, 0, err
+	}
+	return int64(totalNumberOfFreeBytes), int64(totalNumberOfBytes), int64(totalNumberOfBytes - totalNumberOfFreeBytes), nil
+}
+
 // GetVolumeStats get volume usage
 func (mounter *winMounter) GetVolumeStats(ctx context.Context, path string) (*csi.VolumeUsage, error) {
-	volumeID, err := volume.GetVolumeIDFromTargetPath(path)
+	freeBytesAvailable, totalBytes, totalBytesUsed, err := GetFreeSpace(path)
 	if err != nil {
-		return nil, fmt.Errorf("GetVolumeIDFromMount(%s) failed with error: %v", path, err)
+		return nil, status.Errorf(codes.Internal, "failed to get free space on path %s: %v", path, err)
 	}
-	klog.V(6).Infof("GetVolumeStats(%s) returned volumeID(%s)", path, volumeID)
-	volumeSize, volumeUsedSize, err := volume.GetVolumeStats(volumeID)
-	if err != nil {
-		return nil, fmt.Errorf("GetVolumeStats(%s) failed with error: %v", volumeID, err)
-	}
+
 	volUsage := &csi.VolumeUsage{
 		Unit:      csi.VolumeUsage_BYTES,
-		Available: volumeSize - volumeUsedSize,
-		Total:     volumeSize,
-		Used:      volumeUsedSize,
+		Available: freeBytesAvailable,
+		Total:     totalBytes,
+		Used:      totalBytesUsed,
 	}
 	return volUsage, nil
 }
