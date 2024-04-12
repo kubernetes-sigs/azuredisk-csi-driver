@@ -227,9 +227,9 @@ func (mounter *winMounter) GetDeviceNameFromMount(mountPath, pluginMountDir stri
 }
 
 // GetVolumeSizeInBytes returns the size of the volume in bytes.
-func (mounter *winMounter) GetVolumeSizeInBytes(devicePath string) (int64, error) {
-	volumeSize, _, err := volume.GetVolumeStats(devicePath)
-	return volumeSize, err
+func (mounter *winMounter) GetVolumeSizeInBytes(volumePath string) (int64, error) {
+	_, totalBytes, _, err := GetFreeSpace(volumePath)
+	return totalBytes, err
 }
 
 // ResizeVolume resizes the volume to the maximum available size.
@@ -241,10 +241,8 @@ func (mounter *winMounter) ResizeVolume(devicePath string) error {
 func GetFreeSpace(path string) (int64, int64, int64, error) {
 	var totalNumberOfBytes, totalNumberOfFreeBytes uint64
 	dirName := windows.StringToUTF16Ptr(path)
-	if err := windows.GetDiskFreeSpaceEx(dirName, nil, &totalNumberOfBytes, &totalNumberOfFreeBytes); err != nil {
-		return 0, 0, 0, err
-	}
-	return int64(totalNumberOfFreeBytes), int64(totalNumberOfBytes), int64(totalNumberOfBytes - totalNumberOfFreeBytes), nil
+	err := windows.GetDiskFreeSpaceEx(dirName, nil, &totalNumberOfBytes, &totalNumberOfFreeBytes)
+	return int64(totalNumberOfFreeBytes), int64(totalNumberOfBytes), int64(totalNumberOfBytes - totalNumberOfFreeBytes), err
 }
 
 // GetVolumeStats get volume usage
