@@ -175,30 +175,6 @@ func ResizeVolume(volumeID string, size int64) error {
 	return nil
 }
 
-// GetVolumeStats - retrieves the volume stats for a given volume
-func GetVolumeStats(volumeID string) (int64, int64, error) {
-	// get the size and sizeRemaining for the volume
-	cmd := "(Get-Volume -UniqueId \"$Env:volumeID\" | Select SizeRemaining,Size) | ConvertTo-Json"
-	out, err := azureutils.RunPowershellCmd(cmd, fmt.Sprintf("volumeID=%s", volumeID))
-
-	if err != nil {
-		return -1, -1, fmt.Errorf("error getting capacity and used size of volume. cmd: %s, output: %s, error: %v", cmd, string(out), err)
-	}
-
-	var getVolume map[string]int64
-	outString := string(out)
-	err = json.Unmarshal([]byte(outString), &getVolume)
-	if err != nil {
-		return -1, -1, fmt.Errorf("out %v outstring %v err %v", out, outString, err)
-	}
-
-	volumeSize := getVolume["Size"]
-	volumeSizeRemaining := getVolume["SizeRemaining"]
-
-	volumeUsedSize := volumeSize - volumeSizeRemaining
-	return volumeSize, volumeUsedSize, nil
-}
-
 // GetDiskNumberFromVolumeID - gets the disk number where the volume is.
 func GetDiskNumberFromVolumeID(volumeID string) (uint32, error) {
 	// get the size and sizeRemaining for the volume

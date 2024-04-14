@@ -513,6 +513,10 @@ func (d *Driver) NodeExpandVolume(_ context.Context, req *csi.NodeExpandVolumeRe
 		klog.Errorf("%v, will continue checking whether the volume has been resized", retErr)
 	}
 
+	if runtime.GOOS == "windows" && d.enableWindowsHostProcess {
+		// in windows host process mode, this driver could get the volume size from the volume path
+		devicePath = volumePath
+	}
 	gotBlockSizeBytes, err := getBlockSizeBytes(devicePath, d.mounter)
 	if err != nil {
 		return nil, status.Error(codes.Internal, fmt.Sprintf("could not get size of block volume at path %s: %v", devicePath, err))
