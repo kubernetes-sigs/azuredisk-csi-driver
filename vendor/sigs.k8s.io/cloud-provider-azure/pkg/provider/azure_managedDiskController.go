@@ -114,8 +114,10 @@ func (c *ManagedDiskController) CreateManagedDisk(ctx context.Context, options *
 	newTags[consts.CreatedByTag] = &azureDDTag
 	if options.Tags != nil {
 		for k, v := range options.Tags {
-			value := v
-			newTags[k] = &value
+			// Azure won't allow / (forward slash) in tags
+			newKey := strings.Replace(k, "/", "-", -1)
+			newValue := strings.Replace(v, "/", "-", -1)
+			newTags[newKey] = &newValue
 		}
 	}
 
