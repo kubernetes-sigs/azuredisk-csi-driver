@@ -19,3 +19,4 @@ jobs:
         github_repository: "${GITHUB_REPOSITORY}"
         github_token: ${{ secrets.WORKFLOW_TOKEN }}
         upstream_repo: kubernetes-sigs/azuredisk-csi-driver
+        major_version: "1"
