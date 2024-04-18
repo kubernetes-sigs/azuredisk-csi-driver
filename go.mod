@@ -19,7 +19,7 @@ require (
 	github.com/pborman/uuid v1.2.0
 	github.com/pelletier/go-toml v1.9.4
 	github.com/stretchr/testify v1.8.4
-	golang.org/x/net v0.18.0
+	golang.org/x/net v0.24.0
 	google.golang.org/grpc v1.59.0
 	google.golang.org/protobuf v1.33.0
 	k8s.io/api v0.27.8
@@ -39,7 +39,7 @@ require (
 	github.com/Azure/azure-sdk-for-go/sdk/azidentity v1.2.0
 	github.com/jongio/azidext/go/azidext v0.4.0
 	github.com/onsi/ginkgo/v2 v2.11.0
-	golang.org/x/sys v0.15.0
+	golang.org/x/sys v0.19.0
 	k8s.io/client-go v0.27.8
 	k8s.io/pod-security-admission v0.27.8
 )
@@ -124,10 +124,10 @@ require (
 	go.uber.org/atomic v1.7.0 // indirect
 	go.uber.org/multierr v1.6.0 // indirect
 	go.uber.org/zap v1.19.0 // indirect
-	golang.org/x/crypto v0.17.0 // indirect
+	golang.org/x/crypto v0.22.0 // indirect
 	golang.org/x/oauth2 v0.11.0 // indirect
 	golang.org/x/sync v0.3.0 // indirect
-	golang.org/x/term v0.15.0 // indirect
+	golang.org/x/term v0.19.0 // indirect
 	golang.org/x/text v0.14.0 // indirect
 	golang.org/x/time v0.3.0 // indirect
 	golang.org/x/tools v0.12.0 // indirect
