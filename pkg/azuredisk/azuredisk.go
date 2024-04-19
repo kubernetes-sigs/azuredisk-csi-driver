@@ -540,7 +540,7 @@ func (d *DriverCore) getUsedLunsFromVolumeAttachments(ctx context.Context, nodeN
 	for _, va := range volumeAttachments.Items {
 		klog.V(6).Infof("attacher: %s, nodeName: %s, Status: %v, PV: %s, attachmentMetadata: %v", va.Spec.Attacher, va.Spec.NodeName,
 			va.Status.Attached, pointer.StringDeref(va.Spec.Source.PersistentVolumeName, ""), va.Status.AttachmentMetadata)
-		if va.Spec.Attacher == consts.DefaultDriverName && strings.EqualFold(va.Spec.NodeName, nodeName) && va.Status.Attached {
+		if va.Spec.Attacher == d.Name && strings.EqualFold(va.Spec.NodeName, nodeName) && va.Status.Attached {
 			if k, ok := va.Status.AttachmentMetadata[consts.LUN]; ok {
 				lun, err := strconv.Atoi(k)
 				if err != nil {
