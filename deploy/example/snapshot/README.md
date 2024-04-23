@@ -88,6 +88,8 @@ outfile
 
 ### Tips
 ### Use snapshot feature to create a copy of a disk with a different SKU
+> It is possible to change the disk SKU from LRS to ZRS, from standard to premium, and even across zones, but it is not supported to change the disk SKU across regions.
+
 > For information on storage class settings with cross-zone support, please refer to [allowed-topology storage class](./storageclass-azuredisk-csi-allowed-topology.yaml)
 
  - Before proceeding, ensure that the application is not writing data to the source disk.
