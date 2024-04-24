@@ -18,21 +18,18 @@ package main
 
 import (
 	"context"
-	"crypto/tls"
-	"crypto/x509"
 	"encoding/json"
 	"flag"
 	"fmt"
 	"log"
 	"net/http"
-	"net/url"
 	"os"
 	"path/filepath"
 	"strconv"
 	"time"
 
-	"github.com/Azure/azure-amqp-common-go/v3/aad"
-	eventhub "github.com/Azure/azure-event-hubs-go/v3"
+	"github.com/Azure/azure-sdk-for-go/sdk/azidentity"
+	"github.com/Azure/azure-sdk-for-go/sdk/messaging/azeventhubs"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
@@ -44,8 +41,6 @@ import (
 )
 
 var mountPath = flag.String("mount-path", "/", "The path of the file where timestamps will be logged")
-var metricsEndpoint = flag.String("metrics-endpoint", "", "The endpoint where prometheus metrics should be published")
-var authEnabled = flag.Bool("auth-enabled", false, "Specify whether request to metrics endpoint requires authentication or not")
 var runID = flag.String("run-id", "", "The run id of the test")
 var storageProvisioner = flag.String("storage-provisioner", "", "The underlying storage provisioner of test")
 var workloadType = flag.String("workload-type", "default-workload-type", "The type of test being run (1pod1pvc, 3pod3pvc, etc)")
@@ -90,6 +85,20 @@ func main() {
 	if err != nil {
 		klog.Errorf("Error occurred while getting pod failure client: %v", err)
 	}
+	
+	var producerClient *azeventhubs.ProducerClient
+	if (os.Getenv("AZURE_CLIENT_ID") != "") {
+		defaultAzureCred, err := azidentity.NewDefaultAzureCredential(nil)
+		if err != nil {
+			klog.Errorf("Error occurred while getting azure credentials: %v", err)
+		}
+
+		producerClient, err = azeventhubs.NewProducerClient("xstorecontainerstorage.servicebus.windows.net", "podfailover", defaultAzureCred, nil)
+		if err != nil {
+			klog.Errorf("Error occurred while creating eventhubs producer client: %v", err)
+		}
+	}
+	
 
 	ctx := context.Background()
 
@@ -108,7 +117,7 @@ func main() {
 		}
 	} else {
 		downtime := calculateDowntime(podfailurecrd.Status.HeartBeat)
-		go reportDowntime(ctx, clientset, downtime, podfailurecrd.Status.FailureType)
+		go reportDowntime(ctx, clientset, producerClient, downtime, podfailurecrd.Status.FailureType)
 	}
 
 	if *storageProvisioner != "" {
@@ -161,10 +170,9 @@ func runStatelessWorkload(ctx context.Context, clientset *kubernetes.Clientset, 
 	func() { log.Fatal(srv.ListenAndServe()) }()
 }
 
-func reportDowntime(ctx context.Context, clientset *kubernetes.Clientset, downtime int64, failureType string) {
+func reportDowntime(ctx context.Context, clientset *kubernetes.Clientset, producerClient *azeventhubs.ProducerClient, downtime int64, failureType string) {
 	klog.Infof("The downtime seen by the pod is %d with type %s", downtime, failureType)
-
-	if os.Getenv("AZURE_CLIENT_ID") != "" {
+	if producerClient != nil {
 		var imageVersion string
 		var err error
 		if *storageProvisioner != "" {
@@ -180,68 +188,20 @@ func reportDowntime(ctx context.Context, clientset *kubernetes.Clientset, downti
 		if err != nil {
 			log.Fatalf("failed to marshal downtime record to json: %s\n", err)
 		}
-		downtimeRecordJSON := string(downtimeRecordJSONBytes)
 
-		tokenProvider, err := aad.NewJWTProvider(aad.JWTProviderWithEnvironmentVars())
-		if err != nil {
-			log.Fatalf("failed to configure AAD JWT provider: %s\n", err)
-		}
-
-		hub, err := eventhub.NewHub("xstorecontainerstorage", "podfailover", tokenProvider)
+		batch, err := producerClient.NewEventDataBatch(ctx, nil)
 		if err != nil {
 			klog.Errorf("Error occurred while connecting to event hub: %v", err)
 		}
 
-		err = hub.Send(ctx, eventhub.NewEventFromString(downtimeRecordJSON))
+		err = batch.AddEventData(&azeventhubs.EventData{Body: downtimeRecordJSONBytes}, nil)
 		if err != nil {
-			klog.Errorf("Error occurred while sending to event hub: %v", err)
-		}
-	}
-
-	if *metricsEndpoint != "" {
-		client := &http.Client{}
-		if *authEnabled {
-
-			// Read the values from the secret
-			var caCert = os.Getenv("CA_CERT")
-			var clientCert = os.Getenv("CLIENT_CERT")
-			var clientKey = os.Getenv("CLIENT_KEY")
-
-			caCertPool := x509.NewCertPool()
-			caCertPool.AppendCertsFromPEM([]byte(caCert))
-			cert, err := tls.X509KeyPair([]byte(clientCert), []byte(clientKey))
-
-			if err != nil {
-				klog.Errorf("Error occurred while parsing the certificate %v", err)
-			}
-
-			client = &http.Client{
-				Transport: &http.Transport{
-					TLSClientConfig: &tls.Config{
-						RootCAs:      caCertPool,
-						Certificates: []tls.Certificate{cert},
-					},
-				},
-			}
+			klog.Errorf("Error occurred while adding event data: %v", err)
 		}
 
-		metricsEndpointURL, err := url.Parse(*metricsEndpoint)
+		err = producerClient.SendEventDataBatch(ctx, batch, nil)
 		if err != nil {
-			klog.Infof("Error occurred while parsing the url %v", *metricsEndpoint)
-		}
-
-		//Make a request to the metrics service
-		query := metricsEndpointURL.Query()
-		query.Add("value", strconv.Itoa(int(downtime)))
-		query.Add("run-id", *runID)
-		metricsEndpointURL.RawQuery = query.Encode()
-
-		resp, err := client.Get(metricsEndpointURL.String())
-		if err != nil {
-			klog.Infof("Error occurred while making the http call to metrics publisher: %v", err)
-		}
-		if resp != nil {
-			resp.Body.Close()
+			klog.Errorf("Error occurred while sending data to event hub: %v", err)
 		}
 	}
 }
