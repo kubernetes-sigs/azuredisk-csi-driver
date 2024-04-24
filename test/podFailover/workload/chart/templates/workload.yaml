@@ -43,8 +43,6 @@ metadata:
 type: Opaque
 stringData:
   AZURE_CLIENT_ID: {{ .Values.azureClientId }}
-  AZURE_CLIENT_SECRET: {{ .Values.azureClientSecret }}
-  AZURE_TENANT_ID: {{ .Values.azureTenantId }}
 ---
 {{- end }}
 {{- if and .Values.storageClass .Values.storageClass.create }}
@@ -145,9 +143,6 @@ spec:
             {{- end}}
             {{- if .Values.storageClass }}
             - {{ printf "--storage-provisioner=%s" $.Values.storageClass.provisioner}}
-            {{- end}}
-            {{- if .Values.metricsEndpoint }}
-            - {{ printf "--metrics-endpoint=%s" $.Values.metricsEndpoint}}
             {{- end}}
             {{- if .Values.driverVersion }}
             - {{ printf "--driver-version=%s" $.Values.driverVersion}}
