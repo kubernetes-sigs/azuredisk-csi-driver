@@ -60,6 +60,7 @@ type DriverOptions struct {
 	Kubeconfig                   string
 	Endpoint                     string
 	DisableAVSetNodes            bool
+	RemoveNotReadyTaint          bool
 }
 
 func (o *DriverOptions) AddFlags() *flag.FlagSet {
@@ -100,6 +101,7 @@ func (o *DriverOptions) AddFlags() *flag.FlagSet {
 	fs.BoolVar(&o.ForceDetachBackoff, "force-detach-backoff", true, "boolean flag to force detach in disk detach backoff")
 	fs.StringVar(&o.Kubeconfig, "kubeconfig", "", "Absolute path to the kubeconfig file. Required only when running out of cluster.")
 	fs.BoolVar(&o.DisableAVSetNodes, "disable-avset-nodes", false, "disable DisableAvailabilitySetNodes in cloud config for controller")
+	fs.BoolVar(&o.RemoveNotReadyTaint, "remove-not-ready-taint", true, "remove NotReady taint from node when node is ready")
 	fs.StringVar(&o.Endpoint, "endpoint", "unix://tmp/csi.sock", "CSI endpoint")
 
 	return fs
