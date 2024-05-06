@@ -6,23 +6,23 @@ image:
     pullPolicy: IfNotPresent
   csiProvisioner:
     repository: /oss/kubernetes-csi/csi-provisioner
-    tag: v3.5.0
+    tag: v4.0.0
     pullPolicy: IfNotPresent
   csiAttacher:
     repository: /oss/kubernetes-csi/csi-attacher
-    tag: v4.3.0
+    tag: v4.5.0
     pullPolicy: IfNotPresent
   csiResizer:
     repository: /oss/kubernetes-csi/csi-resizer
-    tag: v1.8.0
+    tag: v1.9.3
     pullPolicy: IfNotPresent
   livenessProbe:
     repository: /oss/kubernetes-csi/livenessprobe
-    tag: v2.10.0
+    tag: v2.12.0
     pullPolicy: IfNotPresent
   nodeDriverRegistrar:
     repository: /oss/kubernetes-csi/csi-node-driver-registrar
-    tag: v2.8.0
+    tag: v2.10.0
     pullPolicy: IfNotPresent
 
 serviceAccount:
@@ -54,6 +54,11 @@ controller:
   attacherWorkerThreads: 1000
   vmssCacheTTLInSeconds: -1
   logLevel: 5
+  extraArgs: []
+  otelTracing:
+    enabled: false
+    otelServiceName: csi-azuredisk-controller
+    otelExporterEndpoint: "http://localhost:4317"
   tolerations:
     - key: "node-role.kubernetes.io/master"
       operator: "Exists"
@@ -114,6 +119,7 @@ node:
   cloudConfigSecretNamespace: kube-system
   supportZone: true
   allowEmptyCloudConfig: true
+  getNodeIDFromIMDS: false
   maxUnavailable: 1
   logLevel: 5
   livenessProbe:
@@ -125,11 +131,11 @@ snapshot:
   image:
     csiSnapshotter:
       repository: /oss/kubernetes-csi/csi-snapshotter
-      tag: v6.2.2
+      tag: v6.3.3
       pullPolicy: IfNotPresent
     csiSnapshotController:
       repository: /oss/kubernetes-csi/snapshot-controller
-      tag: v6.2.2
+      tag: v6.3.3
       pullPolicy: IfNotPresent
   snapshotController:
     name: csi-snapshot-controller
@@ -176,6 +182,10 @@ linux:
   distro: debian # available values: debian, fedora
   enablePerfOptimization: true
   enableRegistrationProbe: true
+  otelTracing:
+    enabled: false
+    otelServiceName: csi-azuredisk-node
+    otelExporterEndpoint: "http://localhost:4317"
   tolerations:
     - operator: "Exists"
   hostNetwork: true # this setting could be disabled if perfProfile is `none`
@@ -221,6 +231,10 @@ windows:
   kubelet: 'C:\var\lib\kubelet'
   getNodeInfoFromLabels: false # get node info from node labels instead of IMDS
   enableRegistrationProbe: true
+  otelTracing:
+    enabled: false
+    otelServiceName: csi-azuredisk-node-win
+    otelExporterEndpoint: "http://localhost:4317"
   tolerations:
     - key: "node.kubernetes.io/os"
       operator: "Exists"
@@ -272,3 +286,5 @@ workloadIdentity:
   # [optional] If the AAD application or user-assigned managed identity is not in the same tenant as the cluster
   # then set tenantID with the application or user-assigned managed identity tenant ID
   tenantID: ""
+
+azureCredentialFileConfigMap: azure-cred-file

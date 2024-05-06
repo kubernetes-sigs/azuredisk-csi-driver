@@ -19,60 +19,69 @@ package azure
 import (
 	"context"
 	"fmt"
-	"log"
 	"os"
-	"strings"
 	"time"
 
-	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
-	"github.com/Azure/azure-sdk-for-go/sdk/azcore/cloud"
-	"github.com/Azure/azure-sdk-for-go/sdk/azidentity"
-	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2022-08-01/compute"
-	"github.com/Azure/azure-sdk-for-go/services/network/mgmt/2019-06-01/network"
-	"github.com/Azure/azure-sdk-for-go/services/resources/mgmt/2018-05-01/resources"
-	"github.com/Azure/go-autorest/autorest/azure"
-	"github.com/jongio/azidext/go/azidext"
-	"k8s.io/utils/pointer"
+	"github.com/Azure/azure-sdk-for-go/sdk/azcore/to"
+	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute/v5"
+	compute "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute/v5"
+	network "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/network/armnetwork/v4"
+	resources "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/resources/armresources"
+	"sigs.k8s.io/cloud-provider-azure/pkg/azclient"
+	"sigs.k8s.io/cloud-provider-azure/pkg/azclient/diskclient"
+	"sigs.k8s.io/cloud-provider-azure/pkg/azclient/interfaceclient"
+	"sigs.k8s.io/cloud-provider-azure/pkg/azclient/resourcegroupclient"
+	"sigs.k8s.io/cloud-provider-azure/pkg/azclient/sshpublickeyresourceclient"
+	"sigs.k8s.io/cloud-provider-azure/pkg/azclient/subnetclient"
+	"sigs.k8s.io/cloud-provider-azure/pkg/azclient/virtualmachineclient"
+	"sigs.k8s.io/cloud-provider-azure/pkg/azclient/virtualnetworkclient"
 )
 
 type Client struct {
-	environment         azure.Environment
-	subscriptionID      string
-	groupsClient        resources.GroupsClient
-	vmClient            compute.VirtualMachinesClient
-	nicClient           network.InterfacesClient
-	subnetsClient       network.SubnetsClient
-	vnetClient          network.VirtualNetworksClient
-	disksClient         compute.DisksClient
-	sshPublicKeysClient compute.SSHPublicKeysClient
+	groupsClient        resourcegroupclient.Interface
+	vmClient            virtualmachineclient.Interface
+	nicClient           interfaceclient.Interface
+	subnetsClient       subnetclient.Interface
+	vnetClient          virtualnetworkclient.Interface
+	disksClient         diskclient.Interface
+	sshPublicKeysClient sshpublickeyresourceclient.Interface
 }
 
 func GetAzureClient(cloud, subscriptionID, clientID, tenantID, clientSecret string) (*Client, error) {
-	env, err := azure.EnvironmentFromName(cloud)
+	armConfig := &azclient.ARMClientConfig{
+		Cloud:    cloud,
+		TenantID: tenantID,
+	}
+	credProvider, err := azclient.NewAuthProvider(armConfig, &azclient.AzureAuthConfig{
+		AADClientID:     clientID,
+		AADClientSecret: clientSecret,
+	})
 	if err != nil {
 		return nil, err
 	}
-
-	options := azidentity.ClientSecretCredentialOptions{
-		ClientOptions: azcore.ClientOptions{
-			Cloud: getCloudConfig(env),
-		},
-	}
-	cred, err := azidentity.NewClientSecretCredential(tenantID, clientID, clientSecret, &options)
+	cred := credProvider.GetAzIdentity()
+	factory, err := azclient.NewClientFactory(&azclient.ClientFactoryConfig{
+		SubscriptionID: subscriptionID,
+	}, armConfig, cred)
 	if err != nil {
 		return nil, err
 	}
-
-	return getClient(env, subscriptionID, tenantID, cred, env.TokenAudience), nil
+	return &Client{
+		groupsClient:        factory.GetResourceGroupClient(),
+		vmClient:            factory.GetVirtualMachineClient(),
+		nicClient:           factory.GetInterfaceClient(),
+		subnetsClient:       factory.GetSubnetClient(),
+		vnetClient:          factory.GetVirtualNetworkClient(),
+		disksClient:         factory.GetDiskClient(),
+		sshPublicKeysClient: factory.GetSSHPublicKeyResourceClient(),
+	}, nil
 }
-
-func (az *Client) GetAzureDisksClient() (compute.DisksClient, error) {
-
+func (az *Client) GetAzureDisksClient() (diskclient.Interface, error) {
 	return az.disksClient, nil
 }
 
-func (az *Client) EnsureSSHPublicKey(ctx context.Context, subscriptionID, resourceGroupName, location, keyName string) (publicKey string, err error) {
-	_, err = az.sshPublicKeysClient.Create(ctx, resourceGroupName, keyName, compute.SSHPublicKeyResource{Location: &location})
+func (az *Client) EnsureSSHPublicKey(ctx context.Context, resourceGroupName, location, keyName string) (publicKey string, err error) {
+	_, err = az.sshPublicKeysClient.Create(ctx, resourceGroupName, keyName, armcompute.SSHPublicKeyResource{Location: &location})
 	if err != nil {
 		return "", err
 	}
@@ -83,103 +92,97 @@ func (az *Client) EnsureSSHPublicKey(ctx context.Context, subscriptionID, resour
 	return *result.PublicKey, nil
 }
 
-func (az *Client) EnsureResourceGroup(ctx context.Context, name, location string, managedBy *string) (resourceGroup *resources.Group, err error) {
+func (az *Client) EnsureResourceGroup(ctx context.Context, name, location string, managedBy *string) (resourceGroup *resources.ResourceGroup, err error) {
 	var tags map[string]*string
 	group, err := az.groupsClient.Get(ctx, name)
-	if err == nil && group.Tags != nil {
+	if err == nil && group != nil && group.Tags != nil {
 		tags = group.Tags
 	} else {
 		tags = make(map[string]*string)
 	}
-	if managedBy == nil {
+	if managedBy == nil && group != nil {
 		managedBy = group.ManagedBy
 	}
 	// Tags for correlating resource groups with prow jobs on testgrid
-	tags["buildID"] = stringPointer(os.Getenv("BUILD_ID"))
-	tags["jobName"] = stringPointer(os.Getenv("JOB_NAME"))
-	tags["creationTimestamp"] = stringPointer(time.Now().UTC().Format(time.RFC3339))
+	tags["buildID"] = to.Ptr(os.Getenv("BUILD_ID"))
+	tags["jobName"] = to.Ptr(os.Getenv("JOB_NAME"))
+	tags["creationTimestamp"] = to.Ptr(time.Now().UTC().Format(time.RFC3339))
 
-	response, err := az.groupsClient.CreateOrUpdate(ctx, name, resources.Group{
+	response, err := az.groupsClient.CreateOrUpdate(ctx, name, resources.ResourceGroup{
 		Name:      &name,
 		Location:  &location,
 		ManagedBy: managedBy,
 		Tags:      tags,
 	})
 	if err != nil {
-		return &response, err
+		return response, err
 	}
 
-	return &response, nil
+	return response, nil
 }
 
 func (az *Client) DeleteResourceGroup(ctx context.Context, groupName string) error {
 	_, err := az.groupsClient.Get(ctx, groupName)
 	if err == nil {
-		future, err := az.groupsClient.Delete(ctx, groupName)
+		err = az.groupsClient.Delete(ctx, groupName)
 		if err != nil {
 			return fmt.Errorf("cannot delete resource group %v: %v", groupName, err)
-		}
-		err = future.WaitForCompletionRef(ctx, az.groupsClient.Client)
-		if err != nil {
-			// Skip the teardown errors because of https://github.com/Azure/go-autorest/issues/357
-			// TODO(feiskyer): fix the issue by upgrading go-autorest version >= v11.3.2.
-			log.Printf("Warning: failed to delete resource group %q with error %v", groupName, err)
 		}
 	}
 	return nil
 }
 
-func (az *Client) EnsureVirtualMachine(ctx context.Context, groupName, location, vmName string) (vm compute.VirtualMachine, err error) {
+func (az *Client) EnsureVirtualMachine(ctx context.Context, groupName, location, vmName string) (compute.VirtualMachine, error) {
 	nic, err := az.EnsureNIC(ctx, groupName, location, vmName+"-nic", vmName+"-vnet", vmName+"-subnet")
 	if err != nil {
-		return vm, err
+		return armcompute.VirtualMachine{}, err
 	}
 
-	publicKey, err := az.EnsureSSHPublicKey(ctx, az.subscriptionID, groupName, location, "test-key")
+	publicKey, err := az.EnsureSSHPublicKey(ctx, groupName, location, "test-key")
 	if err != nil {
-		return vm, err
+		return armcompute.VirtualMachine{}, err
 	}
 
-	future, err := az.vmClient.CreateOrUpdate(
+	resp, err := az.vmClient.CreateOrUpdate(
 		ctx,
 		groupName,
 		vmName,
 		compute.VirtualMachine{
-			Location: pointer.String(location),
-			VirtualMachineProperties: &compute.VirtualMachineProperties{
-				HardwareProfile: &compute.HardwareProfile{
-					VMSize: "Standard_DS2_v2",
+			Location: to.Ptr(location),
+			Properties: &armcompute.VirtualMachineProperties{
+				HardwareProfile: &armcompute.HardwareProfile{
+					VMSize: to.Ptr(compute.VirtualMachineSizeTypesStandardDS2V2),
 				},
-				StorageProfile: &compute.StorageProfile{
-					ImageReference: &compute.ImageReference{
-						Publisher: pointer.String("Canonical"),
-						Offer:     pointer.String("UbuntuServer"),
-						Sku:       pointer.String("16.04.0-LTS"),
-						Version:   pointer.String("latest"),
+				StorageProfile: &armcompute.StorageProfile{
+					ImageReference: &armcompute.ImageReference{
+						Publisher: to.Ptr("Canonical"),
+						Offer:     to.Ptr("UbuntuServer"),
+						SKU:       to.Ptr("16.04.0-LTS"),
+						Version:   to.Ptr("latest"),
 					},
 				},
-				OsProfile: &compute.OSProfile{
-					ComputerName:  pointer.String(vmName),
-					AdminUsername: pointer.String("azureuser"),
-					AdminPassword: pointer.String("Azureuser1234"),
-					LinuxConfiguration: &compute.LinuxConfiguration{
-						DisablePasswordAuthentication: pointer.Bool(true),
-						SSH: &compute.SSHConfiguration{
-							PublicKeys: &[]compute.SSHPublicKey{
+				OSProfile: &armcompute.OSProfile{
+					ComputerName:  to.Ptr(vmName),
+					AdminUsername: to.Ptr("azureuser"),
+					AdminPassword: to.Ptr("Azureuser1234"),
+					LinuxConfiguration: &armcompute.LinuxConfiguration{
+						DisablePasswordAuthentication: to.Ptr(true),
+						SSH: &armcompute.SSHConfiguration{
+							PublicKeys: []*compute.SSHPublicKey{
 								{
-									Path:    pointer.String("/home/azureuser/.ssh/authorized_keys"),
+									Path:    to.Ptr("/home/azureuser/.ssh/authorized_keys"),
 									KeyData: &publicKey,
 								},
 							},
 						},
 					},
 				},
-				NetworkProfile: &compute.NetworkProfile{
-					NetworkInterfaces: &[]compute.NetworkInterfaceReference{
+				NetworkProfile: &armcompute.NetworkProfile{
+					NetworkInterfaces: []*compute.NetworkInterfaceReference{
 						{
 							ID: nic.ID,
-							NetworkInterfaceReferenceProperties: &compute.NetworkInterfaceReferenceProperties{
-								Primary: pointer.Bool(true),
+							Properties: &armcompute.NetworkInterfaceReferenceProperties{
+								Primary: to.Ptr(true),
 							},
 						},
 					},
@@ -188,42 +191,37 @@ func (az *Client) EnsureVirtualMachine(ctx context.Context, groupName, location,
 		},
 	)
 	if err != nil {
-		return vm, fmt.Errorf("cannot create vm: %v", err)
+		return armcompute.VirtualMachine{}, fmt.Errorf("cannot create vm: %v", err)
 	}
 
-	err = future.WaitForCompletionRef(ctx, az.vmClient.Client)
-	if err != nil {
-		return vm, fmt.Errorf("cannot get the vm create or update future response: %v", err)
-	}
-
-	return future.Result(az.vmClient)
+	return *resp, nil
 }
 
-func (az *Client) EnsureNIC(ctx context.Context, groupName, location, nicName, vnetName, subnetName string) (nic network.Interface, err error) {
-	_, err = az.EnsureVirtualNetworkAndSubnet(ctx, groupName, location, vnetName, subnetName)
+func (az *Client) EnsureNIC(ctx context.Context, groupName, location, nicName, vnetName, subnetName string) (network.Interface, error) {
+	_, err := az.EnsureVirtualNetworkAndSubnet(ctx, groupName, location, vnetName, subnetName)
 	if err != nil {
-		return nic, err
+		return network.Interface{}, err
 	}
 
 	subnet, err := az.GetVirtualNetworkSubnet(ctx, groupName, vnetName, subnetName)
 	if err != nil {
-		return nic, fmt.Errorf("cannot get subnet %s of virtual network %s in %s: %v", subnetName, vnetName, groupName, err)
+		return network.Interface{}, fmt.Errorf("cannot get subnet %s of virtual network %s in %s: %v", subnetName, vnetName, groupName, err)
 	}
 
-	future, err := az.nicClient.CreateOrUpdate(
+	nic, err := az.nicClient.CreateOrUpdate(
 		ctx,
 		groupName,
 		nicName,
 		network.Interface{
-			Name:     pointer.String(nicName),
-			Location: pointer.String(location),
-			InterfacePropertiesFormat: &network.InterfacePropertiesFormat{
-				IPConfigurations: &[]network.InterfaceIPConfiguration{
+			Name:     to.Ptr(nicName),
+			Location: to.Ptr(location),
+			Properties: &network.InterfacePropertiesFormat{
+				IPConfigurations: []*network.InterfaceIPConfiguration{
 					{
-						Name: pointer.String("ipConfig1"),
-						InterfaceIPConfigurationPropertiesFormat: &network.InterfaceIPConfigurationPropertiesFormat{
+						Name: to.Ptr("ipConfig1"),
+						Properties: &network.InterfaceIPConfigurationPropertiesFormat{
 							Subnet:                    &subnet,
-							PrivateIPAllocationMethod: network.Dynamic,
+							PrivateIPAllocationMethod: to.Ptr(network.IPAllocationMethodDynamic),
 						},
 					},
 				},
@@ -231,33 +229,28 @@ func (az *Client) EnsureNIC(ctx context.Context, groupName, location, nicName, v
 		},
 	)
 	if err != nil {
-		return nic, fmt.Errorf("cannot create nic: %v", err)
+		return network.Interface{}, fmt.Errorf("cannot create nic: %v", err)
 	}
 
-	err = future.WaitForCompletionRef(ctx, az.nicClient.Client)
-	if err != nil {
-		return nic, fmt.Errorf("cannot get nic create or update future response: %v", err)
-	}
-
-	return future.Result(az.nicClient)
+	return *nic, nil
 }
 
-func (az *Client) EnsureVirtualNetworkAndSubnet(ctx context.Context, groupName, location, vnetName, subnetName string) (vnet network.VirtualNetwork, err error) {
-	future, err := az.vnetClient.CreateOrUpdate(
+func (az *Client) EnsureVirtualNetworkAndSubnet(ctx context.Context, groupName, location, vnetName, subnetName string) (network.VirtualNetwork, error) {
+	vnet, err := az.vnetClient.CreateOrUpdate(
 		ctx,
 		groupName,
 		vnetName,
 		network.VirtualNetwork{
-			Location: pointer.String(location),
-			VirtualNetworkPropertiesFormat: &network.VirtualNetworkPropertiesFormat{
+			Location: to.Ptr(location),
+			Properties: &network.VirtualNetworkPropertiesFormat{
 				AddressSpace: &network.AddressSpace{
-					AddressPrefixes: &[]string{"10.0.0.0/8"},
+					AddressPrefixes: []*string{to.Ptr("10.0.0.0/8")},
 				},
-				Subnets: &[]network.Subnet{
+				Subnets: []*network.Subnet{
 					{
-						Name: pointer.String(subnetName),
-						SubnetPropertiesFormat: &network.SubnetPropertiesFormat{
-							AddressPrefix: pointer.String("10.0.0.0/16"),
+						Name: to.Ptr(subnetName),
+						Properties: &network.SubnetPropertiesFormat{
+							AddressPrefix: to.Ptr("10.0.0.0/16"),
 						},
 					},
 				},
@@ -265,76 +258,13 @@ func (az *Client) EnsureVirtualNetworkAndSubnet(ctx context.Context, groupName, 
 		})
 
 	if err != nil {
-		return vnet, fmt.Errorf("cannot create virtual network: %v", err)
+		return network.VirtualNetwork{}, fmt.Errorf("cannot create virtual network: %v", err)
 	}
 
-	err = future.WaitForCompletionRef(ctx, az.vnetClient.Client)
-	if err != nil {
-		return vnet, fmt.Errorf("cannot get the vnet create or update future response: %v", err)
-	}
-
-	return future.Result(az.vnetClient)
+	return *vnet, nil
 }
 
 func (az *Client) GetVirtualNetworkSubnet(ctx context.Context, groupName, vnetName, subnetName string) (network.Subnet, error) {
-	return az.subnetsClient.Get(ctx, groupName, vnetName, subnetName, "")
-}
-
-func getCloudConfig(env azure.Environment) cloud.Configuration {
-	switch env.Name {
-	case azure.USGovernmentCloud.Name:
-		return cloud.AzureGovernment
-	case azure.ChinaCloud.Name:
-		return cloud.AzureChina
-	case azure.PublicCloud.Name:
-		return cloud.AzurePublic
-	default:
-		return cloud.Configuration{
-			ActiveDirectoryAuthorityHost: env.ActiveDirectoryEndpoint,
-			Services: map[cloud.ServiceName]cloud.ServiceConfiguration{
-				cloud.ResourceManager: {
-					Audience: env.TokenAudience,
-					Endpoint: env.ResourceManagerEndpoint,
-				},
-			},
-		}
-	}
-}
-
-func getClient(env azure.Environment, subscriptionID, tenantID string, cred *azidentity.ClientSecretCredential, scope string) *Client {
-	c := &Client{
-		environment:         env,
-		subscriptionID:      subscriptionID,
-		groupsClient:        resources.NewGroupsClientWithBaseURI(env.ResourceManagerEndpoint, subscriptionID),
-		vmClient:            compute.NewVirtualMachinesClientWithBaseURI(env.ResourceManagerEndpoint, subscriptionID),
-		nicClient:           network.NewInterfacesClientWithBaseURI(env.ResourceManagerEndpoint, subscriptionID),
-		subnetsClient:       network.NewSubnetsClientWithBaseURI(env.ResourceManagerEndpoint, subscriptionID),
-		vnetClient:          network.NewVirtualNetworksClientWithBaseURI(env.ResourceManagerEndpoint, subscriptionID),
-		disksClient:         compute.NewDisksClientWithBaseURI(env.ResourceManagerEndpoint, subscriptionID),
-		sshPublicKeysClient: compute.NewSSHPublicKeysClientWithBaseURI(env.ResourceManagerEndpoint, subscriptionID),
-	}
-
-	if !strings.HasSuffix(scope, "/.default") {
-		scope += "/.default"
-	}
-	// Use an adapter so azidentity in the Azure SDK can be used as Authorizer
-	// when calling the Azure Management Packages, which we currently use. Once
-	// the Azure SDK clients (found in /sdk) move to stable, we can update our
-	// clients and they will be able to use the creds directly without the
-	// authorizer.
-	authorizer := azidext.NewTokenCredentialAdapter(cred, []string{scope})
-
-	c.groupsClient.Authorizer = authorizer
-	c.vmClient.Authorizer = authorizer
-	c.nicClient.Authorizer = authorizer
-	c.subnetsClient.Authorizer = authorizer
-	c.vnetClient.Authorizer = authorizer
-	c.disksClient.Authorizer = authorizer
-	c.sshPublicKeysClient.Authorizer = authorizer
-
-	return c
-}
-
-func stringPointer(s string) *string {
-	return &s
+	subnet, err := az.subnetsClient.Get(ctx, groupName, vnetName, subnetName, nil)
+	return *subnet, err
 }

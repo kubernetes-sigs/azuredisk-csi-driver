@@ -1,9 +1,34 @@
 run:
-  deadline: 10m
+  deadline: 30m
 
 linters:
   disable:
   - typecheck
   - structcheck
+  - staticcheck
   enable:
-  - golint
+  - gofmt
+  - unused
+  - ineffassign
+  - revive
+  - misspell
+  - exportloopref
+  - asciicheck
+  - bodyclose
+  - depguard
+  - dogsled
+  - durationcheck
+  - errname
+  - forbidigo
+linters-settings:
+  depguard:
+    rules:
+      main:
+        files:
+          - $all
+          - "!$test"
+        allow:
+          - $gostd
+          - k8s.io
+          - sigs.k8s.io
+          - github.com

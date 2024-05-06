@@ -17,6 +17,7 @@ limitations under the License.
 package e2e
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"log"
@@ -30,7 +31,7 @@ import (
 	"github.com/onsi/ginkgo/v2"
 	"github.com/onsi/ginkgo/v2/reporters"
 	"github.com/onsi/gomega"
-	"github.com/pborman/uuid"
+	"k8s.io/apimachinery/pkg/util/uuid"
 	"k8s.io/kubernetes/test/e2e/framework"
 	"k8s.io/kubernetes/test/e2e/framework/config"
 	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
@@ -58,9 +59,10 @@ var (
 	isWindowsCluster          = os.Getenv(testWindowsEnvVar) != ""
 	winServerVer              = os.Getenv(testWinServerVerEnvVar)
 	isAzureStackCloud         = strings.EqualFold(os.Getenv(cloudNameEnvVar), "AZURESTACKCLOUD")
+	isWindowsHPCDeployment    = strings.EqualFold(os.Getenv("WINDOWS_USE_HOST_PROCESS_CONTAINERS"), "true")
+	isCapzTest                = os.Getenv("NODE_MACHINE_TYPE") != ""
 	location                  string
 	supportsZRS               bool
-	supportsDynamicResize     bool
 )
 
 type testCmd struct {
@@ -82,8 +84,6 @@ var _ = ginkgo.BeforeSuite(func(ctx ginkgo.SpecContext) {
 		kubeconfig := filepath.Join(os.Getenv("HOME"), ".kube", "config")
 		os.Setenv(kubeconfigEnvVar, kubeconfig)
 	}
-	handleFlags()
-	framework.AfterReadingAllFlags(&framework.TestContext)
 
 	// Default storage driver configuration is CSI. Freshly built
 	// CSI driver is installed for that case.
@@ -96,36 +96,36 @@ var _ = ginkgo.BeforeSuite(func(ctx ginkgo.SpecContext) {
 		gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
 		location = creds.Location
-
-		if location == "westus2" || location == "westeurope" || location == "northeurope" || location == "francecentral" {
-			supportsZRS = true
-		}
-
-		dynamicResizeZones := []string{
-			"westcentralus",
-			"francesouth",
-			"westindia",
-			"norwaywest",
-			"eastasia",
-			"francecentral",
-			"germanywestcentral",
-			"japanwest",
+		supportZRSRegions := []string{
 			"southafricanorth",
-			"jioindiawest",
-			"canadacentral",
-			"australiacentral",
-			"japaneast",
-			"northeurope",
-			"centralindia",
-			"uaecentral",
-			"switzerlandwest",
+			"eastasia",
+			"southeastasia",
+			"australiaeast",
 			"brazilsouth",
-			"uksouth"}
-
-		supportsDynamicResize = false
-		for _, zone := range dynamicResizeZones {
-			if location == zone {
-				supportsDynamicResize = true
+			"westeurope",
+			"northeurope",
+			"francecentral",
+			"centralindia",
+			"italynorth",
+			"japaneast",
+			"koreacentral",
+			"norwayeast",
+			"polandcentral",
+			"qatarcentral",
+			"swedencentral",
+			"switzerlandnorth",
+			"uaenorth",
+			"uksouth",
+			"eastus",
+			"eastus2",
+			"southcentralus",
+			"westus2",
+			"westus3",
+		}
+		supportsZRS = false
+		for _, region := range supportZRSRegions {
+			if location == region {
+				supportsZRS = true
 				break
 			}
 		}
@@ -151,12 +151,15 @@ var _ = ginkgo.BeforeSuite(func(ctx ginkgo.SpecContext) {
 			DriverName:             consts.DefaultDriverName,
 			VolumeAttachLimit:      16,
 			EnablePerfOptimization: false,
+			Kubeconfig:             os.Getenv(kubeconfigEnvVar),
+			Endpoint:               fmt.Sprintf("unix:///tmp/csi-%s.sock", string(uuid.NewUUID())),
 		}
+		os.Setenv("AZURE_CREDENTIAL_FILE", credentials.TempAzureCredentialFilePath)
 		azurediskDriver = azuredisk.NewDriver(&driverOptions)
-		kubeconfig := os.Getenv(kubeconfigEnvVar)
+
 		go func() {
-			os.Setenv("AZURE_CREDENTIAL_FILE", credentials.TempAzureCredentialFilePath)
-			azurediskDriver.Run(fmt.Sprintf("unix:///tmp/csi-%s.sock", uuid.NewUUID().String()), kubeconfig, false, false)
+			err := azurediskDriver.Run(context.Background())
+			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 		}()
 	}
 })
@@ -252,7 +255,6 @@ var _ = ginkgo.AfterSuite(func(ctx ginkgo.SpecContext) {
 			}
 			execTestCmd([]testCmd{uninstallDriver})
 		}
-
 		err := credentials.DeleteAzureCredentialFile()
 		gomega.Expect(err).NotTo(gomega.HaveOccurred())
 	}
@@ -316,12 +318,6 @@ func skipIfNotZRSSupported() {
 	}
 }
 
-func skipIfNotDynamicallyResizeSuported() {
-	if !supportsDynamicResize {
-		ginkgo.Skip("test case not supported on regions without dynamic resize support")
-	}
-}
-
 func convertToPowershellorCmdCommandIfNecessary(command string) string {
 	if !isWindowsCluster {
 		return command
@@ -346,17 +342,21 @@ func convertToPowershellorCmdCommandIfNecessary(command string) string {
 		return "echo 'overwrite' | Out-File -FilePath C:\\mnt\\test-1\\data.txt; Start-Sleep 3600"
 	case "grep 'hello world' /mnt/test-1/data":
 		return "Get-Content C:\\mnt\\test-1\\data.txt | findstr 'hello world'"
+	case "df -h | grep /mnt/test- | awk '{print $2}' | grep -E '19|20'":
+		return "fsutil volume diskfree C:\\mnt\\ | Select-String 'Total bytes' | Select-String -Pattern '19|20'"
 	}
 
 	return command
 }
 
 // handleFlags sets up all flags and parses the command line.
-func handleFlags() {
+func TestMain(m *testing.M) {
 	config.CopyFlags(config.Flags, flag.CommandLine)
 	framework.RegisterCommonFlags(flag.CommandLine)
 	framework.RegisterClusterFlags(flag.CommandLine)
+	framework.AfterReadingAllFlags(&framework.TestContext)
 	flag.Parse()
+	os.Exit(m.Run())
 }
 
 func getFSType(IsWindowsCluster bool) string {

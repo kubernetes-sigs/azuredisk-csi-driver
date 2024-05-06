@@ -33,7 +33,6 @@ import (
 	apps "k8s.io/api/apps/v1"
 	v1 "k8s.io/api/core/v1"
 	storagev1 "k8s.io/api/storage/v1"
-	"k8s.io/apimachinery/pkg/api/errors"
 	apierrs "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -337,7 +336,7 @@ func generatePVC(namespace, storageClassName, name, claimSize string, volumeMode
 			AccessModes: []v1.PersistentVolumeAccessMode{
 				accessMode,
 			},
-			Resources: v1.ResourceRequirements{
+			Resources: v1.VolumeResourceRequirements{
 				Requests: v1.ResourceList{
 					v1.ResourceName(v1.ResourceStorage): resource.MustParse(claimSize),
 				},
@@ -573,7 +572,7 @@ func (t *TestDeployment) DeletePodAndWait(ctx context.Context) {
 	for _, podName := range t.podNames {
 		err := <-ch
 		if err != nil {
-			if !errors.IsNotFound(err) {
+			if !apierrs.IsNotFound(err) {
 				framework.ExpectNoError(fmt.Errorf("pod %q Delete API error: %v", podName, err))
 			}
 		}

@@ -133,7 +133,7 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 			},
 		}
 
-		if isMultiZone && !isUsingInTreeVolumePlugin {
+		if isMultiZone && !isUsingInTreeVolumePlugin && !isCapzTest {
 			test.StorageClassParameters = map[string]string{
 				"skuName":           "UltraSSD_LRS",
 				"cachingmode":       "None",
@@ -154,7 +154,7 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 		pods := []testsuites.PodDetails{
 			{
 				Cmd: convertToPowershellorCmdCommandIfNecessary("echo 'hello world' > /mnt/test-1/data && grep 'hello world' /mnt/test-1/data"),
-				Volumes: []testsuites.VolumeDetails{
+				Volumes: t.normalizeVolumes([]testsuites.VolumeDetails{
 					{
 						ClaimSize: "10Gi",
 						VolumeMount: testsuites.VolumeMountDetails{
@@ -163,18 +163,19 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 						},
 						VolumeAccessMode: v1.ReadWriteOnce,
 					},
-				},
+				}, isMultiZone),
 				IsWindows:    isWindowsCluster,
 				WinServerVer: winServerVer,
 			},
 		}
 
 		scParameters := map[string]string{
-			"skuName":             "Standard_LRS",
-			"networkAccessPolicy": "DenyAll",
-			"PublicNetworkAccess": "Enabled",
-			"userAgent":           "azuredisk-e2e-test",
-			"enableAsyncAttach":   "false",
+			"skuName":                "Standard_LRS",
+			"networkAccessPolicy":    "DenyAll",
+			"PublicNetworkAccess":    "Enabled",
+			"userAgent":              "azuredisk-e2e-test",
+			"enableAsyncAttach":      "false",
+			"attachDiskInitialDelay": "5000",
 		}
 		test := testsuites.DynamicallyProvisionedVolumeSubpathTester{
 			CSIDriver:              testDriver,
@@ -538,14 +539,15 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 	})
 
 	ginkgo.It("should clone a volume from an existing volume and read from it [disk.csi.azure.com]", func(ctx ginkgo.SpecContext) {
-		skipIfTestingInWindowsCluster()
 		skipIfUsingInTreeVolumePlugin()
-
+		if isWindowsCluster && !isWindowsHPCDeployment {
+			ginkgo.Skip("test case not supported by Windows clusters with non host process deployment drivers")
+		}
 		pod := testsuites.PodDetails{
-			Cmd: "echo 'hello world' > /mnt/test-1/data",
+			Cmd: convertToPowershellorCmdCommandIfNecessary("echo 'hello world' > /mnt/test-1/data"),
 			Volumes: t.normalizeVolumes([]testsuites.VolumeDetails{
 				{
-					FSType:    "ext4",
+					FSType:    "xfs",
 					ClaimSize: "10Gi",
 					VolumeMount: testsuites.VolumeMountDetails{
 						NameGenerate:      "test-volume-",
@@ -554,9 +556,13 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 					VolumeAccessMode: v1.ReadWriteOnce,
 				},
 			}, isMultiZone),
+			IsWindows:    isWindowsCluster,
+			WinServerVer: winServerVer,
 		}
 		podWithClonedVolume := testsuites.PodDetails{
-			Cmd: "grep 'hello world' /mnt/test-1/data",
+			Cmd:          convertToPowershellorCmdCommandIfNecessary("grep 'hello world' /mnt/test-1/data"),
+			IsWindows:    isWindowsCluster,
+			WinServerVer: winServerVer,
 		}
 		test := testsuites.DynamicallyProvisionedVolumeCloningTest{
 			CSIDriver:           testDriver,
@@ -571,13 +577,15 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 	})
 
 	ginkgo.It("should clone a volume of larger size than the source volume and make sure the filesystem is appropriately adjusted [disk.csi.azure.com]", func(ctx ginkgo.SpecContext) {
-		skipIfTestingInWindowsCluster()
 		skipIfUsingInTreeVolumePlugin()
+		if isWindowsCluster && !isWindowsHPCDeployment {
+			ginkgo.Skip("test case not supported by Windows clusters with non host process deployment drivers")
+		}
 
 		pod := testsuites.PodDetails{
 			Volumes: t.normalizeVolumes([]testsuites.VolumeDetails{
 				{
-					FSType:    "ext4",
+					FSType:    "xfs",
 					ClaimSize: "10Gi",
 					VolumeMount: testsuites.VolumeMountDetails{
 						NameGenerate:      "test-volume-",
@@ -586,11 +594,15 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 					VolumeAccessMode: v1.ReadWriteOnce,
 				},
 			}, isMultiZone),
+			IsWindows:    isWindowsCluster,
+			WinServerVer: winServerVer,
 		}
 		clonedVolumeSize := "20Gi"
 
 		podWithClonedVolume := testsuites.PodDetails{
-			Cmd: "df -h | grep /mnt/test- | awk '{print $2}' | grep 20.0G",
+			Cmd:          convertToPowershellorCmdCommandIfNecessary("df -h | grep /mnt/test- | awk '{print $2}' | grep -E '19|20'"),
+			IsWindows:    isWindowsCluster,
+			WinServerVer: winServerVer,
 		}
 
 		test := testsuites.DynamicallyProvisionedVolumeCloningTest{
@@ -735,6 +747,7 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 			CSIDriver:              testDriver,
 			Pod:                    pod,
 			ShouldOverwrite:        false,
+			IsWindowsHPCDeployment: isWindowsHPCDeployment,
 			PodWithSnapshot:        podWithSnapshot,
 			StorageClassParameters: map[string]string{"skuName": "StandardSSD_LRS"},
 			SnapshotStorageClassParameters: map[string]string{
@@ -800,6 +813,7 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 		test.Run(ctx, cs, snapshotrcs, ns)
 	})
 
+	//nolint:dupl
 	ginkgo.It("should create a pod with small storage size, take a volume snapshot cross region, and restore disk in another region [disk.csi.azure.com]", func(ctx ginkgo.SpecContext) {
 		skipIfUsingInTreeVolumePlugin()
 		skipIfTestingInWindowsCluster()
@@ -843,6 +857,7 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 		test.Run(ctx, cs, snapshotrcs, ns)
 	})
 
+	//nolint:dupl
 	ginkgo.It("should create a pod with large storage size, take a volume snapshot cross region, and restore disk in another region [disk.csi.azure.com]", func(ctx ginkgo.SpecContext) {
 		skipIfUsingInTreeVolumePlugin()
 		skipIfTestingInWindowsCluster()
@@ -961,7 +976,7 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 
 	ginkgo.It("should create a volume on demand and dynamically resize it without detaching [disk.csi.azure.com] ", func(ctx ginkgo.SpecContext) {
 		skipIfUsingInTreeVolumePlugin()
-		skipIfNotDynamicallyResizeSuported()
+
 		//Subscription must be registered for LiveResize
 		volume := testsuites.VolumeDetails{
 			ClaimSize: "10Gi",
@@ -1001,7 +1016,7 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 
 	ginkgo.It("should create a block volume on demand and dynamically resize it without detaching [disk.csi.azure.com] ", func(ctx ginkgo.SpecContext) {
 		skipIfUsingInTreeVolumePlugin()
-		skipIfNotDynamicallyResizeSuported()
+
 		//Subscription must be registered for LiveResize
 		volume := testsuites.VolumeDetails{
 			ClaimSize: "10Gi",
@@ -1257,6 +1272,9 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 		skipIfTestingInWindowsCluster()
 		if isMultiZone {
 			skipIfNotZRSSupported()
+			if isCapzTest {
+				ginkgo.Skip("skip shared disk multi zone test on capz cluster")
+			}
 		}
 
 		pod := testsuites.PodDetails{

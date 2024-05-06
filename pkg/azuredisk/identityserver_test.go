@@ -22,6 +22,7 @@ import (
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	"github.com/stretchr/testify/assert"
+	"go.uber.org/mock/gomock"
 )
 
 const (
@@ -31,42 +32,53 @@ const (
 
 func TestGetPluginInfo(t *testing.T) {
 	// Check with correct arguments
-	d, _ := NewFakeDriver(t)
+	cntl := gomock.NewController(t)
+	d, _ := NewFakeDriver(cntl)
 	req := csi.GetPluginInfoRequest{}
 	resp, err := d.GetPluginInfo(context.Background(), &req)
 	assert.NoError(t, err)
 	assert.Equal(t, resp.Name, fakeCSIDriverName)
 	assert.Equal(t, resp.GetVendorVersion(), vendorVersion)
+	cntl.Finish()
 
 	//Check error when driver name is empty
-	d, _ = NewFakeDriver(t)
+	cntl = gomock.NewController(t)
+	d, _ = NewFakeDriver(cntl)
 	d.setName("")
 	req = csi.GetPluginInfoRequest{}
 	resp, err = d.GetPluginInfo(context.Background(), &req)
 	assert.Error(t, err)
 	assert.Nil(t, resp)
+	cntl.Finish()
 
 	//Check error when version is empty
-	d, _ = NewFakeDriver(t)
+	cntl = gomock.NewController(t)
+	d, _ = NewFakeDriver(cntl)
 	d.setVersion("")
 	req = csi.GetPluginInfoRequest{}
 	resp, err = d.GetPluginInfo(context.Background(), &req)
 	assert.Error(t, err)
 	assert.Nil(t, resp)
+	cntl.Finish()
 }
 
 func TestProbe(t *testing.T) {
-	d, _ := NewFakeDriver(t)
+	cntl := gomock.NewController(t)
+	defer cntl.Finish()
+	d, _ := NewFakeDriver(cntl)
 	req := csi.ProbeRequest{}
 	resp, err := d.Probe(context.Background(), &req)
 	assert.NoError(t, err)
 	assert.NotNil(t, resp)
 	assert.Equal(t, resp.XXX_sizecache, int32(0))
 	assert.Equal(t, resp.Ready.Value, true)
+
 }
 
 func TestGetPluginCapabilities(t *testing.T) {
-	d, _ := NewFakeDriver(t)
+	cntl := gomock.NewController(t)
+	defer cntl.Finish()
+	d, _ := NewFakeDriver(cntl)
 	req := csi.GetPluginCapabilitiesRequest{}
 	resp, err := d.GetPluginCapabilities(context.Background(), &req)
 	assert.NoError(t, err)

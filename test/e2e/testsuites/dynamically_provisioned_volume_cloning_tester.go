@@ -54,8 +54,8 @@ func (t *DynamicallyProvisionedVolumeCloningTest) Run(ctx context.Context, clien
 	defer tpod.Cleanup(ctx)
 	ginkgo.By("checking that the pod's command exits with no error")
 	tpod.WaitForSuccess(ctx)
-	ginkgo.By("sleep 5s and then clone volume")
-	time.Sleep(5 * time.Second)
+	ginkgo.By("sleep 60s and then clone volume")
+	time.Sleep(60 * time.Second)
 
 	ginkgo.By("cloning existing volume")
 	clonedVolume := t.Pod.Volumes[0]
@@ -69,18 +69,10 @@ func (t *DynamicallyProvisionedVolumeCloningTest) Run(ctx context.Context, clien
 		clonedVolume.ClaimSize = t.ClonedVolumeSize
 	}
 
-	zone := tpod.GetZoneForVolume(ctx, 0)
-
 	t.PodWithClonedVolume.Volumes = []VolumeDetails{clonedVolume}
 	tpod, cleanups = t.PodWithClonedVolume.SetupWithDynamicVolumes(ctx, client, namespace, t.CSIDriver, t.StorageClassParameters)
 	for i := range cleanups {
 		defer cleanups[i](ctx)
-	}
-
-	// Since an LRS disk cannot be cloned to a different zone, add a selector to the pod so
-	// that it is created in the same zone as the source disk.
-	if len(zone) != 0 {
-		tpod.SetNodeSelector(map[string]string{"topology.disk.csi.azure.com/zone": zone})
 	}
 
 	ginkgo.By("deploying a second pod with cloned volume")

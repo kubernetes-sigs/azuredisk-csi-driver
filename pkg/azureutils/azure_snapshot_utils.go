@@ -21,7 +21,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2022-08-01/compute"
+	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute/v5"
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -29,29 +29,29 @@ import (
 	volumehelper "sigs.k8s.io/azuredisk-csi-driver/pkg/util"
 )
 
-func GenerateCSISnapshot(sourceVolumeID string, snapshot *compute.Snapshot) (*csi.Snapshot, error) {
-	if snapshot == nil || snapshot.SnapshotProperties == nil {
+func GenerateCSISnapshot(sourceVolumeID string, snapshot *armcompute.Snapshot) (*csi.Snapshot, error) {
+	if snapshot == nil || snapshot.Properties == nil {
 		return nil, fmt.Errorf("snapshot property is nil")
 	}
 
-	if snapshot.SnapshotProperties.TimeCreated == nil {
+	if snapshot.Properties.TimeCreated == nil {
 		return nil, fmt.Errorf("TimeCreated of snapshot property is nil")
 	}
 
-	if snapshot.SnapshotProperties.DiskSizeGB == nil {
+	if snapshot.Properties.DiskSizeGB == nil {
 		return nil, fmt.Errorf("diskSizeGB of snapshot property is nil")
 	}
 
-	ready, _ := isCSISnapshotReady(*snapshot.SnapshotProperties.ProvisioningState)
+	ready, _ := isCSISnapshotReady(*snapshot.Properties.ProvisioningState)
 	if sourceVolumeID == "" {
 		sourceVolumeID = GetSourceVolumeID(snapshot)
 	}
 
 	return &csi.Snapshot{
-		SizeBytes:      volumehelper.GiBToBytes(int64(*snapshot.SnapshotProperties.DiskSizeGB)),
+		SizeBytes:      volumehelper.GiBToBytes(int64(*snapshot.Properties.DiskSizeGB)),
 		SnapshotId:     *snapshot.ID,
 		SourceVolumeId: sourceVolumeID,
-		CreationTime:   timestamppb.New(snapshot.SnapshotProperties.TimeCreated.ToTime()),
+		CreationTime:   timestamppb.New(*snapshot.Properties.TimeCreated),
 		ReadyToUse:     ready,
 	}, nil
 }
@@ -61,7 +61,7 @@ func GenerateCSISnapshot(sourceVolumeID string, snapshot *compute.Snapshot) (*cs
 // 2. StartingToken is null, and MaxEntries is not null. Return `MaxEntries` snapshots from zero.
 // 3. StartingToken is not null, and MaxEntries is null. Return all snapshots from `StartingToken`.
 // 4. StartingToken is not null, and MaxEntries is not null. Return `MaxEntries` snapshots from `StartingToken`.
-func GetEntriesAndNextToken(req *csi.ListSnapshotsRequest, snapshots []compute.Snapshot) (*csi.ListSnapshotsResponse, error) {
+func GetEntriesAndNextToken(req *csi.ListSnapshotsRequest, snapshots []*armcompute.Snapshot) (*csi.ListSnapshotsResponse, error) {
 	if req == nil {
 		return nil, status.Errorf(codes.Aborted, "request is nil")
 	}
@@ -88,8 +88,8 @@ func GetEntriesAndNextToken(req *csi.ListSnapshotsRequest, snapshots []compute.S
 	}
 	entries := []*csi.ListSnapshotsResponse_Entry{}
 	for count := 0; start < len(snapshots) && count < maxEntries; start++ {
-		if (req.SourceVolumeId != "" && req.SourceVolumeId == GetSourceVolumeID(&snapshots[start])) || req.SourceVolumeId == "" {
-			csiSnapshot, err := GenerateCSISnapshot(req.SourceVolumeId, &snapshots[start])
+		if (req.SourceVolumeId != "" && req.SourceVolumeId == GetSourceVolumeID(snapshots[start])) || req.SourceVolumeId == "" {
+			csiSnapshot, err := GenerateCSISnapshot(req.SourceVolumeId, snapshots[start])
 			if err != nil {
 				return nil, fmt.Errorf("failed to generate snapshot entry: %v", err)
 			}
@@ -119,12 +119,12 @@ func GetSnapshotNameFromURI(snapshotURI string) (string, error) {
 	return matches[1], nil
 }
 
-func GetSourceVolumeID(snapshot *compute.Snapshot) string {
+func GetSourceVolumeID(snapshot *armcompute.Snapshot) string {
 	if snapshot != nil &&
-		snapshot.SnapshotProperties != nil &&
-		snapshot.SnapshotProperties.CreationData != nil &&
-		snapshot.SnapshotProperties.CreationData.SourceResourceID != nil {
-		return *snapshot.SnapshotProperties.CreationData.SourceResourceID
+		snapshot.Properties != nil &&
+		snapshot.Properties.CreationData != nil &&
+		snapshot.Properties.CreationData.SourceResourceID != nil {
+		return *snapshot.Properties.CreationData.SourceResourceID
 	}
 	return ""
 }

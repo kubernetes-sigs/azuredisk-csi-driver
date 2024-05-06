@@ -25,18 +25,21 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute/v5"
 	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2022-08-01/compute"
-	"github.com/Azure/go-autorest/autorest/date"
-	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/assert"
+	"go.uber.org/mock/gomock"
+	"golang.org/x/sync/errgroup"
 	"google.golang.org/grpc/status"
+	"k8s.io/apimachinery/pkg/types"
 	clientset "k8s.io/client-go/kubernetes"
 	"k8s.io/utils/pointer"
 	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
-	"sigs.k8s.io/cloud-provider-azure/pkg/azureclients/diskclient/mockdiskclient"
-	"sigs.k8s.io/cloud-provider-azure/pkg/azureclients/snapshotclient/mocksnapshotclient"
+	"sigs.k8s.io/cloud-provider-azure/pkg/azclient/diskclient/mock_diskclient"
+	"sigs.k8s.io/cloud-provider-azure/pkg/azclient/mock_azclient"
+	"sigs.k8s.io/cloud-provider-azure/pkg/azclient/snapshotclient/mock_snapshotclient"
+	"sigs.k8s.io/cloud-provider-azure/pkg/azureclients/vmclient/mockvmclient"
 	azure "sigs.k8s.io/cloud-provider-azure/pkg/provider"
-	"sigs.k8s.io/cloud-provider-azure/pkg/retry"
 )
 
 func TestNewDriverV1(t *testing.T) {
@@ -45,21 +48,27 @@ func TestNewDriverV1(t *testing.T) {
 		DriverName:             consts.DefaultDriverName,
 		VolumeAttachLimit:      16,
 		EnablePerfOptimization: false,
+		Kubeconfig:             "",
+		AllowEmptyCloudConfig:  true,
 	})
 	assert.NotNil(t, d)
 }
 
 func TestCheckDiskCapacity(t *testing.T) {
-	d, _ := NewFakeDriver(t)
+	cntl := gomock.NewController(t)
+	defer cntl.Finish()
+	d, _ := NewFakeDriver(cntl)
 	size := int32(10)
 	diskName := "unit-test"
 	resourceGroup := "unit-test"
-	disk := compute.Disk{
-		DiskProperties: &compute.DiskProperties{
+	disk := &armcompute.Disk{
+		Properties: &armcompute.DiskProperties{
 			DiskSizeGB: &size,
 		},
 	}
-	d.getCloud().DisksClient.(*mockdiskclient.MockInterface).EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(disk, nil).AnyTimes()
+	diskClient := mock_diskclient.NewMockInterface(cntl)
+	d.getClientFactory().(*mock_azclient.MockClientFactory).EXPECT().GetDiskClientForSub("").Return(diskClient, nil).AnyTimes()
+	diskClient.EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any()).Return(disk, nil).AnyTimes()
 	flag, err := d.checkDiskCapacity(context.TODO(), "", resourceGroup, diskName, 10)
 	assert.Equal(t, flag, true)
 	assert.Nil(t, err)
@@ -100,15 +109,33 @@ func TestRun(t *testing.T) {
 
 				t.Setenv(consts.DefaultAzureCredentialFileEnv, fakeCredFile)
 
-				d, _ := NewFakeDriver(t)
-				d.Run("tcp://127.0.0.1:0", "", true, true)
+				cntl := gomock.NewController(t)
+				defer cntl.Finish()
+				d, _ := NewFakeDriver(cntl)
+				ctx, cancelFn := context.WithCancel(context.Background())
+				var routines errgroup.Group
+				routines.Go(func() error { return d.Run(ctx) })
+				time.Sleep(time.Millisecond * 500)
+				cancelFn()
+				time.Sleep(time.Millisecond * 500)
+				err := routines.Wait()
+				assert.Nil(t, err)
 			},
 		},
 		{
 			name: "Successful run without cloud config",
 			testFunc: func(t *testing.T) {
-				d, _ := NewFakeDriver(t)
-				d.Run("tcp://127.0.0.1:0", "", true, true)
+				cntl := gomock.NewController(t)
+				defer cntl.Finish()
+				d, _ := NewFakeDriver(cntl)
+				ctx, cancelFn := context.WithCancel(context.Background())
+				var routines errgroup.Group
+				routines.Go(func() error { return d.Run(ctx) })
+				time.Sleep(time.Millisecond * 500)
+				cancelFn()
+				time.Sleep(time.Millisecond * 500)
+				err := routines.Wait()
+				assert.Nil(t, err)
 			},
 		},
 		{
@@ -126,10 +153,19 @@ func TestRun(t *testing.T) {
 
 				t.Setenv(consts.DefaultAzureCredentialFileEnv, fakeCredFile)
 
-				d, _ := NewFakeDriver(t)
+				cntl := gomock.NewController(t)
+				defer cntl.Finish()
+				d, _ := NewFakeDriver(cntl)
 				d.setCloud(&azure.Cloud{})
 				d.setNodeID("")
-				d.Run("tcp://127.0.0.1:0", "", true, true)
+				ctx, cancelFn := context.WithCancel(context.Background())
+				var routines errgroup.Group
+				routines.Go(func() error { return d.Run(ctx) })
+				time.Sleep(time.Millisecond * 500)
+				cancelFn()
+				time.Sleep(time.Millisecond * 500)
+				err := routines.Wait()
+				assert.Nil(t, err)
 			},
 		},
 		{
@@ -155,8 +191,59 @@ func TestRun(t *testing.T) {
 					EnablePerfOptimization: true,
 					VMSSCacheTTLInSeconds:  10,
 					VMType:                 "vmss",
+					Endpoint:               "tcp://127.0.0.1:0",
 				})
-				d.Run("tcp://127.0.0.1:0", "", true, true)
+				ctx, cancelFn := context.WithCancel(context.Background())
+				var routines errgroup.Group
+				routines.Go(func() error { return d.Run(ctx) })
+				time.Sleep(time.Millisecond * 500)
+				cancelFn()
+				time.Sleep(time.Millisecond * 500)
+				err := routines.Wait()
+				assert.Nil(t, err)
+			},
+		},
+		{
+			name: "Successful run with federated workload identity azure client",
+			testFunc: func(t *testing.T) {
+				if err := os.WriteFile(fakeCredFile, []byte(fakeCredContent), 0666); err != nil {
+					t.Error(err)
+				}
+
+				defer func() {
+					if err := os.Remove(fakeCredFile); err != nil {
+						t.Error(err)
+					}
+				}()
+
+				t.Setenv(consts.DefaultAzureCredentialFileEnv, fakeCredFile)
+				t.Setenv("AZURE_TENANT_ID", "1234")
+				t.Setenv("AZURE_CLIENT_ID", "123456")
+				t.Setenv("AZURE_FEDERATED_TOKEN_FILE", "fake-token-file")
+
+				d := newDriverV1(&DriverOptions{
+					NodeID:                 "",
+					DriverName:             consts.DefaultDriverName,
+					EnableListVolumes:      true,
+					EnableListSnapshots:    true,
+					EnablePerfOptimization: true,
+					VMSSCacheTTLInSeconds:  10,
+					VMType:                 "vmss",
+					Endpoint:               "tcp://127.0.0.1:0",
+				})
+
+				ctx, cancel := context.WithCancel(context.Background())
+				ch := make(chan error)
+				go func() {
+					err := d.Run(ctx)
+					ch <- err
+				}()
+				cancel()
+				assert.Nil(t, <-ch)
+				assert.Equal(t, d.cloud.UseFederatedWorkloadIdentityExtension, true)
+				assert.Equal(t, d.cloud.AADFederatedTokenFile, "fake-token-file")
+				assert.Equal(t, d.cloud.AADClientID, "123456")
+				assert.Equal(t, d.cloud.TenantID, "1234")
 			},
 		},
 	}
@@ -167,7 +254,9 @@ func TestRun(t *testing.T) {
 }
 
 func TestDriver_checkDiskExists(t *testing.T) {
-	d, _ := NewFakeDriver(t)
+	cntl := gomock.NewController(t)
+	defer cntl.Finish()
+	d, _ := NewFakeDriver(cntl)
 	_, err := d.checkDiskExists(context.TODO(), "testurl/subscriptions/12/providers/Microsoft.Compute/disks/name")
 	assert.NotEqual(t, err, nil)
 }
@@ -259,7 +348,7 @@ func TestGetDefaultDiskMBPSReadWrite(t *testing.T) {
 	}
 }
 
-func TestWaitForSnapshotCopy(t *testing.T) {
+func TestWaitForSnapshot(t *testing.T) {
 	testCases := []struct {
 		name     string
 		testFunc func(t *testing.T)
@@ -267,39 +356,42 @@ func TestWaitForSnapshotCopy(t *testing.T) {
 		{
 			name: "snapshotID not valid",
 			testFunc: func(t *testing.T) {
-				d, _ := NewFakeDriver(t)
+				cntl := gomock.NewController(t)
+				defer cntl.Finish()
+				d, _ := NewFakeDriver(cntl)
 				subID := "subs"
 				resourceGroup := "rg"
 				intervel := 1 * time.Millisecond
 				timeout := 10 * time.Millisecond
 				snapshotID := "test"
-				snapshot := compute.Snapshot{
-					SnapshotProperties: &compute.SnapshotProperties{},
-					ID:                 &snapshotID}
+				snapshot := &armcompute.Snapshot{
+					Properties: &armcompute.SnapshotProperties{},
+					ID:         &snapshotID}
 				ctrl := gomock.NewController(t)
 				defer ctrl.Finish()
-				mockSnapshotClient := mocksnapshotclient.NewMockInterface(ctrl)
-				d.getCloud().SnapshotsClient = mockSnapshotClient
-				rerr := &retry.Error{
-					RawError: fmt.Errorf("invalid snapshotID"),
-				}
-				mockSnapshotClient.EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(snapshot, rerr).AnyTimes()
-				err := d.waitForSnapshotCopy(context.Background(), subID, resourceGroup, snapshotID, intervel, timeout)
+				mockSnapshotClient := mock_snapshotclient.NewMockInterface(ctrl)
+				d.getClientFactory().(*mock_azclient.MockClientFactory).EXPECT().GetSnapshotClientForSub(subID).Return(mockSnapshotClient, nil).AnyTimes()
+
+				mockSnapshotClient.EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any()).Return(snapshot, fmt.Errorf("invalid snapshotID")).AnyTimes()
+				err := d.waitForSnapshotReady(context.Background(), subID, resourceGroup, snapshotID, intervel, timeout)
 
 				wantErr := true
 				subErrMsg := "invalid snapshotID"
 				if (err != nil) != wantErr {
-					t.Errorf("waitForSnapshotCopy() error = %v, wantErr %v", err, wantErr)
+					t.Errorf("waitForSnapshotReady() error = %v, wantErr %v", err, wantErr)
 				}
 				if err != nil && !strings.Contains(err.Error(), subErrMsg) {
-					t.Errorf("waitForSnapshotCopy() error = %v, wantErr %v", err, subErrMsg)
+					t.Errorf("waitForSnapshotReady() error = %v, wantErr %v", err, subErrMsg)
 				}
 			},
 		},
+		//nolint:dupl
 		{
 			name: "timeout for waiting snapshot copy cross region",
 			testFunc: func(t *testing.T) {
-				d, _ := NewFakeDriver(t)
+				cntl := gomock.NewController(t)
+				defer cntl.Finish()
+				d, _ := NewFakeDriver(cntl)
 				subID := "subs"
 				resourceGroup := "rg"
 				intervel := 1 * time.Millisecond
@@ -309,37 +401,41 @@ func TestWaitForSnapshotCopy(t *testing.T) {
 				snapshotID := "test"
 				location := "loc"
 				provisioningState := "succeeded"
-				snapshot := compute.Snapshot{
-					SnapshotProperties: &compute.SnapshotProperties{
-						TimeCreated:       &date.Time{},
+				snapshot := &armcompute.Snapshot{
+					Properties: &armcompute.SnapshotProperties{
+						TimeCreated:       &time.Time{},
 						ProvisioningState: &provisioningState,
 						DiskSizeGB:        &DiskSize,
-						CreationData:      &compute.CreationData{SourceResourceID: &volumeID},
-						CompletionPercent: pointer.Float64(0.0),
+						CreationData:      &armcompute.CreationData{SourceResourceID: &volumeID},
+						CompletionPercent: pointer.Float32(0.0),
 					},
 					Location: &location,
 					ID:       &snapshotID}
 				ctrl := gomock.NewController(t)
 				defer ctrl.Finish()
-				mockSnapshotClient := mocksnapshotclient.NewMockInterface(ctrl)
-				d.getCloud().SnapshotsClient = mockSnapshotClient
-				mockSnapshotClient.EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(snapshot, nil).AnyTimes()
-				err := d.waitForSnapshotCopy(context.Background(), subID, resourceGroup, snapshotID, intervel, timeout)
+				mockSnapshotClient := mock_snapshotclient.NewMockInterface(ctrl)
+				d.getClientFactory().(*mock_azclient.MockClientFactory).EXPECT().GetSnapshotClientForSub(subID).Return(mockSnapshotClient, nil).AnyTimes()
+
+				mockSnapshotClient.EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any()).Return(snapshot, nil).AnyTimes()
+				err := d.waitForSnapshotReady(context.Background(), subID, resourceGroup, snapshotID, intervel, timeout)
 
 				wantErr := true
 				subErrMsg := "timeout"
 				if (err != nil) != wantErr {
-					t.Errorf("waitForSnapshotCopy() error = %v, wantErr %v", err, wantErr)
+					t.Errorf("waitForSnapshotReady() error = %v, wantErr %v", err, wantErr)
 				}
 				if err != nil && !strings.Contains(err.Error(), subErrMsg) {
-					t.Errorf("waitForSnapshotCopy() error = %v, wantErr %v", err, subErrMsg)
+					t.Errorf("waitForSnapshotReady() error = %v, wantErr %v", err, subErrMsg)
 				}
 			},
 		},
+		//nolint:dupl
 		{
 			name: "succeed for waiting snapshot copy cross region",
 			testFunc: func(t *testing.T) {
-				d, _ := NewFakeDriver(t)
+				cntl := gomock.NewController(t)
+				defer cntl.Finish()
+				d, _ := NewFakeDriver(cntl)
 				subID := "subs"
 				resourceGroup := "rg"
 				intervel := 1 * time.Millisecond
@@ -349,30 +445,30 @@ func TestWaitForSnapshotCopy(t *testing.T) {
 				snapshotID := "test"
 				location := "loc"
 				provisioningState := "succeeded"
-				snapshot := compute.Snapshot{
-					SnapshotProperties: &compute.SnapshotProperties{
-						TimeCreated:       &date.Time{},
+				snapshot := &armcompute.Snapshot{
+					Properties: &armcompute.SnapshotProperties{
+						TimeCreated:       &time.Time{},
 						ProvisioningState: &provisioningState,
 						DiskSizeGB:        &DiskSize,
-						CreationData:      &compute.CreationData{SourceResourceID: &volumeID},
-						CompletionPercent: pointer.Float64(100.0),
+						CreationData:      &armcompute.CreationData{SourceResourceID: &volumeID},
+						CompletionPercent: pointer.Float32(100.0),
 					},
 					Location: &location,
 					ID:       &snapshotID}
 				ctrl := gomock.NewController(t)
 				defer ctrl.Finish()
-				mockSnapshotClient := mocksnapshotclient.NewMockInterface(ctrl)
-				d.getCloud().SnapshotsClient = mockSnapshotClient
-				mockSnapshotClient.EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(snapshot, nil).AnyTimes()
-				err := d.waitForSnapshotCopy(context.Background(), subID, resourceGroup, snapshotID, intervel, timeout)
+				mockSnapshotClient := mock_snapshotclient.NewMockInterface(ctrl)
+				d.getClientFactory().(*mock_azclient.MockClientFactory).EXPECT().GetSnapshotClientForSub(subID).Return(mockSnapshotClient, nil).AnyTimes()
+				mockSnapshotClient.EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any()).Return(snapshot, nil).AnyTimes()
+				err := d.waitForSnapshotReady(context.Background(), subID, resourceGroup, snapshotID, intervel, timeout)
 
 				wantErr := false
 				subErrMsg := ""
 				if (err != nil) != wantErr {
-					t.Errorf("waitForSnapshotCopy() error = %v, wantErr %v", err, wantErr)
+					t.Errorf("waitForSnapshotReady() error = %v, wantErr %v", err, wantErr)
 				}
 				if err != nil && !strings.Contains(err.Error(), subErrMsg) {
-					t.Errorf("waitForSnapshotCopy() error = %v, wantErr %v", err, subErrMsg)
+					t.Errorf("waitForSnapshotReady() error = %v, wantErr %v", err, subErrMsg)
 				}
 			},
 		},
@@ -380,5 +476,116 @@ func TestWaitForSnapshotCopy(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, tc.testFunc)
+	}
+}
+
+func TestGetVMSSInstanceName(t *testing.T) {
+	tests := []struct {
+		computeName   string
+		expected      string
+		expectedError error
+	}{
+		{
+			computeName:   "aks-agentpool-20657377-vmss_2",
+			expected:      "aks-agentpool-20657377-vmss000002",
+			expectedError: nil,
+		},
+		{
+			computeName:   "aks-agentpool-20657377-vmss_37",
+			expected:      "aks-agentpool-20657377-vmss000011",
+			expectedError: nil,
+		},
+		{
+			computeName:   "akswin_1",
+			expected:      "akswin000001",
+			expectedError: nil,
+		},
+		{
+			computeName:   "akswin_a",
+			expected:      "",
+			expectedError: fmt.Errorf("parsing vmss compute name(%s) failed with strconv.Atoi: parsing \"a\": invalid syntax", "akswin_a"),
+		},
+		{
+			computeName:   "aks-agentpool-20657377-vmss37",
+			expected:      "",
+			expectedError: fmt.Errorf("invalid vmss compute name: %s", "aks-agentpool-20657377-vmss37"),
+		},
+	}
+	for _, test := range tests {
+		result, err := getVMSSInstanceName(test.computeName)
+		if result != test.expected {
+			t.Errorf("Unexpected result: %s, expected result: %s, input: %s", result, test.expected, test.computeName)
+		}
+		if !reflect.DeepEqual(err, test.expectedError) {
+			t.Errorf("Unexpected error: %v, expected error: %v, input: %s", err, test.expectedError, test.computeName)
+		}
+	}
+}
+
+func TestGetUsedLunsFromVolumeAttachments(t *testing.T) {
+	cntl := gomock.NewController(t)
+	defer cntl.Finish()
+	d, _ := NewFakeDriver(cntl)
+	tests := []struct {
+		name                string
+		nodeName            string
+		expectedUsedLunList []int
+		expectedErr         error
+	}{
+		{
+			name:                "nil kubeClient",
+			nodeName:            "test-node",
+			expectedUsedLunList: nil,
+			expectedErr:         fmt.Errorf("kubeClient or kubeClient.StorageV1() or kubeClient.StorageV1().VolumeAttachments() is nil"),
+		},
+	}
+	for _, test := range tests {
+		result, err := d.getUsedLunsFromVolumeAttachments(context.Background(), test.nodeName)
+		if !reflect.DeepEqual(err, test.expectedErr) {
+			t.Errorf("test(%s): err(%v) != expected err(%v)", test.name, err, test.expectedErr)
+		}
+		if !reflect.DeepEqual(result, test.expectedUsedLunList) {
+			t.Errorf("test(%s): result(%v) != expected result(%v)", test.name, result, test.expectedUsedLunList)
+		}
+	}
+}
+
+func TestGetUsedLunsFromNode(t *testing.T) {
+	cntl := gomock.NewController(t)
+	defer cntl.Finish()
+	d, _ := NewFakeDriver(cntl)
+	vm := compute.VirtualMachine{}
+	dataDisks := make([]compute.DataDisk, 2)
+	dataDisks[0] = compute.DataDisk{Lun: pointer.Int32(int32(0)), Name: &testVolumeName}
+	dataDisks[1] = compute.DataDisk{Lun: pointer.Int32(int32(2)), Name: &testVolumeName}
+	vm.VirtualMachineProperties = &compute.VirtualMachineProperties{
+		StorageProfile: &compute.StorageProfile{
+			DataDisks: &dataDisks,
+		},
+	}
+	mockVMsClient := d.getCloud().VirtualMachinesClient.(*mockvmclient.MockInterface)
+	mockVMsClient.EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(vm, nil).AnyTimes()
+
+	tests := []struct {
+		name                string
+		nodeName            string
+		expectedUsedLunList []int
+		expectedErr         error
+	}{
+		{
+			name:                "lun 0 and 2 are used",
+			nodeName:            "test-node",
+			expectedUsedLunList: []int{0, 2},
+			expectedErr:         nil,
+		},
+	}
+	for _, test := range tests {
+		result, err := d.getUsedLunsFromNode(types.NodeName(test.nodeName))
+		if !reflect.DeepEqual(err, test.expectedErr) {
+			t.Errorf("test(%s): err(%v) != expected err(%v)", test.name, err, test.expectedErr)
+		}
+		if !reflect.DeepEqual(result, test.expectedUsedLunList) {
+			t.Errorf("test(%s): result(%v) != expected result(%v)", test.name, result, test.expectedUsedLunList)
+		}
 	}
 }

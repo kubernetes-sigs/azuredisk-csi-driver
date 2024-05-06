@@ -1,4 +1,6 @@
-# Azure Disk Snapshot feature
+# Snapshot feature
+
+> From version 1.26.4, you can take cross-region snapshots by setting the `location` parameter to a different region than the current cluster
 
 - [Use velero to backup & restore Azure disk by snapshot feature](https://velero.io/blog/csi-integration/)
 
@@ -86,9 +88,9 @@ outfile
 
 ### Tips
 ### Use snapshot feature to create a copy of a disk with a different SKU
-> The disk SKU change can be from LRS to ZRS, from standard to premium, or even across zones, however cross-region changes are not supported.
+> It is possible to change the disk SKU from LRS to ZRS, from standard to premium, and even across zones, but it is not supported to change the disk SKU across regions.
 
-> For information on storage class settings with cross-zone support, please refer to [allowed-topology storage class](../storageclass-azuredisk-csi-allowed-topology.yaml)
+> For information on storage class settings with cross-zone support, please refer to [allowed-topology storage class](./storageclass-azuredisk-csi-allowed-topology.yaml)
 
  - Before proceeding, ensure that the application is not writing data to the source disk.
  - Take a snapshot of the existing disk PVC.

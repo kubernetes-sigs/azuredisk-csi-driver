@@ -18,13 +18,13 @@ package azuredisk
 
 import (
 	"context"
-	"testing"
 	"time"
 
-	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2022-08-01/compute"
+	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute/v5"
 	"github.com/container-storage-interface/spec/lib/go/csi"
-	"github.com/golang/mock/gomock"
-	"github.com/stretchr/testify/assert"
+	"go.uber.org/mock/gomock"
+	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/client-go/kubernetes/fake"
 	"k8s.io/mount-utils"
 	testingexec "k8s.io/utils/exec/testing"
 
@@ -34,8 +34,8 @@ import (
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/optimization"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/optimization/mockoptimization"
 	volumehelper "sigs.k8s.io/azuredisk-csi-driver/pkg/util"
+	"sigs.k8s.io/cloud-provider-azure/pkg/azclient"
 	azcache "sigs.k8s.io/cloud-provider-azure/pkg/cache"
-	"sigs.k8s.io/cloud-provider-azure/pkg/provider"
 	azure "sigs.k8s.io/cloud-provider-azure/pkg/provider"
 )
 
@@ -67,7 +67,7 @@ var (
 type FakeDriver interface {
 	CSIDriver
 
-	GetSourceDiskSize(ctx context.Context, subsID, resourceGroup, diskName string, curDepth, maxDepth int) (*int32, error)
+	GetSourceDiskSize(ctx context.Context, subsID, resourceGroup, diskName string, curDepth, maxDepth int) (*int32, *armcompute.Disk, error)
 
 	setNextCommandOutputScripts(scripts ...testingexec.FakeAction)
 
@@ -77,8 +77,9 @@ type FakeDriver interface {
 	setName(string)
 	setNodeID(string)
 	setVersion(version string)
-	getCloud() *provider.Cloud
-	setCloud(*provider.Cloud)
+	getCloud() *azure.Cloud
+	setCloud(*azure.Cloud)
+	getClientFactory() azclient.ClientFactory
 	getMounter() *mount.SafeFormatAndMount
 	setMounter(*mount.SafeFormatAndMount)
 	setPerfOptimizationEnabled(bool)
@@ -86,21 +87,23 @@ type FakeDriver interface {
 	getHostUtil() hostUtil
 
 	checkDiskCapacity(context.Context, string, string, string, int) (bool, error)
-	checkDiskExists(ctx context.Context, diskURI string) (*compute.Disk, error)
+	checkDiskExists(ctx context.Context, diskURI string) (*armcompute.Disk, error)
 	getSnapshotInfo(string) (string, string, string, error)
-	waitForSnapshotCopy(context.Context, string, string, string, time.Duration, time.Duration) error
+	waitForSnapshotReady(context.Context, string, string, string, time.Duration, time.Duration) error
 	getSnapshotByID(context.Context, string, string, string, string) (*csi.Snapshot, error)
 	ensureMountPoint(string) (bool, error)
 	ensureBlockTargetFile(string) error
 	getDevicePathWithLUN(lunStr string) (string, error)
-	setDiskThrottlingCache(key string, value string)
+	setThrottlingCache(key string, value string)
+	getUsedLunsFromVolumeAttachments(context.Context, string) ([]int, error)
+	getUsedLunsFromNode(nodeName types.NodeName) ([]int, error)
 }
 
 type fakeDriverV1 struct {
 	Driver
 }
 
-func newFakeDriverV1(t *testing.T) (*fakeDriverV1, error) {
+func newFakeDriverV1(ctrl *gomock.Controller) (*fakeDriverV1, error) {
 	driver := fakeDriverV1{}
 	driver.Name = fakeDriverName
 	driver.Version = fakeDriverVersion
@@ -113,11 +116,15 @@ func newFakeDriverV1(t *testing.T) (*fakeDriverV1, error) {
 	driver.hostUtil = azureutils.NewFakeHostUtil()
 	driver.useCSIProxyGAInterface = true
 	driver.allowEmptyCloudConfig = true
-
-	ctrl := gomock.NewController(t)
-	defer ctrl.Finish()
+	driver.shouldWaitForSnapshotReady = true
+	driver.endpoint = "tcp://127.0.0.1:0"
+	driver.disableAVSetNodes = true
+	driver.kubeClient = fake.NewSimpleClientset()
 
 	driver.cloud = azure.GetTestCloud(ctrl)
+	driver.diskController = NewManagedDiskController(driver.cloud)
+	driver.clientFactory = driver.cloud.ComputeClientFactory
+
 	mounter, err := mounter.NewSafeMounter(driver.enableWindowsHostProcess, driver.useCSIProxyGAInterface)
 	if err != nil {
 		return nil, err
@@ -125,13 +132,14 @@ func newFakeDriverV1(t *testing.T) (*fakeDriverV1, error) {
 
 	driver.mounter = mounter
 
-	cache, err := azcache.NewTimedcache(time.Minute, func(key string) (interface{}, error) {
+	cache, err := azcache.NewTimedCache(time.Minute, func(key string) (interface{}, error) {
 		return nil, nil
-	})
+	}, false)
 	if err != nil {
 		return nil, err
 	}
-	driver.getDiskThrottlingCache = cache
+	driver.throttlingCache = cache
+	driver.checkDiskLunThrottlingCache = cache
 	driver.deviceHelper = mockoptimization.NewMockInterface(ctrl)
 
 	driver.AddControllerServiceCapabilities(
@@ -151,11 +159,6 @@ func newFakeDriverV1(t *testing.T) (*fakeDriverV1, error) {
 		csi.NodeServiceCapability_RPC_EXPAND_VOLUME,
 	})
 
-	nodeInfo := driver.getNodeInfo()
-	assert.NotEqual(t, nil, nodeInfo)
-	dh := driver.getDeviceHelper()
-	assert.NotEqual(t, nil, dh)
-
 	return &driver, nil
 }
 
@@ -163,8 +166,11 @@ func (d *fakeDriverV1) setNextCommandOutputScripts(scripts ...testingexec.FakeAc
 	d.mounter.Exec.(*mounter.FakeSafeMounter).SetNextCommandOutputScripts(scripts...)
 }
 
-func (d *fakeDriverV1) setDiskThrottlingCache(key string, value string) {
-	d.getDiskThrottlingCache.Set(key, value)
+func (d *fakeDriverV1) setThrottlingCache(key string, value string) {
+	d.throttlingCache.Set(key, value)
+}
+func (d *fakeDriverV1) getClientFactory() azclient.ClientFactory {
+	return d.clientFactory
 }
 
 func createVolumeCapabilities(accessMode csi.VolumeCapability_AccessMode_Mode) []*csi.VolumeCapability {

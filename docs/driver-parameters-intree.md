@@ -1,6 +1,6 @@
 ## Driver Parameters
 
-in-tree [kubernetes.io/azure-disk](https://kubernetes.io/docs/concepts/storage/volumes/#azuredisk) driver parameters
+ - deprecated in-tree [kubernetes.io/azure-disk](https://kubernetes.io/docs/concepts/storage/volumes/#azuredisk) driver parameters
 
 ### Dynamic Provisioning
 

@@ -81,6 +81,7 @@ func sender() autorest.Sender {
 			IdleConnTimeout:       90 * time.Second, // the same as default transport
 			TLSHandshakeTimeout:   10 * time.Second, // the same as default transport
 			ExpectContinueTimeout: 1 * time.Second,  // the same as default transport
+			ResponseHeaderTimeout: 60 * time.Second,
 			TLSClientConfig: &tls.Config{
 				MinVersion:    tls.VersionTLS12,     //force to use TLS 1.2
 				Renegotiation: tls.RenegotiateNever, // the same as default transport https://pkg.go.dev/crypto/tls#RenegotiationSupport
@@ -187,7 +188,7 @@ func NormalizeAzureRegion(name string) string {
 }
 
 // Send sends a http request to ARM service with possible retry to regional ARM endpoint.
-func (c *Client) Send(ctx context.Context, request *http.Request, decorators ...autorest.SendDecorator) (*http.Response, *retry.Error) {
+func (c *Client) Send(_ context.Context, request *http.Request, decorators ...autorest.SendDecorator) (*http.Response, *retry.Error) {
 	response, err := autorest.SendWithSender(
 		c.client,
 		request,
@@ -286,7 +287,7 @@ func (c *Client) WaitForAsyncOperationCompletion(ctx context.Context, future *az
 }
 
 // WaitForAsyncOperationResult waits for an operation result.
-func (c *Client) WaitForAsyncOperationResult(ctx context.Context, future *azure.Future, asyncOperationName string) (*http.Response, error) {
+func (c *Client) WaitForAsyncOperationResult(ctx context.Context, future *azure.Future, _ string) (*http.Response, error) {
 	if err := future.WaitForCompletionRef(ctx, c.client); err != nil {
 		klog.V(5).Infof("Received error in WaitForAsyncOperationCompletion: '%v'", err)
 		return nil, err
@@ -439,7 +440,7 @@ func (c *Client) PutResourcesInBatches(ctx context.Context, resources map[string
 	}
 
 	if batchSize > len(resources) {
-		klog.V(4).Infof("PutResourcesInBatches: batch size %d, but the number of the resources is %d", batchSize, resources)
+		klog.V(4).Infof("PutResourcesInBatches: batch size %d, but the number of the resources is %d", batchSize, len(resources))
 		batchSize = len(resources)
 	}
 	klog.V(4).Infof("PutResourcesInBatches: send sync requests in parallel with the batch size %d", batchSize)
@@ -545,7 +546,7 @@ func (c *Client) PutResourceAsync(ctx context.Context, resourceID string, parame
 	future, resp, rErr := c.SendAsync(ctx, request)
 	defer c.CloseResponse(ctx, resp)
 	if rErr != nil {
-		klog.V(5).Infof("Received error in %s: resourceID: %s, error: %s", "put.send", resourceID, err)
+		klog.V(5).Infof("Received error in %s: resourceID: %s, error: %s", "put.send", resourceID, rErr.Error())
 		return nil, rErr
 	}
 
@@ -577,7 +578,7 @@ func (c *Client) PostResource(ctx context.Context, resourceID, action string, pa
 }
 
 // DeleteResource deletes a resource by resource ID
-func (c *Client) DeleteResource(ctx context.Context, resourceID string, decorators ...autorest.PrepareDecorator) *retry.Error {
+func (c *Client) DeleteResource(ctx context.Context, resourceID string, _ ...autorest.PrepareDecorator) *retry.Error {
 	future, clientErr := c.DeleteResourceAsync(ctx, resourceID)
 	if clientErr != nil {
 		klog.V(5).Infof("Received error in %s: resourceID: %s, error: %s", "delete.request", resourceID, clientErr.Error())
@@ -588,7 +589,7 @@ func (c *Client) DeleteResource(ctx context.Context, resourceID string, decorato
 		return nil
 	}
 	if err := future.WaitForCompletionRef(ctx, c.client); err != nil {
-		klog.V(5).Infof("Received error in %s: resourceID: %s, error: %s", "delete.wait", resourceID, clientErr.Error())
+		klog.V(5).Infof("Received error in %s: resourceID: %s, error: %s", "delete.wait", resourceID, err)
 		return retry.NewError(true, err)
 	}
 
@@ -650,7 +651,7 @@ func (c *Client) DeleteResourceAsync(ctx context.Context, resourceID string, dec
 }
 
 // CloseResponse closes a response
-func (c *Client) CloseResponse(ctx context.Context, response *http.Response) {
+func (c *Client) CloseResponse(_ context.Context, response *http.Response) {
 	if response != nil && response.Body != nil {
 		if err := response.Body.Close(); err != nil {
 			klog.Errorf("Error closing the response body: %v", err)

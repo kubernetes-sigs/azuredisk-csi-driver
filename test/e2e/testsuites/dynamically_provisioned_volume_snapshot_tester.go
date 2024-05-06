@@ -27,7 +27,7 @@ import (
 	"sigs.k8s.io/azuredisk-csi-driver/test/utils/credentials"
 
 	"github.com/onsi/ginkgo/v2"
-	"github.com/pborman/uuid"
+	"k8s.io/apimachinery/pkg/util/uuid"
 
 	v1 "k8s.io/api/core/v1"
 	clientset "k8s.io/client-go/kubernetes"
@@ -49,6 +49,7 @@ type DynamicallyProvisionedVolumeSnapshotTest struct {
 	PodWithSnapshot                PodDetails
 	StorageClassParameters         map[string]string
 	SnapshotStorageClassParameters map[string]string
+	IsWindowsHPCDeployment         bool
 }
 
 func (t *DynamicallyProvisionedVolumeSnapshotTest) Run(ctx context.Context, client clientset.Interface, restclient restclientset.Interface, namespace *v1.Namespace) {
@@ -81,7 +82,7 @@ func (t *DynamicallyProvisionedVolumeSnapshotTest) Run(ctx context.Context, clie
 	framework.ExpectNoError(err)
 
 	//create external resource group
-	externalRG := credentials.ResourceGroupPrefix + uuid.NewUUID().String()
+	externalRG := credentials.ResourceGroupPrefix + string(uuid.NewUUID())
 	ginkgo.By("Creating external resource group: " + externalRG)
 	_, err = azureClient.EnsureResourceGroup(ctx, externalRG, creds.Location, nil)
 	framework.ExpectNoError(err)
@@ -132,7 +133,7 @@ func (t *DynamicallyProvisionedVolumeSnapshotTest) Run(ctx context.Context, clie
 		defer tPodWithSnapshotCleanup[i](ctx)
 	}
 
-	if t.ShouldOverwrite {
+	if t.ShouldOverwrite && !t.IsWindowsHPCDeployment {
 		// 	TODO: add test case which will schedule the original disk and the copied disk on the same node once the conflicting UUID issue is fixed.
 		ginkgo.By("Set pod anti-affinity to make sure two pods are scheduled on different nodes")
 		tPodWithSnapshot.SetAffinity(&TestPodAntiAffinity)

@@ -25,13 +25,14 @@ import (
 )
 
 type CSIDriver struct {
-	Name              string
-	NodeID            string
-	Version           string
-	VolumeAttachLimit int64
-	Cap               []*csi.ControllerServiceCapability
-	VC                []*csi.VolumeCapability_AccessMode
-	NSCap             []*csi.NodeServiceCapability
+	Name                    string
+	NodeID                  string
+	Version                 string
+	VolumeAttachLimit       int64
+	ReservedDataDiskSlotNum int64
+	Cap                     []*csi.ControllerServiceCapability
+	VC                      []*csi.VolumeCapability_AccessMode
+	NSCap                   []*csi.NodeServiceCapability
 }
 
 // Creates a NewCSIDriver object. Assumes vendor version is equal to driver version &

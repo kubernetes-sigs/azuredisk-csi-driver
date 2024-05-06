@@ -20,6 +20,7 @@ import (
 	"fmt"
 	"os"
 	"runtime"
+	"sort"
 	"strings"
 	"sync"
 
@@ -95,6 +96,10 @@ func ConvertTagsToMap(tags string) (map[string]string, error) {
 		if key == "" {
 			return nil, fmt.Errorf("Tags '%s' are invalid, the format should like: 'key1=value1,key2=value2'", tags)
 		}
+		// <>%&?/. are not allowed in tag key
+		if strings.ContainsAny(key, "<>%&?/.") {
+			return nil, fmt.Errorf("Tag key '%s' contains invalid characters", key)
+		}
 		value := strings.TrimSpace(kv[1])
 		m[key] = value
 	}
@@ -148,4 +153,28 @@ func (vl *VolumeLocks) Release(volumeID string) {
 	vl.mux.Lock()
 	defer vl.mux.Unlock()
 	vl.locks.Delete(volumeID)
+}
+
+func GetElementsInArray1NotInArray2(arr1 []int, arr2 []int) []int {
+	sort.Ints(arr1)
+	sort.Ints(arr2)
+
+	i, j := 0, 0
+	result := []int{}
+	for i < len(arr1) && j < len(arr2) {
+		if arr1[i] < arr2[j] {
+			result = append(result, arr1[i])
+			i++
+		} else if arr1[i] > arr2[j] {
+			j++
+		} else {
+			i++
+			j++
+		}
+	}
+	for i < len(arr1) {
+		result = append(result, arr1[i])
+		i++
+	}
+	return result
 }

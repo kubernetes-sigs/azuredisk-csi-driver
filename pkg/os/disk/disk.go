@@ -151,8 +151,7 @@ func CreateBasicPartition(diskNumber uint32) error {
 }
 
 func GetDiskNumberByName(page83ID string) (uint32, error) {
-	diskNumber, err := GetDiskNumberWithID(page83ID)
-	return diskNumber, err
+	return GetDiskNumberWithID(page83ID)
 }
 
 func GetDiskNumber(disk syscall.Handle) (uint32, error) {
@@ -320,7 +319,7 @@ func GetDiskStats(diskNumber uint32) (int64, error) {
 }
 
 func SetDiskState(diskNumber uint32, isOnline bool) error {
-	cmd := fmt.Sprintf("(Get-Disk -Number %d) | Set-Disk -IsOffline $%t", diskNumber, !isOnline)
+	cmd := fmt.Sprintf("Set-Disk -Number %d -IsOffline $%t;Set-Disk -Number %d -IsReadOnly $false", diskNumber, !isOnline, diskNumber)
 	out, err := azureutils.RunPowershellCmd(cmd)
 	if err != nil {
 		return fmt.Errorf("error setting disk attach state. cmd: %s, output: %s, error: %v", cmd, string(out), err)

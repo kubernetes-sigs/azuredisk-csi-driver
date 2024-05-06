@@ -49,7 +49,7 @@ spec:
             - "New-Item -ItemType Directory -Path C:\\var\\lib\\kubelet\\plugins\\disk.csi.azure.com\\ -Force"
       containers:
         - name: node-driver-registrar
-          image: mcr.microsoft.com/oss/kubernetes-csi/csi-node-driver-registrar:v2.8.0
+          image: mcr.microsoft.com/oss/kubernetes-csi/csi-node-driver-registrar:v2.10.0
           imagePullPolicy: IfNotPresent
           command:
             - "csi-node-driver-registrar.exe"
@@ -84,7 +84,6 @@ spec:
             - --v=5
             - --endpoint=$(CSI_ENDPOINT)
             - --nodeid=$(KUBE_NODE_NAME)
-            - --kubeconfig=C:\\k\\config
             - --allow-empty-cloud-config=true
             - --enable-windows-host-process=true
           env:

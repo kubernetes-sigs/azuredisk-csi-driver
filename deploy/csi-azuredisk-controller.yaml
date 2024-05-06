@@ -34,9 +34,9 @@ spec:
           effect: "NoSchedule"
       containers:
         - name: csi-provisioner
-          image: mcr.microsoft.com/oss/kubernetes-csi/csi-provisioner:v3.5.0
+          image: mcr.microsoft.com/oss/kubernetes-csi/csi-provisioner:v4.0.0
           args:
-            - "--feature-gates=Topology=true"
+            - "--feature-gates=Topology=true,HonorPVReclaimPolicy=true"
             - "--csi-address=$(ADDRESS)"
             - "--v=2"
             - "--timeout=30s"
@@ -60,7 +60,7 @@ spec:
               cpu: 10m
               memory: 20Mi
         - name: csi-attacher
-          image: mcr.microsoft.com/oss/kubernetes-csi/csi-attacher:v4.3.0
+          image: mcr.microsoft.com/oss/kubernetes-csi/csi-attacher:v4.5.0
           args:
             - "-v=2"
             - "-csi-address=$(ADDRESS)"
@@ -83,13 +83,13 @@ spec:
               cpu: 10m
               memory: 20Mi
         - name: csi-snapshotter
-          image: mcr.microsoft.com/oss/kubernetes-csi/csi-snapshotter:v6.2.2
+          image: mcr.microsoft.com/oss/kubernetes-csi/csi-snapshotter:v6.3.3
           args:
             - "-csi-address=$(ADDRESS)"
             - "-leader-election"
             - "--leader-election-namespace=kube-system"
             - "--v=2"
-            - "--timeout=600s"
+            - "--timeout=1200s"
           env:
             - name: ADDRESS
               value: /csi/csi.sock
@@ -103,7 +103,7 @@ spec:
               cpu: 10m
               memory: 20Mi
         - name: csi-resizer
-          image: mcr.microsoft.com/oss/kubernetes-csi/csi-resizer:v1.8.0
+          image: mcr.microsoft.com/oss/kubernetes-csi/csi-resizer:v1.9.3
           args:
             - "-csi-address=$(ADDRESS)"
             - "-v=2"
@@ -125,11 +125,11 @@ spec:
               cpu: 10m
               memory: 20Mi
         - name: liveness-probe
-          image: mcr.microsoft.com/oss/kubernetes-csi/livenessprobe:v2.10.0
+          image: mcr.microsoft.com/oss/kubernetes-csi/livenessprobe:v2.12.0
           args:
             - --csi-address=/csi/csi.sock
             - --probe-timeout=3s
-            - --health-port=29602
+            - --http-endpoint=localhost:29602
             - --v=2
           volumeMounts:
             - name: socket-dir
@@ -151,17 +151,15 @@ spec:
             - "--disable-avset-nodes=false"
             - "--allow-empty-cloud-config=false"
           ports:
-            - containerPort: 29602
-              name: healthz
-              protocol: TCP
             - containerPort: 29604
               name: metrics
               protocol: TCP
           livenessProbe:
             failureThreshold: 5
             httpGet:
+              host: localhost
               path: /healthz
-              port: healthz
+              port: 29602
             initialDelaySeconds: 30
             timeoutSeconds: 10
             periodSeconds: 30

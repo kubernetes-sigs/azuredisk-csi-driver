@@ -17,6 +17,7 @@ limitations under the License.
 package consts
 
 import (
+	"strings"
 	"time"
 
 	"github.com/Azure/azure-sdk-for-go/services/storage/mgmt/2021-09-01/storage"
@@ -112,8 +113,8 @@ const (
 	// StrRawVersion is the raw version string
 	StrRawVersion string = "raw"
 
-	// VirtualMachineScaleSetsDeallocating indicates VMSS instances are in Deallocating state.
-	VirtualMachineScaleSetsDeallocating = "Deallocating"
+	// ProvisionStateDeleting indicates VMSS instances are in Deleting state.
+	ProvisionStateDeleting = "Deleting"
 	// VmssMachineIDTemplate is the vmss manchine ID template
 	VmssMachineIDTemplate = "/subscriptions/%s/resourceGroups/%s/providers/Microsoft.Compute/virtualMachineScaleSets/%s/virtualMachines/%s"
 	// VMSetCIDRIPV4TagKey specifies the node ipv4 CIDR mask of the instances on the VMSS or VMAS
@@ -131,6 +132,8 @@ const (
 	ProvisioningStateDeleting = "Deleting"
 	// ProvisioningStateSucceeded ...
 	ProvisioningStateSucceeded = "Succeeded"
+	// ProvisioningStateUnknown is the unknown provisioning state
+	ProvisioningStateUnknown = "Unknown"
 )
 
 // cache
@@ -156,8 +159,6 @@ const (
 
 	// NonVmssUniformNodesCacheTTLDefaultInSeconds is the TTL of the non vmss uniform node cache
 	NonVmssUniformNodesCacheTTLDefaultInSeconds = 900
-	// AvailabilitySetNodesCacheTTLDefaultInSeconds is the TTL of the availabilitySet node cache
-	AvailabilitySetNodesCacheTTLDefaultInSeconds = 900
 	// VMSSCacheTTLDefaultInSeconds is the TTL of the vmss cache
 	VMSSCacheTTLDefaultInSeconds = 600
 	// VMSSVirtualMachinesCacheTTLDefaultInSeconds is the TTL of the vmss vm cache
@@ -193,6 +194,17 @@ const (
 	// BackoffJitterDefault is the default value of the backoff jitter
 	BackoffJitterDefault = 1.0
 )
+
+// IP family variables
+const (
+	IPVersionIPv6            bool   = true
+	IPVersionIPv4            bool   = false
+	IPVersionIPv4String      string = "IPv4"
+	IPVersionIPv6String      string = "IPv6"
+	IPVersionDualStackString string = "DualStack"
+)
+
+var IPVersionIPv6StringLower = strings.ToLower(IPVersionIPv6String)
 
 // LB variables for dual-stack
 var (
@@ -241,7 +253,7 @@ const (
 
 	// ServiceAnnotationLoadBalancerMode is the annotation used on the service to specify
 	// which load balancer should be associated with the service. This is valid when using the basic
-	// load balancer or turn on the multiple standard load balancers mode, or it would be ignored.
+	// sku load balancer, or it would be ignored.
 	// 1. Default mode - service has no annotation ("service.beta.kubernetes.io/azure-load-balancer-mode")
 	//	  In this case the Loadbalancer of the primary VMSS/VMAS is selected.
 	// 2. "__auto__" mode - service is annotated with __auto__ value, this when loadbalancer from any VMSS/VMAS
@@ -272,10 +284,15 @@ const (
 	// ServiceAnnotationIPTagsForPublicIP specifies the iptags used when dynamically creating a public ip
 	ServiceAnnotationIPTagsForPublicIP = "service.beta.kubernetes.io/azure-pip-ip-tags"
 
-	// ServiceAnnotationAllowedServiceTag is the annotation used on the service
+	// ServiceAnnotationAllowedServiceTags is the annotation used on the service
 	// to specify a list of allowed service tags separated by comma
 	// Refer https://docs.microsoft.com/en-us/azure/virtual-network/security-overview#service-tags for all supported service tags.
-	ServiceAnnotationAllowedServiceTag = "service.beta.kubernetes.io/azure-allowed-service-tags"
+	ServiceAnnotationAllowedServiceTags = "service.beta.kubernetes.io/azure-allowed-service-tags"
+
+	// ServiceAnnotationAllowedIPRanges is the annotation used on the service
+	// to specify a list of allowed IP Ranges separated by comma.
+	// It is compatible with both IPv4 and IPV6 CIDR formats.
+	ServiceAnnotationAllowedIPRanges = "service.beta.kubernetes.io/azure-allowed-ip-ranges"
 
 	// ServiceAnnotationDenyAllExceptLoadBalancerSourceRanges  denies all traffic to the load balancer except those
 	// within the service.Spec.LoadBalancerSourceRanges. Ref: https://github.com/kubernetes-sigs/cloud-provider-azure/issues/374.
@@ -315,10 +332,17 @@ const (
 	// If omitted, the default value is false
 	ServiceAnnotationDisableLoadBalancerFloatingIP = "service.beta.kubernetes.io/azure-disable-load-balancer-floating-ip"
 
-	// ServiceAnnotationAzurePIPTags sets the additional Public IPs (split by comma) besides the service's Public IP configured on LoadBalancer.
+	// ServiceAnnotationAdditionalPublicIPs sets the additional Public IPs (split by comma) besides the service's Public IP configured on LoadBalancer.
 	// These additional Public IPs would be consumed by kube-proxy to configure the iptables rules on each node. Note they would not be configured
 	// automatically on Azure LoadBalancer. Instead, they need to be configured manually (e.g. on Azure cross-region LoadBalancer by another operator).
 	ServiceAnnotationAdditionalPublicIPs = "service.beta.kubernetes.io/azure-additional-public-ips"
+
+	// ServiceAnnotationLoadBalancerConfigurations is the list of load balancer configurations the service can use.
+	// The list is separated by comma. It will be omitted if multi-slb is not used.
+	ServiceAnnotationLoadBalancerConfigurations = "service.beta.kubernetes.io/azure-load-balancer-configurations"
+
+	// ServiceAnnotationDisableTCPReset is the annotation used on the service to disable TCP reset on the load balancer.
+	ServiceAnnotationDisableTCPReset = "service.beta.kubernetes.io/azure-load-balancer-disable-tcp-reset"
 
 	// ServiceTagKey is the service key applied for public IP tags.
 	ServiceTagKey       = "k8s-azure-service"
@@ -355,6 +379,8 @@ const (
 	FrontendIPConfigNameMaxLength = 80
 	// LoadBalancerRuleNameMaxLength is the max length of the load balancing rule
 	LoadBalancerRuleNameMaxLength = 80
+	// PIPPrefixNameMaxLength is the max length of the PIP prefix name
+	PIPPrefixNameMaxLength = 80
 	// IPFamilySuffixLength is the length of suffix length of IP family ("-IPv4", "-IPv6")
 	IPFamilySuffixLength = 5
 
@@ -379,6 +405,8 @@ const (
 	ReferencedResourceNotProvisionedMessageCode = "ReferencedResourceNotProvisioned"
 	// ParentResourceNotFoundMessageCode is the error code that the parent VMSS of the VM is not found.
 	ParentResourceNotFoundMessageCode = "ParentResourceNotFound"
+	// ResourceNotFoundMessageCode is the error code that the resource is not found.
+	ResourceNotFoundMessageCode = "ResourceNotFound"
 	// ConcurrentRequestConflictMessage is the error message that the request failed due to the conflict with another concurrent operation.
 	ConcurrentRequestConflictMessage = "The request failed due to conflict with a concurrent request."
 	// CannotUpdateVMBeingDeletedMessagePrefix is the prefix of the error message that the request failed due to delete a VM that is being deleted
@@ -417,6 +445,9 @@ const (
 const (
 	RouteNameFmt       = "%s____%s"
 	RouteNameSeparator = "____"
+
+	// DefaultRouteUpdateIntervalInSeconds defines the route reconciling interval.
+	DefaultRouteUpdateIntervalInSeconds = 30
 )
 
 // cloud provider config secret
@@ -478,6 +509,9 @@ const (
 	// ServiceAnnotationPLSCreation determines whether a PLS needs to be created.
 	ServiceAnnotationPLSCreation = "service.beta.kubernetes.io/azure-pls-create"
 
+	// ServiceAnnotationPLSResourceGroup determines the resource group to create the PLS in.
+	ServiceAnnotationPLSResourceGroup = "service.beta.kubernetes.io/azure-pls-resource-group"
+
 	// ServiceAnnotationPLSName determines name of the PLS resource to create.
 	ServiceAnnotationPLSName = "service.beta.kubernetes.io/azure-pls-name"
 
@@ -521,4 +555,34 @@ const (
 
 const (
 	VMSSTagForBatchOperation = "aks-managed-coordination"
+)
+
+type LoadBalancerBackendPoolUpdateOperation string
+
+const (
+	LoadBalancerBackendPoolUpdateOperationAdd    LoadBalancerBackendPoolUpdateOperation = "add"
+	LoadBalancerBackendPoolUpdateOperationRemove LoadBalancerBackendPoolUpdateOperation = "remove"
+
+	DefaultLoadBalancerBackendPoolUpdateIntervalInSeconds = 30
+
+	ServiceNameLabel = "kubernetes.io/service-name"
+)
+
+// Load Balancer health probe mode
+const (
+	ClusterServiceLoadBalancerHealthProbeModeServiceNodePort = "servicenodeport"
+	ClusterServiceLoadBalancerHealthProbeModeShared          = "shared"
+	ClusterServiceLoadBalancerHealthProbeDefaultPort         = 10256
+	ClusterServiceLoadBalancerHealthProbeDefaultPath         = "/healthz"
+	SharedProbeName                                          = "cluster-service-shared-health-probe"
+)
+
+// VM power state
+const (
+	VMPowerStatePrefix       = "PowerState/"
+	VMPowerStateStopped      = "stopped"
+	VMPowerStateStopping     = "stopping"
+	VMPowerStateDeallocated  = "deallocated"
+	VMPowerStateDeallocating = "deallocating"
+	VMPowerStateUnknown      = "unknown"
 )

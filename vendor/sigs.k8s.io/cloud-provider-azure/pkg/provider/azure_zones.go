@@ -23,7 +23,6 @@ import (
 	"os"
 	"strconv"
 	"strings"
-	"time"
 
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/wait"
@@ -35,13 +34,15 @@ import (
 	"sigs.k8s.io/cloud-provider-azure/pkg/retry"
 )
 
-func (az *Cloud) refreshZones(refreshFunc func() error) {
-	ticker := time.NewTicker(consts.ZoneFetchingInterval)
-	defer ticker.Stop()
+var _ cloudprovider.Zones = (*Cloud)(nil)
 
-	for range ticker.C {
+func (az *Cloud) refreshZones(ctx context.Context, refreshFunc func() error) {
+	klog.V(2).Info("refreshZones: refreshing zones every 30 minutes.")
+	err := wait.PollUntilContextCancel(ctx, consts.ZoneFetchingInterval, false, func(ctx context.Context) (bool, error) {
 		_ = refreshFunc()
-	}
+		return false, nil
+	})
+	klog.V(2).Infof("refreshZones: refresh zones finished with error: %s", err.Error())
 }
 
 func (az *Cloud) syncRegionZonesMap() error {
@@ -140,8 +141,10 @@ func (az *Cloud) GetZoneID(zoneLabel string) string {
 }
 
 // GetZone returns the Zone containing the current availability zone and locality region that the program is running in.
+// DEPRECATED: Zones is deprecated in favor of retrieving zone/region information from InstancesV2.
+// This interface will not be called if InstancesV2 is enabled.
 // If the node is not running with availability zones, then it will fall back to fault domain.
-func (az *Cloud) GetZone(ctx context.Context) (cloudprovider.Zone, error) {
+func (az *Cloud) GetZone(_ context.Context) (cloudprovider.Zone, error) {
 	if az.UseInstanceMetadata {
 		metadata, err := az.Metadata.GetMetadata(azcache.CacheReadTypeUnsafe)
 		if err != nil {
@@ -176,12 +179,17 @@ func (az *Cloud) GetZone(ctx context.Context) (cloudprovider.Zone, error) {
 	if err != nil {
 		return cloudprovider.Zone{}, fmt.Errorf("failure getting hostname from kernel")
 	}
+	if az.VMSet == nil {
+		return cloudprovider.Zone{}, fmt.Errorf("VMSet is not initialized")
+	}
 	return az.VMSet.GetZoneByNodeName(strings.ToLower(hostname))
 }
 
 // GetZoneByProviderID implements Zones.GetZoneByProviderID
 // This is particularly useful in external cloud providers where the kubelet
 // does not initialize node data.
+// DEPRECATED: Zones is deprecated in favor of retrieving zone/region information from InstancesV2.
+// This interface will not be called if InstancesV2 is enabled.
 func (az *Cloud) GetZoneByProviderID(ctx context.Context, providerID string) (cloudprovider.Zone, error) {
 	if providerID == "" {
 		return cloudprovider.Zone{}, errNodeNotInitialized
@@ -204,7 +212,9 @@ func (az *Cloud) GetZoneByProviderID(ctx context.Context, providerID string) (cl
 // GetZoneByNodeName implements Zones.GetZoneByNodeName
 // This is particularly useful in external cloud providers where the kubelet
 // does not initialize node data.
-func (az *Cloud) GetZoneByNodeName(ctx context.Context, nodeName types.NodeName) (cloudprovider.Zone, error) {
+// DEPRECATED: Zones is deprecated in favor of retrieving zone/region information from InstancesV2.
+// This interface will not be called if InstancesV2 is enabled.
+func (az *Cloud) GetZoneByNodeName(_ context.Context, nodeName types.NodeName) (cloudprovider.Zone, error) {
 	// Returns "" for unmanaged nodes because azure cloud provider couldn't fetch information for them.
 	unmanaged, err := az.IsNodeUnmanaged(string(nodeName))
 	if err != nil {
@@ -216,21 +226,4 @@ func (az *Cloud) GetZoneByNodeName(ctx context.Context, nodeName types.NodeName)
 	}
 
 	return az.VMSet.GetZoneByNodeName(string(nodeName))
-}
-
-// GetPlatformSubFaultDomain returns the PlatformSubFaultDomain from IMDS if set.
-func (az *Cloud) GetPlatformSubFaultDomain() (string, error) {
-	if az.UseInstanceMetadata {
-		metadata, err := az.Metadata.GetMetadata(azcache.CacheReadTypeUnsafe)
-		if err != nil {
-			klog.Errorf("GetPlatformSubFaultDomain: failed to GetMetadata: %s", err.Error())
-			return "", err
-		}
-		if metadata.Compute == nil {
-			_ = az.Metadata.imsCache.Delete(consts.MetadataCacheKey)
-			return "", errors.New("failure of getting compute information from instance metadata")
-		}
-		return metadata.Compute.PlatformSubFaultDomain, nil
-	}
-	return "", nil
 }

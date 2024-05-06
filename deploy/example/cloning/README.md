@@ -64,7 +64,7 @@ outfile
 ```
 
 ### Use volume cloning feature to create a copy of a disk with a different SKU
-> The disk SKU change can be from LRS to ZRS, from standard to premium, however cross-zone and cross-region changes are not supported.
+> It is possible to change the disk SKU from LRS to ZRS or from standard to premium, but it is not supported to change the disk SKU across zones or regions.
 
  - Before proceeding, ensure that the application is not writing data to the source disk.
  - Delete the existing storage class that is referenced by the source disk PVC.

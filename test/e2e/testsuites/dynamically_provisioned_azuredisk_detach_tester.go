@@ -21,7 +21,8 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2022-08-01/compute"
+	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute/v5"
+	compute "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute/v5"
 	"github.com/onsi/ginkgo/v2"
 	"github.com/onsi/gomega"
 
@@ -86,7 +87,7 @@ func (t *DynamicallyProvisionedAzureDiskDetach) Run(ctx context.Context, client 
 		framework.ExpectNoError(err, fmt.Sprintf("Error getting client for azuredisk %v", err))
 		disktest, err := disksClient.Get(ctx, resourceGroup, diskName)
 		framework.ExpectNoError(err, fmt.Sprintf("Error getting disk for azuredisk %v", err))
-		framework.ExpectEqual(compute.Attached, disktest.DiskState)
+		gomega.Expect(compute.DiskStateAttached).To(gomega.Equal(*disktest.Properties.DiskState))
 
 		ginkgo.By("begin to delete the pod")
 		tpod.Cleanup(ctx)
@@ -96,10 +97,10 @@ func (t *DynamicallyProvisionedAzureDiskDetach) Run(ctx context.Context, client 
 			if err != nil {
 				return false, fmt.Errorf("Error getting disk for azuredisk %v", err)
 			}
-			if disktest.DiskState == compute.Unattached {
+			if *disktest.Properties.DiskState == armcompute.DiskStateUnattached {
 				return true, nil
 			}
-			ginkgo.By(fmt.Sprintf("current disk state(%v) is not in unattached state, wait and recheck", disktest.DiskState))
+			ginkgo.By(fmt.Sprintf("current disk state(%v) is not in unattached state, wait and recheck", *disktest.Properties.DiskState))
 			return false, nil
 		})
 		framework.ExpectNoError(err, fmt.Sprintf("waiting for disk detach complete returned with error: %v", err))

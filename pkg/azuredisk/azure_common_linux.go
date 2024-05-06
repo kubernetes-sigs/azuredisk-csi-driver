@@ -81,7 +81,7 @@ func getDiskLinkByDevName(io azureutils.IOHandler, devLinkPath, devName string) 
 	return "", fmt.Errorf("read %s error: %v", devLinkPath, err)
 }
 
-func scsiHostRescan(io azureutils.IOHandler, m *mount.SafeFormatAndMount) {
+func scsiHostRescan(io azureutils.IOHandler, _ *mount.SafeFormatAndMount) {
 	scsiPath := "/sys/class/scsi_host/"
 	if dirs, err := io.ReadDir(scsiPath); err == nil {
 		for _, f := range dirs {
@@ -96,7 +96,7 @@ func scsiHostRescan(io azureutils.IOHandler, m *mount.SafeFormatAndMount) {
 	}
 }
 
-func findDiskByLun(lun int, io azureutils.IOHandler, m *mount.SafeFormatAndMount) (string, error) {
+func findDiskByLun(lun int, io azureutils.IOHandler, _ *mount.SafeFormatAndMount) (string, error) {
 	azureDisks := listAzureDiskPath(io)
 	return findDiskByLunWithConstraint(lun, io, azureDisks)
 }
@@ -196,7 +196,7 @@ func findDiskByLunWithConstraint(lun int, io azureutils.IOHandler, azureDisks []
 	return "", err
 }
 
-func preparePublishPath(path string, m *mount.SafeFormatAndMount) error {
+func preparePublishPath(_ string, _ *mount.SafeFormatAndMount) error {
 	return nil
 }
 
@@ -269,7 +269,7 @@ func rescanAllVolumes(io azureutils.IOHandler) error {
 	return nil
 }
 
-func GetVolumeStats(ctx context.Context, m *mount.SafeFormatAndMount, target string, hostutil hostUtil) ([]*csi.VolumeUsage, error) {
+func (d *DriverCore) GetVolumeStats(_ context.Context, m *mount.SafeFormatAndMount, _, target string, hostutil hostUtil) ([]*csi.VolumeUsage, error) {
 	var volUsages []*csi.VolumeUsage
 	_, err := os.Stat(target)
 	if err != nil {

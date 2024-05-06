@@ -26,7 +26,7 @@ import (
 	"strconv"
 	"strings"
 
-	compute "github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2022-08-01/compute"
+	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute/v5"
 	"k8s.io/klog/v2"
 
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/optimization"
@@ -88,7 +88,7 @@ import (
 
 	skuMap := map[string]bool{}
 
-	var resources []compute.ResourceSku
+	var resources []*armcompute.ResourceSKU
 
 	if err := getAllSkus(skusFullfilePath); err != nil {
 		klog.Errorf("Could not get skus. Error: %v", err)
@@ -134,16 +134,16 @@ import (
 			if _, ok := diskSkuInfoMap[account]; !ok {
 				diskSkuInfoMap[account] = map[string]optimization.DiskSkuInfo{}
 			}
-			diskSkuInfoMap[account][diskSize], err = getDiskCapabilities(&sku)
+			diskSkuInfoMap[account][diskSize], err = getDiskCapabilities(sku)
 			if err != nil {
-				klog.Errorf("populateSkuMap: Failed to get disk capabilities for disk %s %s %s. Error: %v", sku.Name, sku.Size, sku.Tier, err)
+				klog.Errorf("populateSkuMap: Failed to get disk capabilities for disk %s %s %s. Error: %v", *sku.Name, *sku.Size, *sku.Tier, err)
 				os.Exit(1)
 			}
 		} else if resType == "virtualmachines" {
 
 			nodeInfo := optimization.NodeInfo{}
 			nodeInfo.SkuName = *sku.Name
-			err = populateNodeCapabilities(&sku, &nodeInfo)
+			err = populateNodeCapabilities(sku, &nodeInfo)
 			if err != nil {
 				klog.Errorf("populateSkuMap: Failed to populate node capabilities. Error: %v", err)
 				os.Exit(1)
@@ -236,9 +236,9 @@ func getAllSkus(filePath string) (err error) {
 }
 
 // populateNodeCapabilities populates node capabilities from SkuInfo
-func populateNodeCapabilities(sku *compute.ResourceSku, nodeInfo *optimization.NodeInfo) (err error) {
+func populateNodeCapabilities(sku *armcompute.ResourceSKU, nodeInfo *optimization.NodeInfo) (err error) {
 	if sku.Capabilities != nil {
-		for _, capability := range *sku.Capabilities {
+		for _, capability := range sku.Capabilities {
 			err = nil
 			if capability.Name != nil {
 				switch strings.ToLower(*capability.Name) {
@@ -279,14 +279,14 @@ func populateNodeCapabilities(sku *compute.ResourceSku, nodeInfo *optimization.N
 }
 
 // getDiskCapabilities gets disk capabilities from SkuInfo
-func getDiskCapabilities(sku *compute.ResourceSku) (diskSku optimization.DiskSkuInfo, err error) {
+func getDiskCapabilities(sku *armcompute.ResourceSKU) (diskSku optimization.DiskSkuInfo, err error) {
 	diskSku = optimization.DiskSkuInfo{}
 	diskSku.StorageAccountType = *sku.Name
 	diskSku.StorageTier = *sku.Tier
 	diskSku.DiskSize = *sku.Size
 
 	if sku.Capabilities != nil {
-		for _, capability := range *sku.Capabilities {
+		for _, capability := range sku.Capabilities {
 			err = nil
 			if capability.Name != nil {
 				switch strings.ToLower(*capability.Name) {

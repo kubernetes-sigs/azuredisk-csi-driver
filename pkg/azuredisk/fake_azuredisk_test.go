@@ -20,10 +20,13 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"go.uber.org/mock/gomock"
 )
 
 func TestNewFakeDriver(t *testing.T) {
-	d, err := NewFakeDriver(t)
+	cntl := gomock.NewController(t)
+	defer cntl.Finish()
+	d, err := NewFakeDriver(cntl)
 	assert.NotNil(t, d)
 	assert.Nil(t, err)
 }

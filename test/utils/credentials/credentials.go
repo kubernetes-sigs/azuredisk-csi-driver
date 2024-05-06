@@ -24,8 +24,8 @@ import (
 
 	"sigs.k8s.io/azuredisk-csi-driver/test/utils/testutil"
 
-	"github.com/pborman/uuid"
 	"github.com/pelletier/go-toml"
+	"k8s.io/apimachinery/pkg/util/uuid"
 )
 
 const (
@@ -104,7 +104,7 @@ func CreateAzureCredentialFile() (*Credentials, error) {
 	vmType = os.Getenv(vmTypeEnvVar)
 
 	if resourceGroup == "" {
-		resourceGroup = ResourceGroupPrefix + uuid.NewUUID().String()
+		resourceGroup = ResourceGroupPrefix + string(uuid.NewUUID())
 	}
 
 	if location == "" {
