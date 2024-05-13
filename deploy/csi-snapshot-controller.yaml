@@ -45,12 +45,13 @@ spec:
           effect: "NoSchedule"
       containers:
         - name: csi-snapshot-controller
-          image: umagnus/snapshot-controller:v3.6.1
+          image: mcr.microsoft.com/oss/kubernetes-csi/snapshot-controller:v7.0.2
           imagePullPolicy: Always
           args:
             - "--v=2"
             - "--leader-election=true"
             - "--leader-election-namespace=kube-system"
+            - "--enable-volume-group-snapshots=true"
           resources:
             limits:
               memory: 300Mi

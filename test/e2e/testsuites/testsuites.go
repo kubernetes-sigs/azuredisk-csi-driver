@@ -170,6 +170,8 @@ func (t *TestVolumeSnapshotClass) ReadyToUse(ctx context.Context, snapshot *snap
 		if err != nil {
 			return false, fmt.Errorf("did not see ReadyToUse: %v", err)
 		}
+		framework.Logf("vs %v", vs)
+		framework.Logf("vs.Status %v", vs.Status)
 		return *vs.Status.ReadyToUse, nil
 	})
 	framework.ExpectNoError(err)

@@ -1,0 +1,197 @@
+W0510 08:34:32.703839       1 main.go:87] nodeid is empty
+I0510 08:34:32.710816       1 main.go:161] set up prometheus server on [::]:29604
+I0510 08:34:32.711175       1 azuredisk.go:193] 
+DRIVER INFORMATION:
+-------------------
+Build Date: "2024-05-10T06:34:14Z"
+Compiler: gc
+Driver Name: disk.csi.azure.com
+Driver Version: v1.30.0
+Git Commit: e472e46abd968858f453f8ef6e055cbd3b28c435
+Go Version: go1.21.4
+Platform: linux/amd64
+Topology Key: topology.disk.csi.azure.com/zone
+
+Streaming logs below:
+I0510 08:34:32.711398       1 azuredisk.go:196] driver userAgent: disk.csi.azure.com/v1.30.0 OSS-kubectl
+I0510 08:34:32.712099       1 azure_disk_utils.go:183] reading cloud config from secret kube-system/azure-cloud-provider
+I0510 08:34:32.762331       1 azure_disk_utils.go:190] InitializeCloudFromSecret: failed to get cloud config from secret kube-system/azure-cloud-provider: failed to get secret kube-system/azure-cloud-provider: secrets "azure-cloud-provider" not found
+I0510 08:34:32.762359       1 azure_disk_utils.go:195] could not read cloud config from secret kube-system/azure-cloud-provider
+I0510 08:34:32.762369       1 azure_disk_utils.go:205] use default AZURE_CREDENTIAL_FILE env var: /etc/kubernetes/azure.json
+I0510 08:34:32.762414       1 azure_disk_utils.go:213] read cloud config from file: /etc/kubernetes/azure.json successfully
+I0510 08:34:32.763310       1 azure_auth.go:279] Using AzurePublicCloud environment
+I0510 08:34:32.763342       1 azure_auth.go:130] azure: using managed identity extension to retrieve access token
+I0510 08:34:32.763350       1 azure_auth.go:136] azure: using User Assigned MSI ID to retrieve access token
+I0510 08:34:32.763404       1 azure_auth.go:147] azure: User Assigned MSI ID is client ID
+I0510 08:34:32.763511       1 azure.go:911] Azure cloudprovider using try backoff: retries=6, exponent=1.500000, duration=5, jitter=1.000000
+I0510 08:34:32.763588       1 azure_interfaceclient.go:74] Azure InterfacesClient (read ops) using rate limit config: QPS=3, bucket=10
+I0510 08:34:32.763718       1 azure_interfaceclient.go:77] Azure InterfacesClient (write ops) using rate limit config: QPS=1, bucket=10
+I0510 08:34:32.763750       1 azure_vmsizeclient.go:68] Azure VirtualMachineSizesClient (read ops) using rate limit config: QPS=3, bucket=10
+I0510 08:34:32.763758       1 azure_vmsizeclient.go:71] Azure VirtualMachineSizesClient (write ops) using rate limit config: QPS=1, bucket=10
+I0510 08:34:32.763790       1 azure_storageaccountclient.go:70] Azure StorageAccountClient (read ops) using rate limit config: QPS=3, bucket=10
+I0510 08:34:32.763851       1 azure_storageaccountclient.go:73] Azure StorageAccountClient (write ops) using rate limit config: QPS=1, bucket=10
+I0510 08:34:32.763900       1 azure_diskclient.go:68] Azure DisksClient using API version: 2022-07-02
+I0510 08:34:32.763980       1 azure_vmclient.go:70] Azure VirtualMachine client (read ops) using rate limit config: QPS=3, bucket=10
+I0510 08:34:32.764121       1 azure_vmclient.go:73] Azure VirtualMachine client (write ops) using rate limit config: QPS=1, bucket=10
+I0510 08:34:32.764146       1 azure_vmssclient.go:70] Azure VirtualMachineScaleSetClient (read ops) using rate limit config: QPS=3, bucket=10
+I0510 08:34:32.764154       1 azure_vmssclient.go:73] Azure VirtualMachineScaleSetClient (write ops) using rate limit config: QPS=1, bucket=10
+I0510 08:34:32.764258       1 azure_vmssvmclient.go:75] Azure vmssVM client (read ops) using rate limit config: QPS=3, bucket=10
+I0510 08:34:32.764276       1 azure_vmssvmclient.go:78] Azure vmssVM client (write ops) using rate limit config: QPS=1, bucket=10
+I0510 08:34:32.764294       1 azure_routeclient.go:69] Azure RoutesClient (read ops) using rate limit config: QPS=3, bucket=10
+I0510 08:34:32.764312       1 azure_routeclient.go:72] Azure RoutesClient (write ops) using rate limit config: QPS=1, bucket=10
+I0510 08:34:32.764424       1 azure_subnetclient.go:70] Azure SubnetsClient (read ops) using rate limit config: QPS=3, bucket=10
+I0510 08:34:32.764535       1 azure_subnetclient.go:73] Azure SubnetsClient (write ops) using rate limit config: QPS=1, bucket=10
+I0510 08:34:32.764673       1 azure_routetableclient.go:69] Azure RouteTablesClient (read ops) using rate limit config: QPS=3, bucket=10
+I0510 08:34:32.764695       1 azure_routetableclient.go:72] Azure RouteTablesClient (write ops) using rate limit config: QPS=1, bucket=10
+I0510 08:34:32.764712       1 azure_loadbalancerclient.go:74] Azure LoadBalancersClient (read ops) using rate limit config: QPS=3, bucket=10
+I0510 08:34:32.764719       1 azure_loadbalancerclient.go:77] Azure LoadBalancersClient (write ops) using rate limit config: QPS=1, bucket=10
+I0510 08:34:32.764729       1 azure_securitygroupclient.go:70] Azure SecurityGroupsClient (read ops) using rate limit config: QPS=3, bucket=10
+I0510 08:34:32.764831       1 azure_securitygroupclient.go:73] Azure SecurityGroupsClient (write ops) using rate limit config: QPS=1, bucket=10
+I0510 08:34:32.764853       1 azure_publicipclient.go:74] Azure PublicIPAddressesClient (read ops) using rate limit config: QPS=3, bucket=10
+I0510 08:34:32.764860       1 azure_publicipclient.go:77] Azure PublicIPAddressesClient (write ops) using rate limit config: QPS=1, bucket=10
+I0510 08:34:32.764880       1 azure_blobclient.go:73] Azure BlobClient using API version: 2021-09-01
+I0510 08:34:32.765022       1 azure_vmasclient.go:70] Azure AvailabilitySetsClient (read ops) using rate limit config: QPS=3, bucket=10
+I0510 08:34:32.765159       1 azure_vmasclient.go:73] Azure AvailabilitySetsClient  (write ops) using rate limit config: QPS=1, bucket=10
+I0510 08:34:32.765339       1 azure.go:1154] attach/detach disk operation rate limit QPS: 6.000000, Bucket: 10
+I0510 08:34:32.765375       1 azuredisk.go:215] disable UseInstanceMetadata for controller
+I0510 08:34:32.765386       1 azuredisk.go:227] cloud: AzurePublicCloud, location: eastus, rg: mc_aks-yxytest_group_aks-yxytest_eastus, VMType: vmss, PrimaryScaleSetName: aks-nodepool1-23260017-vmss, PrimaryAvailabilitySetName: , DisableAvailabilitySetNodes: false
+I0510 08:34:32.776464       1 mount_linux.go:285] 'umount /tmp/kubelet-detect-safe-umount1913808593' failed with: exit status 32, output: umount: /tmp/kubelet-detect-safe-umount1913808593: must be superuser to unmount.
+I0510 08:34:32.776508       1 mount_linux.go:287] Detected umount with unsafe 'not mounted' behavior
+I0510 08:34:32.776717       1 driver.go:82] Enabling controller service capability: CREATE_DELETE_VOLUME
+I0510 08:34:32.776738       1 driver.go:82] Enabling controller service capability: PUBLISH_UNPUBLISH_VOLUME
+I0510 08:34:32.776745       1 driver.go:82] Enabling controller service capability: CREATE_DELETE_SNAPSHOT
+I0510 08:34:32.776753       1 driver.go:82] Enabling controller service capability: CLONE_VOLUME
+I0510 08:34:32.776759       1 driver.go:82] Enabling controller service capability: EXPAND_VOLUME
+I0510 08:34:32.776860       1 driver.go:82] Enabling controller service capability: SINGLE_NODE_MULTI_WRITER
+I0510 08:34:32.776876       1 driver.go:101] Enabling volume access mode: SINGLE_NODE_WRITER
+I0510 08:34:32.776883       1 driver.go:101] Enabling volume access mode: SINGLE_NODE_READER_ONLY
+I0510 08:34:32.776888       1 driver.go:101] Enabling volume access mode: SINGLE_NODE_SINGLE_WRITER
+I0510 08:34:32.776894       1 driver.go:101] Enabling volume access mode: SINGLE_NODE_MULTI_WRITER
+I0510 08:34:32.776901       1 driver.go:92] Enabling node service capability: STAGE_UNSTAGE_VOLUME
+I0510 08:34:32.776908       1 driver.go:92] Enabling node service capability: EXPAND_VOLUME
+I0510 08:34:32.777024       1 driver.go:92] Enabling node service capability: GET_VOLUME_STATS
+I0510 08:34:32.777032       1 driver.go:92] Enabling node service capability: SINGLE_NODE_MULTI_WRITER
+I0510 08:34:32.777039       1 driver.go:112] Enabling group controller service capability: CREATE_DELETE_GET_VOLUME_GROUP_SNAPSHOT
+I0510 08:34:32.777328       1 server.go:127] Listening for connections on address: &net.UnixAddr{Name:"//csi/csi.sock", Net:"unix"}
+I0510 08:34:32.950691       1 utils.go:87] GRPC call: /csi.v1.Identity/GetPluginInfo
+I0510 08:34:32.951093       1 utils.go:88] GRPC request: {}
+I0510 08:34:32.952778       1 utils.go:94] GRPC response: {"name":"disk.csi.azure.com","vendor_version":"v1.30.0"}
+I0510 08:34:32.958978       1 utils.go:87] GRPC call: /csi.v1.Controller/ControllerGetCapabilities
+I0510 08:34:32.959092       1 utils.go:88] GRPC request: {}
+I0510 08:34:32.959387       1 utils.go:94] GRPC response: {"capabilities":[{"Type":{"Rpc":{"type":1}}},{"Type":{"Rpc":{"type":2}}},{"Type":{"Rpc":{"type":5}}},{"Type":{"Rpc":{"type":7}}},{"Type":{"Rpc":{"type":9}}},{"Type":{"Rpc":{"type":13}}}]}
+I0510 08:34:32.960593       1 utils.go:87] GRPC call: /csi.v1.GroupController/GroupControllerGetCapabilities
+I0510 08:34:32.960724       1 utils.go:88] GRPC request: {}
+I0510 08:34:32.960922       1 utils.go:94] GRPC response: {"capabilities":[{"Type":{"Rpc":{"type":1}}}]}
+I0510 08:34:33.151104       1 utils.go:87] GRPC call: /csi.v1.Identity/GetPluginInfo
+I0510 08:34:33.151132       1 utils.go:88] GRPC request: {}
+I0510 08:34:33.151359       1 utils.go:94] GRPC response: {"name":"disk.csi.azure.com","vendor_version":"v1.30.0"}
+I0510 08:34:33.158948       1 utils.go:87] GRPC call: /csi.v1.Identity/GetPluginCapabilities
+I0510 08:34:33.158969       1 utils.go:88] GRPC request: {}
+I0510 08:34:33.159262       1 utils.go:94] GRPC response: {"capabilities":[{"Type":{"Service":{"type":1}}},{"Type":{"Service":{"type":2}}},{"Type":{"VolumeExpansion":{"type":2}}},{"Type":{"Service":{"type":3}}},{"Type":{"VolumeExpansion":{"type":1}}}]}
+I0510 08:34:33.160363       1 utils.go:87] GRPC call: /csi.v1.Controller/ControllerGetCapabilities
+I0510 08:34:33.160382       1 utils.go:88] GRPC request: {}
+I0510 08:34:33.160474       1 utils.go:94] GRPC response: {"capabilities":[{"Type":{"Rpc":{"type":1}}},{"Type":{"Rpc":{"type":2}}},{"Type":{"Rpc":{"type":5}}},{"Type":{"Rpc":{"type":7}}},{"Type":{"Rpc":{"type":9}}},{"Type":{"Rpc":{"type":13}}}]}
+I0510 08:34:33.161315       1 utils.go:87] GRPC call: /csi.v1.Controller/ControllerGetCapabilities
+I0510 08:34:33.161422       1 utils.go:88] GRPC request: {}
+I0510 08:34:33.161533       1 utils.go:94] GRPC response: {"capabilities":[{"Type":{"Rpc":{"type":1}}},{"Type":{"Rpc":{"type":2}}},{"Type":{"Rpc":{"type":5}}},{"Type":{"Rpc":{"type":7}}},{"Type":{"Rpc":{"type":9}}},{"Type":{"Rpc":{"type":13}}}]}
+I0510 08:34:33.298359       1 utils.go:87] GRPC call: /csi.v1.Identity/GetPluginInfo
+I0510 08:34:33.298389       1 utils.go:88] GRPC request: {}
+I0510 08:34:33.298620       1 utils.go:94] GRPC response: {"name":"disk.csi.azure.com","vendor_version":"v1.30.0"}
+I0510 08:34:33.301040       1 utils.go:87] GRPC call: /csi.v1.Identity/GetPluginInfo
+I0510 08:34:33.301227       1 utils.go:88] GRPC request: {}
+I0510 08:34:33.301598       1 utils.go:94] GRPC response: {"name":"disk.csi.azure.com","vendor_version":"v1.30.0"}
+I0510 08:34:33.302658       1 utils.go:87] GRPC call: /csi.v1.Identity/GetPluginCapabilities
+I0510 08:34:33.302804       1 utils.go:88] GRPC request: {}
+I0510 08:34:33.302848       1 utils.go:94] GRPC response: {"capabilities":[{"Type":{"Service":{"type":1}}},{"Type":{"Service":{"type":2}}},{"Type":{"VolumeExpansion":{"type":2}}},{"Type":{"Service":{"type":3}}},{"Type":{"VolumeExpansion":{"type":1}}}]}
+I0510 08:34:33.303880       1 utils.go:87] GRPC call: /csi.v1.Controller/ControllerGetCapabilities
+I0510 08:34:33.304117       1 utils.go:88] GRPC request: {}
+I0510 08:34:33.304298       1 utils.go:94] GRPC response: {"capabilities":[{"Type":{"Rpc":{"type":1}}},{"Type":{"Rpc":{"type":2}}},{"Type":{"Rpc":{"type":5}}},{"Type":{"Rpc":{"type":7}}},{"Type":{"Rpc":{"type":9}}},{"Type":{"Rpc":{"type":13}}}]}
+I0510 08:34:33.561040       1 utils.go:87] GRPC call: /csi.v1.Identity/GetPluginInfo
+I0510 08:34:33.561455       1 utils.go:88] GRPC request: {}
+I0510 08:34:33.561811       1 utils.go:94] GRPC response: {"name":"disk.csi.azure.com","vendor_version":"v1.30.0"}
+I0510 08:34:33.567088       1 utils.go:87] GRPC call: /csi.v1.Identity/GetPluginCapabilities
+I0510 08:34:33.567278       1 utils.go:88] GRPC request: {}
+I0510 08:34:33.567473       1 utils.go:94] GRPC response: {"capabilities":[{"Type":{"Service":{"type":1}}},{"Type":{"Service":{"type":2}}},{"Type":{"VolumeExpansion":{"type":2}}},{"Type":{"Service":{"type":3}}},{"Type":{"VolumeExpansion":{"type":1}}}]}
+I0510 08:34:33.574931       1 utils.go:87] GRPC call: /csi.v1.Controller/ControllerGetCapabilities
+I0510 08:34:33.574954       1 utils.go:88] GRPC request: {}
+I0510 08:34:33.574984       1 utils.go:94] GRPC response: {"capabilities":[{"Type":{"Rpc":{"type":1}}},{"Type":{"Rpc":{"type":2}}},{"Type":{"Rpc":{"type":5}}},{"Type":{"Rpc":{"type":7}}},{"Type":{"Rpc":{"type":9}}},{"Type":{"Rpc":{"type":13}}}]}
+I0510 08:51:59.381359       1 utils.go:87] GRPC call: /csi.v1.Identity/GetPluginInfo
+I0510 08:51:59.381603       1 utils.go:88] GRPC request: {}
+I0510 08:51:59.381813       1 utils.go:94] GRPC response: {"name":"disk.csi.azure.com","vendor_version":"v1.30.0"}
+I0510 08:51:59.382466       1 utils.go:87] GRPC call: /csi.v1.GroupController/CreateVolumeGroupSnapshot
+I0510 08:51:59.382488       1 utils.go:88] GRPC request: {"name":"groupsnapshot-466255a6-af27-4df0-9969-67e4f0200ae8","parameters":{"incremental":"true"},"source_volume_ids":["/subscriptions/8ecadfc9-d1a3-4ea4-b844-0d9f87e4d7c8/resourceGroups/mc_aks-yxytest_group_aks-yxytest_eastus/providers/Microsoft.Compute/disks/pvc-681d1f06-f869-4d34-adb5-057dc5a76604","/subscriptions/8ecadfc9-d1a3-4ea4-b844-0d9f87e4d7c8/resourceGroups/mc_aks-yxytest_group_aks-yxytest_eastus/providers/Microsoft.Compute/disks/pvc-a2878cb7-270b-422f-90f1-c5cc67a53239"]}
+I0510 08:51:59.382953       1 controllerserver.go:1172] snapshotNameHash: 0d1d529b78940a2575f1bf32c3cdd308
+I0510 08:51:59.383098       1 controllerserver.go:1173] time: 2024-05-10-08.51.59
+I0510 08:51:59.383142       1 controllerserver.go:1172] snapshotNameHash: 00b1bdcdc94b3c7ea9b4f63b2603e5f9
+I0510 08:51:59.383155       1 controllerserver.go:1173] time: 2024-05-10-08.51.59
+I0510 08:51:59.383171       1 controllerserver.go:1203] begin to create volume group snapshot(groupsnapshot-466255a6-af27-4df0-9969-67e4f0200ae8, incremental: true) under rg(mc_aks-yxytest_group_aks-yxytest_eastus) region(eastus)
+I0510 08:51:59.383283       1 controllerserver.go:946] begin to create snapshot(snapshot-0d1d529b78940a2575f1bf32c3cdd308-2024-05-10-08.51.59, incremental: true) under rg(mc_aks-yxytest_group_aks-yxytest_eastus) region(eastus)
+I0510 08:52:02.335284       1 azuredisk.go:443] snapshot(snapshot-0d1d529b78940a2575f1bf32c3cdd308-2024-05-10-08.51.59) under rg(mc_aks-yxytest_group_aks-yxytest_eastus) has no SnapshotProperties or CompletionPercent is nil
+I0510 08:52:02.335318       1 azuredisk.go:458] snapshot(snapshot-0d1d529b78940a2575f1bf32c3cdd308-2024-05-10-08.51.59) under rg(mc_aks-yxytest_group_aks-yxytest_eastus) complete
+I0510 08:52:02.335334       1 controllerserver.go:961] create snapshot(snapshot-0d1d529b78940a2575f1bf32c3cdd308-2024-05-10-08.51.59) under rg(mc_aks-yxytest_group_aks-yxytest_eastus) region(eastus) successfully
+I0510 08:52:02.422361       1 azure_metrics.go:115] "Observed Request Latency" latency_seconds=3.039034693 request="azuredisk_csi_driver_controller_create_snapshot" resource_group="mc_aks-yxytest_group_aks-yxytest_eastus" subscription_id="8ecadfc9-d1a3-4ea4-b844-0d9f87e4d7c8" source="disk.csi.azure.com" source_resource_id="/subscriptions/8ecadfc9-d1a3-4ea4-b844-0d9f87e4d7c8/resourceGroups/mc_aks-yxytest_group_aks-yxytest_eastus/providers/Microsoft.Compute/disks/pvc-681d1f06-f869-4d34-adb5-057dc5a76604" snapshot_name="snapshot-0d1d529b78940a2575f1bf32c3cdd308-2024-05-10-08.51.59" result_code="succeeded"
+I0510 08:52:02.422427       1 controllerserver.go:1223] snapshot id: /subscriptions/8ecadfc9-d1a3-4ea4-b844-0d9f87e4d7c8/resourceGroups/mc_aks-yxytest_group_aks-yxytest_eastus/providers/Microsoft.Compute/snapshots/snapshot-0d1d529b78940a2575f1bf32c3cdd308-2024-05-10-08.51.59, source volume id: /subscriptions/8ecadfc9-d1a3-4ea4-b844-0d9f87e4d7c8/resourceGroups/mc_aks-yxytest_group_aks-yxytest_eastus/providers/Microsoft.Compute/disks/pvc-681d1f06-f869-4d34-adb5-057dc5a76604, creationtime: seconds:1715331120  nanos:12575700, groupsnapshot id: , ready to use: true
+I0510 08:52:02.422643       1 controllerserver.go:946] begin to create snapshot(snapshot-00b1bdcdc94b3c7ea9b4f63b2603e5f9-2024-05-10-08.51.59, incremental: true) under rg(mc_aks-yxytest_group_aks-yxytest_eastus) region(eastus)
+I0510 08:52:05.540551       1 azuredisk.go:443] snapshot(snapshot-00b1bdcdc94b3c7ea9b4f63b2603e5f9-2024-05-10-08.51.59) under rg(mc_aks-yxytest_group_aks-yxytest_eastus) has no SnapshotProperties or CompletionPercent is nil
+I0510 08:52:05.540586       1 azuredisk.go:458] snapshot(snapshot-00b1bdcdc94b3c7ea9b4f63b2603e5f9-2024-05-10-08.51.59) under rg(mc_aks-yxytest_group_aks-yxytest_eastus) complete
+I0510 08:52:05.540601       1 controllerserver.go:961] create snapshot(snapshot-00b1bdcdc94b3c7ea9b4f63b2603e5f9-2024-05-10-08.51.59) under rg(mc_aks-yxytest_group_aks-yxytest_eastus) region(eastus) successfully
+I0510 08:52:05.620348       1 azure_metrics.go:115] "Observed Request Latency" latency_seconds=3.197675886 request="azuredisk_csi_driver_controller_create_snapshot" resource_group="mc_aks-yxytest_group_aks-yxytest_eastus" subscription_id="8ecadfc9-d1a3-4ea4-b844-0d9f87e4d7c8" source="disk.csi.azure.com" source_resource_id="/subscriptions/8ecadfc9-d1a3-4ea4-b844-0d9f87e4d7c8/resourceGroups/mc_aks-yxytest_group_aks-yxytest_eastus/providers/Microsoft.Compute/disks/pvc-a2878cb7-270b-422f-90f1-c5cc67a53239" snapshot_name="snapshot-00b1bdcdc94b3c7ea9b4f63b2603e5f9-2024-05-10-08.51.59" result_code="succeeded"
+I0510 08:52:05.620400       1 controllerserver.go:1223] snapshot id: /subscriptions/8ecadfc9-d1a3-4ea4-b844-0d9f87e4d7c8/resourceGroups/mc_aks-yxytest_group_aks-yxytest_eastus/providers/Microsoft.Compute/snapshots/snapshot-00b1bdcdc94b3c7ea9b4f63b2603e5f9-2024-05-10-08.51.59, source volume id: /subscriptions/8ecadfc9-d1a3-4ea4-b844-0d9f87e4d7c8/resourceGroups/mc_aks-yxytest_group_aks-yxytest_eastus/providers/Microsoft.Compute/disks/pvc-a2878cb7-270b-422f-90f1-c5cc67a53239, creationtime: seconds:1715331123  nanos:12621300, groupsnapshot id: , ready to use: true
+I0510 08:52:05.620441       1 controllerserver.go:1248] create volume group snapshot(groupsnapshot-466255a6-af27-4df0-9969-67e4f0200ae8) under rg(mc_aks-yxytest_group_aks-yxytest_eastus) region(eastus) successfully
+I0510 08:52:05.620475       1 azure_metrics.go:115] "Observed Request Latency" latency_seconds=6.237284882 request="azuredisk_csi_driver_controller_create_volume_group_snapshot" resource_group="mc_aks-yxytest_group_aks-yxytest_eastus" subscription_id="8ecadfc9-d1a3-4ea4-b844-0d9f87e4d7c8" source="disk.csi.azure.com" group_snapshot_id="groupsnapshot-466255a6-af27-4df0-9969-67e4f0200ae8" result_code="succeeded"
+I0510 08:52:05.620519       1 azure_metrics.go:115] "Observed Request Latency" latency_seconds=6.237335883 request="azuredisk_csi_driver_controller_create_volume_group_snapshot" resource_group="mc_aks-yxytest_group_aks-yxytest_eastus" subscription_id="8ecadfc9-d1a3-4ea4-b844-0d9f87e4d7c8" source="disk.csi.azure.com" source_resource_id="/subscriptions/8ecadfc9-d1a3-4ea4-b844-0d9f87e4d7c8/resourceGroups/mc_aks-yxytest_group_aks-yxytest_eastus/providers/Microsoft.Compute/disks/pvc-681d1f06-f869-4d34-adb5-057dc5a76604" snapshot_name="snapshot-0d1d529b78940a2575f1bf32c3cdd308-2024-05-10-08.51.59" result_code="succeeded"
+I0510 08:52:05.620562       1 azure_metrics.go:115] "Observed Request Latency" latency_seconds=6.237381883 request="azuredisk_csi_driver_controller_create_volume_group_snapshot" resource_group="mc_aks-yxytest_group_aks-yxytest_eastus" subscription_id="8ecadfc9-d1a3-4ea4-b844-0d9f87e4d7c8" source="disk.csi.azure.com" source_resource_id="/subscriptions/8ecadfc9-d1a3-4ea4-b844-0d9f87e4d7c8/resourceGroups/mc_aks-yxytest_group_aks-yxytest_eastus/providers/Microsoft.Compute/disks/pvc-a2878cb7-270b-422f-90f1-c5cc67a53239" snapshot_name="snapshot-00b1bdcdc94b3c7ea9b4f63b2603e5f9-2024-05-10-08.51.59" result_code="succeeded"
+I0510 08:52:05.620577       1 utils.go:94] GRPC response: {"group_snapshot":{"creation_time":{"nanos":12621300,"seconds":1715331123},"group_snapshot_id":"groupsnapshot-466255a6-af27-4df0-9969-67e4f0200ae8","ready_to_use":true,"snapshots":[{"creation_time":{"nanos":12575700,"seconds":1715331120},"group_snapshot_id":"groupsnapshot-466255a6-af27-4df0-9969-67e4f0200ae8","ready_to_use":true,"size_bytes":10737418240,"snapshot_id":"/subscriptions/8ecadfc9-d1a3-4ea4-b844-0d9f87e4d7c8/resourceGroups/mc_aks-yxytest_group_aks-yxytest_eastus/providers/Microsoft.Compute/snapshots/snapshot-0d1d529b78940a2575f1bf32c3cdd308-2024-05-10-08.51.59","source_volume_id":"/subscriptions/8ecadfc9-d1a3-4ea4-b844-0d9f87e4d7c8/resourceGroups/mc_aks-yxytest_group_aks-yxytest_eastus/providers/Microsoft.Compute/disks/pvc-681d1f06-f869-4d34-adb5-057dc5a76604"},{"creation_time":{"nanos":12621300,"seconds":1715331123},"group_snapshot_id":"groupsnapshot-466255a6-af27-4df0-9969-67e4f0200ae8","ready_to_use":true,"size_bytes":10737418240,"snapshot_id":"/subscriptions/8ecadfc9-d1a3-4ea4-b844-0d9f87e4d7c8/resourceGroups/mc_aks-yxytest_group_aks-yxytest_eastus/providers/Microsoft.Compute/snapshots/snapshot-00b1bdcdc94b3c7ea9b4f63b2603e5f9-2024-05-10-08.51.59","source_volume_id":"/subscriptions/8ecadfc9-d1a3-4ea4-b844-0d9f87e4d7c8/resourceGroups/mc_aks-yxytest_group_aks-yxytest_eastus/providers/Microsoft.Compute/disks/pvc-a2878cb7-270b-422f-90f1-c5cc67a53239"}]}}
+I0510 08:52:05.640010       1 utils.go:87] GRPC call: /csi.v1.Controller/ControllerGetCapabilities
+I0510 08:52:05.640038       1 utils.go:88] GRPC request: {}
+I0510 08:52:05.640226       1 utils.go:94] GRPC response: {"capabilities":[{"Type":{"Rpc":{"type":1}}},{"Type":{"Rpc":{"type":2}}},{"Type":{"Rpc":{"type":5}}},{"Type":{"Rpc":{"type":7}}},{"Type":{"Rpc":{"type":9}}},{"Type":{"Rpc":{"type":13}}}]}
+I0510 08:52:05.668844       1 utils.go:87] GRPC call: /csi.v1.Controller/ControllerGetCapabilities
+I0510 08:52:05.669062       1 utils.go:88] GRPC request: {}
+I0510 08:52:05.669123       1 utils.go:94] GRPC response: {"capabilities":[{"Type":{"Rpc":{"type":1}}},{"Type":{"Rpc":{"type":2}}},{"Type":{"Rpc":{"type":5}}},{"Type":{"Rpc":{"type":7}}},{"Type":{"Rpc":{"type":9}}},{"Type":{"Rpc":{"type":13}}}]}
+I0510 08:52:44.236074       1 utils.go:87] GRPC call: /csi.v1.GroupController/DeleteVolumeGroupSnapshot
+I0510 08:52:44.236106       1 utils.go:88] GRPC request: {"group_snapshot_id":"groupsnapshot-466255a6-af27-4df0-9969-67e4f0200ae8","snapshot_ids":["/subscriptions/8ecadfc9-d1a3-4ea4-b844-0d9f87e4d7c8/resourceGroups/mc_aks-yxytest_group_aks-yxytest_eastus/providers/Microsoft.Compute/snapshots/snapshot-0d1d529b78940a2575f1bf32c3cdd308-2024-05-10-08.51.59","/subscriptions/8ecadfc9-d1a3-4ea4-b844-0d9f87e4d7c8/resourceGroups/mc_aks-yxytest_group_aks-yxytest_eastus/providers/Microsoft.Compute/snapshots/snapshot-00b1bdcdc94b3c7ea9b4f63b2603e5f9-2024-05-10-08.51.59"]}
+I0510 08:52:44.236323       1 controllerserver.go:1304] begin to delete group volume snapshot(groupsnapshot-466255a6-af27-4df0-9969-67e4f0200ae8) under rg(mc_aks-yxytest_group_aks-yxytest_eastus)
+I0510 08:52:44.236336       1 controllerserver.go:1041] begin to delete snapshot(snapshot-0d1d529b78940a2575f1bf32c3cdd308-2024-05-10-08.51.59) under rg(mc_aks-yxytest_group_aks-yxytest_eastus)
+I0510 08:52:44.283382       1 utils.go:87] GRPC call: /csi.v1.Controller/DeleteSnapshot
+I0510 08:52:44.283634       1 utils.go:88] GRPC request: {"snapshot_id":"/subscriptions/8ecadfc9-d1a3-4ea4-b844-0d9f87e4d7c8/resourceGroups/mc_aks-yxytest_group_aks-yxytest_eastus/providers/Microsoft.Compute/snapshots/snapshot-0d1d529b78940a2575f1bf32c3cdd308-2024-05-10-08.51.59"}
+I0510 08:52:44.284245       1 controllerserver.go:1041] begin to delete snapshot(snapshot-0d1d529b78940a2575f1bf32c3cdd308-2024-05-10-08.51.59) under rg(mc_aks-yxytest_group_aks-yxytest_eastus)
+I0510 08:52:44.423385       1 utils.go:87] GRPC call: /csi.v1.Controller/DeleteSnapshot
+I0510 08:52:44.423417       1 utils.go:88] GRPC request: {"snapshot_id":"/subscriptions/8ecadfc9-d1a3-4ea4-b844-0d9f87e4d7c8/resourceGroups/mc_aks-yxytest_group_aks-yxytest_eastus/providers/Microsoft.Compute/snapshots/snapshot-00b1bdcdc94b3c7ea9b4f63b2603e5f9-2024-05-10-08.51.59"}
+I0510 08:52:44.423585       1 controllerserver.go:1041] begin to delete snapshot(snapshot-00b1bdcdc94b3c7ea9b4f63b2603e5f9-2024-05-10-08.51.59) under rg(mc_aks-yxytest_group_aks-yxytest_eastus)
+I0510 08:52:44.611539       1 azure_armclient.go:627] Received error in deleteAsync.send: resourceID: /subscriptions/8ecadfc9-d1a3-4ea4-b844-0d9f87e4d7c8/resourceGroups/mc_aks-yxytest_group_aks-yxytest_eastus/providers/Microsoft.Compute/snapshots/snapshot-0d1d529b78940a2575f1bf32c3cdd308-2024-05-10-08.51.59, error: Retriable: false, RetryAfter: 0s, HTTPStatusCode: 409, RawError: {
+  "error": {
+    "code": "OperationNotAllowed",
+    "message": "Resource snapshot-0d1d529b78940a2575f1bf32c3cdd308-2024-05-10-08.51.59 is being used by another operation."
+  }
+}
+I0510 08:52:44.611574       1 azure_armclient.go:583] Received error in delete.request: resourceID: /subscriptions/8ecadfc9-d1a3-4ea4-b844-0d9f87e4d7c8/resourceGroups/mc_aks-yxytest_group_aks-yxytest_eastus/providers/Microsoft.Compute/snapshots/snapshot-0d1d529b78940a2575f1bf32c3cdd308-2024-05-10-08.51.59, error: Retriable: false, RetryAfter: 0s, HTTPStatusCode: 409, RawError: {
+  "error": {
+    "code": "OperationNotAllowed",
+    "message": "Resource snapshot-0d1d529b78940a2575f1bf32c3cdd308-2024-05-10-08.51.59 is being used by another operation."
+  }
+}
+I0510 08:52:44.611767       1 azure_metrics.go:115] "Observed Request Latency" latency_seconds=0.327494978 request="azuredisk_csi_driver_controller_delete_snapshot" resource_group="mc_aks-yxytest_group_aks-yxytest_eastus" subscription_id="8ecadfc9-d1a3-4ea4-b844-0d9f87e4d7c8" source="disk.csi.azure.com" snapshot_id="/subscriptions/8ecadfc9-d1a3-4ea4-b844-0d9f87e4d7c8/resourceGroups/mc_aks-yxytest_group_aks-yxytest_eastus/providers/Microsoft.Compute/snapshots/snapshot-0d1d529b78940a2575f1bf32c3cdd308-2024-05-10-08.51.59" result_code="failed_csi_driver_controller_delete_snapshot"
+E0510 08:52:44.611798       1 utils.go:92] GRPC error: rpc error: code = Internal desc = delete snapshot error: Retriable: false, RetryAfter: 0s, HTTPStatusCode: 409, RawError: {
+  "error": {
+    "code": "OperationNotAllowed",
+    "message": "Resource snapshot-0d1d529b78940a2575f1bf32c3cdd308-2024-05-10-08.51.59 is being used by another operation."
+  }
+}
+I0510 08:52:44.943805       1 controllerserver.go:1046] delete snapshot(snapshot-0d1d529b78940a2575f1bf32c3cdd308-2024-05-10-08.51.59) under rg(mc_aks-yxytest_group_aks-yxytest_eastus) successfully
+I0510 08:52:44.943860       1 azure_metrics.go:115] "Observed Request Latency" latency_seconds=0.707497216 request="azuredisk_csi_driver_controller_delete_snapshot" resource_group="mc_aks-yxytest_group_aks-yxytest_eastus" subscription_id="8ecadfc9-d1a3-4ea4-b844-0d9f87e4d7c8" source="disk.csi.azure.com" snapshot_id="snapshot-0d1d529b78940a2575f1bf32c3cdd308-2024-05-10-08.51.59" result_code="succeeded"
+I0510 08:52:44.943880       1 controllerserver.go:1041] begin to delete snapshot(snapshot-00b1bdcdc94b3c7ea9b4f63b2603e5f9-2024-05-10-08.51.59) under rg(mc_aks-yxytest_group_aks-yxytest_eastus)
+I0510 08:52:45.612908       1 utils.go:87] GRPC call: /csi.v1.Controller/DeleteSnapshot
+I0510 08:52:45.612938       1 utils.go:88] GRPC request: {"snapshot_id":"/subscriptions/8ecadfc9-d1a3-4ea4-b844-0d9f87e4d7c8/resourceGroups/mc_aks-yxytest_group_aks-yxytest_eastus/providers/Microsoft.Compute/snapshots/snapshot-0d1d529b78940a2575f1bf32c3cdd308-2024-05-10-08.51.59"}
+I0510 08:52:45.613313       1 controllerserver.go:1041] begin to delete snapshot(snapshot-0d1d529b78940a2575f1bf32c3cdd308-2024-05-10-08.51.59) under rg(mc_aks-yxytest_group_aks-yxytest_eastus)
+I0510 08:52:48.920159       1 controllerserver.go:1046] delete snapshot(snapshot-00b1bdcdc94b3c7ea9b4f63b2603e5f9-2024-05-10-08.51.59) under rg(mc_aks-yxytest_group_aks-yxytest_eastus) successfully
+I0510 08:52:48.920214       1 azure_metrics.go:115] "Observed Request Latency" latency_seconds=3.976307388 request="azuredisk_csi_driver_controller_delete_snapshot" resource_group="mc_aks-yxytest_group_aks-yxytest_eastus" subscription_id="8ecadfc9-d1a3-4ea4-b844-0d9f87e4d7c8" source="disk.csi.azure.com" snapshot_id="snapshot-00b1bdcdc94b3c7ea9b4f63b2603e5f9-2024-05-10-08.51.59" result_code="succeeded"
+I0510 08:52:48.920231       1 controllerserver.go:1321] delete group volume snapshot(groupsnapshot-466255a6-af27-4df0-9969-67e4f0200ae8) under rg(mc_aks-yxytest_group_aks-yxytest_eastus) successfully
+I0510 08:52:48.920287       1 azure_metrics.go:115] "Observed Request Latency" latency_seconds=4.683924104 request="azuredisk_csi_driver_controller_delete_volume_group_snapshot" resource_group="mc_aks-yxytest_group_aks-yxytest_eastus" subscription_id="8ecadfc9-d1a3-4ea4-b844-0d9f87e4d7c8" source="disk.csi.azure.com" snapshot_id="/subscriptions/8ecadfc9-d1a3-4ea4-b844-0d9f87e4d7c8/resourceGroups/mc_aks-yxytest_group_aks-yxytest_eastus/providers/Microsoft.Compute/snapshots/snapshot-0d1d529b78940a2575f1bf32c3cdd308-2024-05-10-08.51.59" result_code="succeeded"
+I0510 08:52:48.920335       1 azure_metrics.go:115] "Observed Request Latency" latency_seconds=4.683990404 request="azuredisk_csi_driver_controller_delete_volume_group_snapshot" resource_group="mc_aks-yxytest_group_aks-yxytest_eastus" subscription_id="8ecadfc9-d1a3-4ea4-b844-0d9f87e4d7c8" source="disk.csi.azure.com" snapshot_id="/subscriptions/8ecadfc9-d1a3-4ea4-b844-0d9f87e4d7c8/resourceGroups/mc_aks-yxytest_group_aks-yxytest_eastus/providers/Microsoft.Compute/snapshots/snapshot-00b1bdcdc94b3c7ea9b4f63b2603e5f9-2024-05-10-08.51.59" result_code="succeeded"
+I0510 08:52:48.920350       1 utils.go:94] GRPC response: {}
+I0510 08:52:49.589784       1 controllerserver.go:1046] delete snapshot(snapshot-0d1d529b78940a2575f1bf32c3cdd308-2024-05-10-08.51.59) under rg(mc_aks-yxytest_group_aks-yxytest_eastus) successfully
+I0510 08:52:49.589874       1 azure_metrics.go:115] "Observed Request Latency" latency_seconds=3.976522792 request="azuredisk_csi_driver_controller_delete_snapshot" resource_group="mc_aks-yxytest_group_aks-yxytest_eastus" subscription_id="8ecadfc9-d1a3-4ea4-b844-0d9f87e4d7c8" source="disk.csi.azure.com" snapshot_id="/subscriptions/8ecadfc9-d1a3-4ea4-b844-0d9f87e4d7c8/resourceGroups/mc_aks-yxytest_group_aks-yxytest_eastus/providers/Microsoft.Compute/snapshots/snapshot-0d1d529b78940a2575f1bf32c3cdd308-2024-05-10-08.51.59" result_code="succeeded"
+I0510 08:52:49.589894       1 utils.go:94] GRPC response: {}
+I0510 08:52:50.142766       1 controllerserver.go:1046] delete snapshot(snapshot-00b1bdcdc94b3c7ea9b4f63b2603e5f9-2024-05-10-08.51.59) under rg(mc_aks-yxytest_group_aks-yxytest_eastus) successfully
+I0510 08:52:50.142833       1 azure_metrics.go:115] "Observed Request Latency" latency_seconds=5.719217277 request="azuredisk_csi_driver_controller_delete_snapshot" resource_group="mc_aks-yxytest_group_aks-yxytest_eastus" subscription_id="8ecadfc9-d1a3-4ea4-b844-0d9f87e4d7c8" source="disk.csi.azure.com" snapshot_id="/subscriptions/8ecadfc9-d1a3-4ea4-b844-0d9f87e4d7c8/resourceGroups/mc_aks-yxytest_group_aks-yxytest_eastus/providers/Microsoft.Compute/snapshots/snapshot-00b1bdcdc94b3c7ea9b4f63b2603e5f9-2024-05-10-08.51.59" result_code="succeeded"
+I0510 08:52:50.143253       1 utils.go:94] GRPC response: {}

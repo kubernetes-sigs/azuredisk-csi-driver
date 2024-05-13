@@ -20,6 +20,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2022-08-01/compute"
 	"github.com/container-storage-interface/spec/lib/go/csi"
@@ -169,10 +170,14 @@ func GenerateCSIVolumeGroupSnapshot(groupSnapshotID string, sourceVolumeIDs []st
 			ReadyToUse:     ready,
 		})
 	}
+	creationTime := timestamppb.New(time.Now())
+	if len(snapshots) > 0 {
+		creationTime = timestamppb.New(snapshots[0].SnapshotProperties.TimeCreated.ToTime())
+	}
 	return &csi.VolumeGroupSnapshot{
 		GroupSnapshotId: groupSnapshotID,
 		Snapshots:       snapshotList,
-		CreationTime:    timestamppb.New(snapshots[0].SnapshotProperties.TimeCreated.ToTime()),
+		CreationTime:    creationTime,
 		ReadyToUse:      volumeGroupReady,
 	}, nil
 }

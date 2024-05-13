@@ -3,8 +3,8 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.11.3
-    api-approved.kubernetes.io: "https://github.com/kubernetes-csi/external-snapshotter/pull/814"
+    api-approved.kubernetes.io: "https://github.com/kubernetes-csi/external-snapshotter/pull/995"
+    controller-gen.kubebuilder.io/version: v0.12.0
   creationTimestamp: null
   name: volumegroupsnapshots.groupsnapshot.storage.k8s.io
 spec:
@@ -60,6 +60,8 @@ spec:
               object represents. Servers may infer this from the endpoint the client
               submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds'
             type: string
+          metadata:
+            type: object
           spec:
             description: Spec defines the desired characteristics of a group snapshot
               requested by a user. Required.
@@ -76,7 +78,6 @@ spec:
                       is created, the existing group snapshots won't be modified.
                       Once a VolumeGroupSnapshotContent is created and the sidecar
                       starts to process it, the volume list will not change with retries.
-                      Required.
                     properties:
                       matchExpressions:
                         description: matchExpressions is a list of label selector
@@ -127,8 +128,6 @@ spec:
                       if the volume group snapshot already exists and only needs a
                       representation in Kubernetes. This field is immutable.
                     type: string
-                required:
-                - selector
                 type: object
               volumeGroupSnapshotClassName:
                 description: VolumeGroupSnapshotClassName is the name of the VolumeGroupSnapshotClass
@@ -270,8 +269,8 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.11.3
-    api-approved.kubernetes.io: "https://github.com/kubernetes-csi/external-snapshotter/pull/814"
+    api-approved.kubernetes.io: "https://github.com/kubernetes-csi/external-snapshotter/pull/971"
+    controller-gen.kubebuilder.io/version: v0.12.0
   creationTimestamp: null
   name: volumegroupsnapshotcontents.groupsnapshot.storage.k8s.io
 spec:
@@ -337,6 +336,8 @@ spec:
               object represents. Servers may infer this from the endpoint the client
               submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds'
             type: string
+          metadata:
+            type: object
           spec:
             description: Spec defines properties of a VolumeGroupSnapshotContent created
               by the underlying storage system. Required.
@@ -369,23 +370,42 @@ spec:
                   dynamically provisioned or already exists, and just requires a Kubernetes
                   object representation. This field is immutable after creation. Required.
                 properties:
-                  persistentVolumeNames:
-                    description: PersistentVolumeNames is a list of names of PersistentVolumes
-                      to be snapshotted together. It is specified for dynamic provisioning
-                      of the VolumeGroupSnapshot. This field is immutable.
+                  groupSnapshotHandles:
+                    description: GroupSnapshotHandles specifies the CSI "group_snapshot_id"
+                      of a pre-existing group snapshot and a list of CSI "snapshot_id"
+                      of pre-existing snapshots on the underlying storage system for
+                      which a Kubernetes object representation was (or should be)
+                      created. This field is immutable.
+                    properties:
+                      volumeGroupSnapshotHandle:
+                        description: VolumeGroupSnapshotHandle specifies the CSI "group_snapshot_id"
+                          of a pre-existing group snapshot on the underlying storage
+                          system for which a Kubernetes object representation was
+                          (or should be) created. This field is immutable. Required.
+                        type: string
+                      volumeSnapshotHandles:
+                        description: VolumeSnapshotHandles is a list of CSI "snapshot_id"
+                          of pre-existing snapshots on the underlying storage system
+                          for which Kubernetes objects representation were (or should
+                          be) created. This field is immutable. Required.
+                        items:
+                          type: string
+                        type: array
+                    required:
+                    - volumeGroupSnapshotHandle
+                    - volumeSnapshotHandles
+                    type: object
+                  volumeHandles:
+                    description: VolumeHandles is a list of volume handles on the
+                      backend to be snapshotted together. It is specified for dynamic
+                      provisioning of the VolumeGroupSnapshot. This field is immutable.
                     items:
                       type: string
                     type: array
-                  volumeGroupSnapshotHandle:
-                    description: VolumeGroupSnapshotHandle specifies the CSI "group_snapshot_id"
-                      of a pre-existing group snapshot on the underlying storage system
-                      for which a Kubernetes object representation was (or should
-                      be) created. This field is immutable.
-                    type: string
                 type: object
                 oneOf:
-                - required: ["persistentVolumeNames"]
-                - required: ["volumeGroupSnapshotHandle"]
+                - required: ["volumeHandles"]
+                - required: ["groupSnapshotHandles"]
               volumeGroupSnapshotClassName:
                 description: VolumeGroupSnapshotClassName is the name of the VolumeGroupSnapshotClass
                   from which this group snapshot was (or will be) created. Note that
@@ -564,8 +584,8 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.11.3
     api-approved.kubernetes.io: "https://github.com/kubernetes-csi/external-snapshotter/pull/814"
+    controller-gen.kubebuilder.io/version: v0.12.0
   creationTimestamp: null
   name: volumegroupsnapshotclasses.groupsnapshot.storage.k8s.io
 spec:
@@ -627,6 +647,8 @@ spec:
               object represents. Servers may infer this from the endpoint the client
               submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds'
             type: string
+          metadata:
+            type: object
           parameters:
             additionalProperties:
               type: string

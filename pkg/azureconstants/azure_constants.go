@@ -91,6 +91,7 @@ const (
 	SourceResourceID                  = "source_resource_id"
 	SnapshotName                      = "snapshot_name"
 	SnapshotID                        = "snapshot_id"
+	GroupSnapshotID                   = "group_snapshot_id"
 	DeviceSettingsKeyPrefix           = "device-setting/"
 	BlockDeviceRootPathLinux          = "/sys/block"
 	DummyBlockDevicePathLinux         = "/sys/block/sda"
