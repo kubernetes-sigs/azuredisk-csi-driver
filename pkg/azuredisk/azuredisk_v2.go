@@ -158,6 +158,7 @@ func newDriverV2(options *DriverOptions) *DriverV2 {
 			csi.ControllerServiceCapability_RPC_LIST_VOLUMES,
 			csi.ControllerServiceCapability_RPC_LIST_VOLUMES_PUBLISHED_NODES,
 			csi.ControllerServiceCapability_RPC_SINGLE_NODE_MULTI_WRITER,
+			csi.ControllerServiceCapability_RPC_MODIFY_VOLUME,
 		})
 	driver.AddVolumeCapabilityAccessModes(
 		[]csi.VolumeCapability_AccessMode_Mode{
