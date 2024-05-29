@@ -93,6 +93,7 @@ func newFakeDriverV2(ctrl *gomock.Controller) (*fakeDriverV2, error) {
 			csi.ControllerServiceCapability_RPC_EXPAND_VOLUME,
 			csi.ControllerServiceCapability_RPC_LIST_VOLUMES,
 			csi.ControllerServiceCapability_RPC_LIST_VOLUMES_PUBLISHED_NODES,
+			csi.ControllerServiceCapability_RPC_MODIFY_VOLUME,
 		})
 	driver.AddVolumeCapabilityAccessModes([]csi.VolumeCapability_AccessMode_Mode{csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER})
 	driver.AddNodeServiceCapabilities([]csi.NodeServiceCapability_RPC_Type{
