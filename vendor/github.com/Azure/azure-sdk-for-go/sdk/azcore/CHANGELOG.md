@@ -1,5 +1,27 @@
 # Release History
 
+## 1.12.0 (2024-06-06)
+
+### Features Added
+
+* Added field `StatusCodes` to `runtime.FetcherForNextLinkOptions` allowing for additional HTTP status codes indicating success.
+* Added func `NewUUID` to the `runtime` package for generating UUIDs.
+
+### Bugs Fixed
+
+* Fixed an issue that prevented pollers using the `Operation-Location` strategy from unmarshaling the final result in some cases.
+
+### Other Changes
+
+* Updated dependencies.
+
+## 1.11.1 (2024-04-02)
+
+### Bugs Fixed
+
+* Pollers that use the `Location` header won't consider `http.StatusRequestTimeout` a terminal failure.
+* `runtime.Poller[T].Result` won't consider non-terminal error responses as terminal.
+
 ## 1.11.0 (2024-04-01)
 
 ### Features Added
