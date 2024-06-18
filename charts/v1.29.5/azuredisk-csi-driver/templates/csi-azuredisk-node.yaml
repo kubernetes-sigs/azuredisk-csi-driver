@@ -78,6 +78,10 @@ spec:
             - --http-endpoint=localhost:{{ .Values.node.livenessProbe.healthPort }}
             - --v=2
           resources: {{- toYaml .Values.linux.resources.livenessProbe | nindent 12 }}
+          securityContext:
+            capabilities:
+              drop:
+              - ALL
         - name: node-driver-registrar
 {{- if hasPrefix "/" .Values.image.nodeDriverRegistrar.repository }}
           image: "{{ .Values.image.baseRepo }}{{ .Values.image.nodeDriverRegistrar.repository }}:{{ .Values.image.nodeDriverRegistrar.tag }}"
@@ -109,6 +113,10 @@ spec:
             - name: registration-dir
               mountPath: /registration
           resources: {{- toYaml .Values.linux.resources.nodeDriverRegistrar | nindent 12 }}
+          securityContext:
+            capabilities:
+              drop:
+              - ALL
         - name: azuredisk
 {{- if hasPrefix "/" .Values.image.azuredisk.repository }}
           image: "{{ .Values.image.baseRepo }}{{ .Values.image.azuredisk.repository }}:{{ .Values.image.azuredisk.tag }}"
@@ -181,6 +189,9 @@ spec:
           imagePullPolicy: {{ .Values.image.azuredisk.pullPolicy }}
           securityContext:
             privileged: true
+            capabilities:
+              drop:
+              - ALL
           volumeMounts:
             - mountPath: /csi
               name: socket-dir

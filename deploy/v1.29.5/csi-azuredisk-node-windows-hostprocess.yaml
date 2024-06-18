@@ -75,6 +75,10 @@ spec:
             requests:
               cpu: 30m
               memory: 40Mi
+          securityContext:
+            capabilities:
+              drop:
+                - ALL
         - name: azuredisk
           image: mcr.microsoft.com/oss/kubernetes-csi/azuredisk-csi:v1.29.5-windows-hp
           imagePullPolicy: IfNotPresent
@@ -106,3 +110,7 @@ spec:
             requests:
               cpu: 10m
               memory: 40Mi
+          securityContext:
+            capabilities:
+              drop:
+                - ALL
