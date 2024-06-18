@@ -27,10 +27,10 @@ require (
 	golang.org/x/net v0.24.0
 	google.golang.org/grpc v1.59.0
 	google.golang.org/protobuf v1.33.0
-	k8s.io/api v0.28.2
-	k8s.io/apimachinery v0.28.2
+	k8s.io/api v0.28.4
+	k8s.io/apimachinery v0.28.4
 	k8s.io/cloud-provider v0.28.1
-	k8s.io/component-base v0.28.1
+	k8s.io/component-base v0.28.4
 	k8s.io/klog/v2 v2.100.1
 	k8s.io/kubernetes v1.28.4
 	k8s.io/mount-utils v0.28.2
@@ -43,7 +43,7 @@ require (
 require (
 	github.com/Azure/azure-sdk-for-go/sdk/azidentity v1.4.0 // indirect
 	golang.org/x/sys v0.19.0
-	k8s.io/client-go v0.28.2
+	k8s.io/client-go v0.28.4
 	k8s.io/pod-security-admission v0.27.13
 )
 
@@ -150,7 +150,7 @@ require (
 	k8s.io/apiserver v0.28.1 // indirect
 	k8s.io/component-helpers v0.28.1 // indirect
 	k8s.io/controller-manager v0.28.1 // indirect
-	k8s.io/kms v0.28.1 // indirect
+	k8s.io/kms v0.28.4 // indirect
 	k8s.io/kube-openapi v0.0.0-20230717233707-2695361300d9 // indirect
 	k8s.io/kubectl v0.0.0 // indirect
 	k8s.io/kubelet v0.27.13 // indirect
@@ -165,7 +165,7 @@ replace (
 	k8s.io/api => k8s.io/api v0.28.1
 	k8s.io/apiextensions-apiserver => k8s.io/apiextensions-apiserver v0.28.1
 	k8s.io/apimachinery => k8s.io/apimachinery v0.28.1
-	k8s.io/apiserver => k8s.io/apiserver v0.28.1
+	k8s.io/apiserver => k8s.io/apiserver v0.28.4
 	k8s.io/cli-runtime => k8s.io/cli-runtime v0.28.1
 	k8s.io/cloud-provider => k8s.io/cloud-provider v0.28.1
 	k8s.io/cluster-bootstrap => k8s.io/cluster-bootstrap v0.28.1
