@@ -1,0 +1,1737 @@
+?   	sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants	[no test files]
+?   	sigs.k8s.io/azuredisk-csi-driver/pkg/azuredisk/mockcorev1	[no test files]
+=== RUN   TestRescanAllVolumes
+--- PASS: TestRescanAllVolumes (0.00s)
+=== RUN   TestFindDiskByLun
+W0618 07:26:59.709046 1076117 azure_common_linux.go:188] azureDisk - getDiskLinkByDevName by sdd under /dev/disk/azure/scsi1/ failed, error: read /dev/disk/azure/scsi1/ error: bad dir
+W0618 07:26:59.709117 1076117 azure_common_linux.go:188] azureDisk - getDiskLinkByDevName by sdd under /dev/disk/by-id/ failed, error: read /dev/disk/by-id/ error: bad dir
+--- PASS: TestFindDiskByLun (0.00s)
+=== RUN   TestStrFirstLetterToUpper
+--- PASS: TestStrFirstLetterToUpper (0.00s)
+=== RUN   TestNewDriverV1
+--- PASS: TestNewDriverV1 (0.00s)
+=== RUN   TestCheckDiskCapacity
+I0618 07:26:59.716403 1076117 driver.go:81] Enabling controller service capability: CREATE_DELETE_VOLUME
+I0618 07:26:59.716419 1076117 driver.go:81] Enabling controller service capability: PUBLISH_UNPUBLISH_VOLUME
+I0618 07:26:59.716425 1076117 driver.go:81] Enabling controller service capability: CREATE_DELETE_SNAPSHOT
+I0618 07:26:59.716430 1076117 driver.go:81] Enabling controller service capability: LIST_SNAPSHOTS
+I0618 07:26:59.716435 1076117 driver.go:81] Enabling controller service capability: CLONE_VOLUME
+I0618 07:26:59.716440 1076117 driver.go:81] Enabling controller service capability: EXPAND_VOLUME
+I0618 07:26:59.716445 1076117 driver.go:81] Enabling controller service capability: LIST_VOLUMES
+I0618 07:26:59.716450 1076117 driver.go:81] Enabling controller service capability: LIST_VOLUMES_PUBLISHED_NODES
+I0618 07:26:59.716456 1076117 driver.go:100] Enabling volume access mode: SINGLE_NODE_WRITER
+--- PASS: TestCheckDiskCapacity (0.01s)
+=== RUN   TestRun
+=== RUN   TestRun/Successful_run
+I0618 07:26:59.723128 1076117 driver.go:81] Enabling controller service capability: CREATE_DELETE_VOLUME
+I0618 07:26:59.723143 1076117 driver.go:81] Enabling controller service capability: PUBLISH_UNPUBLISH_VOLUME
+I0618 07:26:59.723155 1076117 driver.go:81] Enabling controller service capability: CREATE_DELETE_SNAPSHOT
+I0618 07:26:59.723161 1076117 driver.go:81] Enabling controller service capability: LIST_SNAPSHOTS
+I0618 07:26:59.723167 1076117 driver.go:81] Enabling controller service capability: CLONE_VOLUME
+I0618 07:26:59.723173 1076117 driver.go:81] Enabling controller service capability: EXPAND_VOLUME
+I0618 07:26:59.723178 1076117 driver.go:81] Enabling controller service capability: LIST_VOLUMES
+I0618 07:26:59.723182 1076117 driver.go:81] Enabling controller service capability: LIST_VOLUMES_PUBLISHED_NODES
+I0618 07:26:59.723189 1076117 driver.go:100] Enabling volume access mode: SINGLE_NODE_WRITER
+I0618 07:26:59.723411 1076117 azuredisk.go:201] 
+DRIVER INFORMATION:
+-------------------
+Build Date: N/A
+Compiler: gc
+Driver Name: disk.csi.azure.com
+Driver Version: N/A
+Git Commit: N/A
+Go Version: go1.21.4
+Platform: linux/amd64
+Topology Key: topology.disk.csi.azure.com/zone
+
+Streaming logs below:
+W0618 07:26:59.723434 1076117 azure_disk_utils.go:262] get kubeconfig() failed with error: unable to load in-cluster configuration, KUBERNETES_SERVICE_HOST and KUBERNETES_SERVICE_PORT must be defined
+I0618 07:26:59.740559 1076117 driver.go:81] Enabling controller service capability: CREATE_DELETE_VOLUME
+I0618 07:26:59.740606 1076117 driver.go:81] Enabling controller service capability: PUBLISH_UNPUBLISH_VOLUME
+I0618 07:26:59.740614 1076117 driver.go:81] Enabling controller service capability: CREATE_DELETE_SNAPSHOT
+I0618 07:26:59.740618 1076117 driver.go:81] Enabling controller service capability: CLONE_VOLUME
+I0618 07:26:59.740623 1076117 driver.go:81] Enabling controller service capability: EXPAND_VOLUME
+I0618 07:26:59.740629 1076117 driver.go:81] Enabling controller service capability: SINGLE_NODE_MULTI_WRITER
+I0618 07:26:59.740636 1076117 driver.go:100] Enabling volume access mode: SINGLE_NODE_WRITER
+I0618 07:26:59.740643 1076117 driver.go:100] Enabling volume access mode: SINGLE_NODE_READER_ONLY
+I0618 07:26:59.740649 1076117 driver.go:100] Enabling volume access mode: SINGLE_NODE_SINGLE_WRITER
+I0618 07:26:59.740655 1076117 driver.go:100] Enabling volume access mode: SINGLE_NODE_MULTI_WRITER
+I0618 07:26:59.741222 1076117 server.go:117] Listening for connections on address: &net.TCPAddr{IP:net.IP{0x7f, 0x0, 0x0, 0x1}, Port:38249, Zone:""}
+=== RUN   TestRun/Successful_run_without_cloud_config
+I0618 07:26:59.758308 1076117 driver.go:81] Enabling controller service capability: CREATE_DELETE_VOLUME
+I0618 07:26:59.758328 1076117 driver.go:81] Enabling controller service capability: PUBLISH_UNPUBLISH_VOLUME
+I0618 07:26:59.758334 1076117 driver.go:81] Enabling controller service capability: CREATE_DELETE_SNAPSHOT
+I0618 07:26:59.758340 1076117 driver.go:81] Enabling controller service capability: LIST_SNAPSHOTS
+I0618 07:26:59.758346 1076117 driver.go:81] Enabling controller service capability: CLONE_VOLUME
+I0618 07:26:59.758351 1076117 driver.go:81] Enabling controller service capability: EXPAND_VOLUME
+I0618 07:26:59.758357 1076117 driver.go:81] Enabling controller service capability: LIST_VOLUMES
+I0618 07:26:59.758366 1076117 driver.go:81] Enabling controller service capability: LIST_VOLUMES_PUBLISHED_NODES
+I0618 07:26:59.758373 1076117 driver.go:100] Enabling volume access mode: SINGLE_NODE_WRITER
+I0618 07:26:59.758615 1076117 azuredisk.go:201] 
+DRIVER INFORMATION:
+-------------------
+Build Date: N/A
+Compiler: gc
+Driver Name: disk.csi.azure.com
+Driver Version: N/A
+Git Commit: N/A
+Go Version: go1.21.4
+Platform: linux/amd64
+Topology Key: topology.disk.csi.azure.com/zone
+
+Streaming logs below:
+W0618 07:26:59.758637 1076117 azure_disk_utils.go:262] get kubeconfig() failed with error: unable to load in-cluster configuration, KUBERNETES_SERVICE_HOST and KUBERNETES_SERVICE_PORT must be defined
+I0618 07:26:59.778645 1076117 driver.go:81] Enabling controller service capability: CREATE_DELETE_VOLUME
+I0618 07:26:59.778666 1076117 driver.go:81] Enabling controller service capability: PUBLISH_UNPUBLISH_VOLUME
+I0618 07:26:59.778673 1076117 driver.go:81] Enabling controller service capability: CREATE_DELETE_SNAPSHOT
+I0618 07:26:59.778678 1076117 driver.go:81] Enabling controller service capability: CLONE_VOLUME
+I0618 07:26:59.778683 1076117 driver.go:81] Enabling controller service capability: EXPAND_VOLUME
+I0618 07:26:59.778689 1076117 driver.go:81] Enabling controller service capability: SINGLE_NODE_MULTI_WRITER
+I0618 07:26:59.778695 1076117 driver.go:100] Enabling volume access mode: SINGLE_NODE_WRITER
+I0618 07:26:59.778701 1076117 driver.go:100] Enabling volume access mode: SINGLE_NODE_READER_ONLY
+I0618 07:26:59.778706 1076117 driver.go:100] Enabling volume access mode: SINGLE_NODE_SINGLE_WRITER
+I0618 07:26:59.778711 1076117 driver.go:100] Enabling volume access mode: SINGLE_NODE_MULTI_WRITER
+I0618 07:26:59.778866 1076117 server.go:117] Listening for connections on address: &net.TCPAddr{IP:net.IP{0x7f, 0x0, 0x0, 0x1}, Port:41979, Zone:""}
+=== RUN   TestRun/Successful_run_with_node_ID_missing
+I0618 07:26:59.789504 1076117 driver.go:81] Enabling controller service capability: CREATE_DELETE_VOLUME
+I0618 07:26:59.789526 1076117 driver.go:81] Enabling controller service capability: PUBLISH_UNPUBLISH_VOLUME
+I0618 07:26:59.789533 1076117 driver.go:81] Enabling controller service capability: CREATE_DELETE_SNAPSHOT
+I0618 07:26:59.789538 1076117 driver.go:81] Enabling controller service capability: LIST_SNAPSHOTS
+I0618 07:26:59.789543 1076117 driver.go:81] Enabling controller service capability: CLONE_VOLUME
+I0618 07:26:59.789548 1076117 driver.go:81] Enabling controller service capability: EXPAND_VOLUME
+I0618 07:26:59.789553 1076117 driver.go:81] Enabling controller service capability: LIST_VOLUMES
+I0618 07:26:59.789557 1076117 driver.go:81] Enabling controller service capability: LIST_VOLUMES_PUBLISHED_NODES
+I0618 07:26:59.789563 1076117 driver.go:100] Enabling volume access mode: SINGLE_NODE_WRITER
+I0618 07:26:59.789775 1076117 azuredisk.go:201] 
+DRIVER INFORMATION:
+-------------------
+Build Date: N/A
+Compiler: gc
+Driver Name: disk.csi.azure.com
+Driver Version: N/A
+Git Commit: N/A
+Go Version: go1.21.4
+Platform: linux/amd64
+Topology Key: topology.disk.csi.azure.com/zone
+
+Streaming logs below:
+W0618 07:26:59.789792 1076117 azure_disk_utils.go:262] get kubeconfig() failed with error: unable to load in-cluster configuration, KUBERNETES_SERVICE_HOST and KUBERNETES_SERVICE_PORT must be defined
+I0618 07:26:59.797555 1076117 driver.go:81] Enabling controller service capability: CREATE_DELETE_VOLUME
+I0618 07:26:59.797579 1076117 driver.go:81] Enabling controller service capability: PUBLISH_UNPUBLISH_VOLUME
+I0618 07:26:59.797586 1076117 driver.go:81] Enabling controller service capability: CREATE_DELETE_SNAPSHOT
+I0618 07:26:59.797591 1076117 driver.go:81] Enabling controller service capability: CLONE_VOLUME
+I0618 07:26:59.797597 1076117 driver.go:81] Enabling controller service capability: EXPAND_VOLUME
+I0618 07:26:59.797603 1076117 driver.go:81] Enabling controller service capability: SINGLE_NODE_MULTI_WRITER
+I0618 07:26:59.797609 1076117 driver.go:100] Enabling volume access mode: SINGLE_NODE_WRITER
+I0618 07:26:59.797614 1076117 driver.go:100] Enabling volume access mode: SINGLE_NODE_READER_ONLY
+I0618 07:26:59.797620 1076117 driver.go:100] Enabling volume access mode: SINGLE_NODE_SINGLE_WRITER
+I0618 07:26:59.797625 1076117 driver.go:100] Enabling volume access mode: SINGLE_NODE_MULTI_WRITER
+I0618 07:26:59.797783 1076117 server.go:117] Listening for connections on address: &net.TCPAddr{IP:net.IP{0x7f, 0x0, 0x0, 0x1}, Port:34705, Zone:""}
+=== RUN   TestRun/Successful_run_with_vmss_VMType
+I0618 07:26:59.798232 1076117 azuredisk.go:201] 
+DRIVER INFORMATION:
+-------------------
+Build Date: N/A
+Compiler: gc
+Driver Name: disk.csi.azure.com
+Driver Version: N/A
+Git Commit: N/A
+Go Version: go1.21.4
+Platform: linux/amd64
+Topology Key: topology.disk.csi.azure.com/zone
+
+Streaming logs below:
+W0618 07:26:59.798259 1076117 azure_disk_utils.go:262] get kubeconfig() failed with error: unable to load in-cluster configuration, KUBERNETES_SERVICE_HOST and KUBERNETES_SERVICE_PORT must be defined
+E0618 07:27:00.178940 1076117 util.go:138] Send.sendRequest: error in parsing response body string "": unexpected end of JSON input, Skip retrying regional host
+E0618 07:27:00.179056 1076117 azure_standard.go:644] as.GetInstanceTypeByNodeName() failed: as.getVirtualMachine() err=Retriable: false, RetryAfter: 0s, HTTPStatusCode: 400, RawError: azure.BearerAuthorizer#WithAuthorization: Failed to refresh the Token for request to https://management.azure.com/subscriptions/12345/resourceGroups/rg1/providers/Microsoft.Compute/virtualMachines/?%24expand=instanceView&api-version=2022-03-01: StatusCode=400 -- Original Error: adal: Refresh request failed. Status Code = '400'. Response body: {"error":"invalid_request","error_description":"AADSTS90002: Tenant '1234' not found. Check to make sure you have the correct tenant ID and are signing into the correct cloud. Check with your subscription administrator, this may happen if there are no active subscriptions for the tenant. Trace ID: a16d0652-86c8-4cb0-89b9-352e22f20000 Correlation ID: 6f9193df-30ef-4e38-9029-36ce6c6e295f Timestamp: 2024-06-18 07:27:00Z","error_codes":[90002],"timestamp":"2024-06-18 07:27:00Z","trace_id":"a16d0652-86c8-4cb0-89b9-352e22f20000","correlation_id":"6f9193df-30ef-4e38-9029-36ce6c6e295f","error_uri":"https://login.microsoftonline.com/error?code=90002"} Endpoint https://login.microsoftonline.com/1234/oauth2/token
+W0618 07:27:00.179084 1076117 azuredisk.go:255] Failed to get node info. Error: NewNodeInfo: Failed to get instance type from Azure cloud provider, nodeName: , error: Retriable: false, RetryAfter: 0s, HTTPStatusCode: 400, RawError: azure.BearerAuthorizer#WithAuthorization: Failed to refresh the Token for request to https://management.azure.com/subscriptions/12345/resourceGroups/rg1/providers/Microsoft.Compute/virtualMachines/?%24expand=instanceView&api-version=2022-03-01: StatusCode=400 -- Original Error: adal: Refresh request failed. Status Code = '400'. Response body: {"error":"invalid_request","error_description":"AADSTS90002: Tenant '1234' not found. Check to make sure you have the correct tenant ID and are signing into the correct cloud. Check with your subscription administrator, this may happen if there are no active subscriptions for the tenant. Trace ID: a16d0652-86c8-4cb0-89b9-352e22f20000 Correlation ID: 6f9193df-30ef-4e38-9029-36ce6c6e295f Timestamp: 2024-06-18 07:27:00Z","error_codes":[90002],"timestamp":"2024-06-18 07:27:00Z","trace_id":"a16d0652-86c8-4cb0-89b9-352e22f20000","correlation_id":"6f9193df-30ef-4e38-9029-36ce6c6e295f","error_uri":"https://login.microsoftonline.com/error?code=90002"} Endpoint https://login.microsoftonline.com/1234/oauth2/token
+I0618 07:27:00.184535 1076117 driver.go:81] Enabling controller service capability: CREATE_DELETE_VOLUME
+I0618 07:27:00.184559 1076117 driver.go:81] Enabling controller service capability: PUBLISH_UNPUBLISH_VOLUME
+I0618 07:27:00.184566 1076117 driver.go:81] Enabling controller service capability: CREATE_DELETE_SNAPSHOT
+I0618 07:27:00.184571 1076117 driver.go:81] Enabling controller service capability: CLONE_VOLUME
+I0618 07:27:00.184576 1076117 driver.go:81] Enabling controller service capability: EXPAND_VOLUME
+I0618 07:27:00.184582 1076117 driver.go:81] Enabling controller service capability: SINGLE_NODE_MULTI_WRITER
+I0618 07:27:00.184587 1076117 driver.go:81] Enabling controller service capability: LIST_VOLUMES
+I0618 07:27:00.184592 1076117 driver.go:81] Enabling controller service capability: LIST_VOLUMES_PUBLISHED_NODES
+I0618 07:27:00.184598 1076117 driver.go:81] Enabling controller service capability: LIST_SNAPSHOTS
+I0618 07:27:00.184605 1076117 driver.go:100] Enabling volume access mode: SINGLE_NODE_WRITER
+I0618 07:27:00.184614 1076117 driver.go:100] Enabling volume access mode: SINGLE_NODE_READER_ONLY
+I0618 07:27:00.184624 1076117 driver.go:100] Enabling volume access mode: SINGLE_NODE_SINGLE_WRITER
+I0618 07:27:00.184632 1076117 driver.go:100] Enabling volume access mode: SINGLE_NODE_MULTI_WRITER
+I0618 07:27:00.184774 1076117 server.go:117] Listening for connections on address: &net.TCPAddr{IP:net.IP{0x7f, 0x0, 0x0, 0x1}, Port:33573, Zone:""}
+--- PASS: TestRun (0.47s)
+    --- PASS: TestRun/Successful_run (0.02s)
+    --- PASS: TestRun/Successful_run_without_cloud_config (0.04s)
+    --- PASS: TestRun/Successful_run_with_node_ID_missing (0.02s)
+    --- PASS: TestRun/Successful_run_with_vmss_VMType (0.39s)
+=== RUN   TestDriver_checkDiskExists
+I0618 07:27:00.189605 1076117 driver.go:81] Enabling controller service capability: CREATE_DELETE_VOLUME
+I0618 07:27:00.189630 1076117 driver.go:81] Enabling controller service capability: PUBLISH_UNPUBLISH_VOLUME
+I0618 07:27:00.189636 1076117 driver.go:81] Enabling controller service capability: CREATE_DELETE_SNAPSHOT
+I0618 07:27:00.189641 1076117 driver.go:81] Enabling controller service capability: LIST_SNAPSHOTS
+I0618 07:27:00.189646 1076117 driver.go:81] Enabling controller service capability: CLONE_VOLUME
+I0618 07:27:00.189652 1076117 driver.go:81] Enabling controller service capability: EXPAND_VOLUME
+I0618 07:27:00.189657 1076117 driver.go:81] Enabling controller service capability: LIST_VOLUMES
+I0618 07:27:00.189663 1076117 driver.go:81] Enabling controller service capability: LIST_VOLUMES_PUBLISHED_NODES
+I0618 07:27:00.189669 1076117 driver.go:100] Enabling volume access mode: SINGLE_NODE_WRITER
+--- PASS: TestDriver_checkDiskExists (0.00s)
+=== RUN   TestGetNodeInfoFromLabels
+--- PASS: TestGetNodeInfoFromLabels (0.00s)
+=== RUN   TestGetDefaultDiskIOPSReadWrite
+--- PASS: TestGetDefaultDiskIOPSReadWrite (0.00s)
+=== RUN   TestGetDefaultDiskMBPSReadWrite
+--- PASS: TestGetDefaultDiskMBPSReadWrite (0.00s)
+=== RUN   TestWaitForSnapshot
+=== RUN   TestWaitForSnapshot/snapshotID_not_valid
+I0618 07:27:00.205831 1076117 driver.go:81] Enabling controller service capability: CREATE_DELETE_VOLUME
+I0618 07:27:00.205853 1076117 driver.go:81] Enabling controller service capability: PUBLISH_UNPUBLISH_VOLUME
+I0618 07:27:00.205864 1076117 driver.go:81] Enabling controller service capability: CREATE_DELETE_SNAPSHOT
+I0618 07:27:00.205869 1076117 driver.go:81] Enabling controller service capability: LIST_SNAPSHOTS
+I0618 07:27:00.205873 1076117 driver.go:81] Enabling controller service capability: CLONE_VOLUME
+I0618 07:27:00.205877 1076117 driver.go:81] Enabling controller service capability: EXPAND_VOLUME
+I0618 07:27:00.205888 1076117 driver.go:81] Enabling controller service capability: LIST_VOLUMES
+I0618 07:27:00.205891 1076117 driver.go:81] Enabling controller service capability: LIST_VOLUMES_PUBLISHED_NODES
+I0618 07:27:00.205895 1076117 driver.go:100] Enabling volume access mode: SINGLE_NODE_WRITER
+=== RUN   TestWaitForSnapshot/timeout_for_waiting_snapshot_copy_cross_region
+I0618 07:27:00.218547 1076117 driver.go:81] Enabling controller service capability: CREATE_DELETE_VOLUME
+I0618 07:27:00.218570 1076117 driver.go:81] Enabling controller service capability: PUBLISH_UNPUBLISH_VOLUME
+I0618 07:27:00.218577 1076117 driver.go:81] Enabling controller service capability: CREATE_DELETE_SNAPSHOT
+I0618 07:27:00.218582 1076117 driver.go:81] Enabling controller service capability: LIST_SNAPSHOTS
+I0618 07:27:00.218588 1076117 driver.go:81] Enabling controller service capability: CLONE_VOLUME
+I0618 07:27:00.218594 1076117 driver.go:81] Enabling controller service capability: EXPAND_VOLUME
+I0618 07:27:00.218600 1076117 driver.go:81] Enabling controller service capability: LIST_VOLUMES
+I0618 07:27:00.218606 1076117 driver.go:81] Enabling controller service capability: LIST_VOLUMES_PUBLISHED_NODES
+I0618 07:27:00.218612 1076117 driver.go:100] Enabling volume access mode: SINGLE_NODE_WRITER
+=== RUN   TestWaitForSnapshot/succeed_for_waiting_snapshot_copy_cross_region
+I0618 07:27:00.242024 1076117 driver.go:81] Enabling controller service capability: CREATE_DELETE_VOLUME
+I0618 07:27:00.242043 1076117 driver.go:81] Enabling controller service capability: PUBLISH_UNPUBLISH_VOLUME
+I0618 07:27:00.242048 1076117 driver.go:81] Enabling controller service capability: CREATE_DELETE_SNAPSHOT
+I0618 07:27:00.242053 1076117 driver.go:81] Enabling controller service capability: LIST_SNAPSHOTS
+I0618 07:27:00.242057 1076117 driver.go:81] Enabling controller service capability: CLONE_VOLUME
+I0618 07:27:00.242062 1076117 driver.go:81] Enabling controller service capability: EXPAND_VOLUME
+I0618 07:27:00.242070 1076117 driver.go:81] Enabling controller service capability: LIST_VOLUMES
+I0618 07:27:00.242075 1076117 driver.go:81] Enabling controller service capability: LIST_VOLUMES_PUBLISHED_NODES
+I0618 07:27:00.242082 1076117 driver.go:100] Enabling volume access mode: SINGLE_NODE_WRITER
+--- PASS: TestWaitForSnapshot (0.05s)
+    --- PASS: TestWaitForSnapshot/snapshotID_not_valid (0.02s)
+    --- PASS: TestWaitForSnapshot/timeout_for_waiting_snapshot_copy_cross_region (0.03s)
+    --- PASS: TestWaitForSnapshot/succeed_for_waiting_snapshot_copy_cross_region (0.01s)
+=== RUN   TestGetVMSSInstanceName
+--- PASS: TestGetVMSSInstanceName (0.00s)
+=== RUN   TestCheckDiskCapacity_V1
+I0618 07:27:00.246320 1076117 driver.go:81] Enabling controller service capability: CREATE_DELETE_VOLUME
+I0618 07:27:00.246336 1076117 driver.go:81] Enabling controller service capability: PUBLISH_UNPUBLISH_VOLUME
+I0618 07:27:00.246341 1076117 driver.go:81] Enabling controller service capability: CREATE_DELETE_SNAPSHOT
+I0618 07:27:00.246346 1076117 driver.go:81] Enabling controller service capability: LIST_SNAPSHOTS
+I0618 07:27:00.246351 1076117 driver.go:81] Enabling controller service capability: CLONE_VOLUME
+I0618 07:27:00.246356 1076117 driver.go:81] Enabling controller service capability: EXPAND_VOLUME
+I0618 07:27:00.246361 1076117 driver.go:81] Enabling controller service capability: LIST_VOLUMES
+I0618 07:27:00.246365 1076117 driver.go:81] Enabling controller service capability: LIST_VOLUMES_PUBLISHED_NODES
+I0618 07:27:00.246371 1076117 driver.go:100] Enabling volume access mode: SINGLE_NODE_WRITER
+W0618 07:27:00.246419 1076117 azuredisk.go:340] skip checkDiskCapacity(unit-test, unit-test) since it's still in throttling
+--- PASS: TestCheckDiskCapacity_V1 (0.00s)
+=== RUN   TestDriver_checkDiskExists_V1
+I0618 07:27:00.268582 1076117 driver.go:81] Enabling controller service capability: CREATE_DELETE_VOLUME
+I0618 07:27:00.268602 1076117 driver.go:81] Enabling controller service capability: PUBLISH_UNPUBLISH_VOLUME
+I0618 07:27:00.268609 1076117 driver.go:81] Enabling controller service capability: CREATE_DELETE_SNAPSHOT
+I0618 07:27:00.268618 1076117 driver.go:81] Enabling controller service capability: LIST_SNAPSHOTS
+I0618 07:27:00.268623 1076117 driver.go:81] Enabling controller service capability: CLONE_VOLUME
+I0618 07:27:00.268628 1076117 driver.go:81] Enabling controller service capability: EXPAND_VOLUME
+I0618 07:27:00.268632 1076117 driver.go:81] Enabling controller service capability: LIST_VOLUMES
+I0618 07:27:00.268637 1076117 driver.go:81] Enabling controller service capability: LIST_VOLUMES_PUBLISHED_NODES
+I0618 07:27:00.268642 1076117 driver.go:100] Enabling volume access mode: SINGLE_NODE_WRITER
+W0618 07:27:00.268763 1076117 azuredisk.go:321] skip checkDiskExists(testurl/subscriptions/12/resourceGroups/23/providers/Microsoft.Compute/disks/name) since it's still in throttling
+--- PASS: TestDriver_checkDiskExists_V1 (0.02s)
+=== RUN   TestCreateVolume
+=== RUN   TestCreateVolume/_invalid_
+I0618 07:27:00.287387 1076117 driver.go:81] Enabling controller service capability: CREATE_DELETE_VOLUME
+I0618 07:27:00.287407 1076117 driver.go:81] Enabling controller service capability: PUBLISH_UNPUBLISH_VOLUME
+I0618 07:27:00.287413 1076117 driver.go:81] Enabling controller service capability: CREATE_DELETE_SNAPSHOT
+I0618 07:27:00.287418 1076117 driver.go:81] Enabling controller service capability: LIST_SNAPSHOTS
+I0618 07:27:00.287423 1076117 driver.go:81] Enabling controller service capability: CLONE_VOLUME
+I0618 07:27:00.287429 1076117 driver.go:81] Enabling controller service capability: EXPAND_VOLUME
+I0618 07:27:00.287434 1076117 driver.go:81] Enabling controller service capability: LIST_VOLUMES
+I0618 07:27:00.287442 1076117 driver.go:81] Enabling controller service capability: LIST_VOLUMES_PUBLISHED_NODES
+I0618 07:27:00.287457 1076117 driver.go:100] Enabling volume access mode: SINGLE_NODE_WRITER
+E0618 07:27:00.287518 1076117 controllerserver.go:66] invalid create volume req: 
+=== RUN   TestCreateVolume/_volume_name_missing
+I0618 07:27:00.291890 1076117 driver.go:81] Enabling controller service capability: CREATE_DELETE_VOLUME
+I0618 07:27:00.291907 1076117 driver.go:81] Enabling controller service capability: PUBLISH_UNPUBLISH_VOLUME
+I0618 07:27:00.291913 1076117 driver.go:81] Enabling controller service capability: CREATE_DELETE_SNAPSHOT
+I0618 07:27:00.291918 1076117 driver.go:81] Enabling controller service capability: LIST_SNAPSHOTS
+I0618 07:27:00.291922 1076117 driver.go:81] Enabling controller service capability: CLONE_VOLUME
+I0618 07:27:00.291927 1076117 driver.go:81] Enabling controller service capability: EXPAND_VOLUME
+I0618 07:27:00.291931 1076117 driver.go:81] Enabling controller service capability: LIST_VOLUMES
+I0618 07:27:00.291935 1076117 driver.go:81] Enabling controller service capability: LIST_VOLUMES_PUBLISHED_NODES
+I0618 07:27:00.291941 1076117 driver.go:100] Enabling volume access mode: SINGLE_NODE_WRITER
+=== RUN   TestCreateVolume/volume_capabilities_missing
+I0618 07:27:00.295398 1076117 driver.go:81] Enabling controller service capability: CREATE_DELETE_VOLUME
+I0618 07:27:00.295414 1076117 driver.go:81] Enabling controller service capability: PUBLISH_UNPUBLISH_VOLUME
+I0618 07:27:00.295420 1076117 driver.go:81] Enabling controller service capability: CREATE_DELETE_SNAPSHOT
+I0618 07:27:00.295428 1076117 driver.go:81] Enabling controller service capability: LIST_SNAPSHOTS
+I0618 07:27:00.295433 1076117 driver.go:81] Enabling controller service capability: CLONE_VOLUME
+I0618 07:27:00.295438 1076117 driver.go:81] Enabling controller service capability: EXPAND_VOLUME
+I0618 07:27:00.295443 1076117 driver.go:81] Enabling controller service capability: LIST_VOLUMES
+I0618 07:27:00.295447 1076117 driver.go:81] Enabling controller service capability: LIST_VOLUMES_PUBLISHED_NODES
+I0618 07:27:00.295453 1076117 driver.go:100] Enabling volume access mode: SINGLE_NODE_WRITER
+=== RUN   TestCreateVolume/require_volume_size_exceed
+I0618 07:27:00.298976 1076117 driver.go:81] Enabling controller service capability: CREATE_DELETE_VOLUME
+I0618 07:27:00.298989 1076117 driver.go:81] Enabling controller service capability: PUBLISH_UNPUBLISH_VOLUME
+I0618 07:27:00.298994 1076117 driver.go:81] Enabling controller service capability: CREATE_DELETE_SNAPSHOT
+I0618 07:27:00.298999 1076117 driver.go:81] Enabling controller service capability: LIST_SNAPSHOTS
+I0618 07:27:00.299004 1076117 driver.go:81] Enabling controller service capability: CLONE_VOLUME
+I0618 07:27:00.299011 1076117 driver.go:81] Enabling controller service capability: EXPAND_VOLUME
+I0618 07:27:00.299017 1076117 driver.go:81] Enabling controller service capability: LIST_VOLUMES
+I0618 07:27:00.299021 1076117 driver.go:81] Enabling controller service capability: LIST_VOLUMES_PUBLISHED_NODES
+I0618 07:27:00.299026 1076117 driver.go:100] Enabling volume access mode: SINGLE_NODE_WRITER
+=== RUN   TestCreateVolume/logical_sector_size_parse_error
+I0618 07:27:00.302218 1076117 driver.go:81] Enabling controller service capability: CREATE_DELETE_VOLUME
+I0618 07:27:00.302232 1076117 driver.go:81] Enabling controller service capability: PUBLISH_UNPUBLISH_VOLUME
+I0618 07:27:00.302237 1076117 driver.go:81] Enabling controller service capability: CREATE_DELETE_SNAPSHOT
+I0618 07:27:00.302242 1076117 driver.go:81] Enabling controller service capability: LIST_SNAPSHOTS
+I0618 07:27:00.302247 1076117 driver.go:81] Enabling controller service capability: CLONE_VOLUME
+I0618 07:27:00.302252 1076117 driver.go:81] Enabling controller service capability: EXPAND_VOLUME
+I0618 07:27:00.302256 1076117 driver.go:81] Enabling controller service capability: LIST_VOLUMES
+I0618 07:27:00.302261 1076117 driver.go:81] Enabling controller service capability: LIST_VOLUMES_PUBLISHED_NODES
+I0618 07:27:00.302267 1076117 driver.go:100] Enabling volume access mode: SINGLE_NODE_WRITER
+=== RUN   TestCreateVolume/maxshare_parse_error_
+I0618 07:27:00.305438 1076117 driver.go:81] Enabling controller service capability: CREATE_DELETE_VOLUME
+I0618 07:27:00.305451 1076117 driver.go:81] Enabling controller service capability: PUBLISH_UNPUBLISH_VOLUME
+I0618 07:27:00.305456 1076117 driver.go:81] Enabling controller service capability: CREATE_DELETE_SNAPSHOT
+I0618 07:27:00.305462 1076117 driver.go:81] Enabling controller service capability: LIST_SNAPSHOTS
+I0618 07:27:00.305467 1076117 driver.go:81] Enabling controller service capability: CLONE_VOLUME
+I0618 07:27:00.305472 1076117 driver.go:81] Enabling controller service capability: EXPAND_VOLUME
+I0618 07:27:00.305477 1076117 driver.go:81] Enabling controller service capability: LIST_VOLUMES
+I0618 07:27:00.305484 1076117 driver.go:81] Enabling controller service capability: LIST_VOLUMES_PUBLISHED_NODES
+I0618 07:27:00.305490 1076117 driver.go:100] Enabling volume access mode: SINGLE_NODE_WRITER
+=== RUN   TestCreateVolume/maxshare_invalid_value_
+I0618 07:27:00.308869 1076117 driver.go:81] Enabling controller service capability: CREATE_DELETE_VOLUME
+I0618 07:27:00.308887 1076117 driver.go:81] Enabling controller service capability: PUBLISH_UNPUBLISH_VOLUME
+I0618 07:27:00.308893 1076117 driver.go:81] Enabling controller service capability: CREATE_DELETE_SNAPSHOT
+I0618 07:27:00.308898 1076117 driver.go:81] Enabling controller service capability: LIST_SNAPSHOTS
+I0618 07:27:00.308907 1076117 driver.go:81] Enabling controller service capability: CLONE_VOLUME
+I0618 07:27:00.308912 1076117 driver.go:81] Enabling controller service capability: EXPAND_VOLUME
+I0618 07:27:00.308916 1076117 driver.go:81] Enabling controller service capability: LIST_VOLUMES
+I0618 07:27:00.308920 1076117 driver.go:81] Enabling controller service capability: LIST_VOLUMES_PUBLISHED_NODES
+I0618 07:27:00.308926 1076117 driver.go:100] Enabling volume access mode: SINGLE_NODE_WRITER
+=== RUN   TestCreateVolume/invalid_perf_profile
+I0618 07:27:00.312973 1076117 driver.go:81] Enabling controller service capability: CREATE_DELETE_VOLUME
+I0618 07:27:00.313002 1076117 driver.go:81] Enabling controller service capability: PUBLISH_UNPUBLISH_VOLUME
+I0618 07:27:00.313008 1076117 driver.go:81] Enabling controller service capability: CREATE_DELETE_SNAPSHOT
+I0618 07:27:00.313013 1076117 driver.go:81] Enabling controller service capability: LIST_SNAPSHOTS
+I0618 07:27:00.313018 1076117 driver.go:81] Enabling controller service capability: CLONE_VOLUME
+I0618 07:27:00.313023 1076117 driver.go:81] Enabling controller service capability: EXPAND_VOLUME
+I0618 07:27:00.313028 1076117 driver.go:81] Enabling controller service capability: LIST_VOLUMES
+I0618 07:27:00.313032 1076117 driver.go:81] Enabling controller service capability: LIST_VOLUMES_PUBLISHED_NODES
+I0618 07:27:00.313038 1076117 driver.go:100] Enabling volume access mode: SINGLE_NODE_WRITER
+=== RUN   TestCreateVolume/Volume_capability_not_supported_
+I0618 07:27:00.316521 1076117 driver.go:81] Enabling controller service capability: CREATE_DELETE_VOLUME
+I0618 07:27:00.316533 1076117 driver.go:81] Enabling controller service capability: PUBLISH_UNPUBLISH_VOLUME
+I0618 07:27:00.316538 1076117 driver.go:81] Enabling controller service capability: CREATE_DELETE_SNAPSHOT
+I0618 07:27:00.316543 1076117 driver.go:81] Enabling controller service capability: LIST_SNAPSHOTS
+I0618 07:27:00.316548 1076117 driver.go:81] Enabling controller service capability: CLONE_VOLUME
+I0618 07:27:00.316553 1076117 driver.go:81] Enabling controller service capability: EXPAND_VOLUME
+I0618 07:27:00.316557 1076117 driver.go:81] Enabling controller service capability: LIST_VOLUMES
+I0618 07:27:00.316565 1076117 driver.go:81] Enabling controller service capability: LIST_VOLUMES_PUBLISHED_NODES
+I0618 07:27:00.316570 1076117 driver.go:100] Enabling volume access mode: SINGLE_NODE_WRITER
+=== RUN   TestCreateVolume/normalize_storageaccounttype_error_
+I0618 07:27:00.321365 1076117 driver.go:81] Enabling controller service capability: CREATE_DELETE_VOLUME
+I0618 07:27:00.321376 1076117 driver.go:81] Enabling controller service capability: PUBLISH_UNPUBLISH_VOLUME
+I0618 07:27:00.321379 1076117 driver.go:81] Enabling controller service capability: CREATE_DELETE_SNAPSHOT
+I0618 07:27:00.321383 1076117 driver.go:81] Enabling controller service capability: LIST_SNAPSHOTS
+I0618 07:27:00.321385 1076117 driver.go:81] Enabling controller service capability: CLONE_VOLUME
+I0618 07:27:00.321388 1076117 driver.go:81] Enabling controller service capability: EXPAND_VOLUME
+I0618 07:27:00.321391 1076117 driver.go:81] Enabling controller service capability: LIST_VOLUMES
+I0618 07:27:00.321393 1076117 driver.go:81] Enabling controller service capability: LIST_VOLUMES_PUBLISHED_NODES
+I0618 07:27:00.321397 1076117 driver.go:100] Enabling volume access mode: SINGLE_NODE_WRITER
+I0618 07:27:00.321425 1076117 controllerserver.go:108] increasing requested disk size from 0GiB to 1GiB (minimal disk size)
+=== RUN   TestCreateVolume/normalize_cache_mode_error_
+I0618 07:27:00.328036 1076117 driver.go:81] Enabling controller service capability: CREATE_DELETE_VOLUME
+I0618 07:27:00.328047 1076117 driver.go:81] Enabling controller service capability: PUBLISH_UNPUBLISH_VOLUME
+I0618 07:27:00.328057 1076117 driver.go:81] Enabling controller service capability: CREATE_DELETE_SNAPSHOT
+I0618 07:27:00.328060 1076117 driver.go:81] Enabling controller service capability: LIST_SNAPSHOTS
+I0618 07:27:00.328063 1076117 driver.go:81] Enabling controller service capability: CLONE_VOLUME
+I0618 07:27:00.328066 1076117 driver.go:81] Enabling controller service capability: EXPAND_VOLUME
+I0618 07:27:00.328069 1076117 driver.go:81] Enabling controller service capability: LIST_VOLUMES
+I0618 07:27:00.328072 1076117 driver.go:81] Enabling controller service capability: LIST_VOLUMES_PUBLISHED_NODES
+I0618 07:27:00.328075 1076117 driver.go:100] Enabling volume access mode: SINGLE_NODE_WRITER
+I0618 07:27:00.328104 1076117 controllerserver.go:108] increasing requested disk size from 0GiB to 1GiB (minimal disk size)
+=== RUN   TestCreateVolume/custom_tags_error_
+I0618 07:27:00.331944 1076117 driver.go:81] Enabling controller service capability: CREATE_DELETE_VOLUME
+I0618 07:27:00.331955 1076117 driver.go:81] Enabling controller service capability: PUBLISH_UNPUBLISH_VOLUME
+I0618 07:27:00.331958 1076117 driver.go:81] Enabling controller service capability: CREATE_DELETE_SNAPSHOT
+I0618 07:27:00.331961 1076117 driver.go:81] Enabling controller service capability: LIST_SNAPSHOTS
+I0618 07:27:00.331964 1076117 driver.go:81] Enabling controller service capability: CLONE_VOLUME
+I0618 07:27:00.331967 1076117 driver.go:81] Enabling controller service capability: EXPAND_VOLUME
+I0618 07:27:00.331970 1076117 driver.go:81] Enabling controller service capability: LIST_VOLUMES
+I0618 07:27:00.331972 1076117 driver.go:81] Enabling controller service capability: LIST_VOLUMES_PUBLISHED_NODES
+I0618 07:27:00.331979 1076117 driver.go:100] Enabling volume access mode: SINGLE_NODE_WRITER
+=== RUN   TestCreateVolume/create_managed_disk_error_
+I0618 07:27:00.334937 1076117 driver.go:81] Enabling controller service capability: CREATE_DELETE_VOLUME
+I0618 07:27:00.334947 1076117 driver.go:81] Enabling controller service capability: PUBLISH_UNPUBLISH_VOLUME
+I0618 07:27:00.334951 1076117 driver.go:81] Enabling controller service capability: CREATE_DELETE_SNAPSHOT
+I0618 07:27:00.334953 1076117 driver.go:81] Enabling controller service capability: LIST_SNAPSHOTS
+I0618 07:27:00.334956 1076117 driver.go:81] Enabling controller service capability: CLONE_VOLUME
+I0618 07:27:00.334959 1076117 driver.go:81] Enabling controller service capability: EXPAND_VOLUME
+I0618 07:27:00.334962 1076117 driver.go:81] Enabling controller service capability: LIST_VOLUMES
+I0618 07:27:00.334964 1076117 driver.go:81] Enabling controller service capability: LIST_VOLUMES_PUBLISHED_NODES
+I0618 07:27:00.334968 1076117 driver.go:100] Enabling volume access mode: SINGLE_NODE_WRITER
+I0618 07:27:00.335013 1076117 controllerserver.go:108] increasing requested disk size from 0GiB to 1GiB (minimal disk size)
+=== RUN   TestCreateVolume/create_managed_disk_not_found_error_
+I0618 07:27:00.338132 1076117 driver.go:81] Enabling controller service capability: CREATE_DELETE_VOLUME
+I0618 07:27:00.338145 1076117 driver.go:81] Enabling controller service capability: PUBLISH_UNPUBLISH_VOLUME
+I0618 07:27:00.338150 1076117 driver.go:81] Enabling controller service capability: CREATE_DELETE_SNAPSHOT
+I0618 07:27:00.338155 1076117 driver.go:81] Enabling controller service capability: LIST_SNAPSHOTS
+I0618 07:27:00.338159 1076117 driver.go:81] Enabling controller service capability: CLONE_VOLUME
+I0618 07:27:00.338164 1076117 driver.go:81] Enabling controller service capability: EXPAND_VOLUME
+I0618 07:27:00.338168 1076117 driver.go:81] Enabling controller service capability: LIST_VOLUMES
+I0618 07:27:00.338174 1076117 driver.go:81] Enabling controller service capability: LIST_VOLUMES_PUBLISHED_NODES
+I0618 07:27:00.338180 1076117 driver.go:100] Enabling volume access mode: SINGLE_NODE_WRITER
+I0618 07:27:00.338226 1076117 controllerserver.go:108] increasing requested disk size from 0GiB to 1GiB (minimal disk size)
+=== RUN   TestCreateVolume/valid_request_ZRS
+I0618 07:27:00.341683 1076117 driver.go:81] Enabling controller service capability: CREATE_DELETE_VOLUME
+I0618 07:27:00.341696 1076117 driver.go:81] Enabling controller service capability: PUBLISH_UNPUBLISH_VOLUME
+I0618 07:27:00.341701 1076117 driver.go:81] Enabling controller service capability: CREATE_DELETE_SNAPSHOT
+I0618 07:27:00.341706 1076117 driver.go:81] Enabling controller service capability: LIST_SNAPSHOTS
+I0618 07:27:00.341715 1076117 driver.go:81] Enabling controller service capability: CLONE_VOLUME
+I0618 07:27:00.341721 1076117 driver.go:81] Enabling controller service capability: EXPAND_VOLUME
+I0618 07:27:00.341727 1076117 driver.go:81] Enabling controller service capability: LIST_VOLUMES
+I0618 07:27:00.341732 1076117 driver.go:81] Enabling controller service capability: LIST_VOLUMES_PUBLISHED_NODES
+I0618 07:27:00.341737 1076117 driver.go:100] Enabling volume access mode: SINGLE_NODE_WRITER
+=== RUN   TestCreateVolume/valid_request
+I0618 07:27:00.347793 1076117 driver.go:81] Enabling controller service capability: CREATE_DELETE_VOLUME
+I0618 07:27:00.347807 1076117 driver.go:81] Enabling controller service capability: PUBLISH_UNPUBLISH_VOLUME
+I0618 07:27:00.347812 1076117 driver.go:81] Enabling controller service capability: CREATE_DELETE_SNAPSHOT
+I0618 07:27:00.347817 1076117 driver.go:81] Enabling controller service capability: LIST_SNAPSHOTS
+I0618 07:27:00.347822 1076117 driver.go:81] Enabling controller service capability: CLONE_VOLUME
+I0618 07:27:00.347827 1076117 driver.go:81] Enabling controller service capability: EXPAND_VOLUME
+I0618 07:27:00.347832 1076117 driver.go:81] Enabling controller service capability: LIST_VOLUMES
+I0618 07:27:00.347838 1076117 driver.go:81] Enabling controller service capability: LIST_VOLUMES_PUBLISHED_NODES
+I0618 07:27:00.347844 1076117 driver.go:100] Enabling volume access mode: SINGLE_NODE_WRITER
+=== RUN   TestCreateVolume/invalid_parameter
+I0618 07:27:00.350863 1076117 driver.go:81] Enabling controller service capability: CREATE_DELETE_VOLUME
+I0618 07:27:00.350877 1076117 driver.go:81] Enabling controller service capability: PUBLISH_UNPUBLISH_VOLUME
+I0618 07:27:00.350883 1076117 driver.go:81] Enabling controller service capability: CREATE_DELETE_SNAPSHOT
+I0618 07:27:00.350887 1076117 driver.go:81] Enabling controller service capability: LIST_SNAPSHOTS
+I0618 07:27:00.350892 1076117 driver.go:81] Enabling controller service capability: CLONE_VOLUME
+I0618 07:27:00.350897 1076117 driver.go:81] Enabling controller service capability: EXPAND_VOLUME
+I0618 07:27:00.350902 1076117 driver.go:81] Enabling controller service capability: LIST_VOLUMES
+I0618 07:27:00.350908 1076117 driver.go:81] Enabling controller service capability: LIST_VOLUMES_PUBLISHED_NODES
+I0618 07:27:00.350915 1076117 driver.go:100] Enabling volume access mode: SINGLE_NODE_WRITER
+=== RUN   TestCreateVolume/[Failure]_advanced_perfProfile_fails_if_no_device_settings_provided
+I0618 07:27:00.364069 1076117 driver.go:81] Enabling controller service capability: CREATE_DELETE_VOLUME
+I0618 07:27:00.364085 1076117 driver.go:81] Enabling controller service capability: PUBLISH_UNPUBLISH_VOLUME
+I0618 07:27:00.364090 1076117 driver.go:81] Enabling controller service capability: CREATE_DELETE_SNAPSHOT
+I0618 07:27:00.364096 1076117 driver.go:81] Enabling controller service capability: LIST_SNAPSHOTS
+I0618 07:27:00.364109 1076117 driver.go:81] Enabling controller service capability: CLONE_VOLUME
+I0618 07:27:00.364117 1076117 driver.go:81] Enabling controller service capability: EXPAND_VOLUME
+I0618 07:27:00.364125 1076117 driver.go:81] Enabling controller service capability: LIST_VOLUMES
+I0618 07:27:00.364133 1076117 driver.go:81] Enabling controller service capability: LIST_VOLUMES_PUBLISHED_NODES
+I0618 07:27:00.364142 1076117 driver.go:100] Enabling volume access mode: SINGLE_NODE_WRITER
+=== RUN   TestCreateVolume/valid_PerformancePlus_request,_disk_resizes_to_min_required_size
+I0618 07:27:00.368843 1076117 driver.go:81] Enabling controller service capability: CREATE_DELETE_VOLUME
+I0618 07:27:00.368858 1076117 driver.go:81] Enabling controller service capability: PUBLISH_UNPUBLISH_VOLUME
+I0618 07:27:00.368867 1076117 driver.go:81] Enabling controller service capability: CREATE_DELETE_SNAPSHOT
+I0618 07:27:00.368872 1076117 driver.go:81] Enabling controller service capability: LIST_SNAPSHOTS
+I0618 07:27:00.368877 1076117 driver.go:81] Enabling controller service capability: CLONE_VOLUME
+I0618 07:27:00.368881 1076117 driver.go:81] Enabling controller service capability: EXPAND_VOLUME
+I0618 07:27:00.368886 1076117 driver.go:81] Enabling controller service capability: LIST_VOLUMES
+I0618 07:27:00.368890 1076117 driver.go:81] Enabling controller service capability: LIST_VOLUMES_PUBLISHED_NODES
+I0618 07:27:00.368896 1076117 driver.go:100] Enabling volume access mode: SINGLE_NODE_WRITER
+W0618 07:27:00.368961 1076117 controllerserver.go:104] using PerformancePlus, increasing requested disk size from 10GiB to 513GiB (minimal size for PerformancePlus feature)
+--- PASS: TestCreateVolume (0.10s)
+    --- PASS: TestCreateVolume/_invalid_ (0.02s)
+    --- PASS: TestCreateVolume/_volume_name_missing (0.00s)
+    --- PASS: TestCreateVolume/volume_capabilities_missing (0.00s)
+    --- PASS: TestCreateVolume/require_volume_size_exceed (0.00s)
+    --- PASS: TestCreateVolume/logical_sector_size_parse_error (0.00s)
+    --- PASS: TestCreateVolume/maxshare_parse_error_ (0.00s)
+    --- PASS: TestCreateVolume/maxshare_invalid_value_ (0.00s)
+    --- PASS: TestCreateVolume/invalid_perf_profile (0.00s)
+    --- PASS: TestCreateVolume/Volume_capability_not_supported_ (0.00s)
+    --- PASS: TestCreateVolume/normalize_storageaccounttype_error_ (0.00s)
+    --- PASS: TestCreateVolume/normalize_cache_mode_error_ (0.01s)
+    --- PASS: TestCreateVolume/custom_tags_error_ (0.00s)
+    --- PASS: TestCreateVolume/create_managed_disk_error_ (0.00s)
+    --- PASS: TestCreateVolume/create_managed_disk_not_found_error_ (0.00s)
+    --- PASS: TestCreateVolume/valid_request_ZRS (0.00s)
+    --- PASS: TestCreateVolume/valid_request (0.01s)
+    --- PASS: TestCreateVolume/invalid_parameter (0.00s)
+    --- PASS: TestCreateVolume/[Failure]_advanced_perfProfile_fails_if_no_device_settings_provided (0.01s)
+    --- PASS: TestCreateVolume/valid_PerformancePlus_request,_disk_resizes_to_min_required_size (0.00s)
+=== RUN   TestDeleteVolume
+I0618 07:27:00.372712 1076117 driver.go:81] Enabling controller service capability: CREATE_DELETE_VOLUME
+I0618 07:27:00.372794 1076117 driver.go:81] Enabling controller service capability: PUBLISH_UNPUBLISH_VOLUME
+I0618 07:27:00.372800 1076117 driver.go:81] Enabling controller service capability: CREATE_DELETE_SNAPSHOT
+I0618 07:27:00.372805 1076117 driver.go:81] Enabling controller service capability: LIST_SNAPSHOTS
+I0618 07:27:00.372809 1076117 driver.go:81] Enabling controller service capability: CLONE_VOLUME
+I0618 07:27:00.372813 1076117 driver.go:81] Enabling controller service capability: EXPAND_VOLUME
+I0618 07:27:00.372818 1076117 driver.go:81] Enabling controller service capability: LIST_VOLUMES
+I0618 07:27:00.372822 1076117 driver.go:81] Enabling controller service capability: LIST_VOLUMES_PUBLISHED_NODES
+I0618 07:27:00.372827 1076117 driver.go:100] Enabling volume access mode: SINGLE_NODE_WRITER
+E0618 07:27:00.372991 1076117 controllerserver.go:329] validateDiskURI(123) in DeleteVolume failed with error: invalid DiskURI: 123, correct format: [/subscriptions/{sub-id}/resourcegroups/{group-name}/providers/microsoft.compute/disks/{disk-id}]
+--- PASS: TestDeleteVolume (0.00s)
+=== RUN   TestControllerGetVolume
+I0618 07:27:00.376737 1076117 driver.go:81] Enabling controller service capability: CREATE_DELETE_VOLUME
+I0618 07:27:00.376749 1076117 driver.go:81] Enabling controller service capability: PUBLISH_UNPUBLISH_VOLUME
+I0618 07:27:00.376756 1076117 driver.go:81] Enabling controller service capability: CREATE_DELETE_SNAPSHOT
+I0618 07:27:00.376761 1076117 driver.go:81] Enabling controller service capability: LIST_SNAPSHOTS
+I0618 07:27:00.376766 1076117 driver.go:81] Enabling controller service capability: CLONE_VOLUME
+I0618 07:27:00.376770 1076117 driver.go:81] Enabling controller service capability: EXPAND_VOLUME
+I0618 07:27:00.376775 1076117 driver.go:81] Enabling controller service capability: LIST_VOLUMES
+I0618 07:27:00.376779 1076117 driver.go:81] Enabling controller service capability: LIST_VOLUMES_PUBLISHED_NODES
+I0618 07:27:00.376785 1076117 driver.go:100] Enabling volume access mode: SINGLE_NODE_WRITER
+--- PASS: TestControllerGetVolume (0.00s)
+=== RUN   TestGetSnapshotInfo
+I0618 07:27:00.380560 1076117 driver.go:81] Enabling controller service capability: CREATE_DELETE_VOLUME
+I0618 07:27:00.380571 1076117 driver.go:81] Enabling controller service capability: PUBLISH_UNPUBLISH_VOLUME
+I0618 07:27:00.380577 1076117 driver.go:81] Enabling controller service capability: CREATE_DELETE_SNAPSHOT
+I0618 07:27:00.380585 1076117 driver.go:81] Enabling controller service capability: LIST_SNAPSHOTS
+I0618 07:27:00.380591 1076117 driver.go:81] Enabling controller service capability: CLONE_VOLUME
+I0618 07:27:00.380596 1076117 driver.go:81] Enabling controller service capability: EXPAND_VOLUME
+I0618 07:27:00.380600 1076117 driver.go:81] Enabling controller service capability: LIST_VOLUMES
+I0618 07:27:00.380605 1076117 driver.go:81] Enabling controller service capability: LIST_VOLUMES_PUBLISHED_NODES
+I0618 07:27:00.380611 1076117 driver.go:100] Enabling volume access mode: SINGLE_NODE_WRITER
+--- PASS: TestGetSnapshotInfo (0.00s)
+=== RUN   TestControllerPublishVolume
+I0618 07:27:00.393343 1076117 driver.go:81] Enabling controller service capability: CREATE_DELETE_VOLUME
+I0618 07:27:00.393360 1076117 driver.go:81] Enabling controller service capability: PUBLISH_UNPUBLISH_VOLUME
+I0618 07:27:00.393364 1076117 driver.go:81] Enabling controller service capability: CREATE_DELETE_SNAPSHOT
+I0618 07:27:00.393367 1076117 driver.go:81] Enabling controller service capability: LIST_SNAPSHOTS
+I0618 07:27:00.393371 1076117 driver.go:81] Enabling controller service capability: CLONE_VOLUME
+I0618 07:27:00.393374 1076117 driver.go:81] Enabling controller service capability: EXPAND_VOLUME
+I0618 07:27:00.393377 1076117 driver.go:81] Enabling controller service capability: LIST_VOLUMES
+I0618 07:27:00.393380 1076117 driver.go:81] Enabling controller service capability: LIST_VOLUMES_PUBLISHED_NODES
+I0618 07:27:00.393384 1076117 driver.go:100] Enabling volume access mode: SINGLE_NODE_WRITER
+=== RUN   TestControllerPublishVolume/Volume_ID_missing
+I0618 07:27:00.396489 1076117 driver.go:81] Enabling controller service capability: CREATE_DELETE_VOLUME
+I0618 07:27:00.396506 1076117 driver.go:81] Enabling controller service capability: PUBLISH_UNPUBLISH_VOLUME
+I0618 07:27:00.396510 1076117 driver.go:81] Enabling controller service capability: CREATE_DELETE_SNAPSHOT
+I0618 07:27:00.396513 1076117 driver.go:81] Enabling controller service capability: LIST_SNAPSHOTS
+I0618 07:27:00.396516 1076117 driver.go:81] Enabling controller service capability: CLONE_VOLUME
+I0618 07:27:00.396519 1076117 driver.go:81] Enabling controller service capability: EXPAND_VOLUME
+I0618 07:27:00.396522 1076117 driver.go:81] Enabling controller service capability: LIST_VOLUMES
+I0618 07:27:00.396525 1076117 driver.go:81] Enabling controller service capability: LIST_VOLUMES_PUBLISHED_NODES
+I0618 07:27:00.396529 1076117 driver.go:100] Enabling volume access mode: SINGLE_NODE_WRITER
+=== RUN   TestControllerPublishVolume/Volume_capability_missing
+I0618 07:27:00.399973 1076117 driver.go:81] Enabling controller service capability: CREATE_DELETE_VOLUME
+I0618 07:27:00.399990 1076117 driver.go:81] Enabling controller service capability: PUBLISH_UNPUBLISH_VOLUME
+I0618 07:27:00.399994 1076117 driver.go:81] Enabling controller service capability: CREATE_DELETE_SNAPSHOT
+I0618 07:27:00.399998 1076117 driver.go:81] Enabling controller service capability: LIST_SNAPSHOTS
+I0618 07:27:00.400000 1076117 driver.go:81] Enabling controller service capability: CLONE_VOLUME
+I0618 07:27:00.400004 1076117 driver.go:81] Enabling controller service capability: EXPAND_VOLUME
+I0618 07:27:00.400007 1076117 driver.go:81] Enabling controller service capability: LIST_VOLUMES
+I0618 07:27:00.400014 1076117 driver.go:81] Enabling controller service capability: LIST_VOLUMES_PUBLISHED_NODES
+I0618 07:27:00.400019 1076117 driver.go:100] Enabling volume access mode: SINGLE_NODE_WRITER
+=== RUN   TestControllerPublishVolume/Volume_capability_not_supported
+I0618 07:27:00.405746 1076117 driver.go:81] Enabling controller service capability: CREATE_DELETE_VOLUME
+I0618 07:27:00.405763 1076117 driver.go:81] Enabling controller service capability: PUBLISH_UNPUBLISH_VOLUME
+I0618 07:27:00.405766 1076117 driver.go:81] Enabling controller service capability: CREATE_DELETE_SNAPSHOT
+I0618 07:27:00.405770 1076117 driver.go:81] Enabling controller service capability: LIST_SNAPSHOTS
+I0618 07:27:00.405772 1076117 driver.go:81] Enabling controller service capability: CLONE_VOLUME
+I0618 07:27:00.405776 1076117 driver.go:81] Enabling controller service capability: EXPAND_VOLUME
+I0618 07:27:00.405779 1076117 driver.go:81] Enabling controller service capability: LIST_VOLUMES
+I0618 07:27:00.405782 1076117 driver.go:81] Enabling controller service capability: LIST_VOLUMES_PUBLISHED_NODES
+I0618 07:27:00.405786 1076117 driver.go:100] Enabling volume access mode: SINGLE_NODE_WRITER
+=== RUN   TestControllerPublishVolume/diskName_error
+=== RUN   TestControllerPublishVolume/NodeID_missing
+=== RUN   TestControllerPublishVolume/failed_provisioning_state
+W0618 07:27:00.406313 1076117 controllerserver.go:419] VM(unit-test-node) is in failed state, update VM first
+=== RUN   TestControllerPublishVolume/Volume_already_attached_success
+I0618 07:27:00.409624 1076117 driver.go:81] Enabling controller service capability: CREATE_DELETE_VOLUME
+I0618 07:27:00.409638 1076117 driver.go:81] Enabling controller service capability: PUBLISH_UNPUBLISH_VOLUME
+I0618 07:27:00.409643 1076117 driver.go:81] Enabling controller service capability: CREATE_DELETE_SNAPSHOT
+I0618 07:27:00.409647 1076117 driver.go:81] Enabling controller service capability: LIST_SNAPSHOTS
+I0618 07:27:00.409652 1076117 driver.go:81] Enabling controller service capability: CLONE_VOLUME
+I0618 07:27:00.409656 1076117 driver.go:81] Enabling controller service capability: EXPAND_VOLUME
+I0618 07:27:00.409661 1076117 driver.go:81] Enabling controller service capability: LIST_VOLUMES
+I0618 07:27:00.409665 1076117 driver.go:81] Enabling controller service capability: LIST_VOLUMES_PUBLISHED_NODES
+I0618 07:27:00.409670 1076117 driver.go:100] Enabling volume access mode: SINGLE_NODE_WRITER
+=== RUN   TestControllerPublishVolume/CachingMode_Error
+I0618 07:27:00.413055 1076117 driver.go:81] Enabling controller service capability: CREATE_DELETE_VOLUME
+I0618 07:27:00.413069 1076117 driver.go:81] Enabling controller service capability: PUBLISH_UNPUBLISH_VOLUME
+I0618 07:27:00.413073 1076117 driver.go:81] Enabling controller service capability: CREATE_DELETE_SNAPSHOT
+I0618 07:27:00.413076 1076117 driver.go:81] Enabling controller service capability: LIST_SNAPSHOTS
+I0618 07:27:00.413079 1076117 driver.go:81] Enabling controller service capability: CLONE_VOLUME
+I0618 07:27:00.413082 1076117 driver.go:81] Enabling controller service capability: EXPAND_VOLUME
+I0618 07:27:00.413085 1076117 driver.go:81] Enabling controller service capability: LIST_VOLUMES
+I0618 07:27:00.413089 1076117 driver.go:81] Enabling controller service capability: LIST_VOLUMES_PUBLISHED_NODES
+I0618 07:27:00.413096 1076117 driver.go:100] Enabling volume access mode: SINGLE_NODE_WRITER
+--- PASS: TestControllerPublishVolume (0.03s)
+    --- PASS: TestControllerPublishVolume/Volume_ID_missing (0.00s)
+    --- PASS: TestControllerPublishVolume/Volume_capability_missing (0.00s)
+    --- PASS: TestControllerPublishVolume/Volume_capability_not_supported (0.01s)
+    --- PASS: TestControllerPublishVolume/diskName_error (0.00s)
+    --- PASS: TestControllerPublishVolume/NodeID_missing (0.00s)
+    --- PASS: TestControllerPublishVolume/failed_provisioning_state (0.00s)
+    --- PASS: TestControllerPublishVolume/Volume_already_attached_success (0.00s)
+    --- PASS: TestControllerPublishVolume/CachingMode_Error (0.00s)
+=== RUN   TestControllerUnpublishVolume
+I0618 07:27:00.416501 1076117 driver.go:81] Enabling controller service capability: CREATE_DELETE_VOLUME
+I0618 07:27:00.416516 1076117 driver.go:81] Enabling controller service capability: PUBLISH_UNPUBLISH_VOLUME
+I0618 07:27:00.416519 1076117 driver.go:81] Enabling controller service capability: CREATE_DELETE_SNAPSHOT
+I0618 07:27:00.416523 1076117 driver.go:81] Enabling controller service capability: LIST_SNAPSHOTS
+I0618 07:27:00.416525 1076117 driver.go:81] Enabling controller service capability: CLONE_VOLUME
+I0618 07:27:00.416528 1076117 driver.go:81] Enabling controller service capability: EXPAND_VOLUME
+I0618 07:27:00.416531 1076117 driver.go:81] Enabling controller service capability: LIST_VOLUMES
+I0618 07:27:00.416535 1076117 driver.go:81] Enabling controller service capability: LIST_VOLUMES_PUBLISHED_NODES
+I0618 07:27:00.416543 1076117 driver.go:100] Enabling volume access mode: SINGLE_NODE_WRITER
+--- PASS: TestControllerUnpublishVolume (0.00s)
+=== RUN   TestControllerGetCapabilities
+I0618 07:27:00.419834 1076117 driver.go:81] Enabling controller service capability: CREATE_DELETE_VOLUME
+I0618 07:27:00.419850 1076117 driver.go:81] Enabling controller service capability: PUBLISH_UNPUBLISH_VOLUME
+I0618 07:27:00.419854 1076117 driver.go:81] Enabling controller service capability: CREATE_DELETE_SNAPSHOT
+I0618 07:27:00.419860 1076117 driver.go:81] Enabling controller service capability: LIST_SNAPSHOTS
+I0618 07:27:00.419863 1076117 driver.go:81] Enabling controller service capability: CLONE_VOLUME
+I0618 07:27:00.419866 1076117 driver.go:81] Enabling controller service capability: EXPAND_VOLUME
+I0618 07:27:00.419870 1076117 driver.go:81] Enabling controller service capability: LIST_VOLUMES
+I0618 07:27:00.419875 1076117 driver.go:81] Enabling controller service capability: LIST_VOLUMES_PUBLISHED_NODES
+I0618 07:27:00.419880 1076117 driver.go:100] Enabling volume access mode: SINGLE_NODE_WRITER
+--- PASS: TestControllerGetCapabilities (0.00s)
+=== RUN   TestControllerExpandVolume
+=== RUN   TestControllerExpandVolume/Volume_ID_missing
+I0618 07:27:00.423064 1076117 driver.go:81] Enabling controller service capability: CREATE_DELETE_VOLUME
+I0618 07:27:00.423077 1076117 driver.go:81] Enabling controller service capability: PUBLISH_UNPUBLISH_VOLUME
+I0618 07:27:00.423081 1076117 driver.go:81] Enabling controller service capability: CREATE_DELETE_SNAPSHOT
+I0618 07:27:00.423084 1076117 driver.go:81] Enabling controller service capability: LIST_SNAPSHOTS
+I0618 07:27:00.423087 1076117 driver.go:81] Enabling controller service capability: CLONE_VOLUME
+I0618 07:27:00.423094 1076117 driver.go:81] Enabling controller service capability: EXPAND_VOLUME
+I0618 07:27:00.423098 1076117 driver.go:81] Enabling controller service capability: LIST_VOLUMES
+I0618 07:27:00.423103 1076117 driver.go:81] Enabling controller service capability: LIST_VOLUMES_PUBLISHED_NODES
+I0618 07:27:00.423108 1076117 driver.go:100] Enabling volume access mode: SINGLE_NODE_WRITER
+=== RUN   TestControllerExpandVolume/Volume_capabilities_missing
+I0618 07:27:00.426258 1076117 driver.go:81] Enabling controller service capability: CREATE_DELETE_VOLUME
+I0618 07:27:00.426273 1076117 driver.go:81] Enabling controller service capability: PUBLISH_UNPUBLISH_VOLUME
+I0618 07:27:00.426277 1076117 driver.go:81] Enabling controller service capability: CREATE_DELETE_SNAPSHOT
+I0618 07:27:00.426280 1076117 driver.go:81] Enabling controller service capability: LIST_SNAPSHOTS
+I0618 07:27:00.426283 1076117 driver.go:81] Enabling controller service capability: CLONE_VOLUME
+I0618 07:27:00.426286 1076117 driver.go:81] Enabling controller service capability: EXPAND_VOLUME
+I0618 07:27:00.426290 1076117 driver.go:81] Enabling controller service capability: LIST_VOLUMES
+I0618 07:27:00.426296 1076117 driver.go:81] Enabling controller service capability: LIST_VOLUMES_PUBLISHED_NODES
+I0618 07:27:00.426301 1076117 driver.go:100] Enabling volume access mode: SINGLE_NODE_WRITER
+=== RUN   TestControllerExpandVolume/Volume_Capacity_range_missing
+I0618 07:27:00.433759 1076117 driver.go:81] Enabling controller service capability: CREATE_DELETE_VOLUME
+I0618 07:27:00.433776 1076117 driver.go:81] Enabling controller service capability: PUBLISH_UNPUBLISH_VOLUME
+I0618 07:27:00.433779 1076117 driver.go:81] Enabling controller service capability: CREATE_DELETE_SNAPSHOT
+I0618 07:27:00.433783 1076117 driver.go:81] Enabling controller service capability: LIST_SNAPSHOTS
+I0618 07:27:00.433785 1076117 driver.go:81] Enabling controller service capability: CLONE_VOLUME
+I0618 07:27:00.433792 1076117 driver.go:81] Enabling controller service capability: EXPAND_VOLUME
+I0618 07:27:00.433795 1076117 driver.go:81] Enabling controller service capability: LIST_VOLUMES
+I0618 07:27:00.433799 1076117 driver.go:81] Enabling controller service capability: LIST_VOLUMES_PUBLISHED_NODES
+I0618 07:27:00.433805 1076117 driver.go:100] Enabling volume access mode: SINGLE_NODE_WRITER
+=== RUN   TestControllerExpandVolume/disk_type_is_not_managedDisk
+I0618 07:27:00.437167 1076117 driver.go:81] Enabling controller service capability: CREATE_DELETE_VOLUME
+I0618 07:27:00.437183 1076117 driver.go:81] Enabling controller service capability: PUBLISH_UNPUBLISH_VOLUME
+I0618 07:27:00.437186 1076117 driver.go:81] Enabling controller service capability: CREATE_DELETE_SNAPSHOT
+I0618 07:27:00.437190 1076117 driver.go:81] Enabling controller service capability: LIST_SNAPSHOTS
+I0618 07:27:00.437192 1076117 driver.go:81] Enabling controller service capability: CLONE_VOLUME
+I0618 07:27:00.437196 1076117 driver.go:81] Enabling controller service capability: EXPAND_VOLUME
+I0618 07:27:00.437198 1076117 driver.go:81] Enabling controller service capability: LIST_VOLUMES
+I0618 07:27:00.437202 1076117 driver.go:81] Enabling controller service capability: LIST_VOLUMES_PUBLISHED_NODES
+I0618 07:27:00.437208 1076117 driver.go:100] Enabling volume access mode: SINGLE_NODE_WRITER
+=== RUN   TestControllerExpandVolume/Disk_URI_not_valid
+I0618 07:27:00.446073 1076117 driver.go:81] Enabling controller service capability: CREATE_DELETE_VOLUME
+I0618 07:27:00.446096 1076117 driver.go:81] Enabling controller service capability: PUBLISH_UNPUBLISH_VOLUME
+I0618 07:27:00.446102 1076117 driver.go:81] Enabling controller service capability: CREATE_DELETE_SNAPSHOT
+I0618 07:27:00.446107 1076117 driver.go:81] Enabling controller service capability: LIST_SNAPSHOTS
+I0618 07:27:00.446111 1076117 driver.go:81] Enabling controller service capability: CLONE_VOLUME
+I0618 07:27:00.446116 1076117 driver.go:81] Enabling controller service capability: EXPAND_VOLUME
+I0618 07:27:00.446121 1076117 driver.go:81] Enabling controller service capability: LIST_VOLUMES
+I0618 07:27:00.446126 1076117 driver.go:81] Enabling controller service capability: LIST_VOLUMES_PUBLISHED_NODES
+I0618 07:27:00.446132 1076117 driver.go:100] Enabling volume access mode: SINGLE_NODE_WRITER
+=== RUN   TestControllerExpandVolume/DiskSize_missing
+I0618 07:27:00.461515 1076117 driver.go:81] Enabling controller service capability: CREATE_DELETE_VOLUME
+I0618 07:27:00.461537 1076117 driver.go:81] Enabling controller service capability: PUBLISH_UNPUBLISH_VOLUME
+I0618 07:27:00.461543 1076117 driver.go:81] Enabling controller service capability: CREATE_DELETE_SNAPSHOT
+I0618 07:27:00.461548 1076117 driver.go:81] Enabling controller service capability: LIST_SNAPSHOTS
+I0618 07:27:00.461553 1076117 driver.go:81] Enabling controller service capability: CLONE_VOLUME
+I0618 07:27:00.461559 1076117 driver.go:81] Enabling controller service capability: EXPAND_VOLUME
+I0618 07:27:00.461564 1076117 driver.go:81] Enabling controller service capability: LIST_VOLUMES
+I0618 07:27:00.461569 1076117 driver.go:81] Enabling controller service capability: LIST_VOLUMES_PUBLISHED_NODES
+I0618 07:27:00.461577 1076117 driver.go:100] Enabling volume access mode: SINGLE_NODE_WRITER
+--- PASS: TestControllerExpandVolume (0.04s)
+    --- PASS: TestControllerExpandVolume/Volume_ID_missing (0.00s)
+    --- PASS: TestControllerExpandVolume/Volume_capabilities_missing (0.00s)
+    --- PASS: TestControllerExpandVolume/Volume_Capacity_range_missing (0.01s)
+    --- PASS: TestControllerExpandVolume/disk_type_is_not_managedDisk (0.00s)
+    --- PASS: TestControllerExpandVolume/Disk_URI_not_valid (0.01s)
+    --- PASS: TestControllerExpandVolume/DiskSize_missing (0.02s)
+=== RUN   TestCreateSnapshot
+=== RUN   TestCreateSnapshot/Source_volume_ID_missing
+I0618 07:27:00.479977 1076117 driver.go:81] Enabling controller service capability: CREATE_DELETE_VOLUME
+I0618 07:27:00.480009 1076117 driver.go:81] Enabling controller service capability: PUBLISH_UNPUBLISH_VOLUME
+I0618 07:27:00.480015 1076117 driver.go:81] Enabling controller service capability: CREATE_DELETE_SNAPSHOT
+I0618 07:27:00.480020 1076117 driver.go:81] Enabling controller service capability: LIST_SNAPSHOTS
+I0618 07:27:00.480025 1076117 driver.go:81] Enabling controller service capability: CLONE_VOLUME
+I0618 07:27:00.480030 1076117 driver.go:81] Enabling controller service capability: EXPAND_VOLUME
+I0618 07:27:00.480035 1076117 driver.go:81] Enabling controller service capability: LIST_VOLUMES
+I0618 07:27:00.480040 1076117 driver.go:81] Enabling controller service capability: LIST_VOLUMES_PUBLISHED_NODES
+I0618 07:27:00.480047 1076117 driver.go:100] Enabling volume access mode: SINGLE_NODE_WRITER
+=== RUN   TestCreateSnapshot/Snapshot_name_missing
+I0618 07:27:00.495220 1076117 driver.go:81] Enabling controller service capability: CREATE_DELETE_VOLUME
+I0618 07:27:00.495240 1076117 driver.go:81] Enabling controller service capability: PUBLISH_UNPUBLISH_VOLUME
+I0618 07:27:00.495246 1076117 driver.go:81] Enabling controller service capability: CREATE_DELETE_SNAPSHOT
+I0618 07:27:00.495251 1076117 driver.go:81] Enabling controller service capability: LIST_SNAPSHOTS
+I0618 07:27:00.495256 1076117 driver.go:81] Enabling controller service capability: CLONE_VOLUME
+I0618 07:27:00.495261 1076117 driver.go:81] Enabling controller service capability: EXPAND_VOLUME
+I0618 07:27:00.495266 1076117 driver.go:81] Enabling controller service capability: LIST_VOLUMES
+I0618 07:27:00.495271 1076117 driver.go:81] Enabling controller service capability: LIST_VOLUMES_PUBLISHED_NODES
+I0618 07:27:00.495277 1076117 driver.go:100] Enabling volume access mode: SINGLE_NODE_WRITER
+=== RUN   TestCreateSnapshot/Invalid_parameter_option
+I0618 07:27:00.510136 1076117 driver.go:81] Enabling controller service capability: CREATE_DELETE_VOLUME
+I0618 07:27:00.510156 1076117 driver.go:81] Enabling controller service capability: PUBLISH_UNPUBLISH_VOLUME
+I0618 07:27:00.510167 1076117 driver.go:81] Enabling controller service capability: CREATE_DELETE_SNAPSHOT
+I0618 07:27:00.510174 1076117 driver.go:81] Enabling controller service capability: LIST_SNAPSHOTS
+I0618 07:27:00.510179 1076117 driver.go:81] Enabling controller service capability: CLONE_VOLUME
+I0618 07:27:00.510184 1076117 driver.go:81] Enabling controller service capability: EXPAND_VOLUME
+I0618 07:27:00.510188 1076117 driver.go:81] Enabling controller service capability: LIST_VOLUMES
+I0618 07:27:00.510193 1076117 driver.go:81] Enabling controller service capability: LIST_VOLUMES_PUBLISHED_NODES
+I0618 07:27:00.510207 1076117 driver.go:100] Enabling volume access mode: SINGLE_NODE_WRITER
+=== RUN   TestCreateSnapshot/Invalid_volume_ID
+I0618 07:27:00.528385 1076117 driver.go:81] Enabling controller service capability: CREATE_DELETE_VOLUME
+I0618 07:27:00.528416 1076117 driver.go:81] Enabling controller service capability: PUBLISH_UNPUBLISH_VOLUME
+I0618 07:27:00.528423 1076117 driver.go:81] Enabling controller service capability: CREATE_DELETE_SNAPSHOT
+I0618 07:27:00.528428 1076117 driver.go:81] Enabling controller service capability: LIST_SNAPSHOTS
+I0618 07:27:00.528433 1076117 driver.go:81] Enabling controller service capability: CLONE_VOLUME
+I0618 07:27:00.528438 1076117 driver.go:81] Enabling controller service capability: EXPAND_VOLUME
+I0618 07:27:00.528442 1076117 driver.go:81] Enabling controller service capability: LIST_VOLUMES
+I0618 07:27:00.528446 1076117 driver.go:81] Enabling controller service capability: LIST_VOLUMES_PUBLISHED_NODES
+I0618 07:27:00.528453 1076117 driver.go:100] Enabling volume access mode: SINGLE_NODE_WRITER
+=== RUN   TestCreateSnapshot/Invalid_tag_
+I0618 07:27:00.544393 1076117 driver.go:81] Enabling controller service capability: CREATE_DELETE_VOLUME
+I0618 07:27:00.544414 1076117 driver.go:81] Enabling controller service capability: PUBLISH_UNPUBLISH_VOLUME
+I0618 07:27:00.544420 1076117 driver.go:81] Enabling controller service capability: CREATE_DELETE_SNAPSHOT
+I0618 07:27:00.544425 1076117 driver.go:81] Enabling controller service capability: LIST_SNAPSHOTS
+I0618 07:27:00.544432 1076117 driver.go:81] Enabling controller service capability: CLONE_VOLUME
+I0618 07:27:00.544437 1076117 driver.go:81] Enabling controller service capability: EXPAND_VOLUME
+I0618 07:27:00.544442 1076117 driver.go:81] Enabling controller service capability: LIST_VOLUMES
+I0618 07:27:00.544447 1076117 driver.go:81] Enabling controller service capability: LIST_VOLUMES_PUBLISHED_NODES
+I0618 07:27:00.544453 1076117 driver.go:100] Enabling volume access mode: SINGLE_NODE_WRITER
+=== RUN   TestCreateSnapshot/create_snapshot_error_
+I0618 07:27:00.557613 1076117 driver.go:81] Enabling controller service capability: CREATE_DELETE_VOLUME
+I0618 07:27:00.557632 1076117 driver.go:81] Enabling controller service capability: PUBLISH_UNPUBLISH_VOLUME
+I0618 07:27:00.557638 1076117 driver.go:81] Enabling controller service capability: CREATE_DELETE_SNAPSHOT
+I0618 07:27:00.557643 1076117 driver.go:81] Enabling controller service capability: LIST_SNAPSHOTS
+I0618 07:27:00.557648 1076117 driver.go:81] Enabling controller service capability: CLONE_VOLUME
+I0618 07:27:00.557653 1076117 driver.go:81] Enabling controller service capability: EXPAND_VOLUME
+I0618 07:27:00.557658 1076117 driver.go:81] Enabling controller service capability: LIST_VOLUMES
+I0618 07:27:00.557663 1076117 driver.go:81] Enabling controller service capability: LIST_VOLUMES_PUBLISHED_NODES
+I0618 07:27:00.557669 1076117 driver.go:100] Enabling volume access mode: SINGLE_NODE_WRITER
+=== RUN   TestCreateSnapshot/create_snapshot_already_exist_
+I0618 07:27:00.584262 1076117 driver.go:81] Enabling controller service capability: CREATE_DELETE_VOLUME
+I0618 07:27:00.584284 1076117 driver.go:81] Enabling controller service capability: PUBLISH_UNPUBLISH_VOLUME
+I0618 07:27:00.584290 1076117 driver.go:81] Enabling controller service capability: CREATE_DELETE_SNAPSHOT
+I0618 07:27:00.584300 1076117 driver.go:81] Enabling controller service capability: LIST_SNAPSHOTS
+I0618 07:27:00.584305 1076117 driver.go:81] Enabling controller service capability: CLONE_VOLUME
+I0618 07:27:00.584310 1076117 driver.go:81] Enabling controller service capability: EXPAND_VOLUME
+I0618 07:27:00.584315 1076117 driver.go:81] Enabling controller service capability: LIST_VOLUMES
+I0618 07:27:00.584319 1076117 driver.go:81] Enabling controller service capability: LIST_VOLUMES_PUBLISHED_NODES
+I0618 07:27:00.584325 1076117 driver.go:100] Enabling volume access mode: SINGLE_NODE_WRITER
+=== RUN   TestCreateSnapshot/Get_Snapshot_ID_error_
+I0618 07:27:00.588022 1076117 driver.go:81] Enabling controller service capability: CREATE_DELETE_VOLUME
+I0618 07:27:00.588037 1076117 driver.go:81] Enabling controller service capability: PUBLISH_UNPUBLISH_VOLUME
+I0618 07:27:00.588042 1076117 driver.go:81] Enabling controller service capability: CREATE_DELETE_SNAPSHOT
+I0618 07:27:00.588051 1076117 driver.go:81] Enabling controller service capability: LIST_SNAPSHOTS
+I0618 07:27:00.588056 1076117 driver.go:81] Enabling controller service capability: CLONE_VOLUME
+I0618 07:27:00.588060 1076117 driver.go:81] Enabling controller service capability: EXPAND_VOLUME
+I0618 07:27:00.588064 1076117 driver.go:81] Enabling controller service capability: LIST_VOLUMES
+I0618 07:27:00.588068 1076117 driver.go:81] Enabling controller service capability: LIST_VOLUMES_PUBLISHED_NODES
+I0618 07:27:00.588072 1076117 driver.go:100] Enabling volume access mode: SINGLE_NODE_WRITER
+=== RUN   TestCreateSnapshot/valid_request_
+I0618 07:27:00.610350 1076117 driver.go:81] Enabling controller service capability: CREATE_DELETE_VOLUME
+I0618 07:27:00.610371 1076117 driver.go:81] Enabling controller service capability: PUBLISH_UNPUBLISH_VOLUME
+I0618 07:27:00.610376 1076117 driver.go:81] Enabling controller service capability: CREATE_DELETE_SNAPSHOT
+I0618 07:27:00.610381 1076117 driver.go:81] Enabling controller service capability: LIST_SNAPSHOTS
+I0618 07:27:00.610386 1076117 driver.go:81] Enabling controller service capability: CLONE_VOLUME
+I0618 07:27:00.610391 1076117 driver.go:81] Enabling controller service capability: EXPAND_VOLUME
+I0618 07:27:00.610396 1076117 driver.go:81] Enabling controller service capability: LIST_VOLUMES
+I0618 07:27:00.610400 1076117 driver.go:81] Enabling controller service capability: LIST_VOLUMES_PUBLISHED_NODES
+I0618 07:27:00.610406 1076117 driver.go:100] Enabling volume access mode: SINGLE_NODE_WRITER
+W0618 07:27:00.610592 1076117 azure_disk_utils.go:342] the requested volume name ("testurl/subscriptions/23/providers/Microsoft.Compute/snapshots/snapshot-name") is invalid, so it is regenerated as ("pvc-disk-dynamic-26f0a0b5-2d44-11ef-b63d-000d3ac772b5")
+--- PASS: TestCreateSnapshot (0.15s)
+    --- PASS: TestCreateSnapshot/Source_volume_ID_missing (0.02s)
+    --- PASS: TestCreateSnapshot/Snapshot_name_missing (0.02s)
+    --- PASS: TestCreateSnapshot/Invalid_parameter_option (0.01s)
+    --- PASS: TestCreateSnapshot/Invalid_volume_ID (0.02s)
+    --- PASS: TestCreateSnapshot/Invalid_tag_ (0.02s)
+    --- PASS: TestCreateSnapshot/create_snapshot_error_ (0.01s)
+    --- PASS: TestCreateSnapshot/create_snapshot_already_exist_ (0.03s)
+    --- PASS: TestCreateSnapshot/Get_Snapshot_ID_error_ (0.00s)
+    --- PASS: TestCreateSnapshot/valid_request_ (0.02s)
+=== RUN   TestDeleteSnapshot
+=== RUN   TestDeleteSnapshot/Snapshot_ID_missing
+I0618 07:27:00.631446 1076117 driver.go:81] Enabling controller service capability: CREATE_DELETE_VOLUME
+I0618 07:27:00.631468 1076117 driver.go:81] Enabling controller service capability: PUBLISH_UNPUBLISH_VOLUME
+I0618 07:27:00.631473 1076117 driver.go:81] Enabling controller service capability: CREATE_DELETE_SNAPSHOT
+I0618 07:27:00.631478 1076117 driver.go:81] Enabling controller service capability: LIST_SNAPSHOTS
+I0618 07:27:00.631486 1076117 driver.go:81] Enabling controller service capability: CLONE_VOLUME
+I0618 07:27:00.631490 1076117 driver.go:81] Enabling controller service capability: EXPAND_VOLUME
+I0618 07:27:00.631495 1076117 driver.go:81] Enabling controller service capability: LIST_VOLUMES
+I0618 07:27:00.631499 1076117 driver.go:81] Enabling controller service capability: LIST_VOLUMES_PUBLISHED_NODES
+I0618 07:27:00.631507 1076117 driver.go:100] Enabling volume access mode: SINGLE_NODE_WRITER
+=== RUN   TestDeleteSnapshot/Snapshot_ID_invalid
+I0618 07:27:00.650584 1076117 driver.go:81] Enabling controller service capability: CREATE_DELETE_VOLUME
+I0618 07:27:00.650605 1076117 driver.go:81] Enabling controller service capability: PUBLISH_UNPUBLISH_VOLUME
+I0618 07:27:00.650616 1076117 driver.go:81] Enabling controller service capability: CREATE_DELETE_SNAPSHOT
+I0618 07:27:00.650621 1076117 driver.go:81] Enabling controller service capability: LIST_SNAPSHOTS
+I0618 07:27:00.650626 1076117 driver.go:81] Enabling controller service capability: CLONE_VOLUME
+I0618 07:27:00.650631 1076117 driver.go:81] Enabling controller service capability: EXPAND_VOLUME
+I0618 07:27:00.650636 1076117 driver.go:81] Enabling controller service capability: LIST_VOLUMES
+I0618 07:27:00.650641 1076117 driver.go:81] Enabling controller service capability: LIST_VOLUMES_PUBLISHED_NODES
+I0618 07:27:00.650652 1076117 driver.go:100] Enabling volume access mode: SINGLE_NODE_WRITER
+=== RUN   TestDeleteSnapshot/delete_Snapshot_error
+I0618 07:27:00.674738 1076117 driver.go:81] Enabling controller service capability: CREATE_DELETE_VOLUME
+I0618 07:27:00.674760 1076117 driver.go:81] Enabling controller service capability: PUBLISH_UNPUBLISH_VOLUME
+I0618 07:27:00.674770 1076117 driver.go:81] Enabling controller service capability: CREATE_DELETE_SNAPSHOT
+I0618 07:27:00.674776 1076117 driver.go:81] Enabling controller service capability: LIST_SNAPSHOTS
+I0618 07:27:00.674781 1076117 driver.go:81] Enabling controller service capability: CLONE_VOLUME
+I0618 07:27:00.674786 1076117 driver.go:81] Enabling controller service capability: EXPAND_VOLUME
+I0618 07:27:00.674790 1076117 driver.go:81] Enabling controller service capability: LIST_VOLUMES
+I0618 07:27:00.674795 1076117 driver.go:81] Enabling controller service capability: LIST_VOLUMES_PUBLISHED_NODES
+I0618 07:27:00.674801 1076117 driver.go:100] Enabling volume access mode: SINGLE_NODE_WRITER
+=== RUN   TestDeleteSnapshot/Valid_delete_Snapshot_
+I0618 07:27:00.698876 1076117 driver.go:81] Enabling controller service capability: CREATE_DELETE_VOLUME
+I0618 07:27:00.698902 1076117 driver.go:81] Enabling controller service capability: PUBLISH_UNPUBLISH_VOLUME
+I0618 07:27:00.698908 1076117 driver.go:81] Enabling controller service capability: CREATE_DELETE_SNAPSHOT
+I0618 07:27:00.698913 1076117 driver.go:81] Enabling controller service capability: LIST_SNAPSHOTS
+I0618 07:27:00.698918 1076117 driver.go:81] Enabling controller service capability: CLONE_VOLUME
+I0618 07:27:00.698924 1076117 driver.go:81] Enabling controller service capability: EXPAND_VOLUME
+I0618 07:27:00.698930 1076117 driver.go:81] Enabling controller service capability: LIST_VOLUMES
+I0618 07:27:00.698938 1076117 driver.go:81] Enabling controller service capability: LIST_VOLUMES_PUBLISHED_NODES
+I0618 07:27:00.698944 1076117 driver.go:100] Enabling volume access mode: SINGLE_NODE_WRITER
+--- PASS: TestDeleteSnapshot (0.09s)
+    --- PASS: TestDeleteSnapshot/Snapshot_ID_missing (0.02s)
+    --- PASS: TestDeleteSnapshot/Snapshot_ID_invalid (0.02s)
+    --- PASS: TestDeleteSnapshot/delete_Snapshot_error (0.02s)
+    --- PASS: TestDeleteSnapshot/Valid_delete_Snapshot_ (0.02s)
+=== RUN   TestGetSnapshotByID
+=== RUN   TestGetSnapshotByID/snapshotID_not_valid
+I0618 07:27:00.710533 1076117 driver.go:81] Enabling controller service capability: CREATE_DELETE_VOLUME
+I0618 07:27:00.710553 1076117 driver.go:81] Enabling controller service capability: PUBLISH_UNPUBLISH_VOLUME
+I0618 07:27:00.710558 1076117 driver.go:81] Enabling controller service capability: CREATE_DELETE_SNAPSHOT
+I0618 07:27:00.710563 1076117 driver.go:81] Enabling controller service capability: LIST_SNAPSHOTS
+I0618 07:27:00.710568 1076117 driver.go:81] Enabling controller service capability: CLONE_VOLUME
+I0618 07:27:00.710573 1076117 driver.go:81] Enabling controller service capability: EXPAND_VOLUME
+I0618 07:27:00.710577 1076117 driver.go:81] Enabling controller service capability: LIST_VOLUMES
+I0618 07:27:00.710582 1076117 driver.go:81] Enabling controller service capability: LIST_VOLUMES_PUBLISHED_NODES
+I0618 07:27:00.710587 1076117 driver.go:100] Enabling volume access mode: SINGLE_NODE_WRITER
+=== RUN   TestGetSnapshotByID/snapshot_get_error
+I0618 07:27:00.716226 1076117 driver.go:81] Enabling controller service capability: CREATE_DELETE_VOLUME
+I0618 07:27:00.716251 1076117 driver.go:81] Enabling controller service capability: PUBLISH_UNPUBLISH_VOLUME
+I0618 07:27:00.716258 1076117 driver.go:81] Enabling controller service capability: CREATE_DELETE_SNAPSHOT
+I0618 07:27:00.716268 1076117 driver.go:81] Enabling controller service capability: LIST_SNAPSHOTS
+I0618 07:27:00.716272 1076117 driver.go:81] Enabling controller service capability: CLONE_VOLUME
+I0618 07:27:00.716277 1076117 driver.go:81] Enabling controller service capability: EXPAND_VOLUME
+I0618 07:27:00.716282 1076117 driver.go:81] Enabling controller service capability: LIST_VOLUMES
+I0618 07:27:00.716286 1076117 driver.go:81] Enabling controller service capability: LIST_VOLUMES_PUBLISHED_NODES
+I0618 07:27:00.716293 1076117 driver.go:100] Enabling volume access mode: SINGLE_NODE_WRITER
+--- PASS: TestGetSnapshotByID (0.02s)
+    --- PASS: TestGetSnapshotByID/snapshotID_not_valid (0.01s)
+    --- PASS: TestGetSnapshotByID/snapshot_get_error (0.01s)
+=== RUN   TestListSnapshots
+=== RUN   TestListSnapshots/snapshotID_not_valid
+I0618 07:27:00.726205 1076117 driver.go:81] Enabling controller service capability: CREATE_DELETE_VOLUME
+I0618 07:27:00.726220 1076117 driver.go:81] Enabling controller service capability: PUBLISH_UNPUBLISH_VOLUME
+I0618 07:27:00.726229 1076117 driver.go:81] Enabling controller service capability: CREATE_DELETE_SNAPSHOT
+I0618 07:27:00.726233 1076117 driver.go:81] Enabling controller service capability: LIST_SNAPSHOTS
+I0618 07:27:00.726236 1076117 driver.go:81] Enabling controller service capability: CLONE_VOLUME
+I0618 07:27:00.726239 1076117 driver.go:81] Enabling controller service capability: EXPAND_VOLUME
+I0618 07:27:00.726242 1076117 driver.go:81] Enabling controller service capability: LIST_VOLUMES
+I0618 07:27:00.726245 1076117 driver.go:81] Enabling controller service capability: LIST_VOLUMES_PUBLISHED_NODES
+I0618 07:27:00.726250 1076117 driver.go:100] Enabling volume access mode: SINGLE_NODE_WRITER
+=== RUN   TestListSnapshots/valid_List
+I0618 07:27:00.730798 1076117 driver.go:81] Enabling controller service capability: CREATE_DELETE_VOLUME
+I0618 07:27:00.730819 1076117 driver.go:81] Enabling controller service capability: PUBLISH_UNPUBLISH_VOLUME
+I0618 07:27:00.730826 1076117 driver.go:81] Enabling controller service capability: CREATE_DELETE_SNAPSHOT
+I0618 07:27:00.730831 1076117 driver.go:81] Enabling controller service capability: LIST_SNAPSHOTS
+I0618 07:27:00.730839 1076117 driver.go:81] Enabling controller service capability: CLONE_VOLUME
+I0618 07:27:00.730845 1076117 driver.go:81] Enabling controller service capability: EXPAND_VOLUME
+I0618 07:27:00.730849 1076117 driver.go:81] Enabling controller service capability: LIST_VOLUMES
+I0618 07:27:00.730855 1076117 driver.go:81] Enabling controller service capability: LIST_VOLUMES_PUBLISHED_NODES
+I0618 07:27:00.730861 1076117 driver.go:100] Enabling volume access mode: SINGLE_NODE_WRITER
+=== RUN   TestListSnapshots/List_resource_error
+I0618 07:27:00.736074 1076117 driver.go:81] Enabling controller service capability: CREATE_DELETE_VOLUME
+I0618 07:27:00.736090 1076117 driver.go:81] Enabling controller service capability: PUBLISH_UNPUBLISH_VOLUME
+I0618 07:27:00.736096 1076117 driver.go:81] Enabling controller service capability: CREATE_DELETE_SNAPSHOT
+I0618 07:27:00.736101 1076117 driver.go:81] Enabling controller service capability: LIST_SNAPSHOTS
+I0618 07:27:00.736107 1076117 driver.go:81] Enabling controller service capability: CLONE_VOLUME
+I0618 07:27:00.736112 1076117 driver.go:81] Enabling controller service capability: EXPAND_VOLUME
+I0618 07:27:00.736117 1076117 driver.go:81] Enabling controller service capability: LIST_VOLUMES
+I0618 07:27:00.736122 1076117 driver.go:81] Enabling controller service capability: LIST_VOLUMES_PUBLISHED_NODES
+I0618 07:27:00.736128 1076117 driver.go:100] Enabling volume access mode: SINGLE_NODE_WRITER
+=== RUN   TestListSnapshots/snapshot_property_nil
+I0618 07:27:00.739962 1076117 driver.go:81] Enabling controller service capability: CREATE_DELETE_VOLUME
+I0618 07:27:00.739981 1076117 driver.go:81] Enabling controller service capability: PUBLISH_UNPUBLISH_VOLUME
+I0618 07:27:00.739987 1076117 driver.go:81] Enabling controller service capability: CREATE_DELETE_SNAPSHOT
+I0618 07:27:00.739992 1076117 driver.go:81] Enabling controller service capability: LIST_SNAPSHOTS
+I0618 07:27:00.739997 1076117 driver.go:81] Enabling controller service capability: CLONE_VOLUME
+I0618 07:27:00.740005 1076117 driver.go:81] Enabling controller service capability: EXPAND_VOLUME
+I0618 07:27:00.740010 1076117 driver.go:81] Enabling controller service capability: LIST_VOLUMES
+I0618 07:27:00.740014 1076117 driver.go:81] Enabling controller service capability: LIST_VOLUMES_PUBLISHED_NODES
+I0618 07:27:00.740020 1076117 driver.go:100] Enabling volume access mode: SINGLE_NODE_WRITER
+=== RUN   TestListSnapshots/List_snapshots_when_source_volumeId_is_given
+I0618 07:27:00.744895 1076117 driver.go:81] Enabling controller service capability: CREATE_DELETE_VOLUME
+I0618 07:27:00.744911 1076117 driver.go:81] Enabling controller service capability: PUBLISH_UNPUBLISH_VOLUME
+I0618 07:27:00.744917 1076117 driver.go:81] Enabling controller service capability: CREATE_DELETE_SNAPSHOT
+I0618 07:27:00.744922 1076117 driver.go:81] Enabling controller service capability: LIST_SNAPSHOTS
+I0618 07:27:00.744927 1076117 driver.go:81] Enabling controller service capability: CLONE_VOLUME
+I0618 07:27:00.744931 1076117 driver.go:81] Enabling controller service capability: EXPAND_VOLUME
+I0618 07:27:00.744936 1076117 driver.go:81] Enabling controller service capability: LIST_VOLUMES
+I0618 07:27:00.744941 1076117 driver.go:81] Enabling controller service capability: LIST_VOLUMES_PUBLISHED_NODES
+I0618 07:27:00.744946 1076117 driver.go:100] Enabling volume access mode: SINGLE_NODE_WRITER
+--- PASS: TestListSnapshots (0.03s)
+    --- PASS: TestListSnapshots/snapshotID_not_valid (0.01s)
+    --- PASS: TestListSnapshots/valid_List (0.00s)
+    --- PASS: TestListSnapshots/List_resource_error (0.01s)
+    --- PASS: TestListSnapshots/snapshot_property_nil (0.00s)
+    --- PASS: TestListSnapshots/List_snapshots_when_source_volumeId_is_given (0.00s)
+=== RUN   TestGetCapacity
+I0618 07:27:00.749827 1076117 driver.go:81] Enabling controller service capability: CREATE_DELETE_VOLUME
+I0618 07:27:00.749846 1076117 driver.go:81] Enabling controller service capability: PUBLISH_UNPUBLISH_VOLUME
+I0618 07:27:00.749852 1076117 driver.go:81] Enabling controller service capability: CREATE_DELETE_SNAPSHOT
+I0618 07:27:00.749857 1076117 driver.go:81] Enabling controller service capability: LIST_SNAPSHOTS
+I0618 07:27:00.749861 1076117 driver.go:81] Enabling controller service capability: CLONE_VOLUME
+I0618 07:27:00.749867 1076117 driver.go:81] Enabling controller service capability: EXPAND_VOLUME
+I0618 07:27:00.749871 1076117 driver.go:81] Enabling controller service capability: LIST_VOLUMES
+I0618 07:27:00.749875 1076117 driver.go:81] Enabling controller service capability: LIST_VOLUMES_PUBLISHED_NODES
+I0618 07:27:00.749881 1076117 driver.go:100] Enabling volume access mode: SINGLE_NODE_WRITER
+--- PASS: TestGetCapacity (0.00s)
+=== RUN   TestListVolumes
+=== RUN   TestListVolumes/When_no_KubeClient_exists,_Valid_list_without_max_entries_or_starting_token
+I0618 07:27:00.757044 1076117 driver.go:81] Enabling controller service capability: CREATE_DELETE_VOLUME
+I0618 07:27:00.757062 1076117 driver.go:81] Enabling controller service capability: PUBLISH_UNPUBLISH_VOLUME
+I0618 07:27:00.757067 1076117 driver.go:81] Enabling controller service capability: CREATE_DELETE_SNAPSHOT
+I0618 07:27:00.757072 1076117 driver.go:81] Enabling controller service capability: LIST_SNAPSHOTS
+I0618 07:27:00.757077 1076117 driver.go:81] Enabling controller service capability: CLONE_VOLUME
+I0618 07:27:00.757082 1076117 driver.go:81] Enabling controller service capability: EXPAND_VOLUME
+I0618 07:27:00.757086 1076117 driver.go:81] Enabling controller service capability: LIST_VOLUMES
+I0618 07:27:00.757090 1076117 driver.go:81] Enabling controller service capability: LIST_VOLUMES_PUBLISHED_NODES
+I0618 07:27:00.757096 1076117 driver.go:100] Enabling volume access mode: SINGLE_NODE_WRITER
+=== RUN   TestListVolumes/When_no_KubeClient_exists,_Valid_list_with_max_entries
+I0618 07:27:00.766366 1076117 driver.go:81] Enabling controller service capability: CREATE_DELETE_VOLUME
+I0618 07:27:00.766386 1076117 driver.go:81] Enabling controller service capability: PUBLISH_UNPUBLISH_VOLUME
+I0618 07:27:00.766392 1076117 driver.go:81] Enabling controller service capability: CREATE_DELETE_SNAPSHOT
+I0618 07:27:00.766397 1076117 driver.go:81] Enabling controller service capability: LIST_SNAPSHOTS
+I0618 07:27:00.766402 1076117 driver.go:81] Enabling controller service capability: CLONE_VOLUME
+I0618 07:27:00.766408 1076117 driver.go:81] Enabling controller service capability: EXPAND_VOLUME
+I0618 07:27:00.766413 1076117 driver.go:81] Enabling controller service capability: LIST_VOLUMES
+I0618 07:27:00.766418 1076117 driver.go:81] Enabling controller service capability: LIST_VOLUMES_PUBLISHED_NODES
+I0618 07:27:00.766424 1076117 driver.go:100] Enabling volume access mode: SINGLE_NODE_WRITER
+=== RUN   TestListVolumes/When_no_KubeClient_exists,_Valid_list_with_max_entries_and_starting_token
+I0618 07:27:00.771026 1076117 driver.go:81] Enabling controller service capability: CREATE_DELETE_VOLUME
+I0618 07:27:00.771043 1076117 driver.go:81] Enabling controller service capability: PUBLISH_UNPUBLISH_VOLUME
+I0618 07:27:00.771048 1076117 driver.go:81] Enabling controller service capability: CREATE_DELETE_SNAPSHOT
+I0618 07:27:00.771053 1076117 driver.go:81] Enabling controller service capability: LIST_SNAPSHOTS
+I0618 07:27:00.771058 1076117 driver.go:81] Enabling controller service capability: CLONE_VOLUME
+I0618 07:27:00.771064 1076117 driver.go:81] Enabling controller service capability: EXPAND_VOLUME
+I0618 07:27:00.771072 1076117 driver.go:81] Enabling controller service capability: LIST_VOLUMES
+I0618 07:27:00.771077 1076117 driver.go:81] Enabling controller service capability: LIST_VOLUMES_PUBLISHED_NODES
+I0618 07:27:00.771083 1076117 driver.go:100] Enabling volume access mode: SINGLE_NODE_WRITER
+=== RUN   TestListVolumes/When_no_KubeClient_exists,_ListVolumes_request_with_starting_token_but_no_entries_in_response
+I0618 07:27:00.775369 1076117 driver.go:81] Enabling controller service capability: CREATE_DELETE_VOLUME
+I0618 07:27:00.775384 1076117 driver.go:81] Enabling controller service capability: PUBLISH_UNPUBLISH_VOLUME
+I0618 07:27:00.775390 1076117 driver.go:81] Enabling controller service capability: CREATE_DELETE_SNAPSHOT
+I0618 07:27:00.775395 1076117 driver.go:81] Enabling controller service capability: LIST_SNAPSHOTS
+I0618 07:27:00.775400 1076117 driver.go:81] Enabling controller service capability: CLONE_VOLUME
+I0618 07:27:00.775405 1076117 driver.go:81] Enabling controller service capability: EXPAND_VOLUME
+I0618 07:27:00.775410 1076117 driver.go:81] Enabling controller service capability: LIST_VOLUMES
+I0618 07:27:00.775415 1076117 driver.go:81] Enabling controller service capability: LIST_VOLUMES_PUBLISHED_NODES
+I0618 07:27:00.775421 1076117 driver.go:100] Enabling volume access mode: SINGLE_NODE_WRITER
+=== RUN   TestListVolumes/When_no_KubeClient_exists,_ListVolumes_list_resource_error
+I0618 07:27:00.779594 1076117 driver.go:81] Enabling controller service capability: CREATE_DELETE_VOLUME
+I0618 07:27:00.779608 1076117 driver.go:81] Enabling controller service capability: PUBLISH_UNPUBLISH_VOLUME
+I0618 07:27:00.779613 1076117 driver.go:81] Enabling controller service capability: CREATE_DELETE_SNAPSHOT
+I0618 07:27:00.779618 1076117 driver.go:81] Enabling controller service capability: LIST_SNAPSHOTS
+I0618 07:27:00.779623 1076117 driver.go:81] Enabling controller service capability: CLONE_VOLUME
+I0618 07:27:00.779628 1076117 driver.go:81] Enabling controller service capability: EXPAND_VOLUME
+I0618 07:27:00.779633 1076117 driver.go:81] Enabling controller service capability: LIST_VOLUMES
+I0618 07:27:00.779638 1076117 driver.go:81] Enabling controller service capability: LIST_VOLUMES_PUBLISHED_NODES
+I0618 07:27:00.779643 1076117 driver.go:100] Enabling volume access mode: SINGLE_NODE_WRITER
+=== RUN   TestListVolumes/When_KubeClient_exists,_Empty_list_without_start_token_should_not_return_error
+I0618 07:27:00.783140 1076117 driver.go:81] Enabling controller service capability: CREATE_DELETE_VOLUME
+I0618 07:27:00.783152 1076117 driver.go:81] Enabling controller service capability: PUBLISH_UNPUBLISH_VOLUME
+I0618 07:27:00.783155 1076117 driver.go:81] Enabling controller service capability: CREATE_DELETE_SNAPSHOT
+I0618 07:27:00.783158 1076117 driver.go:81] Enabling controller service capability: LIST_SNAPSHOTS
+I0618 07:27:00.783162 1076117 driver.go:81] Enabling controller service capability: CLONE_VOLUME
+I0618 07:27:00.783164 1076117 driver.go:81] Enabling controller service capability: EXPAND_VOLUME
+I0618 07:27:00.783167 1076117 driver.go:81] Enabling controller service capability: LIST_VOLUMES
+I0618 07:27:00.783170 1076117 driver.go:81] Enabling controller service capability: LIST_VOLUMES_PUBLISHED_NODES
+I0618 07:27:00.783174 1076117 driver.go:100] Enabling volume access mode: SINGLE_NODE_WRITER
+=== RUN   TestListVolumes/When_KubeClient_exists,_Valid_list_without_max_entries_or_starting_token
+I0618 07:27:00.788937 1076117 driver.go:81] Enabling controller service capability: CREATE_DELETE_VOLUME
+I0618 07:27:00.788956 1076117 driver.go:81] Enabling controller service capability: PUBLISH_UNPUBLISH_VOLUME
+I0618 07:27:00.788963 1076117 driver.go:81] Enabling controller service capability: CREATE_DELETE_SNAPSHOT
+I0618 07:27:00.788972 1076117 driver.go:81] Enabling controller service capability: LIST_SNAPSHOTS
+I0618 07:27:00.788979 1076117 driver.go:81] Enabling controller service capability: CLONE_VOLUME
+I0618 07:27:00.788986 1076117 driver.go:81] Enabling controller service capability: EXPAND_VOLUME
+I0618 07:27:00.788992 1076117 driver.go:81] Enabling controller service capability: LIST_VOLUMES
+I0618 07:27:00.788998 1076117 driver.go:81] Enabling controller service capability: LIST_VOLUMES_PUBLISHED_NODES
+I0618 07:27:00.789005 1076117 driver.go:100] Enabling volume access mode: SINGLE_NODE_WRITER
+=== RUN   TestListVolumes/When_KubeClient_exists,_Valid_list_with_max_entries
+I0618 07:27:00.794310 1076117 driver.go:81] Enabling controller service capability: CREATE_DELETE_VOLUME
+I0618 07:27:00.794326 1076117 driver.go:81] Enabling controller service capability: PUBLISH_UNPUBLISH_VOLUME
+I0618 07:27:00.794331 1076117 driver.go:81] Enabling controller service capability: CREATE_DELETE_SNAPSHOT
+I0618 07:27:00.794336 1076117 driver.go:81] Enabling controller service capability: LIST_SNAPSHOTS
+I0618 07:27:00.794341 1076117 driver.go:81] Enabling controller service capability: CLONE_VOLUME
+I0618 07:27:00.794346 1076117 driver.go:81] Enabling controller service capability: EXPAND_VOLUME
+I0618 07:27:00.794350 1076117 driver.go:81] Enabling controller service capability: LIST_VOLUMES
+I0618 07:27:00.794355 1076117 driver.go:81] Enabling controller service capability: LIST_VOLUMES_PUBLISHED_NODES
+I0618 07:27:00.794361 1076117 driver.go:100] Enabling volume access mode: SINGLE_NODE_WRITER
+=== RUN   TestListVolumes/When_KubeClient_exists,_Valid_list_with_max_entries_and_starting_token
+I0618 07:27:00.797627 1076117 driver.go:81] Enabling controller service capability: CREATE_DELETE_VOLUME
+I0618 07:27:00.797637 1076117 driver.go:81] Enabling controller service capability: PUBLISH_UNPUBLISH_VOLUME
+I0618 07:27:00.797641 1076117 driver.go:81] Enabling controller service capability: CREATE_DELETE_SNAPSHOT
+I0618 07:27:00.797644 1076117 driver.go:81] Enabling controller service capability: LIST_SNAPSHOTS
+I0618 07:27:00.797647 1076117 driver.go:81] Enabling controller service capability: CLONE_VOLUME
+I0618 07:27:00.797650 1076117 driver.go:81] Enabling controller service capability: EXPAND_VOLUME
+I0618 07:27:00.797653 1076117 driver.go:81] Enabling controller service capability: LIST_VOLUMES
+I0618 07:27:00.797656 1076117 driver.go:81] Enabling controller service capability: LIST_VOLUMES_PUBLISHED_NODES
+I0618 07:27:00.797659 1076117 driver.go:100] Enabling volume access mode: SINGLE_NODE_WRITER
+=== RUN   TestListVolumes/When_KubeClient_exists,_ListVolumes_request_with_starting_token_but_no_entries_in_response
+I0618 07:27:00.800823 1076117 driver.go:81] Enabling controller service capability: CREATE_DELETE_VOLUME
+I0618 07:27:00.800837 1076117 driver.go:81] Enabling controller service capability: PUBLISH_UNPUBLISH_VOLUME
+I0618 07:27:00.800842 1076117 driver.go:81] Enabling controller service capability: CREATE_DELETE_SNAPSHOT
+I0618 07:27:00.800847 1076117 driver.go:81] Enabling controller service capability: LIST_SNAPSHOTS
+I0618 07:27:00.800853 1076117 driver.go:81] Enabling controller service capability: CLONE_VOLUME
+I0618 07:27:00.800859 1076117 driver.go:81] Enabling controller service capability: EXPAND_VOLUME
+I0618 07:27:00.800864 1076117 driver.go:81] Enabling controller service capability: LIST_VOLUMES
+I0618 07:27:00.800868 1076117 driver.go:81] Enabling controller service capability: LIST_VOLUMES_PUBLISHED_NODES
+I0618 07:27:00.800873 1076117 driver.go:100] Enabling volume access mode: SINGLE_NODE_WRITER
+=== RUN   TestListVolumes/When_KubeClient_exists,_ListVolumes_list_pv_error
+I0618 07:27:00.803907 1076117 driver.go:81] Enabling controller service capability: CREATE_DELETE_VOLUME
+I0618 07:27:00.803918 1076117 driver.go:81] Enabling controller service capability: PUBLISH_UNPUBLISH_VOLUME
+I0618 07:27:00.803925 1076117 driver.go:81] Enabling controller service capability: CREATE_DELETE_SNAPSHOT
+I0618 07:27:00.803928 1076117 driver.go:81] Enabling controller service capability: LIST_SNAPSHOTS
+I0618 07:27:00.803931 1076117 driver.go:81] Enabling controller service capability: CLONE_VOLUME
+I0618 07:27:00.803934 1076117 driver.go:81] Enabling controller service capability: EXPAND_VOLUME
+I0618 07:27:00.803937 1076117 driver.go:81] Enabling controller service capability: LIST_VOLUMES
+I0618 07:27:00.803940 1076117 driver.go:81] Enabling controller service capability: LIST_VOLUMES_PUBLISHED_NODES
+I0618 07:27:00.803943 1076117 driver.go:100] Enabling volume access mode: SINGLE_NODE_WRITER
+--- PASS: TestListVolumes (0.05s)
+    --- PASS: TestListVolumes/When_no_KubeClient_exists,_Valid_list_without_max_entries_or_starting_token (0.01s)
+    --- PASS: TestListVolumes/When_no_KubeClient_exists,_Valid_list_with_max_entries (0.01s)
+    --- PASS: TestListVolumes/When_no_KubeClient_exists,_Valid_list_with_max_entries_and_starting_token (0.00s)
+    --- PASS: TestListVolumes/When_no_KubeClient_exists,_ListVolumes_request_with_starting_token_but_no_entries_in_response (0.00s)
+    --- PASS: TestListVolumes/When_no_KubeClient_exists,_ListVolumes_list_resource_error (0.00s)
+    --- PASS: TestListVolumes/When_KubeClient_exists,_Empty_list_without_start_token_should_not_return_error (0.00s)
+    --- PASS: TestListVolumes/When_KubeClient_exists,_Valid_list_without_max_entries_or_starting_token (0.01s)
+    --- PASS: TestListVolumes/When_KubeClient_exists,_Valid_list_with_max_entries (0.01s)
+    --- PASS: TestListVolumes/When_KubeClient_exists,_Valid_list_with_max_entries_and_starting_token (0.00s)
+    --- PASS: TestListVolumes/When_KubeClient_exists,_ListVolumes_request_with_starting_token_but_no_entries_in_response (0.00s)
+    --- PASS: TestListVolumes/When_KubeClient_exists,_ListVolumes_list_pv_error (0.00s)
+=== RUN   TestValidateVolumeCapabilities
+=== RUN   TestValidateVolumeCapabilities/Volume_ID_missing_
+I0618 07:27:00.810036 1076117 driver.go:81] Enabling controller service capability: CREATE_DELETE_VOLUME
+I0618 07:27:00.810048 1076117 driver.go:81] Enabling controller service capability: PUBLISH_UNPUBLISH_VOLUME
+I0618 07:27:00.810051 1076117 driver.go:81] Enabling controller service capability: CREATE_DELETE_SNAPSHOT
+I0618 07:27:00.810054 1076117 driver.go:81] Enabling controller service capability: LIST_SNAPSHOTS
+I0618 07:27:00.810058 1076117 driver.go:81] Enabling controller service capability: CLONE_VOLUME
+I0618 07:27:00.810061 1076117 driver.go:81] Enabling controller service capability: EXPAND_VOLUME
+I0618 07:27:00.810064 1076117 driver.go:81] Enabling controller service capability: LIST_VOLUMES
+I0618 07:27:00.810066 1076117 driver.go:81] Enabling controller service capability: LIST_VOLUMES_PUBLISHED_NODES
+I0618 07:27:00.810070 1076117 driver.go:100] Enabling volume access mode: SINGLE_NODE_WRITER
+=== RUN   TestValidateVolumeCapabilities/Volume_capabilities_missing_
+I0618 07:27:00.812700 1076117 driver.go:81] Enabling controller service capability: CREATE_DELETE_VOLUME
+I0618 07:27:00.812714 1076117 driver.go:81] Enabling controller service capability: PUBLISH_UNPUBLISH_VOLUME
+I0618 07:27:00.812739 1076117 driver.go:81] Enabling controller service capability: CREATE_DELETE_SNAPSHOT
+I0618 07:27:00.812750 1076117 driver.go:81] Enabling controller service capability: LIST_SNAPSHOTS
+I0618 07:27:00.812754 1076117 driver.go:81] Enabling controller service capability: CLONE_VOLUME
+I0618 07:27:00.812759 1076117 driver.go:81] Enabling controller service capability: EXPAND_VOLUME
+I0618 07:27:00.812763 1076117 driver.go:81] Enabling controller service capability: LIST_VOLUMES
+I0618 07:27:00.812768 1076117 driver.go:81] Enabling controller service capability: LIST_VOLUMES_PUBLISHED_NODES
+I0618 07:27:00.812773 1076117 driver.go:100] Enabling volume access mode: SINGLE_NODE_WRITER
+=== RUN   TestValidateVolumeCapabilities/check_disk_err_
+I0618 07:27:00.816180 1076117 driver.go:81] Enabling controller service capability: CREATE_DELETE_VOLUME
+I0618 07:27:00.816194 1076117 driver.go:81] Enabling controller service capability: PUBLISH_UNPUBLISH_VOLUME
+I0618 07:27:00.816199 1076117 driver.go:81] Enabling controller service capability: CREATE_DELETE_SNAPSHOT
+I0618 07:27:00.816203 1076117 driver.go:81] Enabling controller service capability: LIST_SNAPSHOTS
+I0618 07:27:00.816208 1076117 driver.go:81] Enabling controller service capability: CLONE_VOLUME
+I0618 07:27:00.816212 1076117 driver.go:81] Enabling controller service capability: EXPAND_VOLUME
+I0618 07:27:00.816218 1076117 driver.go:81] Enabling controller service capability: LIST_VOLUMES
+I0618 07:27:00.816223 1076117 driver.go:81] Enabling controller service capability: LIST_VOLUMES_PUBLISHED_NODES
+I0618 07:27:00.816230 1076117 driver.go:100] Enabling volume access mode: SINGLE_NODE_WRITER
+=== RUN   TestValidateVolumeCapabilities/invalid_req_
+I0618 07:27:00.819252 1076117 driver.go:81] Enabling controller service capability: CREATE_DELETE_VOLUME
+I0618 07:27:00.819267 1076117 driver.go:81] Enabling controller service capability: PUBLISH_UNPUBLISH_VOLUME
+I0618 07:27:00.819272 1076117 driver.go:81] Enabling controller service capability: CREATE_DELETE_SNAPSHOT
+I0618 07:27:00.819277 1076117 driver.go:81] Enabling controller service capability: LIST_SNAPSHOTS
+I0618 07:27:00.819282 1076117 driver.go:81] Enabling controller service capability: CLONE_VOLUME
+I0618 07:27:00.819286 1076117 driver.go:81] Enabling controller service capability: EXPAND_VOLUME
+I0618 07:27:00.819290 1076117 driver.go:81] Enabling controller service capability: LIST_VOLUMES
+I0618 07:27:00.819295 1076117 driver.go:81] Enabling controller service capability: LIST_VOLUMES_PUBLISHED_NODES
+I0618 07:27:00.819300 1076117 driver.go:100] Enabling volume access mode: SINGLE_NODE_WRITER
+=== RUN   TestValidateVolumeCapabilities/valid_req_
+I0618 07:27:00.827987 1076117 driver.go:81] Enabling controller service capability: CREATE_DELETE_VOLUME
+I0618 07:27:00.827999 1076117 driver.go:81] Enabling controller service capability: PUBLISH_UNPUBLISH_VOLUME
+I0618 07:27:00.828003 1076117 driver.go:81] Enabling controller service capability: CREATE_DELETE_SNAPSHOT
+I0618 07:27:00.828006 1076117 driver.go:81] Enabling controller service capability: LIST_SNAPSHOTS
+I0618 07:27:00.828009 1076117 driver.go:81] Enabling controller service capability: CLONE_VOLUME
+I0618 07:27:00.828015 1076117 driver.go:81] Enabling controller service capability: EXPAND_VOLUME
+I0618 07:27:00.828018 1076117 driver.go:81] Enabling controller service capability: LIST_VOLUMES
+I0618 07:27:00.828020 1076117 driver.go:81] Enabling controller service capability: LIST_VOLUMES_PUBLISHED_NODES
+I0618 07:27:00.828024 1076117 driver.go:100] Enabling volume access mode: SINGLE_NODE_WRITER
+--- PASS: TestValidateVolumeCapabilities (0.02s)
+    --- PASS: TestValidateVolumeCapabilities/Volume_ID_missing_ (0.01s)
+    --- PASS: TestValidateVolumeCapabilities/Volume_capabilities_missing_ (0.00s)
+    --- PASS: TestValidateVolumeCapabilities/check_disk_err_ (0.00s)
+    --- PASS: TestValidateVolumeCapabilities/invalid_req_ (0.00s)
+    --- PASS: TestValidateVolumeCapabilities/valid_req_ (0.01s)
+=== RUN   TestGetSourceDiskSize
+=== RUN   TestGetSourceDiskSize/max_depth_reached
+I0618 07:27:00.831737 1076117 driver.go:81] Enabling controller service capability: CREATE_DELETE_VOLUME
+I0618 07:27:00.831753 1076117 driver.go:81] Enabling controller service capability: PUBLISH_UNPUBLISH_VOLUME
+I0618 07:27:00.831758 1076117 driver.go:81] Enabling controller service capability: CREATE_DELETE_SNAPSHOT
+I0618 07:27:00.831763 1076117 driver.go:81] Enabling controller service capability: LIST_SNAPSHOTS
+I0618 07:27:00.831767 1076117 driver.go:81] Enabling controller service capability: CLONE_VOLUME
+I0618 07:27:00.831771 1076117 driver.go:81] Enabling controller service capability: EXPAND_VOLUME
+I0618 07:27:00.831776 1076117 driver.go:81] Enabling controller service capability: LIST_VOLUMES
+I0618 07:27:00.831781 1076117 driver.go:81] Enabling controller service capability: LIST_VOLUMES_PUBLISHED_NODES
+I0618 07:27:00.831789 1076117 driver.go:100] Enabling volume access mode: SINGLE_NODE_WRITER
+=== RUN   TestGetSourceDiskSize/diskproperty_not_found
+I0618 07:27:00.834998 1076117 driver.go:81] Enabling controller service capability: CREATE_DELETE_VOLUME
+I0618 07:27:00.835013 1076117 driver.go:81] Enabling controller service capability: PUBLISH_UNPUBLISH_VOLUME
+I0618 07:27:00.835018 1076117 driver.go:81] Enabling controller service capability: CREATE_DELETE_SNAPSHOT
+I0618 07:27:00.835022 1076117 driver.go:81] Enabling controller service capability: LIST_SNAPSHOTS
+I0618 07:27:00.835026 1076117 driver.go:81] Enabling controller service capability: CLONE_VOLUME
+I0618 07:27:00.835031 1076117 driver.go:81] Enabling controller service capability: EXPAND_VOLUME
+I0618 07:27:00.835036 1076117 driver.go:81] Enabling controller service capability: LIST_VOLUMES
+I0618 07:27:00.835042 1076117 driver.go:81] Enabling controller service capability: LIST_VOLUMES_PUBLISHED_NODES
+I0618 07:27:00.835049 1076117 driver.go:100] Enabling volume access mode: SINGLE_NODE_WRITER
+=== RUN   TestGetSourceDiskSize/nil_DiskSizeGB
+I0618 07:27:00.840410 1076117 driver.go:81] Enabling controller service capability: CREATE_DELETE_VOLUME
+I0618 07:27:00.840424 1076117 driver.go:81] Enabling controller service capability: PUBLISH_UNPUBLISH_VOLUME
+I0618 07:27:00.840429 1076117 driver.go:81] Enabling controller service capability: CREATE_DELETE_SNAPSHOT
+I0618 07:27:00.840434 1076117 driver.go:81] Enabling controller service capability: LIST_SNAPSHOTS
+I0618 07:27:00.840441 1076117 driver.go:81] Enabling controller service capability: CLONE_VOLUME
+I0618 07:27:00.840446 1076117 driver.go:81] Enabling controller service capability: EXPAND_VOLUME
+I0618 07:27:00.840450 1076117 driver.go:81] Enabling controller service capability: LIST_VOLUMES
+I0618 07:27:00.840454 1076117 driver.go:81] Enabling controller service capability: LIST_VOLUMES_PUBLISHED_NODES
+I0618 07:27:00.840460 1076117 driver.go:100] Enabling volume access mode: SINGLE_NODE_WRITER
+=== RUN   TestGetSourceDiskSize/successful_search:_depth_1
+I0618 07:27:00.844773 1076117 driver.go:81] Enabling controller service capability: CREATE_DELETE_VOLUME
+I0618 07:27:00.844794 1076117 driver.go:81] Enabling controller service capability: PUBLISH_UNPUBLISH_VOLUME
+I0618 07:27:00.844799 1076117 driver.go:81] Enabling controller service capability: CREATE_DELETE_SNAPSHOT
+I0618 07:27:00.844804 1076117 driver.go:81] Enabling controller service capability: LIST_SNAPSHOTS
+I0618 07:27:00.844808 1076117 driver.go:81] Enabling controller service capability: CLONE_VOLUME
+I0618 07:27:00.844814 1076117 driver.go:81] Enabling controller service capability: EXPAND_VOLUME
+I0618 07:27:00.844818 1076117 driver.go:81] Enabling controller service capability: LIST_VOLUMES
+I0618 07:27:00.844823 1076117 driver.go:81] Enabling controller service capability: LIST_VOLUMES_PUBLISHED_NODES
+I0618 07:27:00.844828 1076117 driver.go:100] Enabling volume access mode: SINGLE_NODE_WRITER
+=== RUN   TestGetSourceDiskSize/successful_search:_depth_2
+I0618 07:27:00.848416 1076117 driver.go:81] Enabling controller service capability: CREATE_DELETE_VOLUME
+I0618 07:27:00.848434 1076117 driver.go:81] Enabling controller service capability: PUBLISH_UNPUBLISH_VOLUME
+I0618 07:27:00.848443 1076117 driver.go:81] Enabling controller service capability: CREATE_DELETE_SNAPSHOT
+I0618 07:27:00.848449 1076117 driver.go:81] Enabling controller service capability: LIST_SNAPSHOTS
+I0618 07:27:00.848453 1076117 driver.go:81] Enabling controller service capability: CLONE_VOLUME
+I0618 07:27:00.848458 1076117 driver.go:81] Enabling controller service capability: EXPAND_VOLUME
+I0618 07:27:00.848463 1076117 driver.go:81] Enabling controller service capability: LIST_VOLUMES
+I0618 07:27:00.848468 1076117 driver.go:81] Enabling controller service capability: LIST_VOLUMES_PUBLISHED_NODES
+I0618 07:27:00.848473 1076117 driver.go:100] Enabling volume access mode: SINGLE_NODE_WRITER
+--- PASS: TestGetSourceDiskSize (0.02s)
+    --- PASS: TestGetSourceDiskSize/max_depth_reached (0.00s)
+    --- PASS: TestGetSourceDiskSize/diskproperty_not_found (0.00s)
+    --- PASS: TestGetSourceDiskSize/nil_DiskSizeGB (0.01s)
+    --- PASS: TestGetSourceDiskSize/successful_search:_depth_1 (0.00s)
+    --- PASS: TestGetSourceDiskSize/successful_search:_depth_2 (0.00s)
+=== RUN   TestIsAsyncAttachEnabled
+--- PASS: TestIsAsyncAttachEnabled (0.00s)
+=== RUN   TestNewFakeDriver
+I0618 07:27:00.852385 1076117 driver.go:81] Enabling controller service capability: CREATE_DELETE_VOLUME
+I0618 07:27:00.852404 1076117 driver.go:81] Enabling controller service capability: PUBLISH_UNPUBLISH_VOLUME
+I0618 07:27:00.852411 1076117 driver.go:81] Enabling controller service capability: CREATE_DELETE_SNAPSHOT
+I0618 07:27:00.852418 1076117 driver.go:81] Enabling controller service capability: LIST_SNAPSHOTS
+I0618 07:27:00.852423 1076117 driver.go:81] Enabling controller service capability: CLONE_VOLUME
+I0618 07:27:00.852430 1076117 driver.go:81] Enabling controller service capability: EXPAND_VOLUME
+I0618 07:27:00.852435 1076117 driver.go:81] Enabling controller service capability: LIST_VOLUMES
+I0618 07:27:00.852442 1076117 driver.go:81] Enabling controller service capability: LIST_VOLUMES_PUBLISHED_NODES
+I0618 07:27:00.852448 1076117 driver.go:100] Enabling volume access mode: SINGLE_NODE_WRITER
+--- PASS: TestNewFakeDriver (0.00s)
+=== RUN   TestGetPluginInfo
+I0618 07:27:00.856544 1076117 driver.go:81] Enabling controller service capability: CREATE_DELETE_VOLUME
+I0618 07:27:00.856563 1076117 driver.go:81] Enabling controller service capability: PUBLISH_UNPUBLISH_VOLUME
+I0618 07:27:00.856568 1076117 driver.go:81] Enabling controller service capability: CREATE_DELETE_SNAPSHOT
+I0618 07:27:00.856573 1076117 driver.go:81] Enabling controller service capability: LIST_SNAPSHOTS
+I0618 07:27:00.856578 1076117 driver.go:81] Enabling controller service capability: CLONE_VOLUME
+I0618 07:27:00.856582 1076117 driver.go:81] Enabling controller service capability: EXPAND_VOLUME
+I0618 07:27:00.856587 1076117 driver.go:81] Enabling controller service capability: LIST_VOLUMES
+I0618 07:27:00.856592 1076117 driver.go:81] Enabling controller service capability: LIST_VOLUMES_PUBLISHED_NODES
+I0618 07:27:00.856597 1076117 driver.go:100] Enabling volume access mode: SINGLE_NODE_WRITER
+I0618 07:27:00.862315 1076117 driver.go:81] Enabling controller service capability: CREATE_DELETE_VOLUME
+I0618 07:27:00.862332 1076117 driver.go:81] Enabling controller service capability: PUBLISH_UNPUBLISH_VOLUME
+I0618 07:27:00.862337 1076117 driver.go:81] Enabling controller service capability: CREATE_DELETE_SNAPSHOT
+I0618 07:27:00.862342 1076117 driver.go:81] Enabling controller service capability: LIST_SNAPSHOTS
+I0618 07:27:00.862346 1076117 driver.go:81] Enabling controller service capability: CLONE_VOLUME
+I0618 07:27:00.862351 1076117 driver.go:81] Enabling controller service capability: EXPAND_VOLUME
+I0618 07:27:00.862356 1076117 driver.go:81] Enabling controller service capability: LIST_VOLUMES
+I0618 07:27:00.862360 1076117 driver.go:81] Enabling controller service capability: LIST_VOLUMES_PUBLISHED_NODES
+I0618 07:27:00.862364 1076117 driver.go:100] Enabling volume access mode: SINGLE_NODE_WRITER
+I0618 07:27:00.869563 1076117 driver.go:81] Enabling controller service capability: CREATE_DELETE_VOLUME
+I0618 07:27:00.869579 1076117 driver.go:81] Enabling controller service capability: PUBLISH_UNPUBLISH_VOLUME
+I0618 07:27:00.869585 1076117 driver.go:81] Enabling controller service capability: CREATE_DELETE_SNAPSHOT
+I0618 07:27:00.869590 1076117 driver.go:81] Enabling controller service capability: LIST_SNAPSHOTS
+I0618 07:27:00.869595 1076117 driver.go:81] Enabling controller service capability: CLONE_VOLUME
+I0618 07:27:00.869600 1076117 driver.go:81] Enabling controller service capability: EXPAND_VOLUME
+I0618 07:27:00.869605 1076117 driver.go:81] Enabling controller service capability: LIST_VOLUMES
+I0618 07:27:00.869610 1076117 driver.go:81] Enabling controller service capability: LIST_VOLUMES_PUBLISHED_NODES
+I0618 07:27:00.869616 1076117 driver.go:100] Enabling volume access mode: SINGLE_NODE_WRITER
+--- PASS: TestGetPluginInfo (0.02s)
+=== RUN   TestProbe
+I0618 07:27:00.873397 1076117 driver.go:81] Enabling controller service capability: CREATE_DELETE_VOLUME
+I0618 07:27:00.873412 1076117 driver.go:81] Enabling controller service capability: PUBLISH_UNPUBLISH_VOLUME
+I0618 07:27:00.873418 1076117 driver.go:81] Enabling controller service capability: CREATE_DELETE_SNAPSHOT
+I0618 07:27:00.873423 1076117 driver.go:81] Enabling controller service capability: LIST_SNAPSHOTS
+I0618 07:27:00.873429 1076117 driver.go:81] Enabling controller service capability: CLONE_VOLUME
+I0618 07:27:00.873434 1076117 driver.go:81] Enabling controller service capability: EXPAND_VOLUME
+I0618 07:27:00.873439 1076117 driver.go:81] Enabling controller service capability: LIST_VOLUMES
+I0618 07:27:00.873443 1076117 driver.go:81] Enabling controller service capability: LIST_VOLUMES_PUBLISHED_NODES
+I0618 07:27:00.873449 1076117 driver.go:100] Enabling volume access mode: SINGLE_NODE_WRITER
+--- PASS: TestProbe (0.00s)
+=== RUN   TestGetPluginCapabilities
+I0618 07:27:00.877131 1076117 driver.go:81] Enabling controller service capability: CREATE_DELETE_VOLUME
+I0618 07:27:00.877146 1076117 driver.go:81] Enabling controller service capability: PUBLISH_UNPUBLISH_VOLUME
+I0618 07:27:00.877151 1076117 driver.go:81] Enabling controller service capability: CREATE_DELETE_SNAPSHOT
+I0618 07:27:00.877159 1076117 driver.go:81] Enabling controller service capability: LIST_SNAPSHOTS
+I0618 07:27:00.877164 1076117 driver.go:81] Enabling controller service capability: CLONE_VOLUME
+I0618 07:27:00.877170 1076117 driver.go:81] Enabling controller service capability: EXPAND_VOLUME
+I0618 07:27:00.877174 1076117 driver.go:81] Enabling controller service capability: LIST_VOLUMES
+I0618 07:27:00.877179 1076117 driver.go:81] Enabling controller service capability: LIST_VOLUMES_PUBLISHED_NODES
+I0618 07:27:00.877185 1076117 driver.go:100] Enabling volume access mode: SINGLE_NODE_WRITER
+--- PASS: TestGetPluginCapabilities (0.00s)
+=== RUN   TestNodeGetCapabilities
+I0618 07:27:00.880827 1076117 driver.go:81] Enabling controller service capability: CREATE_DELETE_VOLUME
+I0618 07:27:00.880841 1076117 driver.go:81] Enabling controller service capability: PUBLISH_UNPUBLISH_VOLUME
+I0618 07:27:00.880847 1076117 driver.go:81] Enabling controller service capability: CREATE_DELETE_SNAPSHOT
+I0618 07:27:00.880852 1076117 driver.go:81] Enabling controller service capability: LIST_SNAPSHOTS
+I0618 07:27:00.880857 1076117 driver.go:81] Enabling controller service capability: CLONE_VOLUME
+I0618 07:27:00.880861 1076117 driver.go:81] Enabling controller service capability: EXPAND_VOLUME
+I0618 07:27:00.880866 1076117 driver.go:81] Enabling controller service capability: LIST_VOLUMES
+I0618 07:27:00.880870 1076117 driver.go:81] Enabling controller service capability: LIST_VOLUMES_PUBLISHED_NODES
+I0618 07:27:00.880876 1076117 driver.go:100] Enabling volume access mode: SINGLE_NODE_WRITER
+--- PASS: TestNodeGetCapabilities (0.00s)
+=== RUN   TestGetMaxDataDiskCount
+--- PASS: TestGetMaxDataDiskCount (0.00s)
+=== RUN   TestEnsureMountPoint
+I0618 07:27:00.885059 1076117 driver.go:81] Enabling controller service capability: CREATE_DELETE_VOLUME
+I0618 07:27:00.885076 1076117 driver.go:81] Enabling controller service capability: PUBLISH_UNPUBLISH_VOLUME
+I0618 07:27:00.885082 1076117 driver.go:81] Enabling controller service capability: CREATE_DELETE_SNAPSHOT
+I0618 07:27:00.885087 1076117 driver.go:81] Enabling controller service capability: LIST_SNAPSHOTS
+I0618 07:27:00.885091 1076117 driver.go:81] Enabling controller service capability: CLONE_VOLUME
+I0618 07:27:00.885096 1076117 driver.go:81] Enabling controller service capability: EXPAND_VOLUME
+I0618 07:27:00.885101 1076117 driver.go:81] Enabling controller service capability: LIST_VOLUMES
+I0618 07:27:00.885106 1076117 driver.go:81] Enabling controller service capability: LIST_VOLUMES_PUBLISHED_NODES
+I0618 07:27:00.885112 1076117 driver.go:100] Enabling volume access mode: SINGLE_NODE_WRITER
+E0618 07:27:00.885191 1076117 nodeserver.go:594] mkdir failed on target: /home/xinyuyuan/go/src/azuredisk-csi-driver/pkg/azuredisk/azuredisk.go (mkdir /home/xinyuyuan/go/src/azuredisk-csi-driver/pkg/azuredisk/azuredisk.go: not a directory)
+--- PASS: TestEnsureMountPoint (0.00s)
+=== RUN   TestNodeGetInfo
+=== RUN   TestNodeGetInfo/[Success]_Get_node_information_for_existing_VM
+I0618 07:27:00.889977 1076117 driver.go:81] Enabling controller service capability: CREATE_DELETE_VOLUME
+I0618 07:27:00.889996 1076117 driver.go:81] Enabling controller service capability: PUBLISH_UNPUBLISH_VOLUME
+I0618 07:27:00.890003 1076117 driver.go:81] Enabling controller service capability: CREATE_DELETE_SNAPSHOT
+I0618 07:27:00.890012 1076117 driver.go:81] Enabling controller service capability: LIST_SNAPSHOTS
+I0618 07:27:00.890018 1076117 driver.go:81] Enabling controller service capability: CLONE_VOLUME
+I0618 07:27:00.890023 1076117 driver.go:81] Enabling controller service capability: EXPAND_VOLUME
+I0618 07:27:00.890029 1076117 driver.go:81] Enabling controller service capability: LIST_VOLUMES
+I0618 07:27:00.890035 1076117 driver.go:81] Enabling controller service capability: LIST_VOLUMES_PUBLISHED_NODES
+I0618 07:27:00.890042 1076117 driver.go:100] Enabling volume access mode: SINGLE_NODE_WRITER
+=== RUN   TestNodeGetInfo/[Failure]_Get_node_information_for_non-existing_VM
+I0618 07:27:00.893446 1076117 driver.go:81] Enabling controller service capability: CREATE_DELETE_VOLUME
+I0618 07:27:00.893460 1076117 driver.go:81] Enabling controller service capability: PUBLISH_UNPUBLISH_VOLUME
+I0618 07:27:00.893465 1076117 driver.go:81] Enabling controller service capability: CREATE_DELETE_SNAPSHOT
+I0618 07:27:00.893470 1076117 driver.go:81] Enabling controller service capability: LIST_SNAPSHOTS
+I0618 07:27:00.893474 1076117 driver.go:81] Enabling controller service capability: CLONE_VOLUME
+I0618 07:27:00.893479 1076117 driver.go:81] Enabling controller service capability: EXPAND_VOLUME
+I0618 07:27:00.893483 1076117 driver.go:81] Enabling controller service capability: LIST_VOLUMES
+I0618 07:27:00.893487 1076117 driver.go:81] Enabling controller service capability: LIST_VOLUMES_PUBLISHED_NODES
+I0618 07:27:00.893570 1076117 driver.go:100] Enabling volume access mode: SINGLE_NODE_WRITER
+W0618 07:27:00.893643 1076117 azure_wrap.go:79] Unable to find node devbox: instance not found
+W0618 07:27:00.893659 1076117 nodeserver.go:339] get zone(fakeNodeID) failed with: instance not found, fall back to get zone from node labels
+--- PASS: TestNodeGetInfo (0.01s)
+    --- PASS: TestNodeGetInfo/[Success]_Get_node_information_for_existing_VM (0.00s)
+    --- PASS: TestNodeGetInfo/[Failure]_Get_node_information_for_non-existing_VM (0.00s)
+=== RUN   TestNodeGetVolumeStats
+I0618 07:27:00.896858 1076117 driver.go:81] Enabling controller service capability: CREATE_DELETE_VOLUME
+I0618 07:27:00.896873 1076117 driver.go:81] Enabling controller service capability: PUBLISH_UNPUBLISH_VOLUME
+I0618 07:27:00.896878 1076117 driver.go:81] Enabling controller service capability: CREATE_DELETE_SNAPSHOT
+I0618 07:27:00.896883 1076117 driver.go:81] Enabling controller service capability: LIST_SNAPSHOTS
+I0618 07:27:00.896888 1076117 driver.go:81] Enabling controller service capability: CLONE_VOLUME
+I0618 07:27:00.896892 1076117 driver.go:81] Enabling controller service capability: EXPAND_VOLUME
+I0618 07:27:00.896896 1076117 driver.go:81] Enabling controller service capability: LIST_VOLUMES
+I0618 07:27:00.896901 1076117 driver.go:81] Enabling controller service capability: LIST_VOLUMES_PUBLISHED_NODES
+I0618 07:27:00.896910 1076117 driver.go:100] Enabling volume access mode: SINGLE_NODE_WRITER
+E0618 07:27:00.896956 1076117 nodeserver.go:449] NodeGetVolumeStats: failed to get volume stats for volume vol_1 path /not/a/real/directory: rpc error: code = NotFound desc = path /not/a/real/directory does not exist
+E0618 07:27:00.897007 1076117 nodeserver.go:449] NodeGetVolumeStats: failed to get volume stats for volume vol_1 path /tmp/fake-volume-path: rpc error: code = NotFound desc = failed to determine whether /tmp/fake-volume-path is block device: host util is not device path
+--- PASS: TestNodeGetVolumeStats (0.00s)
+=== RUN   TestNodeStageVolume
+I0618 07:27:00.899909 1076117 driver.go:81] Enabling controller service capability: CREATE_DELETE_VOLUME
+I0618 07:27:00.899923 1076117 driver.go:81] Enabling controller service capability: PUBLISH_UNPUBLISH_VOLUME
+I0618 07:27:00.899928 1076117 driver.go:81] Enabling controller service capability: CREATE_DELETE_SNAPSHOT
+I0618 07:27:00.899932 1076117 driver.go:81] Enabling controller service capability: LIST_SNAPSHOTS
+I0618 07:27:00.899937 1076117 driver.go:81] Enabling controller service capability: CLONE_VOLUME
+I0618 07:27:00.899942 1076117 driver.go:81] Enabling controller service capability: EXPAND_VOLUME
+I0618 07:27:00.899946 1076117 driver.go:81] Enabling controller service capability: LIST_VOLUMES
+I0618 07:27:00.899951 1076117 driver.go:81] Enabling controller service capability: LIST_VOLUMES_PUBLISHED_NODES
+I0618 07:27:00.899956 1076117 driver.go:100] Enabling volume access mode: SINGLE_NODE_WRITER
+W0618 07:27:00.900272 1076117 azure_common_linux.go:188] azureDisk - getDiskLinkByDevName by sdd under /dev/disk/azure/scsi1/ failed, error: read /dev/disk/azure/scsi1/ error: bad dir
+W0618 07:27:00.900297 1076117 azure_common_linux.go:188] azureDisk - getDiskLinkByDevName by sdd under /dev/disk/by-id/ failed, error: read /dev/disk/by-id/ error: bad dir
+E0618 07:27:00.900358 1076117 nodeserver.go:169] NodeStageVolume: could not determine if volume vol_1 needs to be resized: Failed readonly device check. Expected 1 or 0, got '16106127360'
+W0618 07:27:00.900385 1076117 azure_common_linux.go:188] azureDisk - getDiskLinkByDevName by sdd under /dev/disk/azure/scsi1/ failed, error: read /dev/disk/azure/scsi1/ error: bad dir
+W0618 07:27:00.900399 1076117 azure_common_linux.go:188] azureDisk - getDiskLinkByDevName by sdd under /dev/disk/by-id/ failed, error: read /dev/disk/by-id/ error: bad dir
+W0618 07:27:00.900443 1076117 azure_common_linux.go:188] azureDisk - getDiskLinkByDevName by sdd under /dev/disk/azure/scsi1/ failed, error: read /dev/disk/azure/scsi1/ error: bad dir
+W0618 07:27:00.900459 1076117 azure_common_linux.go:188] azureDisk - getDiskLinkByDevName by sdd under /dev/disk/by-id/ failed, error: read /dev/disk/by-id/ error: bad dir
+W0618 07:27:00.900517 1076117 azure_common_linux.go:188] azureDisk - getDiskLinkByDevName by sdd under /dev/disk/azure/scsi1/ failed, error: read /dev/disk/azure/scsi1/ error: bad dir
+W0618 07:27:00.900531 1076117 azure_common_linux.go:188] azureDisk - getDiskLinkByDevName by sdd under /dev/disk/by-id/ failed, error: read /dev/disk/by-id/ error: bad dir
+I0618 07:27:00.900574 1076117 mount_linux.go:515] Disk "/dev/sdd" appears to be unformatted, attempting to format as type: "ext4" with options: [-F -m0 /dev/sdd]
+I0618 07:27:00.900590 1076117 mount_linux.go:526] Disk successfully formatted (mkfs): ext4 - /dev/sdd /home/xinyuyuan/go/src/azuredisk-csi-driver/pkg/azuredisk/source_test
+E0618 07:27:00.900610 1076117 nodeserver.go:169] NodeStageVolume: could not determine if volume vol_1 needs to be resized: Failed readonly device check. Expected 1 or 0, got ''
+W0618 07:27:00.900656 1076117 azure_common_linux.go:188] azureDisk - getDiskLinkByDevName by sdd under /dev/disk/azure/scsi1/ failed, error: read /dev/disk/azure/scsi1/ error: bad dir
+W0618 07:27:00.900671 1076117 azure_common_linux.go:188] azureDisk - getDiskLinkByDevName by sdd under /dev/disk/by-id/ failed, error: read /dev/disk/by-id/ error: bad dir
+W0618 07:27:00.900714 1076117 azure_common_linux.go:188] azureDisk - getDiskLinkByDevName by sdd under /dev/disk/azure/scsi1/ failed, error: read /dev/disk/azure/scsi1/ error: bad dir
+W0618 07:27:00.900798 1076117 azure_common_linux.go:188] azureDisk - getDiskLinkByDevName by sdd under /dev/disk/by-id/ failed, error: read /dev/disk/by-id/ error: bad dir
+E0618 07:27:00.900847 1076117 nodeserver.go:169] NodeStageVolume: could not determine if volume vol_1 needs to be resized: Failed readonly device check. Expected 1 or 0, got '16106127360'
+--- PASS: TestNodeStageVolume (0.00s)
+=== RUN   TestNodeUnstageVolume
+I0618 07:27:00.904301 1076117 driver.go:81] Enabling controller service capability: CREATE_DELETE_VOLUME
+I0618 07:27:00.904313 1076117 driver.go:81] Enabling controller service capability: PUBLISH_UNPUBLISH_VOLUME
+I0618 07:27:00.904319 1076117 driver.go:81] Enabling controller service capability: CREATE_DELETE_SNAPSHOT
+I0618 07:27:00.904324 1076117 driver.go:81] Enabling controller service capability: LIST_SNAPSHOTS
+I0618 07:27:00.904328 1076117 driver.go:81] Enabling controller service capability: CLONE_VOLUME
+I0618 07:27:00.904333 1076117 driver.go:81] Enabling controller service capability: EXPAND_VOLUME
+I0618 07:27:00.904338 1076117 driver.go:81] Enabling controller service capability: LIST_VOLUMES
+I0618 07:27:00.904342 1076117 driver.go:81] Enabling controller service capability: LIST_VOLUMES_PUBLISHED_NODES
+I0618 07:27:00.904347 1076117 driver.go:100] Enabling volume access mode: SINGLE_NODE_WRITER
+W0618 07:27:00.904478 1076117 mount_helper_common.go:34] Warning: mount cleanup skipped because path does not exist: /home/xinyuyuan/go/src/azuredisk-csi-driver/pkg/azuredisk/abc.go
+--- PASS: TestNodeUnstageVolume (0.00s)
+=== RUN   TestNodePublishVolume
+I0618 07:27:00.907775 1076117 driver.go:81] Enabling controller service capability: CREATE_DELETE_VOLUME
+I0618 07:27:00.907793 1076117 driver.go:81] Enabling controller service capability: PUBLISH_UNPUBLISH_VOLUME
+I0618 07:27:00.907798 1076117 driver.go:81] Enabling controller service capability: CREATE_DELETE_SNAPSHOT
+I0618 07:27:00.907803 1076117 driver.go:81] Enabling controller service capability: LIST_SNAPSHOTS
+I0618 07:27:00.907808 1076117 driver.go:81] Enabling controller service capability: CLONE_VOLUME
+I0618 07:27:00.907813 1076117 driver.go:81] Enabling controller service capability: EXPAND_VOLUME
+I0618 07:27:00.907818 1076117 driver.go:81] Enabling controller service capability: LIST_VOLUMES
+I0618 07:27:00.907824 1076117 driver.go:81] Enabling controller service capability: LIST_VOLUMES_PUBLISHED_NODES
+I0618 07:27:00.907833 1076117 driver.go:100] Enabling volume access mode: SINGLE_NODE_WRITER
+E0618 07:27:00.908058 1076117 nodeserver.go:594] mkdir failed on target: /home/xinyuyuan/go/src/azuredisk-csi-driver/pkg/azuredisk/azuredisk.go (mkdir /home/xinyuyuan/go/src/azuredisk-csi-driver/pkg/azuredisk/azuredisk.go: not a directory)
+--- PASS: TestNodePublishVolume (0.00s)
+=== RUN   TestNodeUnpublishVolume
+I0618 07:27:00.911611 1076117 driver.go:81] Enabling controller service capability: CREATE_DELETE_VOLUME
+I0618 07:27:00.911630 1076117 driver.go:81] Enabling controller service capability: PUBLISH_UNPUBLISH_VOLUME
+I0618 07:27:00.911635 1076117 driver.go:81] Enabling controller service capability: CREATE_DELETE_SNAPSHOT
+I0618 07:27:00.911641 1076117 driver.go:81] Enabling controller service capability: LIST_SNAPSHOTS
+I0618 07:27:00.911646 1076117 driver.go:81] Enabling controller service capability: CLONE_VOLUME
+I0618 07:27:00.911650 1076117 driver.go:81] Enabling controller service capability: EXPAND_VOLUME
+I0618 07:27:00.911655 1076117 driver.go:81] Enabling controller service capability: LIST_VOLUMES
+I0618 07:27:00.911670 1076117 driver.go:81] Enabling controller service capability: LIST_VOLUMES_PUBLISHED_NODES
+I0618 07:27:00.911676 1076117 driver.go:100] Enabling volume access mode: SINGLE_NODE_WRITER
+W0618 07:27:00.911821 1076117 mount_helper_common.go:34] Warning: mount cleanup skipped because path does not exist: /home/xinyuyuan/go/src/azuredisk-csi-driver/pkg/azuredisk/abc.go
+--- PASS: TestNodeUnpublishVolume (0.00s)
+=== RUN   TestNodeExpandVolume
+I0618 07:27:00.914959 1076117 driver.go:81] Enabling controller service capability: CREATE_DELETE_VOLUME
+I0618 07:27:00.914979 1076117 driver.go:81] Enabling controller service capability: PUBLISH_UNPUBLISH_VOLUME
+I0618 07:27:00.914985 1076117 driver.go:81] Enabling controller service capability: CREATE_DELETE_SNAPSHOT
+I0618 07:27:00.914990 1076117 driver.go:81] Enabling controller service capability: LIST_SNAPSHOTS
+I0618 07:27:00.914995 1076117 driver.go:81] Enabling controller service capability: CLONE_VOLUME
+I0618 07:27:00.915000 1076117 driver.go:81] Enabling controller service capability: EXPAND_VOLUME
+I0618 07:27:00.915004 1076117 driver.go:81] Enabling controller service capability: LIST_VOLUMES
+I0618 07:27:00.915009 1076117 driver.go:81] Enabling controller service capability: LIST_VOLUMES_PUBLISHED_NODES
+I0618 07:27:00.915015 1076117 driver.go:100] Enabling volume access mode: SINGLE_NODE_WRITER
+E0618 07:27:00.915204 1076117 nodeserver.go:513] rpc error: code = Internal desc = could not resize volume "test" ("test"):  resize of device test failed: exit status 1. resize2fs output: , will continue checking whether the volume has been resized
+--- PASS: TestNodeExpandVolume (0.00s)
+=== RUN   TestGetBlockSizeBytes
+I0618 07:27:00.918473 1076117 driver.go:81] Enabling controller service capability: CREATE_DELETE_VOLUME
+I0618 07:27:00.918489 1076117 driver.go:81] Enabling controller service capability: PUBLISH_UNPUBLISH_VOLUME
+I0618 07:27:00.918494 1076117 driver.go:81] Enabling controller service capability: CREATE_DELETE_SNAPSHOT
+I0618 07:27:00.918500 1076117 driver.go:81] Enabling controller service capability: LIST_SNAPSHOTS
+I0618 07:27:00.918506 1076117 driver.go:81] Enabling controller service capability: CLONE_VOLUME
+I0618 07:27:00.918512 1076117 driver.go:81] Enabling controller service capability: EXPAND_VOLUME
+I0618 07:27:00.918517 1076117 driver.go:81] Enabling controller service capability: LIST_VOLUMES
+I0618 07:27:00.918522 1076117 driver.go:81] Enabling controller service capability: LIST_VOLUMES_PUBLISHED_NODES
+I0618 07:27:00.918527 1076117 driver.go:100] Enabling volume access mode: SINGLE_NODE_WRITER
+--- PASS: TestGetBlockSizeBytes (0.01s)
+=== RUN   TestEnsureBlockTargetFile
+I0618 07:27:00.926032 1076117 driver.go:81] Enabling controller service capability: CREATE_DELETE_VOLUME
+I0618 07:27:00.926045 1076117 driver.go:81] Enabling controller service capability: PUBLISH_UNPUBLISH_VOLUME
+I0618 07:27:00.926050 1076117 driver.go:81] Enabling controller service capability: CREATE_DELETE_SNAPSHOT
+I0618 07:27:00.926055 1076117 driver.go:81] Enabling controller service capability: LIST_SNAPSHOTS
+I0618 07:27:00.926060 1076117 driver.go:81] Enabling controller service capability: CLONE_VOLUME
+I0618 07:27:00.926065 1076117 driver.go:81] Enabling controller service capability: EXPAND_VOLUME
+I0618 07:27:00.926069 1076117 driver.go:81] Enabling controller service capability: LIST_VOLUMES
+I0618 07:27:00.926074 1076117 driver.go:81] Enabling controller service capability: LIST_VOLUMES_PUBLISHED_NODES
+I0618 07:27:00.926079 1076117 driver.go:100] Enabling volume access mode: SINGLE_NODE_WRITER
+E0618 07:27:00.926509 1076117 nodeserver.go:594] mkdir failed on target: /home/xinyuyuan/go/src/azuredisk-csi-driver/pkg/azuredisk/test (mkdir /home/xinyuyuan/go/src/azuredisk-csi-driver/pkg/azuredisk/test: not a directory)
+--- PASS: TestEnsureBlockTargetFile (0.00s)
+=== RUN   TestMakeDir
+--- PASS: TestMakeDir (0.00s)
+=== RUN   TestGetDevicePathWithLUN
+I0618 07:27:00.954402 1076117 driver.go:81] Enabling controller service capability: CREATE_DELETE_VOLUME
+I0618 07:27:00.954427 1076117 driver.go:81] Enabling controller service capability: PUBLISH_UNPUBLISH_VOLUME
+I0618 07:27:00.954433 1076117 driver.go:81] Enabling controller service capability: CREATE_DELETE_SNAPSHOT
+I0618 07:27:00.954439 1076117 driver.go:81] Enabling controller service capability: LIST_SNAPSHOTS
+I0618 07:27:00.954444 1076117 driver.go:81] Enabling controller service capability: CLONE_VOLUME
+I0618 07:27:00.954449 1076117 driver.go:81] Enabling controller service capability: EXPAND_VOLUME
+I0618 07:27:00.954454 1076117 driver.go:81] Enabling controller service capability: LIST_VOLUMES
+I0618 07:27:00.954459 1076117 driver.go:81] Enabling controller service capability: LIST_VOLUMES_PUBLISHED_NODES
+I0618 07:27:00.954466 1076117 driver.go:100] Enabling volume access mode: SINGLE_NODE_WRITER
+--- PASS: TestGetDevicePathWithLUN (0.03s)
+=== RUN   TestGetDevicePathWithMountPath
+I0618 07:27:00.958264 1076117 driver.go:81] Enabling controller service capability: CREATE_DELETE_VOLUME
+I0618 07:27:00.958281 1076117 driver.go:81] Enabling controller service capability: PUBLISH_UNPUBLISH_VOLUME
+I0618 07:27:00.958287 1076117 driver.go:81] Enabling controller service capability: CREATE_DELETE_SNAPSHOT
+I0618 07:27:00.958292 1076117 driver.go:81] Enabling controller service capability: LIST_SNAPSHOTS
+I0618 07:27:00.958296 1076117 driver.go:81] Enabling controller service capability: CLONE_VOLUME
+I0618 07:27:00.958300 1076117 driver.go:81] Enabling controller service capability: EXPAND_VOLUME
+I0618 07:27:00.958304 1076117 driver.go:81] Enabling controller service capability: LIST_VOLUMES
+I0618 07:27:00.958309 1076117 driver.go:81] Enabling controller service capability: LIST_VOLUMES_PUBLISHED_NODES
+I0618 07:27:00.958315 1076117 driver.go:100] Enabling volume access mode: SINGLE_NODE_WRITER
+--- PASS: TestGetDevicePathWithMountPath (0.02s)
+=== RUN   TestNodePublishVolumeIdempotentMount
+--- PASS: TestNodePublishVolumeIdempotentMount (0.00s)
+=== RUN   TestGetVersion
+--- PASS: TestGetVersion (0.00s)
+=== RUN   TestGetVersionYAML
+--- PASS: TestGetVersionYAML (0.00s)
+=== RUN   TestGetUserAgent
+--- PASS: TestGetUserAgent (0.00s)
+PASS
+coverage: 76.8% of statements
+ok  	sigs.k8s.io/azuredisk-csi-driver/pkg/azuredisk	(cached)	coverage: 76.8% of statements
+?   	sigs.k8s.io/azuredisk-csi-driver/pkg/azuredisk/mockpersistentvolume	[no test files]
+?   	sigs.k8s.io/azuredisk-csi-driver/pkg/azuredisk/mockkubeclient	[no test files]
+?   	sigs.k8s.io/azuredisk-csi-driver/pkg/azurediskplugin	[no test files]
+?   	sigs.k8s.io/azuredisk-csi-driver/pkg/optimization/mockoptimization	[no test files]
+?   	sigs.k8s.io/azuredisk-csi-driver/pkg/os/disk	[no test files]
+=== RUN   TestCheckDiskName
+--- PASS: TestCheckDiskName (0.00s)
+=== RUN   TestGetCachingMode
+--- PASS: TestGetCachingMode (0.00s)
+=== RUN   TestGetKubeConfig
+--- PASS: TestGetKubeConfig (0.00s)
+=== RUN   TestGetCloudProvider
+--- FAIL: TestGetCloudProvider (0.00s)
+panic: runtime error: invalid memory address or nil pointer dereference [recovered]
+	panic: runtime error: invalid memory address or nil pointer dereference
+[signal SIGSEGV: segmentation violation code=0x1 addr=0x18 pc=0x18ec1c4]
+
+goroutine 40 [running]:
+testing.tRunner.func1.2({0x1b22c20, 0x2f7a170})
+	/usr/local/go/src/testing/testing.go:1545 +0x238
+testing.tRunner.func1()
+	/usr/local/go/src/testing/testing.go:1548 +0x397
+panic({0x1b22c20?, 0x2f7a170?})
+	/usr/local/go/src/runtime/panic.go:914 +0x21f
+sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils.TestGetCloudProvider(0xc000105040)
+	/home/xinyuyuan/go/src/azuredisk-csi-driver/pkg/azureutils/azure_disk_utils_test.go:397 +0x7a4
+testing.tRunner(0xc000105040, 0x1f0f700)
+	/usr/local/go/src/testing/testing.go:1595 +0xff
+created by testing.(*T).Run in goroutine 1
+	/usr/local/go/src/testing/testing.go:1648 +0x3ad
+FAIL	sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils	0.034s
+=== RUN   TestNewCSIDriver
+E0618 06:55:40.327626 1051148 driver.go:41] Driver name missing
+E0618 06:55:40.327686 1051148 driver.go:46] NodeID missing
+E0618 06:55:40.327691 1051148 driver.go:51] Version argument missing, now skip it
+--- PASS: TestNewCSIDriver (0.00s)
+=== RUN   TestGetVolumeCapabilityAccessModes
+I0618 06:55:40.327753 1051148 driver.go:100] Enabling volume access mode: SINGLE_NODE_WRITER
+--- PASS: TestGetVolumeCapabilityAccessModes (0.00s)
+=== RUN   TestValidateControllerServiceRequest
+I0618 06:55:40.327801 1051148 driver.go:81] Enabling controller service capability: CREATE_DELETE_VOLUME
+I0618 06:55:40.327810 1051148 driver.go:81] Enabling controller service capability: PUBLISH_UNPUBLISH_VOLUME
+I0618 06:55:40.327818 1051148 driver.go:81] Enabling controller service capability: GET_CAPACITY
+I0618 06:55:40.327825 1051148 driver.go:81] Enabling controller service capability: LIST_VOLUMES
+--- PASS: TestValidateControllerServiceRequest (0.00s)
+=== RUN   TestAddControllerServiceCapabilities
+I0618 06:55:40.327851 1051148 driver.go:81] Enabling controller service capability: CREATE_DELETE_VOLUME
+I0618 06:55:40.327860 1051148 driver.go:81] Enabling controller service capability: PUBLISH_UNPUBLISH_VOLUME
+I0618 06:55:40.327865 1051148 driver.go:81] Enabling controller service capability: GET_CAPACITY
+I0618 06:55:40.327869 1051148 driver.go:81] Enabling controller service capability: LIST_VOLUMES
+--- PASS: TestAddControllerServiceCapabilities (0.00s)
+=== RUN   TestAddCNodeServiceCapabilities
+--- PASS: TestAddCNodeServiceCapabilities (0.00s)
+=== RUN   TestNewFakeCSIDriver
+--- PASS: TestNewFakeCSIDriver (0.00s)
+=== RUN   TestNewNonBlockingGRPCServer
+--- PASS: TestNewNonBlockingGRPCServer (0.00s)
+=== RUN   TestStart
+I0618 06:55:40.829120 1051148 server.go:117] Listening for connections on address: &net.TCPAddr{IP:net.IP{0x7f, 0x0, 0x0, 0x1}, Port:34091, Zone:""}
+--- PASS: TestStart (1.00s)
+=== RUN   TestServe
+I0618 06:55:41.330253 1051148 server.go:117] Listening for connections on address: &net.TCPAddr{IP:net.IP{0x7f, 0x0, 0x0, 0x1}, Port:38905, Zone:""}
+--- PASS: TestServe (1.00s)
+=== RUN   TestWait
+--- PASS: TestWait (0.00s)
+=== RUN   TestStop
+--- PASS: TestStop (0.00s)
+=== RUN   TestForceStop
+--- PASS: TestForceStop (0.00s)
+=== RUN   TestParseEndpoint
+--- PASS: TestParseEndpoint (0.00s)
+=== RUN   TestLogGRPC
+=== RUN   TestLogGRPC/with_secrets
+=== RUN   TestLogGRPC/without_secrets
+--- PASS: TestLogGRPC (0.00s)
+    --- PASS: TestLogGRPC/with_secrets (0.00s)
+    --- PASS: TestLogGRPC/without_secrets (0.00s)
+=== RUN   TestNewControllerServiceCapability
+--- PASS: TestNewControllerServiceCapability (0.00s)
+=== RUN   TestNewNodeServiceCapability
+--- PASS: TestNewNodeServiceCapability (0.00s)
+=== RUN   TestGetLogLevel
+--- PASS: TestGetLogLevel (0.00s)
+PASS
+coverage: 87.6% of statements
+ok  	sigs.k8s.io/azuredisk-csi-driver/pkg/csi-common	(cached)	coverage: 87.6% of statements
+=== RUN   TestNewFakeSafeMounter
+--- PASS: TestNewFakeSafeMounter (0.00s)
+=== RUN   TestMount
+--- PASS: TestMount (0.00s)
+=== RUN   TestMountSensitive
+--- PASS: TestMountSensitive (0.00s)
+=== RUN   TestIsLikelyNotMountPoint
+--- PASS: TestIsLikelyNotMountPoint (0.00s)
+=== RUN   TestSetNextCommandOutputScripts
+--- PASS: TestSetNextCommandOutputScripts (0.00s)
+=== RUN   TestNewSafeMounter
+--- PASS: TestNewSafeMounter (0.01s)
+PASS
+coverage: 85.3% of statements
+ok  	sigs.k8s.io/azuredisk-csi-driver/pkg/mounter	(cached)	coverage: 85.3% of statements
+=== RUN   TestIsValidPerfProfile
+=== RUN   TestIsValidPerfProfile/none_profile_should_return_true
+=== RUN   TestIsValidPerfProfile/incorrect_profile_should_return_false
+=== RUN   TestIsValidPerfProfile/default_profile_should_return_true
+=== RUN   TestIsValidPerfProfile/advanced_profile_should_return_true
+--- PASS: TestIsValidPerfProfile (0.00s)
+    --- PASS: TestIsValidPerfProfile/none_profile_should_return_true (0.00s)
+    --- PASS: TestIsValidPerfProfile/incorrect_profile_should_return_false (0.00s)
+    --- PASS: TestIsValidPerfProfile/default_profile_should_return_true (0.00s)
+    --- PASS: TestIsValidPerfProfile/advanced_profile_should_return_true (0.00s)
+=== RUN   TestGetDiskPerfAttributes
+=== RUN   TestGetDiskPerfAttributes/valid_attributes_should_return_all_values
+=== RUN   TestGetDiskPerfAttributes/incorrect_profile_should_return_error
+=== RUN   TestGetDiskPerfAttributes/No_profile_specified_should_return_none_profile
+--- PASS: TestGetDiskPerfAttributes (0.00s)
+    --- PASS: TestGetDiskPerfAttributes/valid_attributes_should_return_all_values (0.00s)
+    --- PASS: TestGetDiskPerfAttributes/incorrect_profile_should_return_error (0.00s)
+    --- PASS: TestGetDiskPerfAttributes/No_profile_specified_should_return_none_profile (0.00s)
+=== RUN   TestIsPerfTuningEnabled
+=== RUN   TestIsPerfTuningEnabled/none_profile_should_return_false
+=== RUN   TestIsPerfTuningEnabled/default_profile_should_return_true
+=== RUN   TestIsPerfTuningEnabled/incorrect_profile_should_return_false
+=== RUN   TestIsPerfTuningEnabled/advanced_profile_should_return_true
+--- PASS: TestIsPerfTuningEnabled (0.00s)
+    --- PASS: TestIsPerfTuningEnabled/none_profile_should_return_false (0.00s)
+    --- PASS: TestIsPerfTuningEnabled/default_profile_should_return_true (0.00s)
+    --- PASS: TestIsPerfTuningEnabled/incorrect_profile_should_return_false (0.00s)
+    --- PASS: TestIsPerfTuningEnabled/advanced_profile_should_return_true (0.00s)
+=== RUN   TestAccountSupportsPerfOptimization
+=== RUN   TestAccountSupportsPerfOptimization/Premium_LRS_supports_optimization
+=== RUN   TestAccountSupportsPerfOptimization/StandardSSD_LRS_supports_optimization
+=== RUN   TestAccountSupportsPerfOptimization/UltraSSD_LRS_doesn't_supports_optimization
+=== RUN   TestAccountSupportsPerfOptimization/Standard_LRS_doesn't_supports_optimization
+=== RUN   TestAccountSupportsPerfOptimization/invalid_account_doesn't_supports_optimization
+--- PASS: TestAccountSupportsPerfOptimization (0.00s)
+    --- PASS: TestAccountSupportsPerfOptimization/Premium_LRS_supports_optimization (0.00s)
+    --- PASS: TestAccountSupportsPerfOptimization/StandardSSD_LRS_supports_optimization (0.00s)
+    --- PASS: TestAccountSupportsPerfOptimization/UltraSSD_LRS_doesn't_supports_optimization (0.00s)
+    --- PASS: TestAccountSupportsPerfOptimization/Standard_LRS_doesn't_supports_optimization (0.00s)
+    --- PASS: TestAccountSupportsPerfOptimization/invalid_account_doesn't_supports_optimization (0.00s)
+=== RUN   Test_OptimizeDiskPerformance
+=== RUN   Test_OptimizeDiskPerformance/could_not_have_queue_dir_for_device_should_return_error
+=== RUN   Test_OptimizeDiskPerformance/could_not_have_queue/iosched_dir_for_device_should_return_error
+=== RUN   Test_OptimizeDiskPerformance/could_not_have_device_dir_for_device_should_return_error
+=== RUN   Test_OptimizeDiskPerformance/valid_device
+--- PASS: Test_OptimizeDiskPerformance (0.04s)
+    --- PASS: Test_OptimizeDiskPerformance/could_not_have_queue_dir_for_device_should_return_error (0.00s)
+    --- PASS: Test_OptimizeDiskPerformance/could_not_have_queue/iosched_dir_for_device_should_return_error (0.02s)
+    --- PASS: Test_OptimizeDiskPerformance/could_not_have_device_dir_for_device_should_return_error (0.01s)
+    --- PASS: Test_OptimizeDiskPerformance/valid_device (0.01s)
+=== RUN   Test_getOptimalDeviceSettings
+=== RUN   Test_getOptimalDeviceSettings/Should_return_valid_disk_perf_settings
+=== RUN   Test_getOptimalDeviceSettings/Should_return_valid_disk_perf_settings_with_no_capability_published_VM
+=== RUN   Test_getOptimalDeviceSettings/Should_return_error_if_matching_disk_sku_is_not_found
+--- PASS: Test_getOptimalDeviceSettings (0.00s)
+    --- PASS: Test_getOptimalDeviceSettings/Should_return_valid_disk_perf_settings (0.00s)
+    --- PASS: Test_getOptimalDeviceSettings/Should_return_valid_disk_perf_settings_with_no_capability_published_VM (0.00s)
+    --- PASS: Test_getOptimalDeviceSettings/Should_return_error_if_matching_disk_sku_is_not_found (0.00s)
+=== RUN   Test_getDeviceSettingsForBasicProfile
+=== RUN   Test_getDeviceSettingsForBasicProfile/Should_return_valid_disk_perf_settings
+--- PASS: Test_getDeviceSettingsForBasicProfile (0.00s)
+    --- PASS: Test_getDeviceSettingsForBasicProfile/Should_return_valid_disk_perf_settings (0.00s)
+=== RUN   Test_getDeviceSettingsForAdvancedProfile
+=== RUN   Test_getDeviceSettingsForAdvancedProfile/Should_return_valid_disk_perf_settings_if_settings_are_passed
+--- PASS: Test_getDeviceSettingsForAdvancedProfile (0.00s)
+    --- PASS: Test_getDeviceSettingsForAdvancedProfile/Should_return_valid_disk_perf_settings_if_settings_are_passed (0.00s)
+=== RUN   Test_applyDeviceSettings
+=== RUN   Test_applyDeviceSettings/Should_fail_if_nil_settings_provided
+=== RUN   Test_applyDeviceSettings/Should_fail_if_empty_settings_provided
+=== RUN   Test_applyDeviceSettings/Should_fail_if_setting_with_non_absolute_path_provided
+=== RUN   Test_applyDeviceSettings/Should_fail_if_setting_with_incorrect_prefix_provided
+--- PASS: Test_applyDeviceSettings (0.00s)
+    --- PASS: Test_applyDeviceSettings/Should_fail_if_nil_settings_provided (0.00s)
+    --- PASS: Test_applyDeviceSettings/Should_fail_if_empty_settings_provided (0.00s)
+    --- PASS: Test_applyDeviceSettings/Should_fail_if_setting_with_non_absolute_path_provided (0.00s)
+    --- PASS: Test_applyDeviceSettings/Should_fail_if_setting_with_incorrect_prefix_provided (0.00s)
+=== RUN   Test_getMatchingDiskSku
+=== RUN   Test_getMatchingDiskSku/Should_get_matching_sku_when_request_is_less_that_sku_size
+=== RUN   Test_getMatchingDiskSku/Should_get_smaller_sku_when_multiple_skus_match
+=== RUN   Test_getMatchingDiskSku/Should_get_error_if_disk_size_is_invalid
+=== RUN   Test_getMatchingDiskSku/Should_get_smatching_sku_if_iops_and_bw_are_not_provided
+=== RUN   Test_getMatchingDiskSku/Should_get_error_when_no_skus_are_passed.
+--- PASS: Test_getMatchingDiskSku (0.00s)
+    --- PASS: Test_getMatchingDiskSku/Should_get_matching_sku_when_request_is_less_that_sku_size (0.00s)
+    --- PASS: Test_getMatchingDiskSku/Should_get_smaller_sku_when_multiple_skus_match (0.00s)
+    --- PASS: Test_getMatchingDiskSku/Should_get_error_if_disk_size_is_invalid (0.00s)
+    --- PASS: Test_getMatchingDiskSku/Should_get_smatching_sku_if_iops_and_bw_are_not_provided (0.00s)
+    --- PASS: Test_getMatchingDiskSku/Should_get_error_when_no_skus_are_passed. (0.00s)
+=== RUN   Test_meetsRequest
+=== RUN   Test_meetsRequest/Sku_should_match_demand_which_is_same_as_limits
+=== RUN   Test_meetsRequest/Sku_should_match_demand_which_is_less_than_limits
+=== RUN   Test_meetsRequest/Sku_should__not_match_demand_which_is_more_than_limits
+=== RUN   Test_meetsRequest/nil_Sku_should_return_false
+--- PASS: Test_meetsRequest (0.00s)
+    --- PASS: Test_meetsRequest/Sku_should_match_demand_which_is_same_as_limits (0.00s)
+    --- PASS: Test_meetsRequest/Sku_should_match_demand_which_is_less_than_limits (0.00s)
+    --- PASS: Test_meetsRequest/Sku_should__not_match_demand_which_is_more_than_limits (0.00s)
+    --- PASS: Test_meetsRequest/nil_Sku_should_return_false (0.00s)
+=== RUN   Test_getDeviceName
+=== RUN   Test_getDeviceName/return_error_for_invalid_file
+--- PASS: Test_getDeviceName (0.00s)
+    --- PASS: Test_getDeviceName/return_error_for_invalid_file (0.00s)
+=== RUN   Test_echoToFile
+=== RUN   Test_echoToFile/echo_should_succeed
+--- PASS: Test_echoToFile (0.02s)
+    --- PASS: Test_echoToFile/echo_should_succeed (0.02s)
+=== RUN   TestSafeDeviceHelper_DeviceSupportsPerfOptimization
+=== RUN   TestSafeDeviceHelper_DeviceSupportsPerfOptimization/invalid_profile_should_return_false
+=== RUN   TestSafeDeviceHelper_DeviceSupportsPerfOptimization/ultrassd_lrs_account_should_return_false
+=== RUN   TestSafeDeviceHelper_DeviceSupportsPerfOptimization/invalid_account_type_should_return_false
+=== RUN   TestSafeDeviceHelper_DeviceSupportsPerfOptimization/none_profile_should_return_false
+=== RUN   TestSafeDeviceHelper_DeviceSupportsPerfOptimization/valid_profile_and_account_should_return_true
+=== RUN   TestSafeDeviceHelper_DeviceSupportsPerfOptimization/valid_profile_and_account_should_return_true#01
+--- PASS: TestSafeDeviceHelper_DeviceSupportsPerfOptimization (0.00s)
+    --- PASS: TestSafeDeviceHelper_DeviceSupportsPerfOptimization/invalid_profile_should_return_false (0.00s)
+    --- PASS: TestSafeDeviceHelper_DeviceSupportsPerfOptimization/ultrassd_lrs_account_should_return_false (0.00s)
+    --- PASS: TestSafeDeviceHelper_DeviceSupportsPerfOptimization/invalid_account_type_should_return_false (0.00s)
+    --- PASS: TestSafeDeviceHelper_DeviceSupportsPerfOptimization/none_profile_should_return_false (0.00s)
+    --- PASS: TestSafeDeviceHelper_DeviceSupportsPerfOptimization/valid_profile_and_account_should_return_true (0.00s)
+    --- PASS: TestSafeDeviceHelper_DeviceSupportsPerfOptimization/valid_profile_and_account_should_return_true#01 (0.00s)
+=== RUN   TestDeviceHelper_OptimizeDiskPerformance
+=== RUN   TestDeviceHelper_OptimizeDiskPerformance/nil_node_should_return_error
+=== RUN   TestDeviceHelper_OptimizeDiskPerformance/invalid_sku_spec_should_return_error
+=== RUN   TestDeviceHelper_OptimizeDiskPerformance/invalid_device_path_should_return_error
+=== RUN   TestDeviceHelper_OptimizeDiskPerformance/could_not_set_max_sectors_kb_for_device_should_return_error
+--- PASS: TestDeviceHelper_OptimizeDiskPerformance (0.02s)
+    --- PASS: TestDeviceHelper_OptimizeDiskPerformance/nil_node_should_return_error (0.00s)
+    --- PASS: TestDeviceHelper_OptimizeDiskPerformance/invalid_sku_spec_should_return_error (0.00s)
+    --- PASS: TestDeviceHelper_OptimizeDiskPerformance/invalid_device_path_should_return_error (0.00s)
+    --- PASS: TestDeviceHelper_OptimizeDiskPerformance/could_not_set_max_sectors_kb_for_device_should_return_error (0.00s)
+=== RUN   TestDiskSkuInfo_GetLatencyTest
+=== RUN   TestDiskSkuInfo_GetLatencyTest/Premium
+=== RUN   TestDiskSkuInfo_GetLatencyTest/Premium#01
+=== RUN   TestDiskSkuInfo_GetLatencyTest/Premium#02
+=== RUN   TestDiskSkuInfo_GetLatencyTest/Premium#03
+=== RUN   TestDiskSkuInfo_GetLatencyTest/Premium#04
+=== RUN   TestDiskSkuInfo_GetLatencyTest/Premium#05
+=== RUN   TestDiskSkuInfo_GetLatencyTest/Premium#06
+=== RUN   TestDiskSkuInfo_GetLatencyTest/Premium#07
+=== RUN   TestDiskSkuInfo_GetLatencyTest/Premium#08
+=== RUN   TestDiskSkuInfo_GetLatencyTest/Premium#09
+=== RUN   TestDiskSkuInfo_GetLatencyTest/Premium#10
+=== RUN   TestDiskSkuInfo_GetLatencyTest/Premium#11
+=== RUN   TestDiskSkuInfo_GetLatencyTest/Premium#12
+=== RUN   TestDiskSkuInfo_GetLatencyTest/Premium#13
+=== RUN   TestDiskSkuInfo_GetLatencyTest/Standard
+=== RUN   TestDiskSkuInfo_GetLatencyTest/Standard#01
+=== RUN   TestDiskSkuInfo_GetLatencyTest/Standard#02
+=== RUN   TestDiskSkuInfo_GetLatencyTest/Standard#03
+=== RUN   TestDiskSkuInfo_GetLatencyTest/Standard#04
+=== RUN   TestDiskSkuInfo_GetLatencyTest/Standard#05
+=== RUN   TestDiskSkuInfo_GetLatencyTest/Standard#06
+=== RUN   TestDiskSkuInfo_GetLatencyTest/Standard#07
+=== RUN   TestDiskSkuInfo_GetLatencyTest/Standard#08
+=== RUN   TestDiskSkuInfo_GetLatencyTest/Standard#09
+=== RUN   TestDiskSkuInfo_GetLatencyTest/Standard#10
+=== RUN   TestDiskSkuInfo_GetLatencyTest/Standard#11
+=== RUN   TestDiskSkuInfo_GetLatencyTest/Standard#12
+=== RUN   TestDiskSkuInfo_GetLatencyTest/Standard#13
+--- PASS: TestDiskSkuInfo_GetLatencyTest (0.00s)
+    --- PASS: TestDiskSkuInfo_GetLatencyTest/Premium (0.00s)
+    --- PASS: TestDiskSkuInfo_GetLatencyTest/Premium#01 (0.00s)
+    --- PASS: TestDiskSkuInfo_GetLatencyTest/Premium#02 (0.00s)
+    --- PASS: TestDiskSkuInfo_GetLatencyTest/Premium#03 (0.00s)
+    --- PASS: TestDiskSkuInfo_GetLatencyTest/Premium#04 (0.00s)
+    --- PASS: TestDiskSkuInfo_GetLatencyTest/Premium#05 (0.00s)
+    --- PASS: TestDiskSkuInfo_GetLatencyTest/Premium#06 (0.00s)
+    --- PASS: TestDiskSkuInfo_GetLatencyTest/Premium#07 (0.00s)
+    --- PASS: TestDiskSkuInfo_GetLatencyTest/Premium#08 (0.00s)
+    --- PASS: TestDiskSkuInfo_GetLatencyTest/Premium#09 (0.00s)
+    --- PASS: TestDiskSkuInfo_GetLatencyTest/Premium#10 (0.00s)
+    --- PASS: TestDiskSkuInfo_GetLatencyTest/Premium#11 (0.00s)
+    --- PASS: TestDiskSkuInfo_GetLatencyTest/Premium#12 (0.00s)
+    --- PASS: TestDiskSkuInfo_GetLatencyTest/Premium#13 (0.00s)
+    --- PASS: TestDiskSkuInfo_GetLatencyTest/Standard (0.00s)
+    --- PASS: TestDiskSkuInfo_GetLatencyTest/Standard#01 (0.00s)
+    --- PASS: TestDiskSkuInfo_GetLatencyTest/Standard#02 (0.00s)
+    --- PASS: TestDiskSkuInfo_GetLatencyTest/Standard#03 (0.00s)
+    --- PASS: TestDiskSkuInfo_GetLatencyTest/Standard#04 (0.00s)
+    --- PASS: TestDiskSkuInfo_GetLatencyTest/Standard#05 (0.00s)
+    --- PASS: TestDiskSkuInfo_GetLatencyTest/Standard#06 (0.00s)
+    --- PASS: TestDiskSkuInfo_GetLatencyTest/Standard#07 (0.00s)
+    --- PASS: TestDiskSkuInfo_GetLatencyTest/Standard#08 (0.00s)
+    --- PASS: TestDiskSkuInfo_GetLatencyTest/Standard#09 (0.00s)
+    --- PASS: TestDiskSkuInfo_GetLatencyTest/Standard#10 (0.00s)
+    --- PASS: TestDiskSkuInfo_GetLatencyTest/Standard#11 (0.00s)
+    --- PASS: TestDiskSkuInfo_GetLatencyTest/Standard#12 (0.00s)
+    --- PASS: TestDiskSkuInfo_GetLatencyTest/Standard#13 (0.00s)
+=== RUN   TestNewNodeInfo
+=== RUN   TestNewNodeInfo/[Success]_Should_succeed_for_an_existing_node.
+=== RUN   TestNewNodeInfo/[Failure]_Should_return_an_error_if_Instances_interface_not_supported_by_cloud_provider.
+=== RUN   TestNewNodeInfo/[Failure]_Should_return_an_error_for_a_non-existing_node.
+=== RUN   TestNewNodeInfo/[Failure]_Should_return_an_error_for_a_unknown_SKU.
+--- PASS: TestNewNodeInfo (0.00s)
+    --- PASS: TestNewNodeInfo/[Success]_Should_succeed_for_an_existing_node. (0.00s)
+    --- PASS: TestNewNodeInfo/[Failure]_Should_return_an_error_if_Instances_interface_not_supported_by_cloud_provider. (0.00s)
+    --- PASS: TestNewNodeInfo/[Failure]_Should_return_an_error_for_a_non-existing_node. (0.00s)
+    --- PASS: TestNewNodeInfo/[Failure]_Should_return_an_error_for_a_unknown_SKU. (0.00s)
+PASS
+coverage: 95.1% of statements
+ok  	sigs.k8s.io/azuredisk-csi-driver/pkg/optimization	(cached)	coverage: 95.1% of statements
+?   	sigs.k8s.io/azuredisk-csi-driver/pkg/os/filesystem	[no test files]
+?   	sigs.k8s.io/azuredisk-csi-driver/pkg/os/volume	[no test files]
+?   	sigs.k8s.io/azuredisk-csi-driver/pkg/tool	[no test files]
+=== RUN   TestRoundUpBytes
+--- PASS: TestRoundUpBytes (0.00s)
+=== RUN   TestRoundUpGiB
+--- PASS: TestRoundUpGiB (0.00s)
+=== RUN   TestBytesToGiB
+--- PASS: TestBytesToGiB (0.00s)
+=== RUN   TestGiBToBytes
+--- PASS: TestGiBToBytes (0.00s)
+=== RUN   TestConvertTagsToMap
+--- PASS: TestConvertTagsToMap (0.00s)
+=== RUN   TestMakeDir
+--- PASS: TestMakeDir (0.00s)
+=== RUN   TestMakeFile
+--- PASS: TestMakeFile (0.00s)
+=== RUN   TestVolumeLock
+--- PASS: TestVolumeLock (0.00s)
+PASS
+coverage: 93.3% of statements
+ok  	sigs.k8s.io/azuredisk-csi-driver/pkg/util	(cached)	coverage: 93.3% of statements
+=== RUN   TestCreateAzureCredentialFileOnAzurePublicCloud
+=== RUN   TestCreateAzureCredentialFileOnAzurePublicCloud/WithAzureCredentials
+2024/06/18 06:55:42 Running in Prow, converting AZURE_CREDENTIALS to AZURE_CREDENTIAL_FILE
+2024/06/18 06:55:42 Reading credentials file /tmp/azure.toml3803113459
+=== RUN   TestCreateAzureCredentialFileOnAzurePublicCloud/WithEnvironmentVariables
+--- PASS: TestCreateAzureCredentialFileOnAzurePublicCloud (0.00s)
+    --- PASS: TestCreateAzureCredentialFileOnAzurePublicCloud/WithAzureCredentials (0.00s)
+    --- PASS: TestCreateAzureCredentialFileOnAzurePublicCloud/WithEnvironmentVariables (0.00s)
+=== RUN   TestCreateAzureCredentialFileOnAzureStackCloud
+=== RUN   TestCreateAzureCredentialFileOnAzureStackCloud/WithEnvironmentVariables
+--- PASS: TestCreateAzureCredentialFileOnAzureStackCloud (0.00s)
+    --- PASS: TestCreateAzureCredentialFileOnAzureStackCloud/WithEnvironmentVariables (0.00s)
+PASS
+coverage: 78.0% of statements
+ok  	sigs.k8s.io/azuredisk-csi-driver/test/utils/credentials	(cached)	coverage: 78.0% of statements
+FAIL
