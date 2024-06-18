@@ -96,6 +96,10 @@ spec:
                   fieldPath: spec.nodeName
           imagePullPolicy: {{ .Values.image.nodeDriverRegistrar.pullPolicy }}
           resources: {{- toYaml .Values.windows.resources.nodeDriverRegistrar | nindent 12 }}
+          securityContext:
+            capabilities:
+              drop:
+              - ALL
         - name: azuredisk
 {{- if hasPrefix "/" .Values.image.azuredisk.repository }}
           image: "{{ .Values.image.baseRepo }}{{ .Values.image.azuredisk.repository }}:{{ .Values.image.azuredisk.tag }}-windows-hp"
@@ -158,4 +162,8 @@ spec:
               value: {{ .Values.windows.otelTracing.otelExporterEndpoint }}
             {{- end }}
           imagePullPolicy: {{ .Values.image.azuredisk.pullPolicy }}
+          securityContext:
+            capabilities:
+              drop:
+              - ALL
 {{- end -}}
