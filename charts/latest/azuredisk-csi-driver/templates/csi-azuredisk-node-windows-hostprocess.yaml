@@ -69,6 +69,10 @@ spec:
             - "powershell.exe"
             - "-c"
             - "New-Item -ItemType Directory -Path C:\\var\\lib\\kubelet\\plugins\\{{ .Values.driver.name }}\\ -Force"
+          securityContext:
+            capabilities:
+              drop:
+              - ALL
       containers:
         - name: node-driver-registrar
 {{- if hasPrefix "/" .Values.image.nodeDriverRegistrar.repository }}
@@ -96,6 +100,10 @@ spec:
                   fieldPath: spec.nodeName
           imagePullPolicy: {{ .Values.image.nodeDriverRegistrar.pullPolicy }}
           resources: {{- toYaml .Values.windows.resources.nodeDriverRegistrar | nindent 12 }}
+          securityContext:
+            capabilities:
+              drop:
+              - ALL
         - name: azuredisk
 {{- if hasPrefix "/" .Values.image.azuredisk.repository }}
           image: "{{ .Values.image.baseRepo }}{{ .Values.image.azuredisk.repository }}:{{ .Values.image.azuredisk.tag }}-windows-hp"
@@ -151,4 +159,8 @@ spec:
               value: C:\k\azurestackcloud.json
             {{- end }}
           imagePullPolicy: {{ .Values.image.azuredisk.pullPolicy }}
+          securityContext:
+            capabilities:
+              drop:
+              - ALL
 {{- end -}}
