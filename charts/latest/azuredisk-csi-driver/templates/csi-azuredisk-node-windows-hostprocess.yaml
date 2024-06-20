@@ -72,6 +72,10 @@ spec:
             - "-Path"
             - "C:\\var\\lib\\kubelet\\plugins\\{{ .Values.driver.name }}\\"
             - "-Force"
+          securityContext:
+            capabilities:
+              drop:
+              - ALL
       containers:
         - name: liveness-probe
 {{- if hasPrefix "/" .Values.image.livenessProbe.repository }}
@@ -90,6 +94,10 @@ spec:
             - name: CSI_ENDPOINT
               value: unix://C:\\var\\lib\\kubelet\\plugins\\{{ .Values.driver.name }}\\csi.sock
           imagePullPolicy: {{ .Values.image.livenessProbe.pullPolicy }}
+          securityContext:
+            capabilities:
+              drop:
+              - ALL
         - name: node-driver-registrar
 {{- if hasPrefix "/" .Values.image.nodeDriverRegistrar.repository }}
           image: "{{ .Values.image.baseRepo }}{{ .Values.image.nodeDriverRegistrar.repository }}:{{ .Values.image.nodeDriverRegistrar.tag }}"
@@ -123,6 +131,10 @@ spec:
                 fieldRef:
                   fieldPath: spec.nodeName
           imagePullPolicy: {{ .Values.image.nodeDriverRegistrar.pullPolicy }}
+          securityContext:
+            capabilities:
+              drop:
+              - ALL
         - name: azuredisk
 {{- if hasPrefix "/" .Values.image.azuredisk.repository }}
           image: "{{ .Values.image.baseRepo }}{{ .Values.image.azuredisk.repository }}:{{ .Values.image.azuredisk.tag }}"
@@ -189,4 +201,8 @@ spec:
               value: C:\k\azurestackcloud.json
             {{- end }}
           imagePullPolicy: {{ .Values.image.azuredisk.pullPolicy }}
+          securityContext:
+            capabilities:
+              drop:
+              - ALL
 {{- end -}}

@@ -51,6 +51,10 @@ spec:
             requests:
               cpu: 10m
               memory: 20Mi
+          securityContext:
+            capabilities:
+              drop:
+                - ALL
         - name: node-driver-registrar
           image: mcr.microsoft.com/oss/kubernetes-csi/csi-node-driver-registrar:v2.6.2
           args:
@@ -81,6 +85,10 @@ spec:
             requests:
               cpu: 10m
               memory: 20Mi
+          securityContext:
+            capabilities:
+              drop:
+                - ALL
         - name: azuredisk
           image: mcr.microsoft.com/oss/kubernetes-csi/azuredisk-csi:v1.26.9
           imagePullPolicy: IfNotPresent
@@ -120,6 +128,9 @@ spec:
                   fieldPath: spec.nodeName
           securityContext:
             privileged: true
+            capabilities:
+              drop:
+                - ALL
           volumeMounts:
             - mountPath: /csi
               name: socket-dir
