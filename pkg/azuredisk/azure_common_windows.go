@@ -178,8 +178,10 @@ func (d *DriverCore) GetVolumeStats(ctx context.Context, m *mount.SafeFormatAndM
 
 	if proxy, ok := m.Interface.(mounter.CSIProxyMounter); ok {
 		volUsage, err := proxy.GetVolumeStats(ctx, target)
-		// cache the volume stats per volume
-		d.volStatsCache.Set(volumeID, *volUsage)
+		if err == nil && volUsage != nil {
+			// cache the volume stats per volume
+			d.volStatsCache.Set(volumeID, *volUsage)
+		}
 		return []*csi.VolumeUsage{volUsage}, err
 	}
 	return []*csi.VolumeUsage{}, fmt.Errorf("could not cast to csi proxy class")
