@@ -827,6 +827,6 @@ func RunPowershellCmd(command string, envs ...string) ([]byte, error) {
 
 	cmd := exec.Command("powershell", "-Mta", "-NoProfile", "-Command", command)
 	cmd.Env = append(os.Environ(), envs...)
-	klog.V(8).Infof("Executing command: %q", cmd.String())
+	klog.V(6).Infof("Executing command: %q", cmd.String())
 	return cmd.CombinedOutput()
 }
