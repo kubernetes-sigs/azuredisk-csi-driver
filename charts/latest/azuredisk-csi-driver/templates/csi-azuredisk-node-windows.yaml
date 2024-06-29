@@ -131,6 +131,7 @@ spec:
             - "--nodeid=$(KUBE_NODE_NAME)"
             - "--drivername={{ .Values.driver.name }}"
             - "--volume-attach-limit={{ .Values.driver.volumeAttachLimit }}"
+            - "--reserved-data-disk-slot-num={{ .Values.node.reservedDataDiskSlotNum }}"
             - "--cloud-config-secret-name={{ .Values.node.cloudConfigSecretName }}"
             - "--cloud-config-secret-namespace={{ .Values.node.cloudConfigSecretNamespace }}"
             - "--custom-user-agent={{ .Values.driver.customUserAgent }}"
