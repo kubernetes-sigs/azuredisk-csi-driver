@@ -84,7 +84,7 @@ func (t *DynamicallyProvisionedAzureDiskWithTag) Run(ctx context.Context, client
 		framework.ExpectNoError(err, fmt.Sprintf("Error getting client for azuredisk %v", err))
 		disktest, err := disksClient.Get(ctx, resourceGroup, diskName)
 		framework.ExpectNoError(err, fmt.Sprintf("Error getting disk for azuredisk %v", err))
-		test, err := util.ConvertTagsToMap(t.Tags)
+		test, err := util.ConvertTagsToMap(t.Tags, ",")
 		framework.ExpectNoError(err, fmt.Sprintf("Error getting tag %v", err))
 		test["k8s-azure-created-by"] = "kubernetes-azure-dd"
 
