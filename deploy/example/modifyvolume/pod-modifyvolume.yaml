@@ -1,0 +1,49 @@
+---
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: managed-csi-prev2
+provisioner: disk.csi.azure.com
+parameters:
+  cachingMode: None
+  skuName: PremiumV2_LRS
+  DiskIOPSReadWrite: "4000"
+  DiskMBpsReadWrite: "1000"
+reclaimPolicy: Delete
+volumeBindingMode: WaitForFirstConsumer
+allowVolumeExpansion: true
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: pvc-azuredisk
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 10Gi
+  storageClassName: managed-csi-prev2
+---
+kind: Pod
+apiVersion: v1
+metadata:
+  name: nginx-azuredisk
+spec:
+  nodeSelector:
+    kubernetes.io/os: linux
+  containers:
+    - image: mcr.microsoft.com/oss/nginx/nginx:1.17.3-alpine
+      name: nginx-azuredisk
+      command:
+        - "/bin/sh"
+        - "-c"
+        - while true; do echo $(date) >> /mnt/azuredisk/outfile; sleep 1; done
+      volumeMounts:
+        - name: azuredisk01
+          mountPath: "/mnt/azuredisk"
+          readOnly: false
+  volumes:
+    - name: azuredisk01
+      persistentVolumeClaim:
+        claimName: pvc-azuredisk

@@ -1,0 +1,9 @@
+---
+apiVersion: storage.k8s.io/v1alpha1
+kind: VolumeAttributesClass
+metadata:
+  name: premium2-disk-class
+driverName: disk.csi.azure.com
+parameters:
+  DiskIOPSReadWrite: "5000"
+  DiskMBpsReadWrite: "1200"

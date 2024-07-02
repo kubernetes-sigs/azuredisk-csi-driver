@@ -273,6 +273,7 @@ func newDriverV1(options *DriverOptions) *Driver {
 		csi.ControllerServiceCapability_RPC_CLONE_VOLUME,
 		csi.ControllerServiceCapability_RPC_EXPAND_VOLUME,
 		csi.ControllerServiceCapability_RPC_SINGLE_NODE_MULTI_WRITER,
+		csi.ControllerServiceCapability_RPC_MODIFY_VOLUME,
 	}
 	if driver.enableListVolumes {
 		controllerCap = append(controllerCap, csi.ControllerServiceCapability_RPC_LIST_VOLUMES, csi.ControllerServiceCapability_RPC_LIST_VOLUMES_PUBLISHED_NODES)
