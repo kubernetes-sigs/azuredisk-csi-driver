@@ -29,7 +29,6 @@ import (
 
 const (
 	GiB                  = 1024 * 1024 * 1024
-	TagsDelimiter        = ","
 	TagKeyValueDelimiter = "="
 )
 
@@ -78,27 +77,30 @@ func RoundUpSize(volumeSizeBytes int64, allocationUnitBytes int64) int64 {
 	return roundedUp
 }
 
-// ConvertTagsToMap convert the tags from string to map
+// ConvertTagsToMap convert the tags from string to map, default tagDelimiter is ","
 // the valid tags format is "key1=value1,key2=value2", which could be converted to
 // {"key1": "value1", "key2": "value2"}
-func ConvertTagsToMap(tags string) (map[string]string, error) {
+func ConvertTagsToMap(tags string, tagsDelimiter string) (map[string]string, error) {
 	m := make(map[string]string)
 	if tags == "" {
 		return m, nil
 	}
-	s := strings.Split(tags, TagsDelimiter)
+	if tagsDelimiter == "" {
+		tagsDelimiter = ","
+	}
+	s := strings.Split(tags, tagsDelimiter)
 	for _, tag := range s {
-		kv := strings.Split(tag, TagKeyValueDelimiter)
+		kv := strings.SplitN(tag, TagKeyValueDelimiter, 2)
 		if len(kv) != 2 {
-			return nil, fmt.Errorf("Tags '%s' are invalid, the format should like: 'key1=value1,key2=value2'", tags)
+			return nil, fmt.Errorf("tags '%s' are invalid, the format should like: 'key1=value1%skey2=value2'", tags, tagsDelimiter)
 		}
 		key := strings.TrimSpace(kv[0])
 		if key == "" {
-			return nil, fmt.Errorf("Tags '%s' are invalid, the format should like: 'key1=value1,key2=value2'", tags)
+			return nil, fmt.Errorf("tags '%s' are invalid, the format should like: 'key1=value1%skey2=value2'", tags, tagsDelimiter)
 		}
 		// <>%&?/. are not allowed in tag key
 		if strings.ContainsAny(key, "<>%&?/.") {
-			return nil, fmt.Errorf("Tag key '%s' contains invalid characters", key)
+			return nil, fmt.Errorf("tag key '%s' contains invalid characters", key)
 		}
 		value := strings.TrimSpace(kv[1])
 		m[key] = value

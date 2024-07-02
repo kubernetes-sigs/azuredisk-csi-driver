@@ -62,26 +62,30 @@ func TestConvertTagsToMap(t *testing.T) {
 	testCases := []struct {
 		desc           string
 		tags           string
+		tagsDelimiter  string
 		expectedOutput map[string]string
 		expectedError  bool
 	}{
 		{
 			desc:           "should return empty map when tag is empty",
 			tags:           "",
+			tagsDelimiter:  ",",
 			expectedOutput: map[string]string{},
 			expectedError:  false,
 		},
 		{
-			desc: "sing valid tag should be converted",
-			tags: "key=value",
+			desc:          "sing valid tag should be converted",
+			tags:          "key=value",
+			tagsDelimiter: ",",
 			expectedOutput: map[string]string{
 				"key": "value",
 			},
 			expectedError: false,
 		},
 		{
-			desc: "multiple valid tags should be converted",
-			tags: "key1=value1,key2=value2",
+			desc:          "multiple valid tags should be converted",
+			tags:          "key1=value1,key2=value2",
+			tagsDelimiter: ",",
 			expectedOutput: map[string]string{
 				"key1": "value1",
 				"key2": "value2",
@@ -89,8 +93,9 @@ func TestConvertTagsToMap(t *testing.T) {
 			expectedError: false,
 		},
 		{
-			desc: "whitespaces should be trimmed",
-			tags: "key1=value1, key2=value2",
+			desc:          "whitespaces should be trimmed",
+			tags:          "key1=value1, key2=value2",
+			tagsDelimiter: ",",
 			expectedOutput: map[string]string{
 				"key1": "value1",
 				"key2": "value2",
@@ -100,31 +105,55 @@ func TestConvertTagsToMap(t *testing.T) {
 		{
 			desc:           "should return error for invalid format",
 			tags:           "foo,bar",
+			tagsDelimiter:  ",",
 			expectedOutput: nil,
 			expectedError:  true,
 		},
 		{
 			desc:           "should return error for when key is missed",
 			tags:           "key1=value1,=bar",
+			tagsDelimiter:  ",",
 			expectedOutput: nil,
 			expectedError:  true,
 		},
 		{
 			desc:           "should return error for invalid characters in key",
 			tags:           "key/1=value1,<bar",
+			tagsDelimiter:  ",",
 			expectedOutput: nil,
 			expectedError:  true,
 		},
 		{
 			desc:           "should return success for special characters in value",
 			tags:           "key1=value1,key2=<>%&?/.",
+			tagsDelimiter:  ",",
 			expectedOutput: map[string]string{"key1": "value1", "key2": "<>%&?/."},
 			expectedError:  false,
+		},
+		{
+			desc:          "should return success for empty tagsDelimiter",
+			tags:          "key1=value1,key2=value2",
+			tagsDelimiter: "",
+			expectedOutput: map[string]string{
+				"key1": "value1",
+				"key2": "value2",
+			},
+			expectedError: false,
+		},
+		{
+			desc:          "should return success for special tagsDelimiter and tag values containing commas and equal sign",
+			tags:          "key1=aGVsbG8=;key2=value-2, value-3",
+			tagsDelimiter: ";",
+			expectedOutput: map[string]string{
+				"key1": "aGVsbG8=",
+				"key2": "value-2, value-3",
+			},
+			expectedError: false,
 		},
 	}
 
 	for i, c := range testCases {
-		m, err := ConvertTagsToMap(c.tags)
+		m, err := ConvertTagsToMap(c.tags, c.tagsDelimiter)
 		if c.expectedError {
 			assert.NotNil(t, err, "TestCase[%d]: %s", i, c.desc)
 		} else {

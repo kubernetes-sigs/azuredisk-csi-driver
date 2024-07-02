@@ -762,7 +762,7 @@ func (d *DriverV2) CreateSnapshot(ctx context.Context, req *csi.CreateSnapshotRe
 	var customTags string
 	// set incremental snapshot as true by default
 	incremental := true
-	var resourceGroup, subsID, dataAccessAuthMode string
+	var resourceGroup, subsID, dataAccessAuthMode, tagValueDelimiter string
 	var err error
 
 	parameters := req.GetParameters()
@@ -780,6 +780,8 @@ func (d *DriverV2) CreateSnapshot(ctx context.Context, req *csi.CreateSnapshotRe
 			subsID = v
 		case consts.DataAccessAuthModeField:
 			dataAccessAuthMode = v
+		case consts.TagValueDelimiterField:
+			tagValueDelimiter = v
 		default:
 			return nil, status.Errorf(codes.Internal, "AzureDisk - invalid option %s in VolumeSnapshotClass", k)
 		}
@@ -797,7 +799,7 @@ func (d *DriverV2) CreateSnapshot(ctx context.Context, req *csi.CreateSnapshotRe
 		}
 	}
 
-	customTagsMap, err := volumehelper.ConvertTagsToMap(customTags)
+	customTagsMap, err := volumehelper.ConvertTagsToMap(customTags, tagValueDelimiter)
 	if err != nil {
 		return nil, status.Errorf(codes.InvalidArgument, err.Error())
 	}
