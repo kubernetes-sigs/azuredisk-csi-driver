@@ -124,7 +124,7 @@ func TestConvertTagsToMap(t *testing.T) {
 	}
 
 	for i, c := range testCases {
-		m, err := ConvertTagsToMap(c.tags)
+		m, err := ConvertTagsToMap(c.tags, ",")
 		if c.expectedError {
 			assert.NotNil(t, err, "TestCase[%d]: %s", i, c.desc)
 		} else {
