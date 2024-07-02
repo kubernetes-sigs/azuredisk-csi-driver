@@ -776,6 +776,7 @@ func (d *DriverV2) CreateSnapshot(ctx context.Context, req *csi.CreateSnapshotRe
 	var err error
 
 	parameters := req.GetParameters()
+	tagValueDelimiter := ","
 	for k, v := range parameters {
 		switch strings.ToLower(k) {
 		case consts.TagsField:
@@ -790,6 +791,8 @@ func (d *DriverV2) CreateSnapshot(ctx context.Context, req *csi.CreateSnapshotRe
 			subsID = v
 		case consts.DataAccessAuthModeField:
 			dataAccessAuthMode = v
+		case consts.TagValueDelimiterField:
+			tagValueDelimiter = v
 		default:
 			return nil, status.Errorf(codes.Internal, "AzureDisk - invalid option %s in VolumeSnapshotClass", k)
 		}
@@ -807,7 +810,7 @@ func (d *DriverV2) CreateSnapshot(ctx context.Context, req *csi.CreateSnapshotRe
 		}
 	}
 
-	customTagsMap, err := volumehelper.ConvertTagsToMap(customTags)
+	customTagsMap, err := volumehelper.ConvertTagsToMap(customTags, tagValueDelimiter)
 	if err != nil {
 		return nil, status.Errorf(codes.InvalidArgument, err.Error())
 	}
