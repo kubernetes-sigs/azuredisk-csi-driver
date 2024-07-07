@@ -116,6 +116,8 @@ controller:
 node:
   cloudConfigSecretName: azure-cloud-provider
   cloudConfigSecretNamespace: kube-system
+  # reserved data disk slot number per node, driver.volumeAttachLimit must be < 0
+  reservedDataDiskSlotNum: 0
   supportZone: true
   allowEmptyCloudConfig: true
   getNodeIDFromIMDS: false
