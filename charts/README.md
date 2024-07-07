@@ -197,6 +197,7 @@ The following table lists the configurable parameters of the latest Azure Disk C
 | `controller.resources.azuredisk.requests.memory`      | azuredisk memory requests                | 20Mi                                                           |
 | `node.cloudConfigSecretName`                      | cloud config secret name of node driver                    | `azure-cloud-provider`
 | `node.cloudConfigSecretNamespace`                 | cloud config secret namespace of node driver               | `kube-system`
+| `node.reservedDataDiskSlotNum`                  | reserved data disk slot number per node by default(`0`)    | `0` |
 | `node.supportZone`                                | Whether getting zone info in NodeGetInfo on the node (requires instance metadata support)               | `true`
 | `node.getNodeIDFromIMDS`                          | Whether getting NodeID from IMDS on the node (requires instance metadata support)               | `false`
 | `node.allowEmptyCloudConfig`                      | Whether allow running node driver without cloud config               | `true`
