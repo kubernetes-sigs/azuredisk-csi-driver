@@ -1,6 +1,8 @@
 module sigs.k8s.io/azuredisk-csi-driver
 
-go 1.20
+go 1.21
+
+toolchain go1.22.5
 
 require (
 	github.com/Azure/azure-sdk-for-go v68.0.0+incompatible
@@ -24,9 +26,9 @@ require (
 	github.com/pborman/uuid v1.2.1
 	github.com/pelletier/go-toml v1.9.5
 	github.com/stretchr/testify v1.9.0
-	golang.org/x/net v0.26.0
-	google.golang.org/grpc v1.59.0
-	google.golang.org/protobuf v1.33.0
+	golang.org/x/net v0.27.0
+	google.golang.org/grpc v1.65.0
+	google.golang.org/protobuf v1.34.2
 	k8s.io/api v0.28.9
 	k8s.io/apimachinery v0.28.9
 	k8s.io/cloud-provider v0.28.1
@@ -42,7 +44,7 @@ require (
 
 require (
 	github.com/Azure/azure-sdk-for-go/sdk/azidentity v1.6.0 // indirect
-	golang.org/x/sys v0.21.0
+	golang.org/x/sys v0.22.0
 	k8s.io/client-go v0.28.9
 	k8s.io/pod-security-admission v0.27.13
 )
@@ -65,7 +67,7 @@ require (
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/blang/semver/v4 v4.0.0 // indirect
 	github.com/cenkalti/backoff/v4 v4.2.1 // indirect
-	github.com/cespare/xxhash/v2 v2.2.0 // indirect
+	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/coreos/go-semver v0.3.1 // indirect
 	github.com/coreos/go-systemd/v22 v22.5.0 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
@@ -129,19 +131,18 @@ require (
 	go.uber.org/atomic v1.10.0 // indirect
 	go.uber.org/multierr v1.11.0 // indirect
 	go.uber.org/zap v1.19.0 // indirect
-	golang.org/x/crypto v0.24.0 // indirect
+	golang.org/x/crypto v0.25.0 // indirect
 	golang.org/x/exp v0.0.0-20220722155223-a9213eeb770e // indirect
 	golang.org/x/mod v0.17.0 // indirect
-	golang.org/x/oauth2 v0.11.0 // indirect
+	golang.org/x/oauth2 v0.20.0 // indirect
 	golang.org/x/sync v0.7.0 // indirect
-	golang.org/x/term v0.21.0 // indirect
+	golang.org/x/term v0.22.0 // indirect
 	golang.org/x/text v0.16.0 // indirect
 	golang.org/x/time v0.3.0 // indirect
 	golang.org/x/tools v0.21.1-0.20240508182429-e35e4ccd0d2d // indirect
-	google.golang.org/appengine v1.6.7 // indirect
 	google.golang.org/genproto v0.0.0-20231030173426-d783a09b4405 // indirect
-	google.golang.org/genproto/googleapis/api v0.0.0-20231016165738-49dd2c1f3d0b // indirect
-	google.golang.org/genproto/googleapis/rpc v0.0.0-20231106174013-bbf56f31fb17 // indirect
+	google.golang.org/genproto/googleapis/api v0.0.0-20240528184218-531527333157 // indirect
+	google.golang.org/genproto/googleapis/rpc v0.0.0-20240709173604-40e1e62336c5 // indirect
 	gopkg.in/inf.v0 v0.9.1 // indirect
 	gopkg.in/natefinch/lumberjack.v2 v2.2.1 // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect
