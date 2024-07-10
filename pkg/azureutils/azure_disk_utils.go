@@ -581,6 +581,7 @@ func ParseDiskParameters(parameters map[string]string) (ManagedDiskParameters, e
 		Tags:           make(map[string]string),
 		VolumeContext:  parameters,
 	}
+	var originTags, tagValueDelimiter string
 	for k, v := range parameters {
 		switch strings.ToLower(k) {
 		case consts.SkuNameField:
@@ -611,13 +612,7 @@ func ParseDiskParameters(parameters map[string]string) (ManagedDiskParameters, e
 		case consts.DiskEncryptionTypeField:
 			diskParams.DiskEncryptionType = v
 		case consts.TagsField:
-			customTagsMap, err := util.ConvertTagsToMap(v)
-			if err != nil {
-				return diskParams, err
-			}
-			for k, v := range customTagsMap {
-				diskParams.Tags[k] = v
-			}
+			originTags = v
 		case azure.WriteAcceleratorEnabled:
 			diskParams.WriteAcceleratorEnabled = v
 		case consts.MaxSharesField:
@@ -670,6 +665,8 @@ func ParseDiskParameters(parameters map[string]string) (ManagedDiskParameters, e
 			if _, err = strconv.Atoi(v); err != nil {
 				return diskParams, fmt.Errorf("parse %s failed with error: %v", v, err)
 			}
+		case consts.TagValueDelimiterField:
+			tagValueDelimiter = v
 		default:
 			// accept all device settings params
 			// device settings need to start with azureconstants.DeviceSettingsKeyPrefix
@@ -679,6 +676,13 @@ func ParseDiskParameters(parameters map[string]string) (ManagedDiskParameters, e
 				return diskParams, fmt.Errorf("invalid parameter %s in storage class", k)
 			}
 		}
+	}
+	customTagsMap, err := util.ConvertTagsToMap(originTags, tagValueDelimiter)
+	if err != nil {
+		return diskParams, err
+	}
+	for k, v := range customTagsMap {
+		diskParams.Tags[k] = v
 	}
 
 	if strings.EqualFold(diskParams.AccountType, string(armcompute.DiskStorageAccountTypesPremiumV2LRS)) {
