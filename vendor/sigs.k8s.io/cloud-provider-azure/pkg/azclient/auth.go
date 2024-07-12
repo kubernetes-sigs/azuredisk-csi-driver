@@ -83,6 +83,7 @@ func NewAuthProvider(armConfig *ARMClientConfig, config *AzureAuthConfig, client
 		if err != nil {
 			return nil, err
 		}
+		managedIdentityCredential = armauth.NewExpireEarlyTokenWrapper(managedIdentityCredential)
 	}
 
 	var (
@@ -215,7 +216,7 @@ func (factory *AuthProvider) IsMultiTenantModeEnabled() bool {
 	return factory.MultiTenantCredential != nil
 }
 
-func (factory *AuthProvider) TokenScope() string {
+func (factory *AuthProvider) DefaultTokenScope() string {
 	audience := factory.ClientOptions.Cloud.Services[cloud.ResourceManager].Audience
-	return fmt.Sprintf("https://%s/.default", audience)
+	return fmt.Sprintf("%s/.default", strings.TrimRight(audience, "/"))
 }
