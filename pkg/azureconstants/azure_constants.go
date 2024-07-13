@@ -98,6 +98,8 @@ const (
 	// define different sleep time when hit throttling
 	SnapshotOpThrottlingSleepSec = 50
 	MaxThrottlingSleepSec        = 1200
+	// define tag value delimiter and default is comma
+	TagValueDelimiterField = "tagValueDelimiter"
 )
 
 var (
