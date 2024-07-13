@@ -1,6 +1,7 @@
 module sigs.k8s.io/azuredisk-csi-driver
 
 go 1.22
+toolchain go1.22.5
 
 require (
 	github.com/Azure/azure-sdk-for-go v68.0.0+incompatible
@@ -12,7 +13,7 @@ require (
 	github.com/Azure/go-autorest/autorest/mocks v0.4.2
 	github.com/container-storage-interface/spec v1.9.0
 	github.com/golang/protobuf v1.5.4
-	github.com/kubernetes-csi/csi-lib-utils v0.17.0
+	github.com/kubernetes-csi/csi-lib-utils v0.18.1
 	github.com/kubernetes-csi/csi-proxy/client v1.1.3
 	github.com/kubernetes-csi/external-snapshotter/client/v4 v4.2.0
 	github.com/onsi/ginkgo/v2 v2.19.0
@@ -34,7 +35,7 @@ require (
 	k8s.io/apimachinery v0.30.0
 	k8s.io/client-go v0.30.0
 	k8s.io/cloud-provider v0.29.4
-	k8s.io/component-base v0.29.4
+	k8s.io/component-base v0.30.0
 	k8s.io/klog/v2 v2.130.1
 	k8s.io/kubernetes v1.29.4
 	k8s.io/mount-utils v0.29.4
