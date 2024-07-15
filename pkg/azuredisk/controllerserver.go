@@ -343,25 +343,19 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 
 // DeleteVolume delete an azure disk
 func (d *Driver) DeleteVolume(ctx context.Context, req *csi.DeleteVolumeRequest) (*csi.DeleteVolumeResponse, error) {
-	volumeID := req.GetVolumeId()
-	if len(volumeID) == 0 {
+	diskURI := req.GetVolumeId()
+	if len(diskURI) == 0 {
 		return nil, status.Error(codes.InvalidArgument, "Volume ID missing in the request")
 	}
 
 	if err := d.ValidateControllerServiceRequest(csi.ControllerServiceCapability_RPC_CREATE_DELETE_VOLUME); err != nil {
 		return nil, status.Errorf(codes.Internal, "invalid delete volume req: %v", req)
 	}
-	diskURI := volumeID
 
-	if err := azureutils.IsValidDiskURI(diskURI); err != nil {
-		klog.Errorf("validateDiskURI(%s) in DeleteVolume failed with error: %v", diskURI, err)
-		return &csi.DeleteVolumeResponse{}, nil
+	if acquired := d.volumeLocks.TryAcquire(diskURI); !acquired {
+		return nil, status.Errorf(codes.Aborted, volumeOperationAlreadyExistsFmt, diskURI)
 	}
-
-	if acquired := d.volumeLocks.TryAcquire(volumeID); !acquired {
-		return nil, status.Errorf(codes.Aborted, volumeOperationAlreadyExistsFmt, volumeID)
-	}
-	defer d.volumeLocks.Release(volumeID)
+	defer d.volumeLocks.Release(diskURI)
 
 	mc := metrics.NewMetricContext(consts.AzureDiskCSIDriverName, "controller_delete_volume", d.cloud.ResourceGroup, d.cloud.SubscriptionID, d.Name)
 	isOperationSucceeded := false
@@ -671,10 +665,6 @@ func (d *Driver) listVolumesInCluster(ctx context.Context, start, maxEntries int
 	for _, pv := range pvList.Items {
 		if pv.Spec.CSI != nil && pv.Spec.CSI.Driver == d.Name {
 			diskURI := pv.Spec.CSI.VolumeHandle
-			if err := azureutils.IsValidDiskURI(diskURI); err != nil {
-				klog.Warningf("invalid disk uri (%s) with error(%v)", diskURI, err)
-				continue
-			}
 			rg, err := azureutils.GetResourceGroupFromURI(diskURI)
 			if err != nil {
 				klog.Warningf("failed to get resource group from disk uri (%s) with error(%v)", diskURI, err)
@@ -849,10 +839,6 @@ func (d *Driver) ControllerExpandVolume(ctx context.Context, req *csi.Controller
 	requestSize := *resource.NewQuantity(capacityBytes, resource.BinarySI)
 
 	diskURI := req.GetVolumeId()
-	if err := azureutils.IsValidDiskURI(diskURI); err != nil {
-		return nil, status.Errorf(codes.InvalidArgument, "disk URI(%s) is not valid: %v", diskURI, err)
-	}
-
 	diskName, err := azureutils.GetDiskName(diskURI)
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "could not get disk name from diskURI(%s) with error(%v)", diskURI, err)

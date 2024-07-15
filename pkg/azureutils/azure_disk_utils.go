@@ -66,11 +66,10 @@ const (
 
 var (
 	// see https://docs.microsoft.com/en-us/rest/api/compute/disks/createorupdate#create-a-managed-disk-by-copying-a-snapshot.
-	diskSnapshotPath        = "/subscriptions/%s/resourceGroups/%s/providers/Microsoft.Compute/snapshots/%s"
-	diskSnapshotPathRE      = regexp.MustCompile(`(?i).*/subscriptions/(?:.*)/resourceGroups/(?:.*)/providers/Microsoft.Compute/snapshots/(.+)`)
-	diskURISupportedManaged = []string{"/subscriptions/{sub-id}/resourcegroups/{group-name}/providers/microsoft.compute/disks/{disk-id}"}
-	lunPathRE               = regexp.MustCompile(`/dev(?:.*)/disk/azure/scsi(?:.*)/lun(.+)`)
-	supportedCachingModes   = sets.NewString(
+	diskSnapshotPath      = "/subscriptions/%s/resourceGroups/%s/providers/Microsoft.Compute/snapshots/%s"
+	diskSnapshotPathRE    = regexp.MustCompile(`(?i).*/subscriptions/(?:.*)/resourceGroups/(?:.*)/providers/Microsoft.Compute/snapshots/(.+)`)
+	lunPathRE             = regexp.MustCompile(`/dev(?:.*)/disk/azure/scsi(?:.*)/lun(.+)`)
+	supportedCachingModes = sets.NewString(
 		string(api.AzureDataDiskCachingNone),
 		string(api.AzureDataDiskCachingReadOnly),
 		string(api.AzureDataDiskCachingReadWrite),
@@ -425,13 +424,6 @@ func IsValidAvailabilityZone(zone, region string) bool {
 		return index > 0 && index < len(zone)-1
 	}
 	return strings.HasPrefix(zone, fmt.Sprintf("%s-", region))
-}
-
-func IsValidDiskURI(diskURI string) error {
-	if strings.Index(strings.ToLower(diskURI), "/subscriptions/") != 0 {
-		return fmt.Errorf("invalid DiskURI: %v, correct format: %v", diskURI, diskURISupportedManaged)
-	}
-	return nil
 }
 
 // IsValidVolumeCapabilities checks whether the volume capabilities are valid

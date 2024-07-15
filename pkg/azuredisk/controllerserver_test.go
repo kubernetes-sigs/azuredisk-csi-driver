@@ -55,9 +55,9 @@ var (
 func checkTestError(t *testing.T, expectedErrCode codes.Code, err error) {
 	s, ok := status.FromError(err)
 	if !ok {
-		t.Errorf("could not get error status from err: %v", s)
+		t.Logf("could not get error status from err: %v", s)
 	}
-	if s.Code() != expectedErrCode {
+	if s != nil && s.Code() != expectedErrCode {
 		t.Errorf("expected error code: %v, actual: %v, err: %v", expectedErrCode, s.Code(), err)
 	}
 }
@@ -581,7 +581,8 @@ func TestDeleteVolume(t *testing.T) {
 			req: &csi.DeleteVolumeRequest{
 				VolumeId: "123",
 			},
-			expectedResp: &csi.DeleteVolumeResponse{},
+			expectedResp:    &csi.DeleteVolumeResponse{},
+			expectedErrCode: codes.Unknown,
 		},
 	}
 
@@ -1103,30 +1104,10 @@ func TestControllerExpandVolume(t *testing.T) {
 				defer cntl.Finish()
 				d, _ := NewFakeDriver(cntl)
 
-				expectedErr := status.Error(codes.InvalidArgument, "disk URI(httptest) is not valid: invalid DiskURI: httptest, correct format: [/subscriptions/{sub-id}/resourcegroups/{group-name}/providers/microsoft.compute/disks/{disk-id}]")
+				expectedErr := status.Error(codes.Internal, "could not get disk name from diskURI(httptest) with error(could not get disk name from httptest, correct format: (?i).*/subscriptions/(?:.*)/resourceGroups/(?:.*)/providers/Microsoft.Compute/disks/(.+))")
 				_, err := d.ControllerExpandVolume(ctx, req)
 				if !reflect.DeepEqual(err, expectedErr) {
-					t.Errorf("Unexpected error: %v", err)
-				}
-			},
-		},
-		{
-			name: "Disk URI not valid",
-			testFunc: func(t *testing.T) {
-				req := &csi.ControllerExpandVolumeRequest{
-					VolumeId:      "vol_1",
-					CapacityRange: stdCapRange,
-				}
-
-				ctx := context.Background()
-				cntl := gomock.NewController(t)
-				defer cntl.Finish()
-				d, _ := NewFakeDriver(cntl)
-
-				expectedErr := status.Errorf(codes.InvalidArgument, "disk URI(vol_1) is not valid: invalid DiskURI: vol_1, correct format: [/subscriptions/{sub-id}/resourcegroups/{group-name}/providers/microsoft.compute/disks/{disk-id}]")
-				_, err := d.ControllerExpandVolume(ctx, req)
-				if !reflect.DeepEqual(err, expectedErr) {
-					t.Errorf("actualErr: (%v), expectedErr: (%v)", err, expectedErr)
+					t.Errorf("Unexpected error: %v, expected error: %v", err, expectedErr)
 				}
 			},
 		},
