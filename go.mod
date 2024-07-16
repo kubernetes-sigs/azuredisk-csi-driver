@@ -1,6 +1,7 @@
 module sigs.k8s.io/azuredisk-csi-driver
 
 go 1.22
+toolchain go1.22.5
 
 require (
 	github.com/Azure/azure-sdk-for-go v68.0.0+incompatible
@@ -30,9 +31,9 @@ require (
 	golang.org/x/sys v0.22.0
 	google.golang.org/grpc v1.65.0
 	google.golang.org/protobuf v1.34.2
-	k8s.io/api v0.30.0
-	k8s.io/apimachinery v0.30.0
-	k8s.io/client-go v0.30.0
+	k8s.io/api v0.30.2
+	k8s.io/apimachinery v0.30.2
+	k8s.io/client-go v0.30.2
 	k8s.io/cloud-provider v0.29.4
 	k8s.io/component-base v0.29.4
 	k8s.io/klog/v2 v2.130.1
@@ -42,7 +43,7 @@ require (
 	k8s.io/utils v0.0.0-20240711033017-18e509b52bc8
 	sigs.k8s.io/cloud-provider-azure v1.29.1-0.20240401064333-15fadde40d38
 	sigs.k8s.io/cloud-provider-azure/pkg/azclient v0.0.31
-	sigs.k8s.io/cloud-provider-azure/pkg/azclient/configloader v0.0.9
+	sigs.k8s.io/cloud-provider-azure/pkg/azclient/configloader v0.0.16
 	sigs.k8s.io/yaml v1.4.0
 )
 
