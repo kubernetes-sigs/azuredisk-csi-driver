@@ -414,6 +414,79 @@ func (c *ManagedDiskController) ResizeDisk(ctx context.Context, diskURI string, 
 	return newSizeQuant, nil
 }
 
+// ModifyDisk: modify disk
+func (c *ManagedDiskController) ModifyDisk(ctx context.Context, options *ManagedDiskOptions) error {
+	klog.V(4).Infof("azureDisk - modifying managed Name:%s, StorageAccountType:%s, DiskIOPSReadWrite:%s, DiskMBpsReadWrite:%s", options.DiskName, options.StorageAccountType, options.DiskIOPSReadWrite, options.DiskMBpsReadWrite)
+
+	rg, subsID, err := getInfoFromDiskURI(options.SourceResourceID)
+	if err != nil {
+		return err
+	}
+
+	diskClient, err := c.clientFactory.GetDiskClientForSub(subsID)
+	if err != nil {
+		return err
+	}
+
+	model := armcompute.DiskUpdate{}
+	result, err := diskClient.Get(ctx, rg, options.DiskName)
+	if err != nil {
+		return err
+	}
+
+	if result.Properties == nil || result.SKU == nil || result.SKU.Name == nil {
+		return fmt.Errorf("DiskProperties or SKU of disk(%s) is nil", options.DiskName)
+	}
+
+	diskSku := *result.SKU.Name
+	if options.StorageAccountType != "" && options.StorageAccountType != diskSku {
+		diskSku = options.StorageAccountType
+		model.SKU = &armcompute.DiskSKU{
+			Name: to.Ptr(diskSku),
+		}
+	}
+
+	diskProperties := armcompute.DiskUpdateProperties{}
+
+	if diskSku == armcompute.DiskStorageAccountTypesUltraSSDLRS || diskSku == armcompute.DiskStorageAccountTypesPremiumV2LRS {
+		if options.DiskIOPSReadWrite != "" {
+			v, err := strconv.Atoi(options.DiskIOPSReadWrite)
+			if err != nil {
+				return fmt.Errorf("AzureDisk - failed to parse DiskIOPSReadWrite: %w", err)
+			}
+			diskIOPSReadWrite := int64(v)
+			diskProperties.DiskIOPSReadWrite = pointer.Int64(diskIOPSReadWrite)
+		}
+
+		if options.DiskMBpsReadWrite != "" {
+			v, err := strconv.Atoi(options.DiskMBpsReadWrite)
+			if err != nil {
+				return fmt.Errorf("AzureDisk - failed to parse DiskMBpsReadWrite: %w", err)
+			}
+			diskMBpsReadWrite := int64(v)
+			diskProperties.DiskMBpsReadWrite = pointer.Int64(diskMBpsReadWrite)
+		}
+
+		model.Properties = &diskProperties
+	} else {
+		if options.DiskIOPSReadWrite != "" {
+			return fmt.Errorf("AzureDisk - DiskIOPSReadWrite parameter is only applicable in UltraSSD_LRS or PremiumV2_LRS disk type")
+		}
+		if options.DiskMBpsReadWrite != "" {
+			return fmt.Errorf("AzureDisk - DiskMBpsReadWrite parameter is only applicable in UltraSSD_LRS or PremiumV2_LRS disk type")
+		}
+	}
+
+	if model.SKU != nil || model.Properties != nil {
+		if _, err := diskClient.Patch(ctx, rg, options.DiskName, model); err != nil {
+			return err
+		}
+	} else {
+		klog.V(4).Infof("azureDisk - no modification needed for disk(%s)", options.DiskName)
+	}
+	return nil
+}
+
 // get resource group name, subs id from a managed disk URI, e.g. return {group-name}, {sub-id} according to
 // /subscriptions/{sub-id}/resourcegroups/{group-name}/providers/microsoft.compute/disks/{disk-id}
 // according to https://docs.microsoft.com/en-us/rest/api/compute/disks/get

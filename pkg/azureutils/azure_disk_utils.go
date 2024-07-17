@@ -597,8 +597,14 @@ func ParseDiskParameters(parameters map[string]string) (ManagedDiskParameters, e
 		case consts.ResourceGroupField:
 			diskParams.ResourceGroup = v
 		case consts.DiskIOPSReadWriteField:
+			if _, err = strconv.Atoi(v); err != nil {
+				return diskParams, fmt.Errorf("parse %s:%s failed with error: %v", consts.DiskIOPSReadWriteField, v, err)
+			}
 			diskParams.DiskIOPSReadWrite = v
 		case consts.DiskMBPSReadWriteField:
+			if _, err = strconv.Atoi(v); err != nil {
+				return diskParams, fmt.Errorf("parse %s:%s failed with error: %v", consts.DiskMBPSReadWriteField, v, err)
+			}
 			diskParams.DiskMBPSReadWrite = v
 		case consts.LogicalSectorSizeField:
 			diskParams.LogicalSectorSize, err = strconv.Atoi(v)

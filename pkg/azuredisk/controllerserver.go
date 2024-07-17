@@ -382,8 +382,71 @@ func (d *Driver) ControllerGetVolume(context.Context, *csi.ControllerGetVolumeRe
 }
 
 // ControllerModifyVolume modify volume
-func (d *Driver) ControllerModifyVolume(context.Context, *csi.ControllerModifyVolumeRequest) (*csi.ControllerModifyVolumeResponse, error) {
-	return nil, status.Error(codes.Unimplemented, "")
+func (d *Driver) ControllerModifyVolume(ctx context.Context, req *csi.ControllerModifyVolumeRequest) (*csi.ControllerModifyVolumeResponse, error) {
+	volumeID := req.GetVolumeId()
+	if len(volumeID) == 0 {
+		return nil, status.Error(codes.InvalidArgument, "Volume ID missing in the request")
+	}
+
+	if err := d.ValidateControllerServiceRequest(csi.ControllerServiceCapability_RPC_MODIFY_VOLUME); err != nil {
+		return nil, status.Errorf(codes.Internal, "invalid modify volume req: %v", req)
+	}
+	diskURI := volumeID
+
+	diskName, err := azureutils.GetDiskName(diskURI)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, err.Error())
+	}
+
+	if _, err := d.checkDiskExists(ctx, diskURI); err != nil {
+		return nil, status.Error(codes.NotFound, fmt.Sprintf("Volume not found, failed with error: %v", err))
+	}
+
+	diskParams, err := azureutils.ParseDiskParameters(req.GetMutableParameters())
+	if err != nil {
+		return nil, status.Errorf(codes.InvalidArgument, "Failed parsing disk parameters: %v", err)
+	}
+
+	// normalize values
+	skuName, err := azureutils.NormalizeStorageAccountType(diskParams.AccountType, d.cloud.Config.Cloud, d.cloud.Config.DisableAzureStackCloud)
+	if err != nil {
+		return nil, status.Error(codes.InvalidArgument, err.Error())
+	}
+	if diskParams.AccountType == "" {
+		skuName = ""
+	}
+
+	klog.V(2).Infof("begin to modify azure disk(%s) account type(%s) rg(%s) location(%s)",
+		diskParams.DiskName, skuName, diskParams.ResourceGroup, diskParams.Location)
+
+	volumeOptions := &ManagedDiskOptions{
+		DiskIOPSReadWrite:  diskParams.DiskIOPSReadWrite,
+		DiskMBpsReadWrite:  diskParams.DiskMBPSReadWrite,
+		DiskName:           diskName,
+		ResourceGroup:      diskParams.ResourceGroup,
+		SubscriptionID:     diskParams.SubscriptionID,
+		StorageAccountType: skuName,
+		SourceResourceID:   diskURI,
+		SourceType:         consts.SourceVolume,
+	}
+
+	mc := metrics.NewMetricContext(consts.AzureDiskCSIDriverName, "controller_modify_volume", d.cloud.ResourceGroup, d.cloud.SubscriptionID, d.Name)
+	isOperationSucceeded := false
+	defer func() {
+		mc.ObserveOperationWithResult(isOperationSucceeded, consts.VolumeID, diskURI)
+	}()
+
+	if err = d.diskController.ModifyDisk(ctx, volumeOptions); err != nil {
+		if strings.Contains(err.Error(), consts.NotFound) {
+			return nil, status.Error(codes.NotFound, err.Error())
+		}
+		return nil, status.Errorf(codes.Internal, err.Error())
+	}
+
+	isOperationSucceeded = true
+	klog.V(2).Infof("modify azure disk(%s) account type(%s) rg(%s) location(%s) successfully", diskParams.DiskName, skuName, diskParams.ResourceGroup, diskParams.Location)
+
+	return &csi.ControllerModifyVolumeResponse{}, err
 }
 
 // ControllerPublishVolume attach an azure disk to a required node
