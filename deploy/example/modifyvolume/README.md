@@ -1,19 +1,36 @@
-# Volume Modification
+# ModifyVolume feature example
+ - Feature Status: Alpha
+ - supported from Azure Disk CSI driver v1.30.2
+
 ## Prerequisites
-Volume modification only work on a cluster with the `VolumeAttributesClass` feature enabled. To use this feature, it should:
+To use this `VolumeAttributesClass` feature, you should enable following feature gates:
 - `VolumeAttributesClass` feature gate on `kube-apiserver` (consult your Kubernetes distro's documentation)
 - `storage.k8s.io/v1alpha1` enabled in `kube-apiserver` via [`runtime-config`](https://kubernetes.io/docs/tasks/administer-cluster/enable-disable-api/) (consult your Kubernetes distro's documentation)
 - `VolumeAttributesClass` feature gate on `kube-controller-manager` (consult your Kubernetes distro's documentation)
-- `VolumeAttributesClass` feature gate on `csi-provisioner` container in csi-azuredisk-controller
-- `VolumeAttributesClass` feature gate on `csi-resizer` container in csi-azuredisk-controller
+- `VolumeAttributesClass` feature gate on `external-provisioner` sidecar container in CSI driver controller
+- `VolumeAttributesClass` feature gate on `external-resizer` sidecar container in CSI driver controller
 
-For more information, see the [Kubernetes documentation for the feature](https://kubernetes.io/docs/concepts/storage/volume-attributes-classes/).
+To learn more about this feature, please refer to the [Kubernetes documentation for the feature](https://kubernetes.io/docs/concepts/storage/volume-attributes-classes/).
 
 ## Parameters
-Users can specify the following modification parameters:
-- `skuName`: to update the disk type(skuName is not allowed to change from or to UltraSSD_LRS or PremiumV2_LRS disk type, more details on [Change the disk type of an Azure managed disk](https://learn.microsoft.com/en-us/azure/virtual-machines/disks-convert-types?tabs=azure-powershell))
-- `DiskIOPSReadWrite`: to update the IOPS
-- `DiskMBpsReadWrite`: to update the throughput
+You could specify the following parameters in `VolumeAttributesClass`:
+- `DiskIOPSReadWrite`: disk IOPS
+- `DiskMBpsReadWrite`: disk throughput
+- `skuName`:  disk type
+> Changing the `skuName` to or from UltraSSD_LRS or PremiumV2_LRS is not permitted. For additional information, please consult the following resource [Change the disk type of an Azure managed disk](https://learn.microsoft.com/en-us/azure/virtual-machines/disks-convert-types?tabs=azure-powershell)
+
+here is an example to update disk IOPS and throughput:
+
+```yaml
+apiVersion: storage.k8s.io/v1alpha1
+kind: VolumeAttributesClass
+metadata:
+  name: premium2-disk-class
+driverName: disk.csi.azure.com
+parameters:
+  DiskIOPSReadWrite: "5000"
+  DiskMBpsReadWrite: "1200"
+```
 
 ## Usage
 
@@ -43,12 +60,12 @@ NAME                  DRIVERNAME           AGE
 premium2-disk-class   disk.csi.azure.com   4s
 ```
 
-### Edit the PVC to point to the VolumeAttributesClass
+### Modify the PVC to reference the VolumeAttributesClass
 ```console
 kubectl patch pvc pvc-azuredisk --patch '{"spec": {"volumeAttributesClassName": "premium2-disk-class"}}'
 ```
 
-### Wait for the VolumeAttributesClass to apply to the volume
+### Wait for the VolumeAttributesClass to be applied to the volume
 ```console
 kubectl get pvc pvc-azuredisk
 NAME            STATUS   VOLUME                                     CAPACITY   ACCESS MODES   STORAGECLASS        VOLUMEATTRIBUTESCLASS   AGE
