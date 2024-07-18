@@ -1,4 +1,5 @@
 # Driver Parameters
+> parameter names are case-insensitive
 
 <details><summary>required permissions for CSI driver controller</summary>
 <pre>
