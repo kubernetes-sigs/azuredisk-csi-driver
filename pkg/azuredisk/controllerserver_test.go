@@ -227,8 +227,8 @@ func TestCreateVolume(t *testing.T) {
 				mp[consts.LocationField] = "ut"
 				mp[consts.StorageAccountTypeField] = "ut"
 				mp[consts.ResourceGroupField] = "ut"
-				mp[consts.DiskIOPSReadWriteField] = "ut"
-				mp[consts.DiskMBPSReadWriteField] = "ut"
+				mp[consts.DiskIOPSReadWriteField] = "1"
+				mp[consts.DiskMBPSReadWriteField] = "1"
 				mp[consts.DiskNameField] = "ut"
 				mp[consts.DesIDField] = "ut"
 				mp[consts.WriteAcceleratorEnabled] = "ut"
@@ -619,6 +619,121 @@ func TestControllerGetVolume(t *testing.T) {
 	assert.Nil(t, resp)
 	if !reflect.DeepEqual(err, status.Error(codes.Unimplemented, "")) {
 		t.Errorf("Unexpected error: %v", err)
+	}
+}
+
+func TestControllerModifyVolume(t *testing.T) {
+	cntl := gomock.NewController(t)
+	defer cntl.Finish()
+	d, err := NewFakeDriver(cntl)
+	if err != nil {
+		t.Fatalf("Error getting driver: %v", err)
+	}
+	storageAccountTypeUltraSSDLRS := armcompute.DiskStorageAccountTypesUltraSSDLRS
+
+	tests := []struct {
+		desc            string
+		req             *csi.ControllerModifyVolumeRequest
+		oldSKU          *armcompute.DiskStorageAccountTypes
+		expectedResp    *csi.ControllerModifyVolumeResponse
+		expectedErrCode codes.Code
+		expectedErrmsg  string
+	}{
+		{
+			desc: "success standard",
+			req: &csi.ControllerModifyVolumeRequest{
+				VolumeId: testVolumeID,
+				MutableParameters: map[string]string{
+					consts.DiskIOPSReadWriteField: "100",
+					consts.DiskMBPSReadWriteField: "100",
+				},
+			},
+			oldSKU:       &storageAccountTypeUltraSSDLRS,
+			expectedResp: &csi.ControllerModifyVolumeResponse{},
+		},
+		{
+			desc: "fail with no volume id",
+			req: &csi.ControllerModifyVolumeRequest{
+				VolumeId: "",
+			},
+			expectedResp:    nil,
+			expectedErrCode: codes.InvalidArgument,
+		},
+		{
+			desc: "fail with the invalid diskURI",
+			req: &csi.ControllerModifyVolumeRequest{
+				VolumeId: "123",
+			},
+			expectedResp:    nil,
+			expectedErrCode: codes.Internal,
+		},
+		{
+			desc: "fail with wrong disk name",
+			req: &csi.ControllerModifyVolumeRequest{
+				VolumeId: "/subscriptions/123",
+			},
+			expectedResp:    nil,
+			expectedErrCode: codes.Internal,
+		},
+		{
+			desc: "fail with wrong sku name",
+			req: &csi.ControllerModifyVolumeRequest{
+				VolumeId: testVolumeID,
+				MutableParameters: map[string]string{
+					consts.SkuNameField: "ut",
+				},
+			},
+			expectedResp:    nil,
+			expectedErrCode: codes.InvalidArgument,
+		},
+		{
+			desc: "fail with error parse parameter",
+			req: &csi.ControllerModifyVolumeRequest{
+				VolumeId: testVolumeID,
+				MutableParameters: map[string]string{
+					consts.DiskIOPSReadWriteField: "ut",
+				},
+			},
+			expectedResp:    nil,
+			expectedErrCode: codes.InvalidArgument,
+		},
+		{
+			desc: "fail with unsupported sku",
+			req: &csi.ControllerModifyVolumeRequest{
+				VolumeId: testVolumeID,
+				MutableParameters: map[string]string{
+					consts.SkuNameField:           "Premium_LRS",
+					consts.DiskIOPSReadWriteField: "100",
+				},
+			},
+			expectedResp:    nil,
+			expectedErrCode: codes.Internal,
+		},
+	}
+
+	for _, test := range tests {
+		ctx, cancel := context.WithCancel(context.TODO())
+		defer cancel()
+		id := test.req.VolumeId
+		disk := &armcompute.Disk{
+			ID: &id,
+			SKU: &armcompute.DiskSKU{
+				Name: test.oldSKU,
+			},
+			Properties: &armcompute.DiskProperties{},
+		}
+		diskClient := mock_diskclient.NewMockInterface(cntl)
+		d.getClientFactory().(*mock_azclient.MockClientFactory).EXPECT().GetDiskClientForSub(gomock.Any()).Return(diskClient, nil).AnyTimes()
+		diskClient.EXPECT().Get(gomock.Eq(ctx), gomock.Any(), gomock.Any()).Return(disk, nil).AnyTimes()
+		diskClient.EXPECT().Patch(gomock.Eq(ctx), gomock.Any(), gomock.Any(), gomock.Any()).Return(disk, nil).AnyTimes()
+
+		result, err := d.ControllerModifyVolume(ctx, test.req)
+		if err != nil {
+			checkTestError(t, test.expectedErrCode, err)
+		}
+		if !reflect.DeepEqual(result, test.expectedResp) {
+			t.Errorf("input request: %v, ControllerModifyVolume result: %v, expected: %v", test.req, result, test.expectedResp)
+		}
 	}
 }
 
