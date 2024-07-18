@@ -10,7 +10,7 @@ To use this `VolumeAttributesClass` feature, you should enable following feature
 - `VolumeAttributesClass` feature gate on `external-provisioner` sidecar container in CSI driver controller
 - `VolumeAttributesClass` feature gate on `external-resizer` sidecar container in CSI driver controller
 
-To learn more about this feature, please refer to the [Kubernetes documentation for the feature](https://kubernetes.io/docs/concepts/storage/volume-attributes-classes/).
+To learn more about this feature, please refer to the [Kubernetes documentation for VolumeAttributesClass feature](https://kubernetes.io/docs/concepts/storage/volume-attributes-classes/).
 
 ## Parameters
 You could specify the following parameters in `VolumeAttributesClass`:
