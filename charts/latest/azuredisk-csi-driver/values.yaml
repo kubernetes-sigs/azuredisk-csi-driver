@@ -221,7 +221,7 @@ linux:
         memory: 20Mi
     azuredisk:
       limits:
-        memory: 200Mi
+        memory: 600Mi
       requests:
         cpu: 10m
         memory: 20Mi
@@ -270,7 +270,7 @@ windows:
         memory: 40Mi
     azuredisk:
       limits:
-        memory: 200Mi
+        memory: 600Mi
       requests:
         cpu: 10m
         memory: 40Mi
