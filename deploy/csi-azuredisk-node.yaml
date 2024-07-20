@@ -146,7 +146,7 @@ spec:
               name: sys-class
           resources:
             limits:
-              memory: 200Mi
+              memory: 600Mi
             requests:
               cpu: 10m
               memory: 20Mi
