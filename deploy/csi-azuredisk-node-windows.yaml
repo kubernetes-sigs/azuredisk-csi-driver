@@ -159,7 +159,7 @@ spec:
               mountPath: \\.\pipe\csi-proxy-volume-v1beta2
           resources:
             limits:
-              memory: 200Mi
+              memory: 600Mi
             requests:
               cpu: 10m
               memory: 40Mi
