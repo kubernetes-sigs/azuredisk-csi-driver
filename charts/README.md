@@ -234,7 +234,7 @@ The following table lists the configurable parameters of the latest Azure Disk C
 | `linux.resources.nodeDriverRegistrar.limits.memory`    | csi-node-driver-registrar memory limits               | 100Mi                                                          |
 | `linux.resources.nodeDriverRegistrar.requests.cpu`     | csi-node-driver-registrar cpu requests         | 10m                                                            |
 | `linux.resources.nodeDriverRegistrar.requests.memory`  | csi-node-driver-registrar memory requests      | 20Mi                                                           |
-| `linux.resources.azuredisk.limits.memory`              | azuredisk memory limits                         | 200Mi                                                         |
+| `linux.resources.azuredisk.limits.memory`              | azuredisk memory limits                         | 600Mi                                                         |
 | `linux.resources.azuredisk.requests.cpu`               | azuredisk cpu requests                   | 10m                                                            |
 | `linux.resources.azuredisk.requests.memory`            | azuredisk memory requests                | 20Mi                                                           |
 | `windows.enabled`                                 | whether enable windows feature                             | `true`                                                        |
@@ -255,7 +255,7 @@ The following table lists the configurable parameters of the latest Azure Disk C
 | `windows.resources.nodeDriverRegistrar.limits.memory`    | csi-node-driver-registrar memory limits               | 150Mi                                                          |
 | `windows.resources.nodeDriverRegistrar.requests.cpu`     | csi-node-driver-registrar cpu requests         | 30m                                                            |
 | `windows.resources.nodeDriverRegistrar.requests.memory`  | csi-node-driver-registrar memory requests      | 40Mi                                                           |
-| `windows.resources.azuredisk.limits.memory`              | azuredisk memory limits                         | 200Mi                                                         |
+| `windows.resources.azuredisk.limits.memory`              | azuredisk memory limits                         | 600Mi                                                         |
 | `windows.resources.azuredisk.requests.cpu`               | azuredisk cpu requests                   | 10m                                                            |
 | `windows.resources.azuredisk.requests.memory`            | azuredisk memory requests                | 40Mi                                                           |
 | `windows.useHostProcessContainers`                       | use HostProcessContainers for deployment | false                                                          |
