@@ -98,7 +98,25 @@ func scsiHostRescan(io azureutils.IOHandler, _ *mount.SafeFormatAndMount) {
 
 func findDiskByLun(lun int, io azureutils.IOHandler, _ *mount.SafeFormatAndMount) (string, error) {
 	azureDisks := listAzureDiskPath(io)
-	return findDiskByLunWithConstraint(lun, io, azureDisks)
+	device, err := findDiskByLunWithConstraint(lun, io, azureDisks)
+	if err == nil && device != "" {
+		return device, nil
+	}
+
+	devPaths := []string{
+		fmt.Sprintf("/dev/disk/azure/scsi1/lun%d", lun),
+		fmt.Sprintf("/dev/disk/azure/data/by-lun/%d", lun),
+	}
+	klog.Warningf("failed to find disk by lun %d, err %v, fall back to search in following device path: %s", lun, err, devPaths)
+	for _, devPath := range devPaths {
+		if _, err := os.Stat(devPath); err == nil {
+			if device, err := io.Readlink(devPath); err == nil {
+				klog.V(2).Infof("found device path %s linked to %s by lun %d", devPath, device, lun)
+				return devPath, nil
+			}
+		}
+	}
+	return "", fmt.Errorf("failed to find disk by lun %d", lun)
 }
 
 func formatAndMount(source, target, fstype string, options []string, m *mount.SafeFormatAndMount) error {
