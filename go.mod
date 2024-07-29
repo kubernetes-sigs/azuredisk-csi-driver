@@ -1,6 +1,7 @@
 module sigs.k8s.io/azuredisk-csi-driver
 
 go 1.22
+toolchain go1.22.5
 
 require (
 	github.com/Azure/azure-sdk-for-go v68.0.0+incompatible
@@ -15,8 +16,8 @@ require (
 	github.com/kubernetes-csi/csi-lib-utils v0.17.0
 	github.com/kubernetes-csi/csi-proxy/client v1.1.3
 	github.com/kubernetes-csi/external-snapshotter/client/v4 v4.2.0
-	github.com/onsi/ginkgo/v2 v2.19.0
-	github.com/onsi/gomega v1.33.1
+	github.com/onsi/ginkgo/v2 v2.19.1
+	github.com/onsi/gomega v1.34.0
 	github.com/pelletier/go-toml v1.9.5
 	github.com/stretchr/testify v1.9.0
 	go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc v0.46.1
@@ -30,9 +31,9 @@ require (
 	golang.org/x/sys v0.22.0
 	google.golang.org/grpc v1.65.0
 	google.golang.org/protobuf v1.34.2
-	k8s.io/api v0.30.0
-	k8s.io/apimachinery v0.30.0
-	k8s.io/client-go v0.30.0
+	k8s.io/api v0.30.3
+	k8s.io/apimachinery v0.30.3
+	k8s.io/client-go v0.30.3
 	k8s.io/cloud-provider v0.29.7
 	k8s.io/component-base v0.29.7
 	k8s.io/klog/v2 v2.130.1
@@ -42,7 +43,7 @@ require (
 	k8s.io/utils v0.0.0-20240711033017-18e509b52bc8
 	sigs.k8s.io/cloud-provider-azure v1.29.1-0.20240401064333-15fadde40d38
 	sigs.k8s.io/cloud-provider-azure/pkg/azclient v0.0.32
-	sigs.k8s.io/cloud-provider-azure/pkg/azclient/configloader v0.0.9
+	sigs.k8s.io/cloud-provider-azure/pkg/azclient/configloader v0.0.20
 	sigs.k8s.io/yaml v1.4.0
 )
 
