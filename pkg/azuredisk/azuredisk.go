@@ -34,6 +34,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
+	grpcprom "github.com/grpc-ecosystem/go-grpc-middleware/providers/prometheus"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
@@ -315,9 +316,11 @@ func (d *Driver) Run(ctx context.Context) error {
 	}
 	klog.Infof("\nDRIVER INFORMATION:\n-------------------\n%s\n\nStreaming logs below:", versionMeta)
 
-	grpcInterceptor := grpc.UnaryInterceptor(csicommon.LogGRPC)
 	opts := []grpc.ServerOption{
-		grpcInterceptor,
+		grpc.ChainUnaryInterceptor(
+			grpcprom.NewServerMetrics().UnaryServerInterceptor(),
+			csicommon.LogGRPC,
+		),
 	}
 	if d.enableOtelTracing {
 		exporter, err := InitOtelTracing()
