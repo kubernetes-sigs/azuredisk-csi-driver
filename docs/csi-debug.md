@@ -1,6 +1,6 @@
 ## CSI driver debug tips
 ### case#1: disk create/delete/attach/detach/snapshot/restore failed
-> This step is not applicable if you are using [managed CSI driver on AKS](https://docs.microsoft.com/en-us/azure/aks/csi-storage-drivers).
+> If you are using [managed CSI driver on AKS](https://docs.microsoft.com/en-us/azure/aks/csi-storage-drivers), this step does not apply since the driver controller is not visible to the user.
  - find csi driver controller pod
 > There could be multiple controller pods (only one pod is the leader), if there are no helpful logs, try to get logs from the leader controller pod.
 ```console
@@ -78,7 +78,7 @@ kubectl edit ds csi-azuredisk-node -n kube-system
 ```
 change below deployment config, e.g.
 ```console
-        image: mcr.microsoft.com/k8s/csi/azuredisk-csi:v1.8.0
+        image: mcr.microsoft.com/k8s/csi/azuredisk-csi:v1.30.0
         imagePullPolicy: Always
 ```
 
