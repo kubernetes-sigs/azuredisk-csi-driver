@@ -1051,6 +1051,13 @@ func (d *Driver) CreateSnapshot(ctx context.Context, req *csi.CreateSnapshotRequ
 		Tags:     tags,
 	}
 
+	if d.cloud.HasExtendedLocation() {
+		snapshot.ExtendedLocation = &armcompute.ExtendedLocation{
+			Name: to.Ptr(d.cloud.ExtendedLocationName),
+			Type: to.Ptr(armcompute.ExtendedLocationTypes(d.cloud.ExtendedLocationType)),
+		}
+	}
+
 	if dataAccessAuthMode != "" {
 		if err := azureutils.ValidateDataAccessAuthMode(dataAccessAuthMode); err != nil {
 			return nil, status.Error(codes.InvalidArgument, err.Error())
