@@ -29,6 +29,7 @@ import (
 
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute/v5"
 	"github.com/container-storage-interface/spec/lib/go/csi"
+	grpcprom "github.com/grpc-ecosystem/go-grpc-middleware/providers/prometheus"
 	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
@@ -184,12 +185,14 @@ func (d *DriverV2) Run(ctx context.Context) error {
 	}
 	klog.Infof("\nDRIVER INFORMATION:\n-------------------\n%s\n\nStreaming logs below:", versionMeta)
 
-	grpcInterceptor := grpc.UnaryInterceptor(csicommon.LogGRPC)
-	if d.enableOtelTracing {
-		grpcInterceptor = grpc.ChainUnaryInterceptor(csicommon.LogGRPC, otelgrpc.UnaryServerInterceptor())
-	}
 	opts := []grpc.ServerOption{
-		grpcInterceptor,
+		grpc.ChainUnaryInterceptor(
+			grpcprom.NewServerMetrics().UnaryServerInterceptor(),
+			csicommon.LogGRPC,
+		),
+	}
+	if d.enableOtelTracing {
+		opts = append(opts, grpc.StatsHandler(otelgrpc.NewServerHandler()))
 	}
 	s := grpc.NewServer(opts...)
 	csi.RegisterIdentityServer(s, d)
