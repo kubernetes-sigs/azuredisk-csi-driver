@@ -1052,6 +1052,7 @@ func (d *Driver) CreateSnapshot(ctx context.Context, req *csi.CreateSnapshotRequ
 	}
 
 	if d.cloud.HasExtendedLocation() {
+		klog.V(2).Infof("extended location Name:%s Type:%s is set on snapshot %s, source volume %s", d.cloud.ExtendedLocationName, d.cloud.ExtendedLocationType, snapshotName, sourceVolumeID)
 		snapshot.ExtendedLocation = &armcompute.ExtendedLocation{
 			Name: to.Ptr(d.cloud.ExtendedLocationName),
 			Type: to.Ptr(armcompute.ExtendedLocationTypes(d.cloud.ExtendedLocationType)),
