@@ -37,6 +37,7 @@ import (
 	cloudprovider "k8s.io/cloud-provider"
 	volerr "k8s.io/cloud-provider/volume/errors"
 	"k8s.io/klog/v2"
+	"k8s.io/utils/pointer"
 
 	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
@@ -951,6 +952,14 @@ func (d *Driver) CreateSnapshot(ctx context.Context, req *csi.CreateSnapshotRequ
 		},
 		Location: &d.cloud.Location,
 		Tags:     tags,
+	}
+
+	if d.cloud.HasExtendedLocation() {
+		klog.V(2).Infof("extended location Name:%s Type:%s is set on snapshot %s, source volume %s", d.cloud.ExtendedLocationName, d.cloud.ExtendedLocationType, snapshotName, sourceVolumeID)
+		snapshot.ExtendedLocation = &compute.ExtendedLocation{
+			Name: pointer.String(d.cloud.ExtendedLocationName),
+			Type: compute.ExtendedLocationTypes(d.cloud.ExtendedLocationType),
+		}
 	}
 
 	if dataAccessAuthMode != "" {
