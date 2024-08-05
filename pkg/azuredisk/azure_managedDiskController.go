@@ -254,6 +254,7 @@ func (c *ManagedDiskController) CreateManagedDisk(ctx context.Context, options *
 	}
 
 	if c.cloud.HasExtendedLocation() {
+		klog.V(2).Infof("extended location Name:%s Type:%s is set on disk(%s)", c.cloud.ExtendedLocationName, c.cloud.ExtendedLocationType, options.DiskName)
 		model.ExtendedLocation = &armcompute.ExtendedLocation{
 			Name: pointer.String(c.cloud.ExtendedLocationName),
 			Type: to.Ptr(armcompute.ExtendedLocationTypes(c.cloud.ExtendedLocationType)),
