@@ -298,7 +298,7 @@ func newDriverV1(options *DriverOptions) *Driver {
 		csi.NodeServiceCapability_RPC_SINGLE_NODE_MULTI_WRITER,
 	})
 
-	if kubeClient != nil && driver.removeNotReadyTaint {
+	if kubeClient != nil && driver.removeNotReadyTaint && driver.NodeID != "" {
 		// Remove taint from node to indicate driver startup success
 		// This is done at the last possible moment to prevent race conditions or false positive removals
 		time.AfterFunc(taintRemovalInitialDelay, func() {
