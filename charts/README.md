@@ -257,7 +257,7 @@ The following table lists the configurable parameters of the latest Azure Disk C
 | `windows.resources.azuredisk.limits.memory`              | azuredisk memory limits                         | 600Mi                                                         |
 | `windows.resources.azuredisk.requests.cpu`               | azuredisk cpu requests                   | 10m                                                            |
 | `windows.resources.azuredisk.requests.memory`            | azuredisk memory requests                | 40Mi                                                           |
-| `windows.useHostProcessContainers`                       | use HostProcessContainers for deployment | false                                                          |
+| `windows.useHostProcessContainers`                       | whether deploy driver daemonset with HostProcess containers on windows | true                                                          |
 | `cloud`                                           | cloud environment driver is running on                     | `AzurePublicCloud`                                                  |
 | `workloadIdentity.clientID` | client ID of workload identity | ''
 | `workloadIdentity.tenantID` | [optional] If the AAD application or user-assigned managed identity is not in the same tenant as the cluster then set tenantID with the AAD application or user-assigned managed identity tenant ID | ''
