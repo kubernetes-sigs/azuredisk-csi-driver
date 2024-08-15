@@ -22,6 +22,8 @@ fi
 
 echo "begin to create deployment examples with parameter", $1
 
+kubectl config set-context --current --namespace=default
+
 if [[ "$#" -gt 1 ]]&&[[ "$2" == "azurestackcloud" ]]; then
     kubectl apply -f deploy/example/storageclass-azuredisk-csi-azurestack.yaml
 else
