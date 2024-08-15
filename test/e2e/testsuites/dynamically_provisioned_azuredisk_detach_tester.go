@@ -78,7 +78,7 @@ func (t *DynamicallyProvisionedAzureDiskDetach) Run(ctx context.Context, client 
 
 		creds, err := credentials.CreateAzureCredentialFile()
 		gomega.Expect(err).NotTo(gomega.HaveOccurred())
-		azureClient, err := azure.GetAzureClient(creds.Cloud, creds.SubscriptionID, creds.AADClientID, creds.TenantID, creds.AADClientSecret)
+		azureClient, err := azure.GetAzureClient(creds.Cloud, creds.SubscriptionID, creds.AADClientID, creds.TenantID, creds.AADClientSecret, creds.AADFederatedTokenFile)
 		gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
 		//get disk information
