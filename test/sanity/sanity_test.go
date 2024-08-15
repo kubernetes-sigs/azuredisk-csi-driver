@@ -54,7 +54,7 @@ func TestSanity(t *testing.T) {
 	t.Setenv("AZURE_CREDENTIAL_FILE", credentials.TempAzureCredentialFilePath)
 	t.Setenv("nodeid", nodeid)
 
-	azureClient, err := azure.GetAzureClient(creds.Cloud, creds.SubscriptionID, creds.AADClientID, creds.TenantID, creds.AADClientSecret)
+	azureClient, err := azure.GetAzureClient(creds.Cloud, creds.SubscriptionID, creds.AADClientID, creds.TenantID, creds.AADClientSecret, creds.AADFederatedTokenFile)
 	assert.NoError(t, err)
 
 	ctx := context.Background()
