@@ -21,10 +21,7 @@ import (
 	"html/template"
 	"os"
 
-	"sigs.k8s.io/azuredisk-csi-driver/test/utils/testutil"
-
 	"github.com/pborman/uuid"
-	"github.com/pelletier/go-toml"
 )
 
 const (
