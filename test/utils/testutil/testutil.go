@@ -23,11 +23,6 @@ import (
 	"runtime"
 )
 
-func IsRunningInProw() bool {
-	_, ok := os.LookupEnv("AZURE_CREDENTIALS")
-	return ok
-}
-
 // TestError is used to define the errors given by different kinds of OS
 // Implements the `error` interface
 type TestError struct {
