@@ -319,7 +319,7 @@ func (d *Driver) isGetDiskThrottled() bool {
 }
 
 func (d *Driver) isCheckDiskLunThrottled() bool {
-	cache, err := d.throttlingCache.Get(consts.CheckDiskLunThrottlingKey, azcache.CacheReadTypeDefault)
+	cache, err := d.checkDiskLunThrottlingCache.Get(consts.CheckDiskLunThrottlingKey, azcache.CacheReadTypeDefault)
 	if err != nil {
 		klog.Warningf("throttlingCache(%s) return with error: %s", consts.CheckDiskLunThrottlingKey, err)
 		return false
@@ -507,7 +507,8 @@ func (d *DriverCore) getUsedLunsFromVolumeAttachments(ctx context.Context, nodeN
 		return nil, fmt.Errorf("kubeClient or kubeClient.StorageV1() or kubeClient.StorageV1().VolumeAttachments() is nil")
 	}
 
-	volumeAttachments, err := kubeClient.StorageV1().VolumeAttachments().List(ctx, metav1.ListOptions{})
+	volumeAttachments, err := kubeClient.StorageV1().VolumeAttachments().List(ctx, metav1.ListOptions{
+		TimeoutSeconds: pointer.Int64Ptr(2)})
 	if err != nil {
 		return nil, err
 	}
@@ -517,6 +518,8 @@ func (d *DriverCore) getUsedLunsFromVolumeAttachments(ctx context.Context, nodeN
 		klog.V(2).Infof("volumeAttachments is nil")
 		return usedLuns, nil
 	}
+
+	klog.V(2).Infof("volumeAttachments count: %d, nodeName: %s", len(volumeAttachments.Items), nodeName)
 	for _, va := range volumeAttachments.Items {
 		klog.V(6).Infof("attacher: %s, nodeName: %s, Status: %v, PV: %s, attachmentMetadata: %v", va.Spec.Attacher, va.Spec.NodeName,
 			va.Status.Attached, pointer.StringDeref(va.Spec.Source.PersistentVolumeName, ""), va.Status.AttachmentMetadata)
