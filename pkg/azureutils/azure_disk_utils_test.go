@@ -33,7 +33,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	v1 "k8s.io/api/core/v1"
-	"k8s.io/utils/pointer"
+	"k8s.io/utils/ptr"
 	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 	"sigs.k8s.io/azuredisk-csi-driver/test/utils/testutil"
 )
@@ -1520,7 +1520,7 @@ func TestParseDiskParameters(t *testing.T) {
 				PerfProfile:             "None",
 				NetworkAccessPolicy:     "networkAccessPolicy",
 				DiskAccessID:            "diskAccessID",
-				EnableBursting:          pointer.Bool(true),
+				EnableBursting:          ptr.To(true),
 				UserAgent:               "userAgent",
 				VolumeContext: map[string]string{
 					consts.SkuNameField:             "skuName",
@@ -1725,13 +1725,13 @@ func TestInsertDiskProperties(t *testing.T) {
 				SKU: &armcompute.DiskSKU{Name: to.Ptr(armcompute.DiskStorageAccountTypesStandardSSDLRS)},
 				Properties: &armcompute.DiskProperties{
 					NetworkAccessPolicy: to.Ptr(armcompute.NetworkAccessPolicyAllowPrivate),
-					DiskIOPSReadWrite:   pointer.Int64(6400),
-					DiskMBpsReadWrite:   pointer.Int64(100),
+					DiskIOPSReadWrite:   ptr.To(int64(6400)),
+					DiskMBpsReadWrite:   ptr.To(int64(100)),
 					CreationData: &armcompute.CreationData{
-						LogicalSectorSize: pointer.Int32(512),
+						LogicalSectorSize: ptr.To(int32(512)),
 					},
-					Encryption: &armcompute.Encryption{DiskEncryptionSetID: pointer.String("/subs/DiskEncryptionSetID")},
-					MaxShares:  pointer.Int32(3),
+					Encryption: &armcompute.Encryption{DiskEncryptionSetID: ptr.To("/subs/DiskEncryptionSetID")},
+					MaxShares:  ptr.To(int32(3)),
 				},
 			},
 			inputMap: map[string]string{},

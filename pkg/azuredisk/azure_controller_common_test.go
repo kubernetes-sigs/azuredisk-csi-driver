@@ -41,7 +41,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/wait"
 	cloudprovider "k8s.io/cloud-provider"
-	"k8s.io/utils/pointer"
+	"k8s.io/utils/ptr"
 
 	"sigs.k8s.io/cloud-provider-azure/pkg/azclient/diskclient/mock_diskclient"
 	"sigs.k8s.io/cloud-provider-azure/pkg/azclient/mock_azclient"
@@ -113,7 +113,7 @@ func TestCommonAttachDisk(t *testing.T) {
 	goodInstanceID := fmt.Sprintf("/subscriptions/subscription/resourceGroups/rg/providers/Microsoft.Compute/virtualMachines/%s", "vm1")
 	diskEncryptionSetID := fmt.Sprintf("/subscriptions/subscription/resourceGroups/rg/providers/Microsoft.Compute/diskEncryptionSets/%s", "diskEncryptionSet-name")
 	testTags := make(map[string]*string)
-	testTags[WriteAcceleratorEnabled] = pointer.String("true")
+	testTags[WriteAcceleratorEnabled] = ptr.To("true")
 	testCases := []struct {
 		desc                 string
 		diskName             string
@@ -145,7 +145,7 @@ func TestCommonAttachDisk(t *testing.T) {
 			desc:        "LUN -1 and error shall be returned if there's no such instance corresponding to given nodeName",
 			nodeName:    "vm1",
 			diskName:    "disk-name",
-			existedDisk: &armcompute.Disk{Name: pointer.String("disk-name")},
+			existedDisk: &armcompute.Disk{Name: ptr.To("disk-name")},
 			expectedLun: -1,
 			expectErr:   true,
 		},
@@ -155,7 +155,7 @@ func TestCommonAttachDisk(t *testing.T) {
 			nodeName:        "vm1",
 			isDataDisksFull: true,
 			diskName:        "disk-name",
-			existedDisk:     &armcompute.Disk{Name: pointer.String("disk-name")},
+			existedDisk:     &armcompute.Disk{Name: ptr.To("disk-name")},
 			expectedLun:     -1,
 			expectErr:       true,
 		},
@@ -164,10 +164,10 @@ func TestCommonAttachDisk(t *testing.T) {
 			vmList:   map[string]string{"vm1": "PowerState/Running"},
 			nodeName: "vm1",
 			diskName: "disk-name",
-			existedDisk: &armcompute.Disk{Name: pointer.String("disk-name"),
+			existedDisk: &armcompute.Disk{Name: ptr.To("disk-name"),
 				Properties: &armcompute.DiskProperties{
 					Encryption: &armcompute.Encryption{DiskEncryptionSetID: &diskEncryptionSetID, Type: to.Ptr(armcompute.EncryptionTypeEncryptionAtRestWithCustomerKey)},
-					DiskSizeGB: pointer.Int32(4096),
+					DiskSizeGB: ptr.To(int32(4096)),
 					DiskState:  to.Ptr(armcompute.DiskStateUnattached),
 				},
 				Tags: testTags},
@@ -180,10 +180,10 @@ func TestCommonAttachDisk(t *testing.T) {
 			vmList:   map[string]string{"vm1": "PowerState/Running"},
 			nodeName: "vm1",
 			diskName: "disk-name",
-			existedDisk: &armcompute.Disk{Name: pointer.String("disk-name"),
+			existedDisk: &armcompute.Disk{Name: ptr.To("disk-name"),
 				Properties: &armcompute.DiskProperties{
 					Encryption: &armcompute.Encryption{DiskEncryptionSetID: &diskEncryptionSetID, Type: to.Ptr(armcompute.EncryptionTypeEncryptionAtRestWithCustomerKey)},
-					DiskSizeGB: pointer.Int32(4096),
+					DiskSizeGB: ptr.To(int32(4096)),
 					DiskState:  to.Ptr(armcompute.DiskStateAttached),
 				},
 				Tags: testTags},
@@ -195,7 +195,7 @@ func TestCommonAttachDisk(t *testing.T) {
 			vmList:      map[string]string{"vm1": "PowerState/Running"},
 			nodeName:    "vm1",
 			diskName:    "disk-name",
-			existedDisk: &armcompute.Disk{Name: pointer.String("disk-name"), ManagedBy: pointer.String(goodInstanceID), Properties: &armcompute.DiskProperties{MaxShares: &maxShare}},
+			existedDisk: &armcompute.Disk{Name: ptr.To("disk-name"), ManagedBy: ptr.To(goodInstanceID), Properties: &armcompute.DiskProperties{MaxShares: &maxShare}},
 			expectedLun: -1,
 			expectErr:   true,
 		},
@@ -988,14 +988,14 @@ func setTestVirtualMachines(c *provider.Cloud, vmList map[string]string, isDataD
 		}
 		status := []compute.InstanceViewStatus{
 			{
-				Code: pointer.String(powerState),
+				Code: ptr.To(powerState),
 			},
 			{
-				Code: pointer.String("ProvisioningState/succeeded"),
+				Code: ptr.To("ProvisioningState/succeeded"),
 			},
 		}
 		vm.VirtualMachineProperties = &compute.VirtualMachineProperties{
-			ProvisioningState: pointer.String(string(consts.ProvisioningStateSucceeded)),
+			ProvisioningState: ptr.To(string(consts.ProvisioningStateSucceeded)),
 			HardwareProfile: &compute.HardwareProfile{
 				VMSize: compute.StandardA0,
 			},
@@ -1009,22 +1009,22 @@ func setTestVirtualMachines(c *provider.Cloud, vmList map[string]string, isDataD
 		if !isDataDisksFull {
 			vm.StorageProfile.DataDisks = &[]compute.DataDisk{
 				{
-					Lun:  pointer.Int32(0),
-					Name: pointer.String("disk1"),
+					Lun:  ptr.To(int32(0)),
+					Name: ptr.To("disk1"),
 				},
 				{
-					Lun:  pointer.Int32(1),
-					Name: pointer.String("disk2"),
+					Lun:  ptr.To(int32(1)),
+					Name: ptr.To("disk2"),
 				},
 				{
-					Lun:  pointer.Int32(2),
-					Name: pointer.String("disk3"),
+					Lun:  ptr.To(int32(2)),
+					Name: ptr.To("disk3"),
 				},
 			}
 		} else {
 			dataDisks := make([]compute.DataDisk, maxLUN)
 			for i := 0; i < maxLUN; i++ {
-				dataDisks[i] = compute.DataDisk{Lun: pointer.Int32(int32(i))}
+				dataDisks[i] = compute.DataDisk{Lun: ptr.To(int32(i))}
 			}
 			vm.StorageProfile.DataDisks = &dataDisks
 		}

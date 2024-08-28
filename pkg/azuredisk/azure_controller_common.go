@@ -37,7 +37,7 @@ import (
 	cloudprovider "k8s.io/cloud-provider"
 	volerr "k8s.io/cloud-provider/volume/errors"
 	"k8s.io/klog/v2"
-	"k8s.io/utils/pointer"
+	"k8s.io/utils/ptr"
 
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
 	"sigs.k8s.io/cloud-provider-azure/pkg/azclient"
@@ -218,7 +218,7 @@ func (c *controllerCommon) AttachDisk(ctx context.Context, diskName, diskURI str
 			// always check disk lun after disk attach complete
 			diskLun, vmState, errGetLun := c.GetDiskLun(diskName, diskURI, nodeName)
 			if errGetLun != nil {
-				return -1, fmt.Errorf("disk(%s) could not be found on node(%s), vmState: %s, error: %w", diskURI, nodeName, pointer.StringDeref(vmState, ""), errGetLun)
+				return -1, fmt.Errorf("disk(%s) could not be found on node(%s), vmState: %s, error: %w", diskURI, nodeName, ptr.Deref(vmState, ""), errGetLun)
 			}
 			lun = diskLun
 		}
@@ -254,7 +254,7 @@ func (c *controllerCommon) AttachDisk(ctx context.Context, diskName, diskURI str
 		// always check disk lun after disk attach complete
 		diskLun, vmState, errGetLun := c.GetDiskLun(diskName, diskURI, nodeName)
 		if errGetLun != nil {
-			return -1, fmt.Errorf("disk(%s) could not be found on node(%s), vmState: %s, error: %w", diskURI, nodeName, pointer.StringDeref(vmState, ""), errGetLun)
+			return -1, fmt.Errorf("disk(%s) could not be found on node(%s), vmState: %s, error: %w", diskURI, nodeName, ptr.Deref(vmState, ""), errGetLun)
 		}
 		lun = diskLun
 	}
@@ -369,7 +369,7 @@ func (c *controllerCommon) DetachDisk(ctx context.Context, diskName, diskURI str
 		// always check disk lun after disk detach complete
 		lun, vmState, errGetLun := c.GetDiskLun(diskName, diskURI, nodeName)
 		if errGetLun == nil || !strings.Contains(errGetLun.Error(), consts.CannotFindDiskLUN) {
-			return fmt.Errorf("disk(%s) is still attached to node(%s) on lun(%d), vmState: %s, error: %w", diskURI, nodeName, lun, pointer.StringDeref(vmState, ""), errGetLun)
+			return fmt.Errorf("disk(%s) is still attached to node(%s) on lun(%d), vmState: %s, error: %w", diskURI, nodeName, lun, ptr.Deref(vmState, ""), errGetLun)
 		}
 	}
 
