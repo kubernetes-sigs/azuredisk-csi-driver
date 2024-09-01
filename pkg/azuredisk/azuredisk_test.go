@@ -33,7 +33,7 @@ import (
 	"google.golang.org/grpc/status"
 	"k8s.io/apimachinery/pkg/types"
 	clientset "k8s.io/client-go/kubernetes"
-	"k8s.io/utils/pointer"
+	"k8s.io/utils/ptr"
 	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 	"sigs.k8s.io/cloud-provider-azure/pkg/azclient/diskclient/mock_diskclient"
 	"sigs.k8s.io/cloud-provider-azure/pkg/azclient/mock_azclient"
@@ -407,7 +407,7 @@ func TestWaitForSnapshot(t *testing.T) {
 						ProvisioningState: &provisioningState,
 						DiskSizeGB:        &DiskSize,
 						CreationData:      &armcompute.CreationData{SourceResourceID: &volumeID},
-						CompletionPercent: pointer.Float32(0.0),
+						CompletionPercent: ptr.To(float32(0.0)),
 					},
 					Location: &location,
 					ID:       &snapshotID}
@@ -451,7 +451,7 @@ func TestWaitForSnapshot(t *testing.T) {
 						ProvisioningState: &provisioningState,
 						DiskSizeGB:        &DiskSize,
 						CreationData:      &armcompute.CreationData{SourceResourceID: &volumeID},
-						CompletionPercent: pointer.Float32(100.0),
+						CompletionPercent: ptr.To(float32(100.0)),
 					},
 					Location: &location,
 					ID:       &snapshotID}
@@ -556,8 +556,8 @@ func TestGetUsedLunsFromNode(t *testing.T) {
 	d, _ := NewFakeDriver(cntl)
 	vm := compute.VirtualMachine{}
 	dataDisks := make([]compute.DataDisk, 2)
-	dataDisks[0] = compute.DataDisk{Lun: pointer.Int32(int32(0)), Name: &testVolumeName}
-	dataDisks[1] = compute.DataDisk{Lun: pointer.Int32(int32(2)), Name: &testVolumeName}
+	dataDisks[0] = compute.DataDisk{Lun: ptr.To(int32(0)), Name: &testVolumeName}
+	dataDisks[1] = compute.DataDisk{Lun: ptr.To(int32(2)), Name: &testVolumeName}
 	vm.VirtualMachineProperties = &compute.VirtualMachineProperties{
 		StorageProfile: &compute.StorageProfile{
 			DataDisks: &dataDisks,

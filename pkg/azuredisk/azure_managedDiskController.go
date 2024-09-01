@@ -33,7 +33,7 @@ import (
 	kwait "k8s.io/apimachinery/pkg/util/wait"
 	volumehelpers "k8s.io/cloud-provider/volume/helpers"
 	"k8s.io/klog/v2"
-	"k8s.io/utils/pointer"
+	"k8s.io/utils/ptr"
 
 	"sigs.k8s.io/cloud-provider-azure/pkg/consts"
 	"sigs.k8s.io/cloud-provider-azure/pkg/provider"
@@ -176,7 +176,7 @@ func (c *ManagedDiskController) CreateManagedDisk(ctx context.Context, options *
 		if options.DiskIOPSReadWrite == "" {
 			if diskSku == armcompute.DiskStorageAccountTypesUltraSSDLRS {
 				diskIOPSReadWrite := int64(consts.DefaultDiskIOPSReadWrite)
-				diskProperties.DiskIOPSReadWrite = pointer.Int64(diskIOPSReadWrite)
+				diskProperties.DiskIOPSReadWrite = ptr.To(int64(diskIOPSReadWrite))
 			}
 		} else {
 			v, err := strconv.Atoi(options.DiskIOPSReadWrite)
@@ -184,13 +184,13 @@ func (c *ManagedDiskController) CreateManagedDisk(ctx context.Context, options *
 				return "", fmt.Errorf("AzureDisk - failed to parse DiskIOPSReadWrite: %w", err)
 			}
 			diskIOPSReadWrite := int64(v)
-			diskProperties.DiskIOPSReadWrite = pointer.Int64(diskIOPSReadWrite)
+			diskProperties.DiskIOPSReadWrite = ptr.To(int64(diskIOPSReadWrite))
 		}
 
 		if options.DiskMBpsReadWrite == "" {
 			if diskSku == armcompute.DiskStorageAccountTypesUltraSSDLRS {
 				diskMBpsReadWrite := int64(consts.DefaultDiskMBpsReadWrite)
-				diskProperties.DiskMBpsReadWrite = pointer.Int64(diskMBpsReadWrite)
+				diskProperties.DiskMBpsReadWrite = ptr.To(int64(diskMBpsReadWrite))
 			}
 		} else {
 			v, err := strconv.Atoi(options.DiskMBpsReadWrite)
@@ -198,12 +198,12 @@ func (c *ManagedDiskController) CreateManagedDisk(ctx context.Context, options *
 				return "", fmt.Errorf("AzureDisk - failed to parse DiskMBpsReadWrite: %w", err)
 			}
 			diskMBpsReadWrite := int64(v)
-			diskProperties.DiskMBpsReadWrite = pointer.Int64(diskMBpsReadWrite)
+			diskProperties.DiskMBpsReadWrite = ptr.To(int64(diskMBpsReadWrite))
 		}
 
 		if options.LogicalSectorSize != 0 {
 			klog.V(2).Infof("AzureDisk - requested LogicalSectorSize: %v", options.LogicalSectorSize)
-			diskProperties.CreationData.LogicalSectorSize = pointer.Int32(options.LogicalSectorSize)
+			diskProperties.CreationData.LogicalSectorSize = ptr.To(int32(options.LogicalSectorSize))
 		}
 	} else {
 		if options.DiskIOPSReadWrite != "" {
@@ -256,7 +256,7 @@ func (c *ManagedDiskController) CreateManagedDisk(ctx context.Context, options *
 	if c.cloud.HasExtendedLocation() {
 		klog.V(2).Infof("extended location Name:%s Type:%s is set on disk(%s)", c.cloud.ExtendedLocationName, c.cloud.ExtendedLocationType, options.DiskName)
 		model.ExtendedLocation = &armcompute.ExtendedLocation{
-			Name: pointer.String(c.cloud.ExtendedLocationName),
+			Name: ptr.To(c.cloud.ExtendedLocationName),
 			Type: to.Ptr(armcompute.ExtendedLocationTypes(c.cloud.ExtendedLocationType)),
 		}
 	}
@@ -398,7 +398,7 @@ func (c *ManagedDiskController) ResizeDisk(ctx context.Context, diskURI string, 
 	}
 
 	if !supportOnlineResize && *result.Properties.DiskState != armcompute.DiskStateUnattached {
-		return oldSize, fmt.Errorf("azureDisk - disk resize is only supported on Unattached disk, current disk state: %s, already attached to %s", *result.Properties.DiskState, pointer.StringDeref(result.ManagedBy, ""))
+		return oldSize, fmt.Errorf("azureDisk - disk resize is only supported on Unattached disk, current disk state: %s, already attached to %s", *result.Properties.DiskState, ptr.Deref(result.ManagedBy, ""))
 	}
 
 	diskParameter := armcompute.DiskUpdate{
@@ -456,7 +456,7 @@ func (c *ManagedDiskController) ModifyDisk(ctx context.Context, options *Managed
 				return fmt.Errorf("AzureDisk - failed to parse DiskIOPSReadWrite: %w", err)
 			}
 			diskIOPSReadWrite := int64(v)
-			diskProperties.DiskIOPSReadWrite = pointer.Int64(diskIOPSReadWrite)
+			diskProperties.DiskIOPSReadWrite = ptr.To(int64(diskIOPSReadWrite))
 		}
 
 		if options.DiskMBpsReadWrite != "" {
@@ -465,7 +465,7 @@ func (c *ManagedDiskController) ModifyDisk(ctx context.Context, options *Managed
 				return fmt.Errorf("AzureDisk - failed to parse DiskMBpsReadWrite: %w", err)
 			}
 			diskMBpsReadWrite := int64(v)
-			diskProperties.DiskMBpsReadWrite = pointer.Int64(diskMBpsReadWrite)
+			diskProperties.DiskMBpsReadWrite = ptr.To(int64(diskMBpsReadWrite))
 		}
 
 		model.Properties = &diskProperties

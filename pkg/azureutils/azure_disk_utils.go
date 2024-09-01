@@ -41,7 +41,7 @@ import (
 	api "k8s.io/kubernetes/pkg/apis/core"
 	volumeUtil "k8s.io/kubernetes/pkg/volume/util"
 	"k8s.io/mount-utils"
-	"k8s.io/utils/pointer"
+	"k8s.io/utils/ptr"
 	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/optimization"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/util"
@@ -653,7 +653,7 @@ func ParseDiskParameters(parameters map[string]string) (ManagedDiskParameters, e
 			diskParams.DiskAccessID = v
 		case consts.EnableBurstingField:
 			if strings.EqualFold(v, consts.TrueValue) {
-				diskParams.EnableBursting = pointer.Bool(true)
+				diskParams.EnableBursting = ptr.To(true)
 			}
 		case consts.UserAgentField:
 			diskParams.UserAgent = v

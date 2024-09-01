@@ -28,7 +28,7 @@ import (
 	"go.uber.org/mock/gomock"
 
 	"k8s.io/apimachinery/pkg/api/resource"
-	"k8s.io/utils/pointer"
+	"k8s.io/utils/ptr"
 
 	"sigs.k8s.io/cloud-provider-azure/pkg/azclient/diskclient/mock_diskclient"
 	"sigs.k8s.io/cloud-provider-azure/pkg/azclient/mock_azclient"
@@ -53,7 +53,7 @@ func TestCreateManagedDisk(t *testing.T) {
 	goodDiskEncryptionSetID := fmt.Sprintf("/subscriptions/subscription/resourceGroups/rg/providers/Microsoft.Compute/diskEncryptionSets/%s", "diskEncryptionSet-name")
 	badDiskEncryptionSetID := "badDiskEncryptionSetID"
 	testTags := make(map[string]*string)
-	testTags[WriteAcceleratorEnabled] = pointer.String("true")
+	testTags[WriteAcceleratorEnabled] = ptr.To("true")
 	testCases := []struct {
 		desc                string
 		diskID              string
@@ -82,7 +82,7 @@ func TestCreateManagedDisk(t *testing.T) {
 			diskMBPSReadWrite:   "100",
 			diskEncryptionSetID: goodDiskEncryptionSetID,
 			expectedDiskID:      disk1ID,
-			existedDisk:         &armcompute.Disk{ID: pointer.String(disk1ID), Name: pointer.String(disk1Name), Properties: &armcompute.DiskProperties{Encryption: &armcompute.Encryption{DiskEncryptionSetID: &goodDiskEncryptionSetID, Type: to.Ptr(armcompute.EncryptionTypeEncryptionAtRestWithCustomerKey)}, ProvisioningState: pointer.String("Succeeded")}, Tags: testTags},
+			existedDisk:         &armcompute.Disk{ID: ptr.To(disk1ID), Name: ptr.To(disk1Name), Properties: &armcompute.DiskProperties{Encryption: &armcompute.Encryption{DiskEncryptionSetID: &goodDiskEncryptionSetID, Type: to.Ptr(armcompute.EncryptionTypeEncryptionAtRestWithCustomerKey)}, ProvisioningState: ptr.To("Succeeded")}, Tags: testTags},
 			expectedErr:         false,
 		},
 		{
@@ -94,7 +94,7 @@ func TestCreateManagedDisk(t *testing.T) {
 			diskMBPSReadWrite:   "100",
 			diskEncryptionSetID: goodDiskEncryptionSetID,
 			expectedDiskID:      disk1ID,
-			existedDisk:         &armcompute.Disk{ID: pointer.String(disk1ID), Name: pointer.String(disk1Name), Properties: &armcompute.DiskProperties{Encryption: &armcompute.Encryption{DiskEncryptionSetID: &goodDiskEncryptionSetID, Type: to.Ptr(armcompute.EncryptionTypeEncryptionAtRestWithCustomerKey)}, ProvisioningState: pointer.String("Succeeded")}, Tags: testTags},
+			existedDisk:         &armcompute.Disk{ID: ptr.To(disk1ID), Name: ptr.To(disk1Name), Properties: &armcompute.DiskProperties{Encryption: &armcompute.Encryption{DiskEncryptionSetID: &goodDiskEncryptionSetID, Type: to.Ptr(armcompute.EncryptionTypeEncryptionAtRestWithCustomerKey)}, ProvisioningState: ptr.To("Succeeded")}, Tags: testTags},
 			expectedErr:         false,
 		},
 		{
@@ -106,7 +106,7 @@ func TestCreateManagedDisk(t *testing.T) {
 			diskMBPSReadWrite:   "",
 			diskEncryptionSetID: goodDiskEncryptionSetID,
 			expectedDiskID:      disk1ID,
-			existedDisk:         &armcompute.Disk{ID: pointer.String(disk1ID), Name: pointer.String(disk1Name), Properties: &armcompute.DiskProperties{Encryption: &armcompute.Encryption{DiskEncryptionSetID: &goodDiskEncryptionSetID, Type: to.Ptr(armcompute.EncryptionTypeEncryptionAtRestWithCustomerKey)}, ProvisioningState: pointer.String("Succeeded")}, Tags: testTags},
+			existedDisk:         &armcompute.Disk{ID: ptr.To(disk1ID), Name: ptr.To(disk1Name), Properties: &armcompute.DiskProperties{Encryption: &armcompute.Encryption{DiskEncryptionSetID: &goodDiskEncryptionSetID, Type: to.Ptr(armcompute.EncryptionTypeEncryptionAtRestWithCustomerKey)}, ProvisioningState: ptr.To("Succeeded")}, Tags: testTags},
 			expectedErr:         false,
 		},
 		{
@@ -118,7 +118,7 @@ func TestCreateManagedDisk(t *testing.T) {
 			diskMBPSReadWrite:   "",
 			diskEncryptionSetID: goodDiskEncryptionSetID,
 			expectedDiskID:      disk1ID,
-			existedDisk:         &armcompute.Disk{ID: pointer.String(disk1ID), Name: pointer.String(disk1Name), Properties: &armcompute.DiskProperties{Encryption: &armcompute.Encryption{DiskEncryptionSetID: &goodDiskEncryptionSetID, Type: to.Ptr(armcompute.EncryptionTypeEncryptionAtRestWithCustomerKey)}, ProvisioningState: pointer.String("Succeeded")}, Tags: testTags},
+			existedDisk:         &armcompute.Disk{ID: ptr.To(disk1ID), Name: ptr.To(disk1Name), Properties: &armcompute.DiskProperties{Encryption: &armcompute.Encryption{DiskEncryptionSetID: &goodDiskEncryptionSetID, Type: to.Ptr(armcompute.EncryptionTypeEncryptionAtRestWithCustomerKey)}, ProvisioningState: ptr.To("Succeeded")}, Tags: testTags},
 			expectedErr:         false,
 		},
 		{
@@ -130,7 +130,7 @@ func TestCreateManagedDisk(t *testing.T) {
 			diskMBPSReadWrite:   "100",
 			diskEncryptionSetID: goodDiskEncryptionSetID,
 			expectedDiskID:      "",
-			existedDisk:         &armcompute.Disk{ID: pointer.String(disk1ID), Name: pointer.String(disk1Name), Properties: &armcompute.DiskProperties{Encryption: &armcompute.Encryption{DiskEncryptionSetID: &goodDiskEncryptionSetID, Type: to.Ptr(armcompute.EncryptionTypeEncryptionAtRestWithCustomerKey)}, ProvisioningState: pointer.String("Succeeded")}, Tags: testTags},
+			existedDisk:         &armcompute.Disk{ID: ptr.To(disk1ID), Name: ptr.To(disk1Name), Properties: &armcompute.DiskProperties{Encryption: &armcompute.Encryption{DiskEncryptionSetID: &goodDiskEncryptionSetID, Type: to.Ptr(armcompute.EncryptionTypeEncryptionAtRestWithCustomerKey)}, ProvisioningState: ptr.To("Succeeded")}, Tags: testTags},
 			expectedErr:         true,
 			expectedErrMsg:      fmt.Errorf("AzureDisk - failed to parse DiskIOPSReadWrite: strconv.Atoi: parsing \"invalid\": invalid syntax"),
 		},
@@ -143,7 +143,7 @@ func TestCreateManagedDisk(t *testing.T) {
 			diskMBPSReadWrite:   "invalid",
 			diskEncryptionSetID: goodDiskEncryptionSetID,
 			expectedDiskID:      "",
-			existedDisk:         &armcompute.Disk{ID: pointer.String(disk1ID), Name: pointer.String(disk1Name), Properties: &armcompute.DiskProperties{Encryption: &armcompute.Encryption{DiskEncryptionSetID: &goodDiskEncryptionSetID, Type: to.Ptr(armcompute.EncryptionTypeEncryptionAtRestWithCustomerKey)}, ProvisioningState: pointer.String("Succeeded")}, Tags: testTags},
+			existedDisk:         &armcompute.Disk{ID: ptr.To(disk1ID), Name: ptr.To(disk1Name), Properties: &armcompute.DiskProperties{Encryption: &armcompute.Encryption{DiskEncryptionSetID: &goodDiskEncryptionSetID, Type: to.Ptr(armcompute.EncryptionTypeEncryptionAtRestWithCustomerKey)}, ProvisioningState: ptr.To("Succeeded")}, Tags: testTags},
 			expectedErr:         true,
 			expectedErrMsg:      fmt.Errorf("AzureDisk - failed to parse DiskMBpsReadWrite: strconv.Atoi: parsing \"invalid\": invalid syntax"),
 		},
@@ -156,7 +156,7 @@ func TestCreateManagedDisk(t *testing.T) {
 			diskMBPSReadWrite:   "100",
 			diskEncryptionSetID: badDiskEncryptionSetID,
 			expectedDiskID:      "",
-			existedDisk:         &armcompute.Disk{ID: pointer.String(disk1ID), Name: pointer.String(disk1Name), Properties: &armcompute.DiskProperties{Encryption: &armcompute.Encryption{DiskEncryptionSetID: &goodDiskEncryptionSetID, Type: to.Ptr(armcompute.EncryptionTypeEncryptionAtRestWithCustomerKey)}, ProvisioningState: pointer.String("Succeeded")}, Tags: testTags},
+			existedDisk:         &armcompute.Disk{ID: ptr.To(disk1ID), Name: ptr.To(disk1Name), Properties: &armcompute.DiskProperties{Encryption: &armcompute.Encryption{DiskEncryptionSetID: &goodDiskEncryptionSetID, Type: to.Ptr(armcompute.EncryptionTypeEncryptionAtRestWithCustomerKey)}, ProvisioningState: ptr.To("Succeeded")}, Tags: testTags},
 			expectedErr:         true,
 			expectedErrMsg:      fmt.Errorf("AzureDisk - format of DiskEncryptionSetID(%s) is incorrect, correct format: %s", badDiskEncryptionSetID, consts.DiskEncryptionSetIDFormat),
 		},
@@ -168,7 +168,7 @@ func TestCreateManagedDisk(t *testing.T) {
 			diskEncryptionSetID: "",
 			diskEncryptionType:  "EncryptionAtRestWithCustomerKey",
 			expectedDiskID:      "",
-			existedDisk:         &armcompute.Disk{ID: pointer.String(disk1ID), Name: pointer.String(disk1Name), Properties: &armcompute.DiskProperties{Encryption: &armcompute.Encryption{DiskEncryptionSetID: &goodDiskEncryptionSetID, Type: to.Ptr(armcompute.EncryptionTypeEncryptionAtRestWithCustomerKey)}, ProvisioningState: pointer.String("Succeeded")}, Tags: testTags},
+			existedDisk:         &armcompute.Disk{ID: ptr.To(disk1ID), Name: ptr.To(disk1Name), Properties: &armcompute.DiskProperties{Encryption: &armcompute.Encryption{DiskEncryptionSetID: &goodDiskEncryptionSetID, Type: to.Ptr(armcompute.EncryptionTypeEncryptionAtRestWithCustomerKey)}, ProvisioningState: ptr.To("Succeeded")}, Tags: testTags},
 			expectedErr:         true,
 			expectedErrMsg:      fmt.Errorf("AzureDisk - DiskEncryptionType(EncryptionAtRestWithCustomerKey) should be empty when DiskEncryptionSetID is not set"),
 		},
@@ -181,7 +181,7 @@ func TestCreateManagedDisk(t *testing.T) {
 			diskMBPSReadWrite:   "",
 			diskEncryptionSetID: goodDiskEncryptionSetID,
 			expectedDiskID:      "",
-			existedDisk:         &armcompute.Disk{ID: pointer.String(disk1ID), Name: pointer.String(disk1Name), Properties: &armcompute.DiskProperties{Encryption: &armcompute.Encryption{DiskEncryptionSetID: &goodDiskEncryptionSetID, Type: to.Ptr(armcompute.EncryptionTypeEncryptionAtRestWithCustomerKey)}, ProvisioningState: pointer.String("Succeeded")}, Tags: testTags},
+			existedDisk:         &armcompute.Disk{ID: ptr.To(disk1ID), Name: ptr.To(disk1Name), Properties: &armcompute.DiskProperties{Encryption: &armcompute.Encryption{DiskEncryptionSetID: &goodDiskEncryptionSetID, Type: to.Ptr(armcompute.EncryptionTypeEncryptionAtRestWithCustomerKey)}, ProvisioningState: ptr.To("Succeeded")}, Tags: testTags},
 			expectedErr:         true,
 			expectedErrMsg:      fmt.Errorf("AzureDisk - DiskIOPSReadWrite parameter is only applicable in UltraSSD_LRS disk type"),
 		},
@@ -194,7 +194,7 @@ func TestCreateManagedDisk(t *testing.T) {
 			diskMBPSReadWrite:   "100",
 			diskEncryptionSetID: goodDiskEncryptionSetID,
 			expectedDiskID:      "",
-			existedDisk:         &armcompute.Disk{ID: pointer.String(disk1ID), Name: pointer.String(disk1Name), Properties: &armcompute.DiskProperties{Encryption: &armcompute.Encryption{DiskEncryptionSetID: &goodDiskEncryptionSetID, Type: to.Ptr(armcompute.EncryptionTypeEncryptionAtRestWithCustomerKey)}, ProvisioningState: pointer.String("Succeeded")}, Tags: testTags},
+			existedDisk:         &armcompute.Disk{ID: ptr.To(disk1ID), Name: ptr.To(disk1Name), Properties: &armcompute.DiskProperties{Encryption: &armcompute.Encryption{DiskEncryptionSetID: &goodDiskEncryptionSetID, Type: to.Ptr(armcompute.EncryptionTypeEncryptionAtRestWithCustomerKey)}, ProvisioningState: ptr.To("Succeeded")}, Tags: testTags},
 			expectedErr:         true,
 			expectedErrMsg:      fmt.Errorf("AzureDisk - DiskMBpsReadWrite parameter is only applicable in UltraSSD_LRS disk type"),
 		},
@@ -207,7 +207,7 @@ func TestCreateManagedDisk(t *testing.T) {
 			networkAccessPolicy: armcompute.NetworkAccessPolicyDenyAll,
 			publicNetworkAccess: armcompute.PublicNetworkAccessDisabled,
 			expectedDiskID:      disk1ID,
-			existedDisk:         &armcompute.Disk{ID: pointer.String(disk1ID), Name: pointer.String(disk1Name), Properties: &armcompute.DiskProperties{Encryption: &armcompute.Encryption{DiskEncryptionSetID: &goodDiskEncryptionSetID, Type: to.Ptr(armcompute.EncryptionTypeEncryptionAtRestWithCustomerKey)}, ProvisioningState: pointer.String("Succeeded")}, Tags: testTags},
+			existedDisk:         &armcompute.Disk{ID: ptr.To(disk1ID), Name: ptr.To(disk1Name), Properties: &armcompute.DiskProperties{Encryption: &armcompute.Encryption{DiskEncryptionSetID: &goodDiskEncryptionSetID, Type: to.Ptr(armcompute.EncryptionTypeEncryptionAtRestWithCustomerKey)}, ProvisioningState: ptr.To("Succeeded")}, Tags: testTags},
 			expectedErr:         false,
 		},
 		{
@@ -220,7 +220,7 @@ func TestCreateManagedDisk(t *testing.T) {
 			networkAccessPolicy: armcompute.NetworkAccessPolicyAllowAll,
 			publicNetworkAccess: armcompute.PublicNetworkAccessEnabled,
 			expectedDiskID:      disk1ID,
-			existedDisk:         &armcompute.Disk{ID: pointer.String(disk1ID), Name: pointer.String(disk1Name), Properties: &armcompute.DiskProperties{Encryption: &armcompute.Encryption{DiskEncryptionSetID: &goodDiskEncryptionSetID, Type: to.Ptr(armcompute.EncryptionTypeEncryptionAtRestWithCustomerKey)}, ProvisioningState: pointer.String("Succeeded")}, Tags: testTags},
+			existedDisk:         &armcompute.Disk{ID: ptr.To(disk1ID), Name: ptr.To(disk1Name), Properties: &armcompute.DiskProperties{Encryption: &armcompute.Encryption{DiskEncryptionSetID: &goodDiskEncryptionSetID, Type: to.Ptr(armcompute.EncryptionTypeEncryptionAtRestWithCustomerKey)}, ProvisioningState: ptr.To("Succeeded")}, Tags: testTags},
 			expectedErr:         false,
 		},
 		{
@@ -231,7 +231,7 @@ func TestCreateManagedDisk(t *testing.T) {
 			diskEncryptionSetID: goodDiskEncryptionSetID,
 			networkAccessPolicy: armcompute.NetworkAccessPolicyAllowPrivate,
 			expectedDiskID:      "",
-			existedDisk:         &armcompute.Disk{ID: pointer.String(disk1ID), Name: pointer.String(disk1Name), Properties: &armcompute.DiskProperties{Encryption: &armcompute.Encryption{DiskEncryptionSetID: &goodDiskEncryptionSetID, Type: to.Ptr(armcompute.EncryptionTypeEncryptionAtRestWithCustomerKey)}, ProvisioningState: pointer.String("Succeeded")}, Tags: testTags},
+			existedDisk:         &armcompute.Disk{ID: ptr.To(disk1ID), Name: ptr.To(disk1Name), Properties: &armcompute.DiskProperties{Encryption: &armcompute.Encryption{DiskEncryptionSetID: &goodDiskEncryptionSetID, Type: to.Ptr(armcompute.EncryptionTypeEncryptionAtRestWithCustomerKey)}, ProvisioningState: ptr.To("Succeeded")}, Tags: testTags},
 			expectedErr:         true,
 			expectedErrMsg:      fmt.Errorf("DiskAccessID should not be empty when NetworkAccessPolicy is AllowPrivate"),
 		},
@@ -242,9 +242,9 @@ func TestCreateManagedDisk(t *testing.T) {
 			storageAccountType:  armcompute.DiskStorageAccountTypesStandardLRS,
 			diskEncryptionSetID: goodDiskEncryptionSetID,
 			networkAccessPolicy: armcompute.NetworkAccessPolicyAllowAll,
-			diskAccessID:        pointer.String("diskAccessID"),
+			diskAccessID:        ptr.To("diskAccessID"),
 			expectedDiskID:      "",
-			existedDisk:         &armcompute.Disk{ID: pointer.String(disk1ID), Name: pointer.String(disk1Name), Properties: &armcompute.DiskProperties{Encryption: &armcompute.Encryption{DiskEncryptionSetID: &goodDiskEncryptionSetID, Type: to.Ptr(armcompute.EncryptionTypeEncryptionAtRestWithCustomerKey)}, ProvisioningState: pointer.String("Succeeded")}, Tags: testTags},
+			existedDisk:         &armcompute.Disk{ID: ptr.To(disk1ID), Name: ptr.To(disk1Name), Properties: &armcompute.DiskProperties{Encryption: &armcompute.Encryption{DiskEncryptionSetID: &goodDiskEncryptionSetID, Type: to.Ptr(armcompute.EncryptionTypeEncryptionAtRestWithCustomerKey)}, ProvisioningState: ptr.To("Succeeded")}, Tags: testTags},
 			expectedErr:         true,
 			expectedErrMsg:      fmt.Errorf("DiskAccessID(diskAccessID) must be empty when NetworkAccessPolicy(AllowAll) is not AllowPrivate"),
 		},
@@ -255,7 +255,7 @@ func TestCreateManagedDisk(t *testing.T) {
 			subscriptionID: "abc",
 			resouceGroup:   "",
 			expectedDiskID: "",
-			existedDisk:    &armcompute.Disk{ID: pointer.String(disk1ID), Name: pointer.String(disk1Name), Properties: &armcompute.DiskProperties{Encryption: &armcompute.Encryption{DiskEncryptionSetID: &goodDiskEncryptionSetID, Type: to.Ptr(armcompute.EncryptionTypeEncryptionAtRestWithCustomerKey)}, ProvisioningState: pointer.String("Succeeded")}, Tags: testTags},
+			existedDisk:    &armcompute.Disk{ID: ptr.To(disk1ID), Name: ptr.To(disk1Name), Properties: &armcompute.DiskProperties{Encryption: &armcompute.Encryption{DiskEncryptionSetID: &goodDiskEncryptionSetID, Type: to.Ptr(armcompute.EncryptionTypeEncryptionAtRestWithCustomerKey)}, ProvisioningState: ptr.To("Succeeded")}, Tags: testTags},
 			expectedErr:    true,
 			expectedErrMsg: fmt.Errorf("resourceGroup must be specified when subscriptionID(abc) is not empty"),
 		},
@@ -316,16 +316,16 @@ func TestCreateManagedDiskWithExtendedLocation(t *testing.T) {
 	diskName := disk1Name
 	expectedDiskID := disk1ID
 	el := &armcompute.ExtendedLocation{
-		Name: pointer.String("microsoftlosangeles1"),
+		Name: ptr.To("microsoftlosangeles1"),
 		Type: to.Ptr(armcompute.ExtendedLocationTypesEdgeZone),
 	}
 
 	diskreturned := armcompute.Disk{
-		ID:               pointer.String(expectedDiskID),
-		Name:             pointer.String(diskName),
+		ID:               ptr.To(expectedDiskID),
+		Name:             ptr.To(diskName),
 		ExtendedLocation: el,
 		Properties: &armcompute.DiskProperties{
-			ProvisioningState: pointer.String("Succeeded"),
+			ProvisioningState: ptr.To("Succeeded"),
 		},
 	}
 
@@ -376,20 +376,20 @@ func TestDeleteManagedDisk(t *testing.T) {
 			desc:           "an error shall be returned if delete an attaching disk",
 			diskName:       disk1Name,
 			diskState:      "attaching",
-			existedDisk:    &armcompute.Disk{Name: pointer.String(disk1Name)},
+			existedDisk:    &armcompute.Disk{Name: ptr.To(disk1Name)},
 			expectedErr:    true,
 			expectedErrMsg: fmt.Errorf("failed to delete disk(/subscriptions/subscription/resourceGroups/rg/providers/Microsoft.Compute/disks/disk1) since it's in attaching state"),
 		},
 		{
 			desc:        "no error shall be returned if everything is good",
 			diskName:    disk1Name,
-			existedDisk: &armcompute.Disk{Name: pointer.String(disk1Name)},
+			existedDisk: &armcompute.Disk{Name: ptr.To(disk1Name)},
 			expectedErr: false,
 		},
 		{
 			desc:           "an error shall be returned if get disk failed",
 			diskName:       fakeGetDiskFailed,
-			existedDisk:    &armcompute.Disk{Name: pointer.String(fakeGetDiskFailed)},
+			existedDisk:    &armcompute.Disk{Name: ptr.To(fakeGetDiskFailed)},
 			expectedErr:    true,
 			expectedErrMsg: fmt.Errorf("Get Disk failed"),
 		},
@@ -450,7 +450,7 @@ func TestGetDisk(t *testing.T) {
 		{
 			desc:                      "no error shall be returned if get a normal disk without DiskProperties",
 			diskName:                  disk1Name,
-			existedDisk:               &armcompute.Disk{Name: pointer.String(disk1Name)},
+			existedDisk:               &armcompute.Disk{Name: ptr.To(disk1Name)},
 			expectedErr:               false,
 			expectedProvisioningState: "",
 			expectedDiskID:            "",
@@ -458,7 +458,7 @@ func TestGetDisk(t *testing.T) {
 		{
 			desc:                      "an error shall be returned if get disk failed",
 			diskName:                  fakeGetDiskFailed,
-			existedDisk:               &armcompute.Disk{Name: pointer.String(fakeGetDiskFailed)},
+			existedDisk:               &armcompute.Disk{Name: ptr.To(fakeGetDiskFailed)},
 			expectedErr:               true,
 			expectedErrMsg:            fmt.Errorf("Get Disk failed"),
 			expectedProvisioningState: "",
@@ -520,7 +520,7 @@ func TestResizeDisk(t *testing.T) {
 			diskName:         diskName,
 			oldSize:          *resource.NewQuantity(2*(1024*1024*1024), resource.BinarySI),
 			newSize:          *resource.NewQuantity(3*(1024*1024*1024), resource.BinarySI),
-			existedDisk:      &armcompute.Disk{Name: pointer.String(disk1Name), Properties: &armcompute.DiskProperties{DiskSizeGB: &diskSizeGB, DiskState: to.Ptr(armcompute.DiskStateUnattached)}},
+			existedDisk:      &armcompute.Disk{Name: ptr.To(disk1Name), Properties: &armcompute.DiskProperties{DiskSizeGB: &diskSizeGB, DiskState: to.Ptr(armcompute.DiskStateUnattached)}},
 			expectedQuantity: *resource.NewQuantity(3*(1024*1024*1024), resource.BinarySI),
 			expectedErr:      false,
 		},
@@ -529,7 +529,7 @@ func TestResizeDisk(t *testing.T) {
 			diskName:         diskName,
 			oldSize:          *resource.NewQuantity(2*(1024*1024*1024), resource.BinarySI),
 			newSize:          *resource.NewQuantity(3*(1024*1024*1024), resource.BinarySI),
-			existedDisk:      &armcompute.Disk{Name: pointer.String(disk1Name)},
+			existedDisk:      &armcompute.Disk{Name: ptr.To(disk1Name)},
 			expectedQuantity: *resource.NewQuantity(2*(1024*1024*1024), resource.BinarySI),
 			expectedErr:      true,
 			expectedErrMsg:   fmt.Errorf("DiskProperties of disk(%s) is nil", diskName),
@@ -539,7 +539,7 @@ func TestResizeDisk(t *testing.T) {
 			diskName:         diskName,
 			oldSize:          *resource.NewQuantity(1*(1024*1024*1024), resource.BinarySI),
 			newSize:          *resource.NewQuantity(2*(1024*1024*1024), resource.BinarySI),
-			existedDisk:      &armcompute.Disk{Name: pointer.String(disk1Name), Properties: &armcompute.DiskProperties{DiskSizeGB: &diskSizeGB, DiskState: to.Ptr(armcompute.DiskStateUnattached)}},
+			existedDisk:      &armcompute.Disk{Name: ptr.To(disk1Name), Properties: &armcompute.DiskProperties{DiskSizeGB: &diskSizeGB, DiskState: to.Ptr(armcompute.DiskStateUnattached)}},
 			expectedQuantity: *resource.NewQuantity(2*(1024*1024*1024), resource.BinarySI),
 			expectedErr:      false,
 		},
@@ -548,7 +548,7 @@ func TestResizeDisk(t *testing.T) {
 			diskName:         fakeGetDiskFailed,
 			oldSize:          *resource.NewQuantity(2*(1024*1024*1024), resource.BinarySI),
 			newSize:          *resource.NewQuantity(3*(1024*1024*1024), resource.BinarySI),
-			existedDisk:      &armcompute.Disk{Name: pointer.String(fakeGetDiskFailed), Properties: &armcompute.DiskProperties{DiskSizeGB: &diskSizeGB, DiskState: to.Ptr(armcompute.DiskStateUnattached)}},
+			existedDisk:      &armcompute.Disk{Name: ptr.To(fakeGetDiskFailed), Properties: &armcompute.DiskProperties{DiskSizeGB: &diskSizeGB, DiskState: to.Ptr(armcompute.DiskStateUnattached)}},
 			expectedQuantity: *resource.NewQuantity(2*(1024*1024*1024), resource.BinarySI),
 			expectedErr:      true,
 			expectedErrMsg:   fmt.Errorf("Get Disk failed"),
@@ -558,7 +558,7 @@ func TestResizeDisk(t *testing.T) {
 			diskName:         fakeCreateDiskFailed,
 			oldSize:          *resource.NewQuantity(2*(1024*1024*1024), resource.BinarySI),
 			newSize:          *resource.NewQuantity(3*(1024*1024*1024), resource.BinarySI),
-			existedDisk:      &armcompute.Disk{Name: pointer.String(fakeCreateDiskFailed), Properties: &armcompute.DiskProperties{DiskSizeGB: &diskSizeGB, DiskState: to.Ptr(armcompute.DiskStateUnattached)}},
+			existedDisk:      &armcompute.Disk{Name: ptr.To(fakeCreateDiskFailed), Properties: &armcompute.DiskProperties{DiskSizeGB: &diskSizeGB, DiskState: to.Ptr(armcompute.DiskStateUnattached)}},
 			expectedQuantity: *resource.NewQuantity(2*(1024*1024*1024), resource.BinarySI),
 			expectedErr:      true,
 			expectedErrMsg:   fmt.Errorf("Create Disk failed"),
@@ -568,7 +568,7 @@ func TestResizeDisk(t *testing.T) {
 			diskName:         fakeCreateDiskFailed,
 			oldSize:          *resource.NewQuantity(2*(1024*1024*1024), resource.BinarySI),
 			newSize:          *resource.NewQuantity(3*(1024*1024*1024), resource.BinarySI),
-			existedDisk:      &armcompute.Disk{Name: pointer.String(fakeCreateDiskFailed), Properties: &armcompute.DiskProperties{DiskSizeGB: &diskSizeGB, DiskState: to.Ptr(armcompute.DiskStateAttached)}},
+			existedDisk:      &armcompute.Disk{Name: ptr.To(fakeCreateDiskFailed), Properties: &armcompute.DiskProperties{DiskSizeGB: &diskSizeGB, DiskState: to.Ptr(armcompute.DiskStateAttached)}},
 			expectedQuantity: *resource.NewQuantity(2*(1024*1024*1024), resource.BinarySI),
 			expectedErr:      true,
 			expectedErrMsg:   fmt.Errorf("azureDisk - disk resize is only supported on Unattached disk, current disk state: Attached, already attached to "),
@@ -635,7 +635,7 @@ func TestModifyDisk(t *testing.T) {
 			desc:               "new sku and no error shall be returned if everything is good",
 			diskName:           diskName,
 			storageAccountType: armcompute.DiskStorageAccountTypesStandardLRS,
-			existedDisk:        &armcompute.Disk{Name: pointer.String(disk1Name), SKU: &armcompute.DiskSKU{Name: &storageAccountTypePremiumLRS}, Properties: &armcompute.DiskProperties{DiskIOPSReadWrite: pointer.Int64(100)}},
+			existedDisk:        &armcompute.Disk{Name: ptr.To(disk1Name), SKU: &armcompute.DiskSKU{Name: &storageAccountTypePremiumLRS}, Properties: &armcompute.DiskProperties{DiskIOPSReadWrite: ptr.To(int64(100))}},
 			expectedErr:        false,
 		},
 		{
@@ -643,7 +643,7 @@ func TestModifyDisk(t *testing.T) {
 			diskName:           diskName,
 			diskIOPSReadWrite:  "200",
 			storageAccountType: armcompute.DiskStorageAccountTypesUltraSSDLRS,
-			existedDisk:        &armcompute.Disk{Name: pointer.String(disk1Name), SKU: &armcompute.DiskSKU{Name: &storageAccountTypeUltraSSDLRS}, Properties: &armcompute.DiskProperties{DiskIOPSReadWrite: pointer.Int64(100)}},
+			existedDisk:        &armcompute.Disk{Name: ptr.To(disk1Name), SKU: &armcompute.DiskSKU{Name: &storageAccountTypeUltraSSDLRS}, Properties: &armcompute.DiskProperties{DiskIOPSReadWrite: ptr.To(int64(100))}},
 			expectedErr:        false,
 		},
 		{
@@ -651,7 +651,7 @@ func TestModifyDisk(t *testing.T) {
 			diskName:           diskName,
 			diskMBpsReadWrite:  "200",
 			storageAccountType: armcompute.DiskStorageAccountTypesUltraSSDLRS,
-			existedDisk:        &armcompute.Disk{Name: pointer.String(disk1Name), SKU: &armcompute.DiskSKU{Name: &storageAccountTypeUltraSSDLRS}, Properties: &armcompute.DiskProperties{DiskMBpsReadWrite: pointer.Int64(100)}},
+			existedDisk:        &armcompute.Disk{Name: ptr.To(disk1Name), SKU: &armcompute.DiskSKU{Name: &storageAccountTypeUltraSSDLRS}, Properties: &armcompute.DiskProperties{DiskMBpsReadWrite: ptr.To(int64(100))}},
 			expectedErr:        false,
 		},
 		{
@@ -660,14 +660,14 @@ func TestModifyDisk(t *testing.T) {
 			diskIOPSReadWrite:  "200",
 			diskMBpsReadWrite:  "200",
 			storageAccountType: armcompute.DiskStorageAccountTypesUltraSSDLRS,
-			existedDisk:        &armcompute.Disk{Name: pointer.String(disk1Name), SKU: &armcompute.DiskSKU{Name: &storageAccountTypeUltraSSDLRS}, Properties: &armcompute.DiskProperties{DiskIOPSReadWrite: pointer.Int64(100), DiskMBpsReadWrite: pointer.Int64(100)}},
+			existedDisk:        &armcompute.Disk{Name: ptr.To(disk1Name), SKU: &armcompute.DiskSKU{Name: &storageAccountTypeUltraSSDLRS}, Properties: &armcompute.DiskProperties{DiskIOPSReadWrite: ptr.To(int64(100)), DiskMBpsReadWrite: ptr.To(int64(100))}},
 			expectedErr:        false,
 		},
 		{
 			desc:               "nothing to modify and no error shall be returned if everything is good",
 			diskName:           diskName,
 			storageAccountType: armcompute.DiskStorageAccountTypesPremiumLRS,
-			existedDisk:        &armcompute.Disk{Name: pointer.String(disk1Name), SKU: &armcompute.DiskSKU{Name: &storageAccountTypePremiumLRS}, Properties: &armcompute.DiskProperties{DiskIOPSReadWrite: pointer.Int64(100)}},
+			existedDisk:        &armcompute.Disk{Name: ptr.To(disk1Name), SKU: &armcompute.DiskSKU{Name: &storageAccountTypePremiumLRS}, Properties: &armcompute.DiskProperties{DiskIOPSReadWrite: ptr.To(int64(100))}},
 			expectedErr:        false,
 		},
 		{
@@ -676,7 +676,7 @@ func TestModifyDisk(t *testing.T) {
 			diskIOPSReadWrite:  "200",
 			diskMBpsReadWrite:  "200",
 			storageAccountType: armcompute.DiskStorageAccountTypesUltraSSDLRS,
-			existedDisk:        &armcompute.Disk{Name: pointer.String(diskName), Properties: &armcompute.DiskProperties{DiskIOPSReadWrite: pointer.Int64(100), DiskMBpsReadWrite: pointer.Int64(100)}},
+			existedDisk:        &armcompute.Disk{Name: ptr.To(diskName), Properties: &armcompute.DiskProperties{DiskIOPSReadWrite: ptr.To(int64(100)), DiskMBpsReadWrite: ptr.To(int64(100))}},
 			expectedErr:        true,
 			expectedErrMsg:     fmt.Errorf("DiskProperties or SKU of disk(disk1) is nil"),
 		},
@@ -684,7 +684,7 @@ func TestModifyDisk(t *testing.T) {
 			desc:              "new diskIOPSReadWrite but wrong disk type error shall be returned",
 			diskName:          diskName,
 			diskIOPSReadWrite: "200",
-			existedDisk:       &armcompute.Disk{Name: pointer.String(disk1Name), SKU: &armcompute.DiskSKU{Name: &storageAccountTypePremiumLRS}, Properties: &armcompute.DiskProperties{DiskIOPSReadWrite: pointer.Int64(100)}},
+			existedDisk:       &armcompute.Disk{Name: ptr.To(disk1Name), SKU: &armcompute.DiskSKU{Name: &storageAccountTypePremiumLRS}, Properties: &armcompute.DiskProperties{DiskIOPSReadWrite: ptr.To(int64(100))}},
 			expectedErr:       true,
 			expectedErrMsg:    fmt.Errorf("AzureDisk - DiskIOPSReadWrite parameter is only applicable in UltraSSD_LRS or PremiumV2_LRS disk type"),
 		},
@@ -692,7 +692,7 @@ func TestModifyDisk(t *testing.T) {
 			desc:              "new diskMBpsReadWrite but wrong disk type error shall be returned",
 			diskName:          diskName,
 			diskMBpsReadWrite: "200",
-			existedDisk:       &armcompute.Disk{Name: pointer.String(disk1Name), SKU: &armcompute.DiskSKU{Name: &storageAccountTypePremiumLRS}, Properties: &armcompute.DiskProperties{DiskMBpsReadWrite: pointer.Int64(100)}},
+			existedDisk:       &armcompute.Disk{Name: ptr.To(disk1Name), SKU: &armcompute.DiskSKU{Name: &storageAccountTypePremiumLRS}, Properties: &armcompute.DiskProperties{DiskMBpsReadWrite: ptr.To(int64(100))}},
 			expectedErr:       true,
 			expectedErrMsg:    fmt.Errorf("AzureDisk - DiskMBpsReadWrite parameter is only applicable in UltraSSD_LRS or PremiumV2_LRS disk type"),
 		},
@@ -701,7 +701,7 @@ func TestModifyDisk(t *testing.T) {
 			diskName:           diskName,
 			diskIOPSReadWrite:  "error",
 			storageAccountType: armcompute.DiskStorageAccountTypesUltraSSDLRS,
-			existedDisk:        &armcompute.Disk{Name: pointer.String(disk1Name), SKU: &armcompute.DiskSKU{Name: &storageAccountTypeUltraSSDLRS}, Properties: &armcompute.DiskProperties{DiskIOPSReadWrite: pointer.Int64(100)}},
+			existedDisk:        &armcompute.Disk{Name: ptr.To(disk1Name), SKU: &armcompute.DiskSKU{Name: &storageAccountTypeUltraSSDLRS}, Properties: &armcompute.DiskProperties{DiskIOPSReadWrite: ptr.To(int64(100))}},
 			expectedErr:        true,
 			expectedErrMsg:     fmt.Errorf("AzureDisk - failed to parse DiskIOPSReadWrite: strconv.Atoi: parsing \"error\": invalid syntax"),
 		},
@@ -710,7 +710,7 @@ func TestModifyDisk(t *testing.T) {
 			diskName:           diskName,
 			diskMBpsReadWrite:  "error",
 			storageAccountType: armcompute.DiskStorageAccountTypesUltraSSDLRS,
-			existedDisk:        &armcompute.Disk{Name: pointer.String(disk1Name), SKU: &armcompute.DiskSKU{Name: &storageAccountTypeUltraSSDLRS}, Properties: &armcompute.DiskProperties{DiskMBpsReadWrite: pointer.Int64(100)}},
+			existedDisk:        &armcompute.Disk{Name: ptr.To(disk1Name), SKU: &armcompute.DiskSKU{Name: &storageAccountTypeUltraSSDLRS}, Properties: &armcompute.DiskProperties{DiskMBpsReadWrite: ptr.To(int64(100))}},
 			expectedErr:        true,
 			expectedErrMsg:     fmt.Errorf("AzureDisk - failed to parse DiskMBpsReadWrite: strconv.Atoi: parsing \"error\": invalid syntax"),
 		},
@@ -720,7 +720,7 @@ func TestModifyDisk(t *testing.T) {
 			diskIOPSReadWrite:  "200",
 			diskMBpsReadWrite:  "200",
 			storageAccountType: armcompute.DiskStorageAccountTypesUltraSSDLRS,
-			existedDisk:        &armcompute.Disk{Name: pointer.String(fakeCreateDiskFailed), SKU: &armcompute.DiskSKU{Name: &storageAccountTypeUltraSSDLRS}, Properties: &armcompute.DiskProperties{DiskIOPSReadWrite: pointer.Int64(100), DiskMBpsReadWrite: pointer.Int64(100)}},
+			existedDisk:        &armcompute.Disk{Name: ptr.To(fakeCreateDiskFailed), SKU: &armcompute.DiskSKU{Name: &storageAccountTypeUltraSSDLRS}, Properties: &armcompute.DiskProperties{DiskIOPSReadWrite: ptr.To(int64(100)), DiskMBpsReadWrite: ptr.To(int64(100))}},
 			expectedErr:        true,
 			expectedErrMsg:     fmt.Errorf("Get Disk failed"),
 		},
@@ -730,7 +730,7 @@ func TestModifyDisk(t *testing.T) {
 			diskIOPSReadWrite:  "200",
 			diskMBpsReadWrite:  "200",
 			storageAccountType: armcompute.DiskStorageAccountTypesUltraSSDLRS,
-			existedDisk:        &armcompute.Disk{Name: pointer.String(fakeCreateDiskFailed), SKU: &armcompute.DiskSKU{Name: &storageAccountTypeUltraSSDLRS}, Properties: &armcompute.DiskProperties{DiskIOPSReadWrite: pointer.Int64(100), DiskMBpsReadWrite: pointer.Int64(100)}},
+			existedDisk:        &armcompute.Disk{Name: ptr.To(fakeCreateDiskFailed), SKU: &armcompute.DiskSKU{Name: &storageAccountTypeUltraSSDLRS}, Properties: &armcompute.DiskProperties{DiskIOPSReadWrite: ptr.To(int64(100)), DiskMBpsReadWrite: ptr.To(int64(100))}},
 			expectedErr:        true,
 			expectedErrMsg:     fmt.Errorf("Patch Disk failed"),
 		},
