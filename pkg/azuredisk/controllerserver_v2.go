@@ -236,7 +236,7 @@ func (d *DriverV2) CreateVolume(ctx context.Context, req *csi.CreateVolumeReques
 		if strings.Contains(err.Error(), consts.NotFound) {
 			return nil, status.Error(codes.NotFound, err.Error())
 		}
-		return nil, status.Errorf(codes.Internal, err.Error())
+		return nil, status.Errorf(codes.Internal, "%v", err)
 	}
 
 	isOperationSucceeded = true
@@ -332,7 +332,7 @@ func (d *DriverV2) ControllerPublishVolume(ctx context.Context, req *csi.Control
 	nodeName := types.NodeName(nodeID)
 	diskName, err := azureutils.GetDiskName(diskURI)
 	if err != nil {
-		return nil, status.Errorf(codes.Internal, err.Error())
+		return nil, status.Errorf(codes.Internal, "%v", err)
 	}
 
 	mc := metrics.NewMetricContext(consts.AzureDiskCSIDriverName, "controller_publish_volume", d.cloud.ResourceGroup, d.cloud.SubscriptionID, d.Name)
@@ -365,11 +365,11 @@ func (d *DriverV2) ControllerPublishVolume(ctx context.Context, req *csi.Control
 	} else {
 		if strings.Contains(strings.ToLower(err.Error()), strings.ToLower(consts.TooManyRequests)) ||
 			strings.Contains(strings.ToLower(err.Error()), consts.ClientThrottled) {
-			return nil, status.Errorf(codes.Internal, err.Error())
+			return nil, status.Errorf(codes.Internal, "%v", err)
 		}
 		var cachingMode compute.CachingTypes
 		if cachingMode, err = azureutils.GetCachingMode(volumeContext); err != nil {
-			return nil, status.Errorf(codes.Internal, err.Error())
+			return nil, status.Errorf(codes.Internal, "%v", err)
 		}
 		klog.V(2).Infof("Trying to attach volume %s to node %s", diskURI, nodeName)
 
@@ -419,7 +419,7 @@ func (d *DriverV2) ControllerUnpublishVolume(ctx context.Context, req *csi.Contr
 
 	diskName, err := azureutils.GetDiskName(diskURI)
 	if err != nil {
-		return nil, status.Errorf(codes.Internal, err.Error())
+		return nil, status.Errorf(codes.Internal, "%v", err)
 	}
 
 	mc := metrics.NewMetricContext(consts.AzureDiskCSIDriverName, "controller_unpublish_volume", d.cloud.ResourceGroup, d.cloud.SubscriptionID, d.Name)
@@ -511,7 +511,7 @@ func (d *DriverV2) ListVolumes(ctx context.Context, req *csi.ListVolumesRequest)
 func (d *DriverV2) listVolumesInCluster(ctx context.Context, start, maxEntries int) (*csi.ListVolumesResponse, error) {
 	pvList, err := d.cloud.KubeClient.CoreV1().PersistentVolumes().List(ctx, metav1.ListOptions{})
 	if err != nil {
-		return nil, status.Errorf(codes.Internal, "ListVolumes failed while fetching PersistentVolumes List with error: %v", err.Error())
+		return nil, status.Errorf(codes.Internal, "ListVolumes failed while fetching PersistentVolumes List with error: %v", err)
 	}
 
 	// get all resource groups and put them into a sorted slice
@@ -799,7 +799,7 @@ func (d *DriverV2) CreateSnapshot(ctx context.Context, req *csi.CreateSnapshotRe
 
 	customTagsMap, err := volumehelper.ConvertTagsToMap(customTags)
 	if err != nil {
-		return nil, status.Errorf(codes.InvalidArgument, err.Error())
+		return nil, status.Errorf(codes.InvalidArgument, "%v", err)
 	}
 	tags := make(map[string]*string)
 	for k, v := range customTagsMap {
@@ -872,7 +872,7 @@ func (d *DriverV2) DeleteSnapshot(ctx context.Context, req *csi.DeleteSnapshotRe
 	if azureutils.IsARMResourceID(snapshotID) {
 		snapshotName, resourceGroup, subsID, err = d.getSnapshotInfo(snapshotID)
 		if err != nil {
-			return nil, status.Errorf(codes.Internal, err.Error())
+			return nil, status.Errorf(codes.Internal, "%v", err)
 		}
 	}
 
@@ -930,7 +930,7 @@ func (d *DriverV2) getSnapshotByID(ctx context.Context, subsID, resourceGroup, s
 	if azureutils.IsARMResourceID(snapshotID) {
 		snapshotName, resourceGroup, subsID, err = d.getSnapshotInfo(snapshotID)
 		if err != nil {
-			return nil, status.Errorf(codes.Internal, err.Error())
+			return nil, status.Errorf(codes.Internal, "%v", err)
 		}
 	}
 

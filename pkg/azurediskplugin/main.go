@@ -120,8 +120,8 @@ func handle() {
 		GetNodeIDFromIMDS:            *getNodeIDFromIMDS,
 		WaitForSnapshotReady:         *waitForSnapshotReady,
 	}
-	driver := azuredisk.NewDriver(&driverOptions)
-	if driver == nil {
+	driver := azuredisk.NewDriver(&driverOptions) // nolint: staticcheck
+	if driver == nil {                            // nolint: staticcheck
 		klog.Fatalln("Failed to initialize azuredisk CSI Driver")
 	}
 	testingMock := false

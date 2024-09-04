@@ -263,7 +263,7 @@ func (d *Driver) NodePublishVolume(_ context.Context, req *csi.NodePublishVolume
 		}
 		klog.V(2).Infof("NodePublishVolume [block]: found device path %s with lun %s", source, lun)
 		if err = d.ensureBlockTargetFile(target); err != nil {
-			return nil, status.Errorf(codes.Internal, err.Error())
+			return nil, status.Errorf(codes.Internal, "%v", err)
 		}
 	case *csi.VolumeCapability_Mount:
 		mnt, err := d.ensureMountPoint(target)
@@ -497,7 +497,7 @@ func (d *Driver) NodeExpandVolume(_ context.Context, req *csi.NodeExpandVolumeRe
 
 	devicePath, err := getDevicePathWithMountPath(volumePath, d.mounter)
 	if err != nil {
-		return nil, status.Errorf(codes.NotFound, err.Error())
+		return nil, status.Errorf(codes.NotFound, "%v", err)
 	}
 
 	if d.enableDiskOnlineResize {
@@ -612,7 +612,7 @@ func (d *Driver) getDevicePathWithLUN(lunStr string) (string, error) {
 	scsiHostRescan(d.ioHandler, d.mounter)
 
 	newDevicePath := ""
-	err = wait.PollImmediate(1*time.Second, 2*time.Minute, func() (bool, error) {
+	err = wait.PollUntilContextTimeout(context.Background(), 1*time.Second, 2*time.Minute, true, func(context.Context) (bool, error) {
 		var err error
 		if newDevicePath, err = findDiskByLun(int(lun), d.ioHandler, d.mounter); err != nil {
 			return false, fmt.Errorf("azureDisk - findDiskByLun(%v) failed with error(%s)", lun, err)

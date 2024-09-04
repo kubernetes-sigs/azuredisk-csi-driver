@@ -4,9 +4,8 @@ run:
 linters:
   disable:
   - typecheck
-  - structcheck
   enable:
-  - golint
+  - revive
 
 linters-settings:
   depguard:

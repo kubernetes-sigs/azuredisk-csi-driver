@@ -28,7 +28,6 @@ import (
 	"testing"
 
 	"github.com/onsi/ginkgo/v2"
-	"github.com/onsi/ginkgo/v2/reporters"
 	"github.com/onsi/gomega"
 	"github.com/pborman/uuid"
 	"k8s.io/kubernetes/test/e2e/framework"
@@ -163,7 +162,7 @@ var _ = ginkgo.BeforeSuite(func(ctx ginkgo.SpecContext) {
 	}
 })
 
-var _ = ginkgo.AfterSuite(func(ctx ginkgo.SpecContext) {
+var _ = ginkgo.AfterSuite(func(_ ginkgo.SpecContext) {
 	// Default storage driver configuration is CSI. Freshly built
 	// CSI driver is installed for that case.
 	if isTestingMigration || isUsingInTreeVolumePlugin {
@@ -266,8 +265,9 @@ func TestE2E(t *testing.T) {
 	if reportDir == "" {
 		reportDir = defaultReportDir
 	}
-	r := []ginkgo.Reporter{reporters.NewJUnitReporter(path.Join(reportDir, "junit_01.xml"))}
-	ginkgo.RunSpecsWithDefaultAndCustomReporters(t, "AzureDisk CSI Driver End-to-End Tests", r)
+	_, reporterConfig := ginkgo.GinkgoConfiguration()
+	reporterConfig.JUnitReport = path.Join(reportDir, "junit_01.xml")
+	ginkgo.RunSpecs(t, "AzureDisk CSI Driver End-to-End Tests", reporterConfig)
 }
 
 func execTestCmd(cmds []testCmd) {

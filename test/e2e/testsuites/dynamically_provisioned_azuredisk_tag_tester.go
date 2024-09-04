@@ -90,28 +90,28 @@ func (t *DynamicallyProvisionedAzureDiskWithTag) Run(ctx context.Context, client
 
 		for k, v := range test {
 			_, ok := disktest.Tags[k]
-			framework.ExpectEqual(ok, true)
+			gomega.Expect(ok).To(gomega.Equal(true))
 			if ok {
-				framework.ExpectEqual(*disktest.Tags[k], v)
+				gomega.Expect(*disktest.Tags[k]).To(gomega.Equal(v))
 			}
 		}
 		tag, ok := disktest.Tags["kubernetes.io-created-for-pv-name"]
-		framework.ExpectEqual(ok, true)
-		framework.ExpectEqual(tag != nil, true)
+		gomega.Expect(ok).To(gomega.Equal(true))
+		gomega.Expect(tag != nil).To(gomega.Equal(true))
 		if tag != nil {
 			ginkgo.By(fmt.Sprintf("kubernetes.io-created-for-pv-name: %s", *tag))
 		}
 
 		tag, ok = disktest.Tags["kubernetes.io-created-for-pvc-name"]
-		framework.ExpectEqual(ok, true)
-		framework.ExpectEqual(tag != nil, true)
+		gomega.Expect(ok).To(gomega.Equal(true))
+		gomega.Expect(tag != nil).To(gomega.Equal(true))
 		if tag != nil {
 			ginkgo.By(fmt.Sprintf("kubernetes.io-created-for-pvc-name: %s", *tag))
 		}
 
 		tag, ok = disktest.Tags["kubernetes.io-created-for-pvc-namespace"]
-		framework.ExpectEqual(ok, true)
-		framework.ExpectEqual(tag != nil, true)
+		gomega.Expect(ok).To(gomega.Equal(true))
+		gomega.Expect(tag != nil).To(gomega.Equal(true))
 		if tag != nil {
 			ginkgo.By(fmt.Sprintf("kubernetes.io-created-for-pvc-namespace: %s", *tag))
 		}
