@@ -237,7 +237,7 @@ func (d *DriverV2) CreateVolume(ctx context.Context, req *csi.CreateVolumeReques
 		if strings.Contains(err.Error(), consts.NotFound) {
 			return nil, status.Error(codes.NotFound, err.Error())
 		}
-		return nil, status.Errorf(codes.Internal, err.Error())
+		return nil, status.Errorf(codes.Internal, "%v", err)
 	}
 
 	isOperationSucceeded = true
@@ -312,7 +312,7 @@ func (d *DriverV2) ControllerModifyVolume(ctx context.Context, req *csi.Controll
 
 	diskName, err := azureutils.GetDiskName(diskURI)
 	if err != nil {
-		return nil, status.Errorf(codes.Internal, err.Error())
+		return nil, status.Errorf(codes.Internal, "%v", err)
 	}
 
 	if _, err := d.checkDiskExists(ctx, diskURI); err != nil {
@@ -357,7 +357,7 @@ func (d *DriverV2) ControllerModifyVolume(ctx context.Context, req *csi.Controll
 		if strings.Contains(err.Error(), consts.NotFound) {
 			return nil, status.Error(codes.NotFound, err.Error())
 		}
-		return nil, status.Errorf(codes.Internal, err.Error())
+		return nil, status.Errorf(codes.Internal, "%v", err)
 	}
 
 	isOperationSucceeded = true
@@ -401,7 +401,7 @@ func (d *DriverV2) ControllerPublishVolume(ctx context.Context, req *csi.Control
 	nodeName := types.NodeName(nodeID)
 	diskName, err := azureutils.GetDiskName(diskURI)
 	if err != nil {
-		return nil, status.Errorf(codes.Internal, err.Error())
+		return nil, status.Errorf(codes.Internal, "%v", err)
 	}
 
 	mc := metrics.NewMetricContext(consts.AzureDiskCSIDriverName, "controller_publish_volume", d.cloud.ResourceGroup, d.cloud.SubscriptionID, d.Name)
@@ -433,11 +433,11 @@ func (d *DriverV2) ControllerPublishVolume(ctx context.Context, req *csi.Control
 		klog.V(2).Infof("Attach operation is successful. volume %s is already attached to node %s at lun %d.", diskURI, nodeName, lun)
 	} else {
 		if azureutils.IsThrottlingError(err) {
-			return nil, status.Errorf(codes.Internal, err.Error())
+			return nil, status.Errorf(codes.Internal, "%v", err)
 		}
 		var cachingMode armcompute.CachingTypes
 		if cachingMode, err = azureutils.GetCachingMode(volumeContext); err != nil {
-			return nil, status.Errorf(codes.Internal, err.Error())
+			return nil, status.Errorf(codes.Internal, "%v", err)
 		}
 		klog.V(2).Infof("Trying to attach volume %s to node %s", diskURI, nodeName)
 
@@ -487,7 +487,7 @@ func (d *DriverV2) ControllerUnpublishVolume(ctx context.Context, req *csi.Contr
 
 	diskName, err := azureutils.GetDiskName(diskURI)
 	if err != nil {
-		return nil, status.Errorf(codes.Internal, err.Error())
+		return nil, status.Errorf(codes.Internal, "%v", err)
 	}
 
 	mc := metrics.NewMetricContext(consts.AzureDiskCSIDriverName, "controller_unpublish_volume", d.cloud.ResourceGroup, d.cloud.SubscriptionID, d.Name)
@@ -579,7 +579,7 @@ func (d *DriverV2) ListVolumes(ctx context.Context, req *csi.ListVolumesRequest)
 func (d *DriverV2) listVolumesInCluster(ctx context.Context, start, maxEntries int) (*csi.ListVolumesResponse, error) {
 	pvList, err := d.cloud.KubeClient.CoreV1().PersistentVolumes().List(ctx, metav1.ListOptions{})
 	if err != nil {
-		return nil, status.Errorf(codes.Internal, "ListVolumes failed while fetching PersistentVolumes List with error: %v", err.Error())
+		return nil, status.Errorf(codes.Internal, "ListVolumes failed while fetching PersistentVolumes List with error: %v", err)
 	}
 
 	// get all resource groups and put them into a sorted slice
@@ -688,7 +688,7 @@ func (d *DriverV2) listVolumesByResourceGroup(ctx context.Context, resourceGroup
 	diskClient := d.clientFactory.GetDiskClient()
 	disks, derr := diskClient.List(ctx, resourceGroup)
 	if derr != nil {
-		return listVolumeStatus{err: status.Errorf(codes.Internal, "ListVolumes on rg(%s) failed with error: %s", resourceGroup, derr.Error())}
+		return listVolumeStatus{err: status.Errorf(codes.Internal, "ListVolumes on rg(%s) failed with error: %v", resourceGroup, derr)}
 	}
 	// if volSet is initialized but is empty, return
 	if volSet != nil && len(volSet) == 0 {
@@ -874,7 +874,7 @@ func (d *DriverV2) CreateSnapshot(ctx context.Context, req *csi.CreateSnapshotRe
 
 	customTagsMap, err := volumehelper.ConvertTagsToMap(customTags, tagValueDelimiter)
 	if err != nil {
-		return nil, status.Errorf(codes.InvalidArgument, err.Error())
+		return nil, status.Errorf(codes.InvalidArgument, "%v", err)
 	}
 	tags := make(map[string]*string)
 	for k, v := range customTagsMap {
@@ -950,7 +950,7 @@ func (d *DriverV2) DeleteSnapshot(ctx context.Context, req *csi.DeleteSnapshotRe
 	if azureutils.IsARMResourceID(snapshotID) {
 		snapshotName, resourceGroup, subsID, err = d.getSnapshotInfo(snapshotID)
 		if err != nil {
-			return nil, status.Errorf(codes.Internal, err.Error())
+			return nil, status.Errorf(codes.Internal, "%v", err)
 		}
 	}
 
@@ -1000,7 +1000,7 @@ func (d *DriverV2) ListSnapshots(ctx context.Context, req *csi.ListSnapshotsRequ
 	// no SnapshotId is set, return all snapshots that satisfy the request.
 	snapshots, err := snapshotClient.List(ctx, d.cloud.ResourceGroup)
 	if err != nil {
-		return nil, status.Error(codes.Internal, fmt.Sprintf("Unknown list snapshot error: %v", err.Error()))
+		return nil, status.Error(codes.Internal, fmt.Sprintf("Unknown list snapshot error: %v", err))
 	}
 
 	return azureutils.GetEntriesAndNextToken(req, snapshots)
@@ -1012,7 +1012,7 @@ func (d *DriverV2) getSnapshotByID(ctx context.Context, subsID, resourceGroup, s
 	if azureutils.IsARMResourceID(snapshotID) {
 		snapshotName, resourceGroup, subsID, err = d.getSnapshotInfo(snapshotID)
 		if err != nil {
-			return nil, status.Errorf(codes.Internal, err.Error())
+			return nil, status.Errorf(codes.Internal, "%v", err)
 		}
 	}
 	snapshotClient, err := d.clientFactory.GetSnapshotClientForSub(subsID)
@@ -1021,7 +1021,7 @@ func (d *DriverV2) getSnapshotByID(ctx context.Context, subsID, resourceGroup, s
 	}
 	snapshot, rerr := snapshotClient.Get(ctx, resourceGroup, snapshotName)
 	if rerr != nil {
-		return nil, status.Error(codes.Internal, fmt.Sprintf("get snapshot %s from rg(%s) error: %v", snapshotName, resourceGroup, rerr.Error()))
+		return nil, status.Error(codes.Internal, fmt.Sprintf("get snapshot %s from rg(%s) error: %v", snapshotName, resourceGroup, rerr))
 	}
 
 	return azureutils.GenerateCSISnapshot(sourceVolumeID, snapshot)

@@ -348,7 +348,7 @@ func TestCreateManagedDiskWithExtendedLocation(t *testing.T) {
 	mockDisksClient := mock_diskclient.NewMockInterface(ctrl)
 	common.clientFactory.(*mock_azclient.MockClientFactory).EXPECT().GetDiskClientForSub(testCloud.SubscriptionID).Return(mockDisksClient, nil).AnyTimes()
 	mockDisksClient.EXPECT().CreateOrUpdate(gomock.Any(), testCloud.ResourceGroup, diskName, gomock.Any()).
-		Do(func(ctx interface{}, rg, dn string, disk armcompute.Disk) {
+		Do(func(_ interface{}, _, _ string, disk armcompute.Disk) {
 			assert.Equal(t, el.Name, disk.ExtendedLocation.Name, "The extended location name should match.")
 			assert.Equal(t, el.Type, disk.ExtendedLocation.Type, "The extended location type should match.")
 		}).Return(to.Ptr(diskreturned), nil)

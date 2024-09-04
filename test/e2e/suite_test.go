@@ -164,7 +164,7 @@ var _ = ginkgo.BeforeSuite(func(ctx ginkgo.SpecContext) {
 	}
 })
 
-var _ = ginkgo.AfterSuite(func(ctx ginkgo.SpecContext) {
+var _ = ginkgo.AfterSuite(func(_ ginkgo.SpecContext) {
 	// Default storage driver configuration is CSI. Freshly built
 	// CSI driver is installed for that case.
 	if isTestingMigration || isUsingInTreeVolumePlugin {

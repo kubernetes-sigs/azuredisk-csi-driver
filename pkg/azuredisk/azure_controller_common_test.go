@@ -56,7 +56,7 @@ var (
 )
 
 func fakeUpdateAsync(statusCode int) func(context.Context, string, string, compute.VirtualMachineUpdate, string) (*azure.Future, *retry.Error) {
-	return func(ctx context.Context, resourceGroup, nodeName string, parameters compute.VirtualMachineUpdate, source string) (*azure.Future, *retry.Error) {
+	return func(_ context.Context, _, nodeName string, parameters compute.VirtualMachineUpdate, _ string) (*azure.Future, *retry.Error) {
 		vm := &compute.VirtualMachine{
 			Name:                     &nodeName,
 			Plan:                     parameters.Plan,
@@ -818,7 +818,7 @@ func TestIsInstanceNotFoundError(t *testing.T) {
 	}
 
 	for i, test := range testCases {
-		result := isInstanceNotFoundError(fmt.Errorf(test.errMsg))
+		result := isInstanceNotFoundError(fmt.Errorf("%v", test.errMsg))
 		assert.Equal(t, test.expectedResult, result, "TestCase[%d]", i, result)
 	}
 }
