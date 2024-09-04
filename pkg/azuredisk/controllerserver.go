@@ -324,7 +324,7 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 		if strings.Contains(err.Error(), consts.NotFound) {
 			return nil, status.Error(codes.NotFound, err.Error())
 		}
-		return nil, status.Errorf(codes.Internal, err.Error())
+		return nil, status.Errorf(codes.Internal, "%v", err)
 	}
 
 	isOperationSucceeded = true
@@ -395,7 +395,7 @@ func (d *Driver) ControllerModifyVolume(ctx context.Context, req *csi.Controller
 
 	diskName, err := azureutils.GetDiskName(diskURI)
 	if err != nil {
-		return nil, status.Errorf(codes.Internal, err.Error())
+		return nil, status.Errorf(codes.Internal, "%v", err)
 	}
 
 	if _, err := d.checkDiskExists(ctx, diskURI); err != nil {
@@ -440,7 +440,7 @@ func (d *Driver) ControllerModifyVolume(ctx context.Context, req *csi.Controller
 		if strings.Contains(err.Error(), consts.NotFound) {
 			return nil, status.Error(codes.NotFound, err.Error())
 		}
-		return nil, status.Errorf(codes.Internal, err.Error())
+		return nil, status.Errorf(codes.Internal, "%v", err)
 	}
 
 	isOperationSucceeded = true
@@ -484,7 +484,7 @@ func (d *Driver) ControllerPublishVolume(ctx context.Context, req *csi.Controlle
 	nodeName := types.NodeName(nodeID)
 	diskName, err := azureutils.GetDiskName(diskURI)
 	if err != nil {
-		return nil, status.Errorf(codes.Internal, err.Error())
+		return nil, status.Errorf(codes.Internal, "%v", err)
 	}
 
 	mc := metrics.NewMetricContext(consts.AzureDiskCSIDriverName, "controller_publish_volume", d.cloud.ResourceGroup, d.cloud.SubscriptionID, d.Name)
@@ -525,7 +525,7 @@ func (d *Driver) ControllerPublishVolume(ctx context.Context, req *csi.Controlle
 		}
 		var cachingMode armcompute.CachingTypes
 		if cachingMode, err = azureutils.GetCachingMode(volumeContext); err != nil {
-			return nil, status.Errorf(codes.Internal, err.Error())
+			return nil, status.Errorf(codes.Internal, "%v", err)
 		}
 
 		occupiedLuns := d.getOccupiedLunsFromNode(ctx, nodeName, diskURI)
@@ -559,7 +559,7 @@ func (d *Driver) ControllerPublishVolume(ctx context.Context, req *csi.Controlle
 				if len(errMsg) > maxErrMsgLength {
 					errMsg = errMsg[:maxErrMsgLength]
 				}
-				return nil, status.Errorf(codes.Internal, errMsg)
+				return nil, status.Errorf(codes.Internal, "%v", errMsg)
 			}
 		}
 		klog.V(2).Infof("attach volume %s to node %s successfully", diskURI, nodeName)
@@ -591,7 +591,7 @@ func (d *Driver) ControllerUnpublishVolume(ctx context.Context, req *csi.Control
 
 	diskName, err := azureutils.GetDiskName(diskURI)
 	if err != nil {
-		return nil, status.Errorf(codes.Internal, err.Error())
+		return nil, status.Errorf(codes.Internal, "%v", err)
 	}
 
 	mc := metrics.NewMetricContext(consts.AzureDiskCSIDriverName, "controller_unpublish_volume", d.cloud.ResourceGroup, d.cloud.SubscriptionID, d.Name)
@@ -611,7 +611,7 @@ func (d *Driver) ControllerUnpublishVolume(ctx context.Context, req *csi.Control
 			if len(errMsg) > maxErrMsgLength {
 				errMsg = errMsg[:maxErrMsgLength]
 			}
-			return nil, status.Errorf(codes.Internal, errMsg)
+			return nil, status.Errorf(codes.Internal, "%v", errMsg)
 		}
 	}
 	klog.V(2).Infof("detach volume %s from node %s successfully", diskURI, nodeID)
@@ -725,7 +725,7 @@ func (d *Driver) ListVolumes(ctx context.Context, req *csi.ListVolumesRequest) (
 func (d *Driver) listVolumesInCluster(ctx context.Context, start, maxEntries int) (*csi.ListVolumesResponse, error) {
 	pvList, err := d.cloud.KubeClient.CoreV1().PersistentVolumes().List(ctx, metav1.ListOptions{})
 	if err != nil {
-		return nil, status.Errorf(codes.Internal, "ListVolumes failed while fetching PersistentVolumes List with error: %v", err.Error())
+		return nil, status.Errorf(codes.Internal, "ListVolumes failed while fetching PersistentVolumes List with error: %v", err)
 	}
 
 	// get all resource groups and put them into a sorted slice
@@ -834,7 +834,7 @@ func (d *Driver) listVolumesByResourceGroup(ctx context.Context, resourceGroup s
 	diskClient := d.clientFactory.GetDiskClient()
 	disks, derr := diskClient.List(ctx, resourceGroup)
 	if derr != nil {
-		return listVolumeStatus{err: status.Errorf(codes.Internal, "ListVolumes on rg(%s) failed with error: %v", resourceGroup, derr.Error())}
+		return listVolumeStatus{err: status.Errorf(codes.Internal, "ListVolumes on rg(%s) failed with error: %v", resourceGroup, derr)}
 	}
 	// if volSet is initialized but is empty, return
 	if volSet != nil && len(volSet) == 0 {
@@ -932,7 +932,7 @@ func (d *Driver) ControllerExpandVolume(ctx context.Context, req *csi.Controller
 	}
 	result, rerr := diskClient.Get(ctx, resourceGroup, diskName)
 	if rerr != nil {
-		return nil, status.Errorf(codes.Internal, "could not get the disk(%s) under rg(%s) with error(%v)", diskName, resourceGroup, rerr.Error())
+		return nil, status.Errorf(codes.Internal, "could not get the disk(%s) under rg(%s) with error(%v)", diskName, resourceGroup, rerr)
 	}
 	if result.Properties == nil || result.Properties.DiskSizeGB == nil {
 		return nil, status.Errorf(codes.Internal, "could not get size of the disk(%s)", diskName)
@@ -1031,7 +1031,7 @@ func (d *Driver) CreateSnapshot(ctx context.Context, req *csi.CreateSnapshotRequ
 
 	customTagsMap, err := volumehelper.ConvertTagsToMap(customTags, tagValueDelimiter)
 	if err != nil {
-		return nil, status.Errorf(codes.InvalidArgument, err.Error())
+		return nil, status.Errorf(codes.InvalidArgument, "%v", err)
 	}
 	tags := make(map[string]*string)
 	for k, v := range customTagsMap {
@@ -1180,7 +1180,7 @@ func (d *Driver) DeleteSnapshot(ctx context.Context, req *csi.DeleteSnapshotRequ
 	if azureutils.IsARMResourceID(snapshotID) {
 		snapshotName, resourceGroup, subsID, err = d.getSnapshotInfo(snapshotID)
 		if err != nil {
-			return nil, status.Errorf(codes.Internal, err.Error())
+			return nil, status.Errorf(codes.Internal, "%v", err)
 		}
 	}
 
@@ -1241,7 +1241,7 @@ func (d *Driver) getSnapshotByID(ctx context.Context, subsID, resourceGroup, sna
 	if azureutils.IsARMResourceID(snapshotID) {
 		snapshotName, resourceGroup, subsID, err = d.getSnapshotInfo(snapshotID)
 		if err != nil {
-			return nil, status.Errorf(codes.Internal, err.Error())
+			return nil, status.Errorf(codes.Internal, "%v", err)
 		}
 	}
 	snapshotClient, err := d.clientFactory.GetSnapshotClientForSub(subsID)

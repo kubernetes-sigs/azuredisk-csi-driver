@@ -69,8 +69,8 @@ func ListVolumesOnDisk(diskNumber uint32, partitionNumber uint32) (volumeIDs []s
 		return []string{}, fmt.Errorf("error list volumes on disk. cmd: %s, output: %s, error: %v", cmd, string(out), err)
 	}
 
-	volumeIds := strings.Split(strings.TrimSpace(string(out)), "\r\n")
-	return volumeIds, nil
+	volumeIDs = strings.Split(strings.TrimSpace(string(out)), "\r\n")
+	return volumeIDs, nil
 }
 
 // FormatVolume - Formats a volume with the NTFS format.
