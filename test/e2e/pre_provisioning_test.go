@@ -47,7 +47,7 @@ var _ = ginkgo.Describe("Pre-Provisioned", func() {
 		skipVolumeDeletion bool
 	)
 
-	ginkgo.BeforeEach(func(ctx ginkgo.SpecContext) {
+	ginkgo.BeforeEach(func(_ ginkgo.SpecContext) {
 		cs = f.ClientSet
 		ns = f.Namespace
 		testDriver = driver.InitAzureDiskDriver()

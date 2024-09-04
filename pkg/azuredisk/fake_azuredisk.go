@@ -132,7 +132,7 @@ func newFakeDriverV1(ctrl *gomock.Controller) (*fakeDriverV1, error) {
 
 	driver.mounter = mounter
 
-	cache, err := azcache.NewTimedCache(time.Minute, func(key string) (interface{}, error) {
+	cache, err := azcache.NewTimedCache(time.Minute, func(_ string) (interface{}, error) {
 		return nil, nil
 	}, false)
 	if err != nil {

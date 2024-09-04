@@ -44,7 +44,7 @@ func ParseEndpoint(ep string) (string, string, error) {
 func Listen(ctx context.Context, endpoint string) (net.Listener, error) {
 	proto, addr, err := ParseEndpoint(endpoint)
 	if err != nil {
-		klog.Errorf(err.Error())
+		klog.Errorf("%v", err)
 		return nil, err
 	}
 
@@ -53,7 +53,7 @@ func Listen(ctx context.Context, endpoint string) (net.Listener, error) {
 			addr = "/" + addr
 		}
 		if err := os.Remove(addr); err != nil && !os.IsNotExist(err) {
-			klog.Errorf("Failed to remove %s, error: %s", addr, err.Error())
+			klog.Errorf("Failed to remove %s, error: %v", addr, err)
 			return nil, err
 		}
 	}
