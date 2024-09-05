@@ -54,7 +54,7 @@ const (
 	maxLUN                 = 64 // max number of LUNs per VM
 	errStatusCode400       = "statuscode=400"
 	errInvalidParameter    = `code="invalidparameter"`
-	errTargetInstanceIds   = `target="instanceids"`
+	errTargetInstanceIDs   = `target="instanceids"`
 	sourceSnapshot         = "snapshot"
 	sourceVolume           = "volume"
 	attachDiskMapKeySuffix = "attachdiskmap"
@@ -678,5 +678,5 @@ func isInstanceNotFoundError(err error) bool {
 	if strings.Contains(errMsg, strings.ToLower(consts.VmssVMNotActiveErrorMessage)) {
 		return true
 	}
-	return strings.Contains(errMsg, errStatusCode400) && strings.Contains(errMsg, errInvalidParameter) && strings.Contains(errMsg, errTargetInstanceIds)
+	return strings.Contains(errMsg, errStatusCode400) && strings.Contains(errMsg, errInvalidParameter) && strings.Contains(errMsg, errTargetInstanceIDs)
 }
