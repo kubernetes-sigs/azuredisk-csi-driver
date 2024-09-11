@@ -233,8 +233,30 @@ func (mounter *winMounter) GetVolumeSizeInBytes(volumePath string) (int64, error
 }
 
 // ResizeVolume resizes the volume to the maximum available size.
-func (mounter *winMounter) ResizeVolume(devicePath string) error {
-	return volume.ResizeVolume(devicePath, 0)
+// source could be the disk number or the volume id.
+func (mounter *winMounter) ResizeVolume(source string) error {
+	var volumeID string
+
+	diskNum, err := strconv.Atoi(source)
+	if err == nil {
+		// List the volumes on the given disk.
+		volumeIds, err := volume.ListVolumesOnDisk(uint32(diskNum), 0)
+		if err != nil {
+			return err
+		}
+		if len(volumeIds) == 0 {
+			return fmt.Errorf("no volumes found on disk %d", diskNum)
+		}
+
+		// TODO: consider partitions and choose the right partition.
+		// For now just choose the first volume.
+		volumeID = volumeIds[0]
+	} else {
+		klog.V(2).Infof("parse %s failed with error: %v", source, err)
+		volumeID = source
+	}
+
+	return volume.ResizeVolume(volumeID, 0)
 }
 
 // GetFreeSpace returns the free space of the volume in bytes, total size of the volume in bytes and the used space of the volume in bytes
