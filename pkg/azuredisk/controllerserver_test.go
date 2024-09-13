@@ -22,7 +22,7 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2022-08-01/compute"
+	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2022-08-01/compute" // nolint: staticcheck
 	"github.com/Azure/go-autorest/autorest/date"
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	"github.com/golang/mock/gomock"
@@ -31,7 +31,7 @@ import (
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/timestamppb"
 	v1 "k8s.io/api/core/v1"
-	"k8s.io/utils/pointer"
+	"k8s.io/utils/ptr"
 	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azuredisk/mockcorev1"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azuredisk/mockkubeclient"
@@ -740,14 +740,14 @@ func TestControllerPublishVolume(t *testing.T) {
 				}
 				vmstatus := []compute.InstanceViewStatus{
 					{
-						Code: pointer.String("PowerState/Running"),
+						Code: ptr.To("PowerState/Running"),
 					},
 					{
-						Code: pointer.String("ProvisioningState/succeeded"),
+						Code: ptr.To("ProvisioningState/succeeded"),
 					},
 				}
 				vm.VirtualMachineProperties = &compute.VirtualMachineProperties{
-					ProvisioningState: pointer.String("Failed"),
+					ProvisioningState: ptr.To("Failed"),
 					HardwareProfile: &compute.HardwareProfile{
 						VMSize: compute.StandardA0,
 					},
@@ -759,7 +759,7 @@ func TestControllerPublishVolume(t *testing.T) {
 					},
 				}
 				dataDisks := make([]compute.DataDisk, 1)
-				dataDisks[0] = compute.DataDisk{Lun: pointer.Int32(int32(0)), Name: &testVolumeName}
+				dataDisks[0] = compute.DataDisk{Lun: ptr.To(int32(0)), Name: &testVolumeName}
 				vm.StorageProfile.DataDisks = &dataDisks
 				mockVMsClient := d.getCloud().VirtualMachinesClient.(*mockvmclient.MockInterface)
 				mockVMsClient.EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(vm, nil).AnyTimes()
@@ -798,14 +798,14 @@ func TestControllerPublishVolume(t *testing.T) {
 				}
 				vmstatus := []compute.InstanceViewStatus{
 					{
-						Code: pointer.String("PowerState/Running"),
+						Code: ptr.To("PowerState/Running"),
 					},
 					{
-						Code: pointer.String("ProvisioningState/succeeded"),
+						Code: ptr.To("ProvisioningState/succeeded"),
 					},
 				}
 				vm.VirtualMachineProperties = &compute.VirtualMachineProperties{
-					ProvisioningState: pointer.String("Succeeded"),
+					ProvisioningState: ptr.To("Succeeded"),
 					HardwareProfile: &compute.HardwareProfile{
 						VMSize: compute.StandardA0,
 					},
@@ -817,7 +817,7 @@ func TestControllerPublishVolume(t *testing.T) {
 					},
 				}
 				dataDisks := make([]compute.DataDisk, 1)
-				dataDisks[0] = compute.DataDisk{Lun: pointer.Int32(int32(0)), Name: &testVolumeName}
+				dataDisks[0] = compute.DataDisk{Lun: ptr.To(int32(0)), Name: &testVolumeName}
 				vm.StorageProfile.DataDisks = &dataDisks
 				mockVMsClient := d.getCloud().VirtualMachinesClient.(*mockvmclient.MockInterface)
 				mockVMsClient.EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(vm, nil).AnyTimes()
@@ -856,14 +856,14 @@ func TestControllerPublishVolume(t *testing.T) {
 				}
 				vmstatus := []compute.InstanceViewStatus{
 					{
-						Code: pointer.String("PowerState/Running"),
+						Code: ptr.To("PowerState/Running"),
 					},
 					{
-						Code: pointer.String("ProvisioningState/succeeded"),
+						Code: ptr.To("ProvisioningState/succeeded"),
 					},
 				}
 				vm.VirtualMachineProperties = &compute.VirtualMachineProperties{
-					ProvisioningState: pointer.String("Succeeded"),
+					ProvisioningState: ptr.To("Succeeded"),
 					HardwareProfile: &compute.HardwareProfile{
 						VMSize: compute.StandardA0,
 					},

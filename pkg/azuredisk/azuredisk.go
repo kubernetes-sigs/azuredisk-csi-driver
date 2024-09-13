@@ -24,7 +24,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2022-08-01/compute"
+	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2022-08-01/compute" //nolint: staticcheck
 	"github.com/container-storage-interface/spec/lib/go/csi"
 
 	"google.golang.org/grpc/codes"
@@ -36,7 +36,7 @@ import (
 	"k8s.io/klog/v2"
 	"k8s.io/kubernetes/pkg/volume/util/hostutil"
 	"k8s.io/mount-utils"
-	"k8s.io/utils/pointer"
+	"k8s.io/utils/ptr"
 
 	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
@@ -187,7 +187,7 @@ func newDriverV1(options *DriverOptions) *Driver {
 
 	topologyKey = fmt.Sprintf("topology.%s/zone", driver.Name)
 
-	getter := func(key string) (interface{}, error) { return nil, nil }
+	getter := func(_ string) (interface{}, error) { return nil, nil }
 	var err error
 	if driver.throttlingCache, err = azcache.NewTimedCache(5*time.Minute, getter, false); err != nil {
 		klog.Fatalf("%v", err)
@@ -479,7 +479,7 @@ func (d *DriverCore) waitForSnapshotReady(ctx context.Context, subsID, resourceG
 		return nil
 	}
 
-	timeTick := time.Tick(intervel)
+	timeTick := time.Tick(intervel) // nolint: staticcheck
 	timeAfter := time.After(timeout)
 	for {
 		select {
@@ -508,7 +508,7 @@ func (d *DriverCore) getUsedLunsFromVolumeAttachments(ctx context.Context, nodeN
 	}
 
 	volumeAttachments, err := kubeClient.StorageV1().VolumeAttachments().List(ctx, metav1.ListOptions{
-		TimeoutSeconds: pointer.Int64Ptr(2)})
+		TimeoutSeconds: ptr.To(int64(2))})
 	if err != nil {
 		return nil, err
 	}
@@ -522,7 +522,7 @@ func (d *DriverCore) getUsedLunsFromVolumeAttachments(ctx context.Context, nodeN
 	klog.V(2).Infof("volumeAttachments count: %d, nodeName: %s", len(volumeAttachments.Items), nodeName)
 	for _, va := range volumeAttachments.Items {
 		klog.V(6).Infof("attacher: %s, nodeName: %s, Status: %v, PV: %s, attachmentMetadata: %v", va.Spec.Attacher, va.Spec.NodeName,
-			va.Status.Attached, pointer.StringDeref(va.Spec.Source.PersistentVolumeName, ""), va.Status.AttachmentMetadata)
+			va.Status.Attached, ptr.Deref(va.Spec.Source.PersistentVolumeName, ""), va.Status.AttachmentMetadata)
 		if va.Spec.Attacher == d.Name && strings.EqualFold(va.Spec.NodeName, nodeName) && va.Status.Attached {
 			if k, ok := va.Status.AttachmentMetadata[consts.LUN]; ok {
 				lun, err := strconv.Atoi(k)

@@ -22,7 +22,7 @@ import (
 	"time"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute/v5"
-	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2022-08-01/compute"
+	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2022-08-01/compute" //nolint: staticcheck
 	"github.com/onsi/ginkgo/v2"
 	"github.com/onsi/gomega"
 
@@ -87,12 +87,12 @@ func (t *DynamicallyProvisionedAzureDiskDetach) Run(ctx context.Context, client 
 		framework.ExpectNoError(err, fmt.Sprintf("Error getting client for azuredisk %v", err))
 		disktest, err := disksClient.Get(ctx, resourceGroup, diskName)
 		framework.ExpectNoError(err, fmt.Sprintf("Error getting disk for azuredisk %v", err))
-		framework.ExpectEqual(string(compute.Attached), string(*disktest.Properties.DiskState))
+		gomega.Expect(string(compute.Attached)).To(gomega.Equal(string(*disktest.Properties.DiskState)))
 
 		ginkgo.By("begin to delete the pod")
 		tpod.Cleanup(ctx)
 
-		err = wait.Poll(15*time.Second, 10*time.Minute, func() (bool, error) {
+		err = wait.PollUntilContextTimeout(ctx, 15*time.Second, 10*time.Minute, false, func(context.Context) (bool, error) {
 			disktest, err := disksClient.Get(ctx, resourceGroup, diskName)
 			if err != nil {
 				return false, fmt.Errorf("Error getting disk for azuredisk %v", err)

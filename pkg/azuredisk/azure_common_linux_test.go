@@ -24,7 +24,7 @@ import (
 )
 
 func TestRescanAllVolumes(t *testing.T) {
-	if runtime.GOOS == "darwin" {
+	if runtime.GOOS == "darwin" { // nolint: staticcheck
 		t.Skipf("skip test on GOOS=%s", runtime.GOOS)
 	}
 	err := rescanAllVolumes(azureutils.NewOSIOHandler())

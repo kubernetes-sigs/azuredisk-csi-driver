@@ -255,7 +255,7 @@ func (d *DriverV2) NodePublishVolume(ctx context.Context, req *csi.NodePublishVo
 		}
 		klog.V(2).Infof("NodePublishVolume [block]: found device path %s with lun %s", source, lun)
 		if err = d.ensureBlockTargetFile(target); err != nil {
-			return nil, status.Errorf(codes.Internal, err.Error())
+			return nil, status.Errorf(codes.Internal, "%v", err)
 		}
 	case *csi.VolumeCapability_Mount:
 		mnt, err := d.ensureMountPoint(target)
@@ -455,7 +455,7 @@ func (d *DriverV2) NodeExpandVolume(ctx context.Context, req *csi.NodeExpandVolu
 
 	devicePath, err := getDevicePathWithMountPath(volumePath, d.mounter)
 	if err != nil {
-		return nil, status.Errorf(codes.NotFound, err.Error())
+		return nil, status.Errorf(codes.NotFound, "%v", err)
 	}
 
 	if d.enableDiskOnlineResize {
