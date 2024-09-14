@@ -130,7 +130,7 @@ The following table lists the configurable parameters of the latest Azure Disk C
 | `image.livenessProbe.tag`                         | liveness-probe container image tag                            | `v2.13.0`                                                       |
 | `image.livenessProbe.pullPolicy`                  | liveness-probe image pull policy                           | `IfNotPresent`                                                 |
 | `image.nodeDriverRegistrar.repository`            | csi-node-driver-registrar container image                     | `/oss/kubernetes-csi/csi-node-driver-registrar` |
-| `image.nodeDriverRegistrar.tag`                   | csi-node-driver-registrar container image tag                 | `v2.11.0`                                                       |
+| `image.nodeDriverRegistrar.tag`                   | csi-node-driver-registrar container image tag                 | `v2.12.0`                                                       |
 | `image.nodeDriverRegistrar.pullPolicy`            | csi-node-driver-registrar image pull policy                | `IfNotPresent`                                                 |
 | `imagePullSecrets`                                | Specify docker-registry secret names as an array           | [] (does not add image pull secrets to deployed pods)        |                                       |
 | `serviceAccount.create`                           | whether create service account of csi-azuredisk-controller, csi-azuredisk-node, and snapshot-controller| `true`                                                    |
