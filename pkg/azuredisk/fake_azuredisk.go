@@ -21,7 +21,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2022-08-01/compute"
+	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2022-08-01/compute" // nolint: staticcheck
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/assert"
@@ -126,7 +126,7 @@ func newFakeDriverV1(t *testing.T) (*fakeDriverV1, error) {
 
 	driver.mounter = mounter
 
-	cache, err := azcache.NewTimedCache(time.Minute, func(key string) (interface{}, error) {
+	cache, err := azcache.NewTimedCache(time.Minute, func(_ string) (interface{}, error) {
 		return nil, nil
 	}, false)
 	if err != nil {

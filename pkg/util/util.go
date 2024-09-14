@@ -124,13 +124,13 @@ func MakeFile(pathname string) error {
 }
 
 type VolumeLocks struct {
-	locks sets.String
+	locks sets.Set[string]
 	mux   sync.Mutex
 }
 
 func NewVolumeLocks() *VolumeLocks {
 	return &VolumeLocks{
-		locks: sets.NewString(),
+		locks: sets.New[string](),
 	}
 }
 
