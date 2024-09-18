@@ -24,7 +24,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2022-08-01/compute" // nolint: staticcheck
+	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2022-08-01/compute"
 	"github.com/container-storage-interface/spec/lib/go/csi"
 
 	"google.golang.org/grpc/codes"
@@ -458,7 +458,7 @@ func (d *DriverCore) waitForSnapshotReady(ctx context.Context, subsID, resourceG
 		return nil
 	}
 
-	timeTick := time.Tick(intervel) // nolint: staticcheck
+	timeTick := time.Tick(intervel)
 	timeAfter := time.After(timeout)
 	for {
 		select {
