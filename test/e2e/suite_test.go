@@ -28,6 +28,7 @@ import (
 	"testing"
 
 	"github.com/onsi/ginkgo/v2"
+	"github.com/onsi/ginkgo/v2/reporters"
 	"github.com/onsi/gomega"
 	"github.com/pborman/uuid"
 	"k8s.io/kubernetes/test/e2e/framework"
@@ -265,9 +266,8 @@ func TestE2E(t *testing.T) {
 	if reportDir == "" {
 		reportDir = defaultReportDir
 	}
-	_, reporterConfig := ginkgo.GinkgoConfiguration()
-	reporterConfig.JUnitReport = path.Join(reportDir, "junit_01.xml")
-	ginkgo.RunSpecs(t, "AzureDisk CSI Driver End-to-End Tests", reporterConfig)
+	r := []ginkgo.Reporter{reporters.NewJUnitReporter(path.Join(reportDir, "junit_01.xml"))}
+	ginkgo.RunSpecsWithDefaultAndCustomReporters(t, "AzureDisk CSI Driver End-to-End Tests", r)
 }
 
 func execTestCmd(cmds []testCmd) {

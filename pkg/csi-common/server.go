@@ -91,7 +91,7 @@ func (s *nonBlockingGRPCServer) serve(endpoint string, ids csi.IdentityServer, c
 
 	grpcInterceptor := grpc.UnaryInterceptor(logGRPC)
 	if enableOtelTracing {
-		grpcInterceptor = grpc.ChainUnaryInterceptor(logGRPC, otelgrpc.UnaryServerInterceptor()) // nolint: staticcheck
+		grpcInterceptor = grpc.ChainUnaryInterceptor(logGRPC, otelgrpc.UnaryServerInterceptor())
 	}
 
 	opts := []grpc.ServerOption{
