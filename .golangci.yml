@@ -1,25 +1,3 @@
-run:
-  deadline: 30m
-
-linters:
-  disable:
-  - typecheck
-  - structcheck
-  - staticcheck
-  enable:
-  - gofmt
-  - unused
-  - ineffassign
-  - revive
-  - misspell
-  - exportloopref
-  - asciicheck
-  - bodyclose
-  - depguard
-  - dogsled
-  - durationcheck
-  - errname
-  - forbidigo
 linters-settings:
   depguard:
     rules:
