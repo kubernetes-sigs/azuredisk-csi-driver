@@ -102,6 +102,10 @@ spec:
             - "--enable-perf-optimization=true"
             - "--allow-empty-cloud-config=true"
             - "--get-node-info-from-labels=false"
+          ports:
+            - containerPort: 29603
+              name: healthz
+              protocol: TCP
           livenessProbe:
             failureThreshold: 5
             httpGet:
