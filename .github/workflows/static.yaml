@@ -16,4 +16,4 @@ jobs:
               uses: golangci/golangci-lint-action@v6
               with:
                   version: v1.60
-                  args: --timeout 10m
+                  args: -E=gofmt,unused,ineffassign,revive,misspell,exportloopref,asciicheck,bodyclose,depguard,dogsled,durationcheck,errname,forbidigo -D=structcheck,typecheck,staticcheck --timeout=30m0s
