@@ -75,7 +75,11 @@ spec:
           args:
             - --csi-address=/csi/csi.sock
             - --probe-timeout=3s
+{{- if eq .Values.node.hostNetwork true }}
             - --http-endpoint=localhost:{{ .Values.node.livenessProbe.healthPort }}
+{{- else }}
+            - --health-port={{ .Values.node.livenessProbe.healthPort }}
+{{- end }}
             - --v=2
           resources: {{- toYaml .Values.linux.resources.livenessProbe | nindent 12 }}
           securityContext:
@@ -140,12 +144,22 @@ spec:
             - "--get-node-info-from-labels={{ .Values.linux.getNodeInfoFromLabels }}"
             - "--get-nodeid-from-imds={{ .Values.node.getNodeIDFromIMDS }}"
             - "--enable-otel-tracing={{ .Values.linux.otelTracing.enabled }}"
+{{- if ne .Values.node.hostNetwork true }}
+          ports:
+            - containerPort: {{ .Values.node.livenessProbe.healthPort }}
+              name: healthz
+              protocol: TCP
+{{- end }}
           livenessProbe:
             failureThreshold: 5
             httpGet:
-              host: localhost
               path: /healthz
+{{- if eq .Values.node.hostNetwork true }}
+              host: localhost
               port: {{ .Values.node.livenessProbe.healthPort }}
+{{- else }}
+              port: healthz
+{{- end }}
             initialDelaySeconds: 30
             timeoutSeconds: 10
             periodSeconds: 30
