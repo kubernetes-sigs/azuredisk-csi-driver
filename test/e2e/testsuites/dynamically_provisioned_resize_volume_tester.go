@@ -120,7 +120,7 @@ func (t *DynamicallyProvisionedResizeVolumeTest) Run(ctx context.Context, client
 
 	var newPv *v1.PersistentVolume
 	var newPvSize resource.Quantity
-	err = wait.PollUntilContextTimeout(ctx, 30*time.Second, 10*time.Minute, true, func(context.Context) (bool, error) {
+	err = wait.PollImmediate(30*time.Second, 10*time.Minute, func() (bool, error) {
 		//takes 3-6 minutes on average for dynamic resize
 		ginkgo.By("checking the resizing PV result")
 		newPv, _ = client.CoreV1().PersistentVolumes().Get(ctx, newPvc.Spec.VolumeName, metav1.GetOptions{})

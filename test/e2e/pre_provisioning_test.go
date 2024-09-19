@@ -24,7 +24,6 @@ import (
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	"github.com/onsi/ginkgo/v2"
-	"github.com/onsi/gomega"
 	v1 "k8s.io/api/core/v1"
 	clientset "k8s.io/client-go/kubernetes"
 	"k8s.io/kubernetes/test/e2e/framework"
@@ -172,7 +171,7 @@ var _ = ginkgo.Describe("Pre-Provisioned", func() {
 			req := makeCreateVolumeReq("invalid-maxShares", 256)
 			req.Parameters = map[string]string{"maxShares": "0"}
 			_, err := azurediskDriver.CreateVolume(ctx, req)
-			gomega.Expect(err).To(gomega.HaveOccurred())
+			framework.ExpectError(err)
 		})
 
 		ginkgo.It("should succeed when attaching a shared block volume to multiple pods [disk.csi.azure.com][shared disk]", func(ctx ginkgo.SpecContext) {

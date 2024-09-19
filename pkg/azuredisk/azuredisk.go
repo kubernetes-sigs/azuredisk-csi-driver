@@ -479,7 +479,7 @@ func (d *DriverCore) waitForSnapshotReady(ctx context.Context, subsID, resourceG
 		return nil
 	}
 
-	timeTick := time.Tick(intervel) // nolint: staticcheck
+	timeTick := time.Tick(intervel)
 	timeAfter := time.After(timeout)
 	for {
 		select {
