@@ -1012,6 +1012,12 @@ func (d *Driver) CreateSnapshot(ctx context.Context, req *csi.CreateSnapshotRequ
 			dataAccessAuthMode = v
 		case consts.TagValueDelimiterField:
 			tagValueDelimiter = v
+		case consts.VolumeSnapshotNameKey:
+			// ignore the key
+		case consts.VolumeSnapshotNamespaceKey:
+			// ignore the key
+		case consts.VolumeSnapshotContentNameKey:
+			// ignore the key
 		default:
 			return nil, status.Errorf(codes.Internal, "AzureDisk - invalid option %s in VolumeSnapshotClass", k)
 		}
