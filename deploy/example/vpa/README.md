@@ -7,7 +7,7 @@ You should install Vertical Pod Autoscaler first, please refer to the [vertical-
 ```console
 kubectl apply -f https://raw.githubusercontent.com/kubernetes-sigs/azuredisk-csi-driver/master/deploy/example/vpa/vertical-pod-autoscaler.yaml
 ```
-> check the VPA config and current recomended resource requests
+> check the VPA config and current recommended resource requests
 ```
 kubectl get vpa -n kube-system
 NAME                       MODE   CPU   MEM        PROVIDED   AGE
