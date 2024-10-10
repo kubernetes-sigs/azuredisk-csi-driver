@@ -129,6 +129,7 @@ spec:
             - "--leader-election-namespace={{ .Release.Namespace }}"
             - "-v=2"
             - "--timeout=1200s"
+            - "--extra-create-metadata=true"
           env:
             - name: ADDRESS
               value: /csi/csi.sock
