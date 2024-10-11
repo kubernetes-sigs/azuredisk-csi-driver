@@ -23,6 +23,7 @@ echo "Installing VPA ..."
 git clone $repo
 cd autoscaler/vertical-pod-autoscaler
 ./hack/vpa-up.sh
+./pkg/admission-controller/gencerts.sh
 cd ../..
 rm -rf autoscaler
 
