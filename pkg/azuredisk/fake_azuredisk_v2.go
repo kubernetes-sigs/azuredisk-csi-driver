@@ -74,7 +74,7 @@ func newFakeDriverV2(ctrl *gomock.Controller) (*fakeDriverV2, error) {
 	driver.diskController = NewManagedDiskController(driver.cloud)
 	driver.clientFactory = driver.cloud.ComputeClientFactory
 
-	mounter, err := mounter.NewSafeMounter(driver.enableWindowsHostProcess, driver.useCSIProxyGAInterface)
+	mounter, err := mounter.NewSafeMounter(true, driver.useCSIProxyGAInterface)
 	if err != nil {
 		return nil, err
 	}
