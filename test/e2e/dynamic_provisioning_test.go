@@ -763,9 +763,14 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 		test.Run(ctx, cs, snapshotrcs, ns)
 	})
 
-	ginkgo.It("should create a pod, write to its pv, take a volume snapshot, overwrite data in original pv, create another pod from the snapshot, and read unaltered original data from original pv[disk.csi.azure.com]", func(ctx ginkgo.SpecContext) {
+	ginkgo.It("should create a pod, write to its pv, take a volume snapshot with xfs fs, overwrite data in original pv, create another pod from the snapshot, and read unaltered original data from original pv[disk.csi.azure.com]", func(ctx ginkgo.SpecContext) {
 		skipIfUsingInTreeVolumePlugin()
 		skipIfTestingInWindowsCluster()
+
+		fsType := "xfs"
+		if isWindowsCluster {
+			fsType = "ntfs"
+		}
 
 		pod := testsuites.PodDetails{
 			IsWindows:    isWindowsCluster,
@@ -773,7 +778,7 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 			Cmd:          convertToPowershellorCmdCommandIfNecessary("echo 'hello world' > /mnt/test-1/data"),
 			Volumes: t.normalizeVolumes([]testsuites.VolumeDetails{
 				{
-					FSType:    getFSType(isWindowsCluster),
+					FSType:    fsType,
 					ClaimSize: "10Gi",
 					VolumeMount: testsuites.VolumeMountDetails{
 						NameGenerate:      "test-volume-",
