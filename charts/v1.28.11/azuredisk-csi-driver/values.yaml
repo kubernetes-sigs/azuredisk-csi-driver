@@ -64,6 +64,9 @@ controller:
     - key: "node-role.kubernetes.io/control-plane"
       operator: "Exists"
       effect: "NoSchedule"
+    - key: "CriticalAddonsOnly"
+      operator: "Exists"
+      effect: "NoSchedule"
   hostNetwork: true # this setting could be disabled if controller does not depend on MSI setting
   labels: {}
   annotations: {}
