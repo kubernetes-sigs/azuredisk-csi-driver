@@ -35,6 +35,7 @@ import (
 	"k8s.io/klog/v2"
 	"k8s.io/utils/pointer"
 
+	azureconsts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 	"sigs.k8s.io/cloud-provider-azure/pkg/consts"
 	"sigs.k8s.io/cloud-provider-azure/pkg/provider"
 )
@@ -120,8 +121,7 @@ func (c *ManagedDiskController) CreateManagedDisk(ctx context.Context, options *
 
 	// insert original tags to newTags
 	newTags := make(map[string]*string)
-	azureDDTag := "kubernetes-azure-dd"
-	newTags[consts.CreatedByTag] = &azureDDTag
+	newTags[consts.CreatedByTag] = pointer.String(azureconsts.AzureDiskDriverTag)
 	if options.Tags != nil {
 		for k, v := range options.Tags {
 			value := v
