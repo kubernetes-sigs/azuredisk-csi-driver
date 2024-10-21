@@ -38,6 +38,7 @@ import (
 	cloudprovider "k8s.io/cloud-provider"
 	volerr "k8s.io/cloud-provider/volume/errors"
 	"k8s.io/klog/v2"
+	"k8s.io/utils/ptr"
 
 	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
@@ -986,6 +987,8 @@ func (d *Driver) CreateSnapshot(ctx context.Context, req *csi.CreateSnapshotRequ
 	localCloud := d.cloud
 	location := d.cloud.Location
 
+	tags := make(map[string]*string)
+
 	parameters := req.GetParameters()
 	for k, v := range parameters {
 		switch strings.ToLower(k) {
@@ -1013,9 +1016,9 @@ func (d *Driver) CreateSnapshot(ctx context.Context, req *csi.CreateSnapshotRequ
 		case consts.TagValueDelimiterField:
 			tagValueDelimiter = v
 		case consts.VolumeSnapshotNameKey:
-			// ignore the key
+			tags[consts.SnapshotNameTag] = ptr.To(v)
 		case consts.VolumeSnapshotNamespaceKey:
-			// ignore the key
+			tags[consts.SnapshotNamespaceTag] = ptr.To(v)
 		case consts.VolumeSnapshotContentNameKey:
 			// ignore the key
 		default:
@@ -1039,7 +1042,8 @@ func (d *Driver) CreateSnapshot(ctx context.Context, req *csi.CreateSnapshotRequ
 	if err != nil {
 		return nil, status.Errorf(codes.InvalidArgument, "%v", err)
 	}
-	tags := make(map[string]*string)
+	tags[azureconsts.CreatedByTag] = ptr.To(consts.AzureDiskDriverTag)
+	tags["source_volume_id"] = ptr.To(sourceVolumeID)
 	for k, v := range customTagsMap {
 		value := v
 		tags[k] = &value
