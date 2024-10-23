@@ -167,6 +167,10 @@ func (c *controllerCommon) AttachDisk(ctx context.Context, diskName, diskURI str
 				return -1, fmt.Errorf("state of disk(%s) is %s, not in expected %s state", diskURI, *disk.Properties.DiskState, armcompute.DiskStateUnattached)
 			}
 		}
+		if disk.SKU != nil && disk.SKU.Name != nil && *disk.SKU.Name == armcompute.DiskStorageAccountTypesPremiumV2LRS {
+			klog.V(2).Infof("disk(%s) is PremiumV2LRS and only supports None caching mode", diskURI)
+			cachingMode = armcompute.CachingTypesNone
+		}
 
 		if v, ok := disk.Tags[WriteAcceleratorEnabled]; ok {
 			if v != nil && strings.EqualFold(*v, "true") {
