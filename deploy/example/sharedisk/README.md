@@ -60,7 +60,7 @@ spec:
     spec:
       containers:
         - name: deployment-azuredisk
-          image: mcr.microsoft.com/oss/nginx/nginx:1.17.3-alpine
+          image: mcr.microsoft.com/mirror/docker/library/nginx:1.23
           volumeDevices:
             - name: azuredisk
               devicePath: /dev/sdx
