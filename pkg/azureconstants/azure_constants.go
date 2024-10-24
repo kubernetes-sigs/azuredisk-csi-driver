@@ -107,6 +107,9 @@ const (
 	// define tag value delimiter and default is comma
 	TagValueDelimiterField = "tagValueDelimiter"
 	AzureDiskDriverTag     = "kubernetes-azure-dd"
+
+	// OperationPreemptedErrorCode is the error code returned for vm operation preempted errors
+	OperationPreemptedErrorCode = "OperationPreempted"
 )
 
 var (

@@ -25,7 +25,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute/v5"
+	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute/v6"
 	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2022-08-01/compute"
 	"github.com/stretchr/testify/assert"
 	"go.uber.org/mock/gomock"
@@ -580,7 +580,7 @@ func TestGetUsedLunsFromNode(t *testing.T) {
 		},
 	}
 	for _, test := range tests {
-		result, err := d.getUsedLunsFromNode(types.NodeName(test.nodeName))
+		result, err := d.getUsedLunsFromNode(context.TODO(), types.NodeName(test.nodeName))
 		if !reflect.DeepEqual(err, test.expectedErr) {
 			t.Errorf("test(%s): err(%v) != expected err(%v)", test.name, err, test.expectedErr)
 		}

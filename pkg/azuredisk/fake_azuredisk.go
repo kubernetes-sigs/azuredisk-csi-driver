@@ -20,7 +20,7 @@ import (
 	"context"
 	"time"
 
-	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute/v5"
+	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute/v6"
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	"go.uber.org/mock/gomock"
 	"k8s.io/apimachinery/pkg/types"
@@ -96,7 +96,7 @@ type FakeDriver interface {
 	getDevicePathWithLUN(lunStr string) (string, error)
 	setThrottlingCache(key string, value string)
 	getUsedLunsFromVolumeAttachments(context.Context, string) ([]int, error)
-	getUsedLunsFromNode(nodeName types.NodeName) ([]int, error)
+	getUsedLunsFromNode(ctx context.Context, nodeName types.NodeName) ([]int, error)
 }
 
 type fakeDriverV1 struct {
@@ -132,7 +132,7 @@ func newFakeDriverV1(ctrl *gomock.Controller) (*fakeDriverV1, error) {
 
 	driver.mounter = mounter
 
-	cache, err := azcache.NewTimedCache(time.Minute, func(_ string) (interface{}, error) {
+	cache, err := azcache.NewTimedCache(time.Minute, func(_ context.Context, _ string) (interface{}, error) {
 		return nil, nil
 	}, false)
 	if err != nil {

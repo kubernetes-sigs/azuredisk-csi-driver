@@ -31,7 +31,9 @@ import (
 	"sigs.k8s.io/cloud-provider-azure/pkg/azclient/blobservicepropertiesclient"
 	"sigs.k8s.io/cloud-provider-azure/pkg/azclient/deploymentclient"
 	"sigs.k8s.io/cloud-provider-azure/pkg/azclient/diskclient"
+	"sigs.k8s.io/cloud-provider-azure/pkg/azclient/fileservicepropertiesclient"
 	"sigs.k8s.io/cloud-provider-azure/pkg/azclient/fileshareclient"
+	"sigs.k8s.io/cloud-provider-azure/pkg/azclient/identityclient"
 	"sigs.k8s.io/cloud-provider-azure/pkg/azclient/interfaceclient"
 	"sigs.k8s.io/cloud-provider-azure/pkg/azclient/ipgroupclient"
 	"sigs.k8s.io/cloud-provider-azure/pkg/azclient/loadbalancerclient"
@@ -45,6 +47,7 @@ import (
 	"sigs.k8s.io/cloud-provider-azure/pkg/azclient/publicipprefixclient"
 	"sigs.k8s.io/cloud-provider-azure/pkg/azclient/registryclient"
 	"sigs.k8s.io/cloud-provider-azure/pkg/azclient/resourcegroupclient"
+	"sigs.k8s.io/cloud-provider-azure/pkg/azclient/roleassignmentclient"
 	"sigs.k8s.io/cloud-provider-azure/pkg/azclient/routetableclient"
 	"sigs.k8s.io/cloud-provider-azure/pkg/azclient/secretclient"
 	"sigs.k8s.io/cloud-provider-azure/pkg/azclient/securitygroupclient"
@@ -67,10 +70,12 @@ type ClientFactoryImpl struct {
 	accountclientInterface                  sync.Map
 	availabilitysetclientInterface          availabilitysetclient.Interface
 	blobcontainerclientInterface            sync.Map
-	blobservicepropertiesclientInterface    blobservicepropertiesclient.Interface
+	blobservicepropertiesclientInterface    sync.Map
 	deploymentclientInterface               deploymentclient.Interface
 	diskclientInterface                     sync.Map
+	fileservicepropertiesclientInterface    sync.Map
 	fileshareclientInterface                sync.Map
+	identityclientInterface                 identityclient.Interface
 	interfaceclientInterface                interfaceclient.Interface
 	ipgroupclientInterface                  ipgroupclient.Interface
 	loadbalancerclientInterface             loadbalancerclient.Interface
@@ -83,6 +88,7 @@ type ClientFactoryImpl struct {
 	publicipprefixclientInterface           publicipprefixclient.Interface
 	registryclientInterface                 registryclient.Interface
 	resourcegroupclientInterface            resourcegroupclient.Interface
+	roleassignmentclientInterface           roleassignmentclient.Interface
 	routetableclientInterface               routetableclient.Interface
 	secretclientInterface                   secretclient.Interface
 	securitygroupclientInterface            securitygroupclient.Interface
@@ -133,7 +139,7 @@ func NewClientFactory(config *ClientFactoryConfig, armConfig *ARMClientConfig, c
 	}
 
 	//initialize blobservicepropertiesclient
-	factory.blobservicepropertiesclientInterface, err = factory.createBlobServicePropertiesClient(config.SubscriptionID)
+	_, err = factory.GetBlobServicePropertiesClientForSub(config.SubscriptionID)
 	if err != nil {
 		return nil, err
 	}
@@ -150,8 +156,20 @@ func NewClientFactory(config *ClientFactoryConfig, armConfig *ARMClientConfig, c
 		return nil, err
 	}
 
+	//initialize fileservicepropertiesclient
+	_, err = factory.GetFileServicePropertiesClientForSub(config.SubscriptionID)
+	if err != nil {
+		return nil, err
+	}
+
 	//initialize fileshareclient
 	_, err = factory.GetFileShareClientForSub(config.SubscriptionID)
+	if err != nil {
+		return nil, err
+	}
+
+	//initialize identityclient
+	factory.identityclientInterface, err = factory.createIdentityClient(config.SubscriptionID)
 	if err != nil {
 		return nil, err
 	}
@@ -224,6 +242,12 @@ func NewClientFactory(config *ClientFactoryConfig, armConfig *ARMClientConfig, c
 
 	//initialize resourcegroupclient
 	factory.resourcegroupclientInterface, err = factory.createResourceGroupClient(config.SubscriptionID)
+	if err != nil {
+		return nil, err
+	}
+
+	//initialize roleassignmentclient
+	factory.roleassignmentclientInterface, err = factory.createRoleAssignmentClient(config.SubscriptionID)
 	if err != nil {
 		return nil, err
 	}
@@ -309,6 +333,12 @@ func (factory *ClientFactoryImpl) createAccountClient(subscription string) (acco
 		return nil, err
 	}
 
+	//add ratelimit policy
+	ratelimitOption := factory.facotryConfig.GetRateLimitConfig("storageAccountRateLimit")
+	rateLimitPolicy := ratelimit.NewRateLimitPolicy(ratelimitOption)
+	if rateLimitPolicy != nil {
+		options.ClientOptions.PerCallPolicies = append(options.ClientOptions.PerCallPolicies, rateLimitPolicy)
+	}
 	for _, optionMutFn := range factory.clientOptionsMutFn {
 		if optionMutFn != nil {
 			optionMutFn(options)
@@ -415,7 +445,24 @@ func (factory *ClientFactoryImpl) createBlobServicePropertiesClient(subscription
 }
 
 func (factory *ClientFactoryImpl) GetBlobServicePropertiesClient() blobservicepropertiesclient.Interface {
-	return factory.blobservicepropertiesclientInterface
+	clientImp, _ := factory.blobservicepropertiesclientInterface.Load(strings.ToLower(factory.facotryConfig.SubscriptionID))
+	return clientImp.(blobservicepropertiesclient.Interface)
+}
+func (factory *ClientFactoryImpl) GetBlobServicePropertiesClientForSub(subscriptionID string) (blobservicepropertiesclient.Interface, error) {
+	if subscriptionID == "" {
+		subscriptionID = factory.facotryConfig.SubscriptionID
+	}
+	clientImp, loaded := factory.blobservicepropertiesclientInterface.Load(strings.ToLower(subscriptionID))
+	if loaded {
+		return clientImp.(blobservicepropertiesclient.Interface), nil
+	}
+	//It's not thread safe, but it's ok for now. because it will be called once.
+	clientImp, err := factory.createBlobServicePropertiesClient(subscriptionID)
+	if err != nil {
+		return nil, err
+	}
+	factory.blobservicepropertiesclientInterface.Store(strings.ToLower(subscriptionID), clientImp)
+	return clientImp.(blobservicepropertiesclient.Interface), nil
 }
 
 func (factory *ClientFactoryImpl) createDeploymentClient(subscription string) (deploymentclient.Interface, error) {
@@ -485,6 +532,42 @@ func (factory *ClientFactoryImpl) GetDiskClientForSub(subscriptionID string) (di
 	return clientImp.(diskclient.Interface), nil
 }
 
+func (factory *ClientFactoryImpl) createFileServicePropertiesClient(subscription string) (fileservicepropertiesclient.Interface, error) {
+	//initialize fileservicepropertiesclient
+	options, err := GetDefaultResourceClientOption(factory.armConfig, factory.facotryConfig)
+	if err != nil {
+		return nil, err
+	}
+
+	for _, optionMutFn := range factory.clientOptionsMutFn {
+		if optionMutFn != nil {
+			optionMutFn(options)
+		}
+	}
+	return fileservicepropertiesclient.New(subscription, factory.cred, options)
+}
+
+func (factory *ClientFactoryImpl) GetFileServicePropertiesClient() fileservicepropertiesclient.Interface {
+	clientImp, _ := factory.fileservicepropertiesclientInterface.Load(strings.ToLower(factory.facotryConfig.SubscriptionID))
+	return clientImp.(fileservicepropertiesclient.Interface)
+}
+func (factory *ClientFactoryImpl) GetFileServicePropertiesClientForSub(subscriptionID string) (fileservicepropertiesclient.Interface, error) {
+	if subscriptionID == "" {
+		subscriptionID = factory.facotryConfig.SubscriptionID
+	}
+	clientImp, loaded := factory.fileservicepropertiesclientInterface.Load(strings.ToLower(subscriptionID))
+	if loaded {
+		return clientImp.(fileservicepropertiesclient.Interface), nil
+	}
+	//It's not thread safe, but it's ok for now. because it will be called once.
+	clientImp, err := factory.createFileServicePropertiesClient(subscriptionID)
+	if err != nil {
+		return nil, err
+	}
+	factory.fileservicepropertiesclientInterface.Store(strings.ToLower(subscriptionID), clientImp)
+	return clientImp.(fileservicepropertiesclient.Interface), nil
+}
+
 func (factory *ClientFactoryImpl) createFileShareClient(subscription string) (fileshareclient.Interface, error) {
 	//initialize fileshareclient
 	options, err := GetDefaultResourceClientOption(factory.armConfig, factory.facotryConfig)
@@ -519,6 +602,25 @@ func (factory *ClientFactoryImpl) GetFileShareClientForSub(subscriptionID string
 	}
 	factory.fileshareclientInterface.Store(strings.ToLower(subscriptionID), clientImp)
 	return clientImp.(fileshareclient.Interface), nil
+}
+
+func (factory *ClientFactoryImpl) createIdentityClient(subscription string) (identityclient.Interface, error) {
+	//initialize identityclient
+	options, err := GetDefaultResourceClientOption(factory.armConfig, factory.facotryConfig)
+	if err != nil {
+		return nil, err
+	}
+
+	for _, optionMutFn := range factory.clientOptionsMutFn {
+		if optionMutFn != nil {
+			optionMutFn(options)
+		}
+	}
+	return identityclient.New(subscription, factory.cred, options)
+}
+
+func (factory *ClientFactoryImpl) GetIdentityClient() identityclient.Interface {
+	return factory.identityclientInterface
 }
 
 func (factory *ClientFactoryImpl) createInterfaceClient(subscription string) (interfaceclient.Interface, error) {
@@ -797,6 +899,25 @@ func (factory *ClientFactoryImpl) GetResourceGroupClient() resourcegroupclient.I
 	return factory.resourcegroupclientInterface
 }
 
+func (factory *ClientFactoryImpl) createRoleAssignmentClient(subscription string) (roleassignmentclient.Interface, error) {
+	//initialize roleassignmentclient
+	options, err := GetDefaultResourceClientOption(factory.armConfig, factory.facotryConfig)
+	if err != nil {
+		return nil, err
+	}
+
+	for _, optionMutFn := range factory.clientOptionsMutFn {
+		if optionMutFn != nil {
+			optionMutFn(options)
+		}
+	}
+	return roleassignmentclient.New(subscription, factory.cred, options)
+}
+
+func (factory *ClientFactoryImpl) GetRoleAssignmentClient() roleassignmentclient.Interface {
+	return factory.roleassignmentclientInterface
+}
+
 func (factory *ClientFactoryImpl) createRouteTableClient(subscription string) (routetableclient.Interface, error) {
 	//initialize routetableclient
 	options, err := GetDefaultResourceClientOption(factory.armConfig, factory.facotryConfig)
@@ -1004,7 +1125,7 @@ func (factory *ClientFactoryImpl) createVirtualMachineScaleSetClient(subscriptio
 	}
 
 	//add ratelimit policy
-	ratelimitOption := factory.facotryConfig.GetRateLimitConfig("virtualMachineSizesRateLimit")
+	ratelimitOption := factory.facotryConfig.GetRateLimitConfig("virtualMachineScaleSetRateLimit")
 	rateLimitPolicy := ratelimit.NewRateLimitPolicy(ratelimitOption)
 	if rateLimitPolicy != nil {
 		options.ClientOptions.PerCallPolicies = append(options.ClientOptions.PerCallPolicies, rateLimitPolicy)

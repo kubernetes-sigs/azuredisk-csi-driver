@@ -80,10 +80,11 @@ type Cloud struct {
 	ExtIDErr       map[types.NodeName]error
 	InstanceTypes  map[types.NodeName]string
 	Machines       []types.NodeName
-	NodeResources  *v1.NodeResources
+	NodeResources  v1.ResourceList
 	ClusterList    []string
 	MasterName     string
 	ExternalIP     net.IP
+	BalancerIPMode *v1.LoadBalancerIPMode
 	Balancers      map[string]Balancer
 	updateCallLock sync.Mutex
 	UpdateCalls    []UpdateBalancerCall
@@ -97,7 +98,8 @@ type Cloud struct {
 	ProviderID     map[types.NodeName]string
 	addCallLock    sync.Mutex
 	cloudprovider.Zone
-	VolumeLabelMap map[string]map[string]string
+	VolumeLabelMap   map[string]map[string]string
+	AdditionalLabels map[string]string
 
 	OverrideInstanceMetadata func(ctx context.Context, node *v1.Node) (*cloudprovider.InstanceMetadata, error)
 
@@ -223,7 +225,15 @@ func (f *Cloud) EnsureLoadBalancer(ctx context.Context, clusterName string, serv
 	f.Balancers[name] = Balancer{name, region, spec.LoadBalancerIP, spec.Ports, nodes}
 
 	status := &v1.LoadBalancerStatus{}
-	status.Ingress = []v1.LoadBalancerIngress{{IP: f.ExternalIP.String()}}
+	// process Ports
+	portStatus := []v1.PortStatus{}
+	for _, port := range spec.Ports {
+		portStatus = append(portStatus, v1.PortStatus{
+			Port:     port.Port,
+			Protocol: port.Protocol,
+		})
+	}
+	status.Ingress = []v1.LoadBalancerIngress{{IP: f.ExternalIP.String(), IPMode: f.BalancerIPMode, Ports: portStatus}}
 
 	return status, f.Err
 }
@@ -373,11 +383,12 @@ func (f *Cloud) InstanceMetadata(ctx context.Context, node *v1.Node) (*cloudprov
 	}
 
 	return &cloudprovider.InstanceMetadata{
-		ProviderID:    providerID,
-		InstanceType:  f.InstanceTypes[types.NodeName(node.Spec.ProviderID)],
-		NodeAddresses: f.Addresses,
-		Zone:          f.Zone.FailureDomain,
-		Region:        f.Zone.Region,
+		ProviderID:       providerID,
+		InstanceType:     f.InstanceTypes[types.NodeName(node.Spec.ProviderID)],
+		NodeAddresses:    f.Addresses,
+		Zone:             f.Zone.FailureDomain,
+		Region:           f.Zone.Region,
+		AdditionalLabels: f.AdditionalLabels,
 	}, f.MetadataErr
 }
 

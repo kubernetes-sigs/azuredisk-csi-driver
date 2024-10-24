@@ -26,7 +26,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute/v5"
+	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute/v6"
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 
@@ -185,7 +185,7 @@ func newDriverV1(options *DriverOptions) *Driver {
 	}
 	topologyKey = fmt.Sprintf("topology.%s/zone", driver.Name)
 
-	getter := func(_ string) (interface{}, error) { return nil, nil }
+	getter := func(_ context.Context, _ string) (interface{}, error) { return nil, nil }
 	var err error
 	if driver.throttlingCache, err = azcache.NewTimedCache(5*time.Minute, getter, false); err != nil {
 		klog.Fatalf("%v", err)
@@ -359,8 +359,8 @@ func (d *Driver) Run(ctx context.Context) error {
 	return err
 }
 
-func (d *Driver) isGetDiskThrottled() bool {
-	cache, err := d.throttlingCache.Get(consts.GetDiskThrottlingKey, azcache.CacheReadTypeDefault)
+func (d *Driver) isGetDiskThrottled(ctx context.Context) bool {
+	cache, err := d.throttlingCache.Get(ctx, consts.GetDiskThrottlingKey, azcache.CacheReadTypeDefault)
 	if err != nil {
 		klog.Warningf("throttlingCache(%s) return with error: %s", consts.GetDiskThrottlingKey, err)
 		return false
@@ -368,8 +368,8 @@ func (d *Driver) isGetDiskThrottled() bool {
 	return cache != nil
 }
 
-func (d *Driver) isCheckDiskLunThrottled() bool {
-	cache, err := d.checkDiskLunThrottlingCache.Get(consts.CheckDiskLunThrottlingKey, azcache.CacheReadTypeDefault)
+func (d *Driver) isCheckDiskLunThrottled(ctx context.Context) bool {
+	cache, err := d.checkDiskLunThrottlingCache.Get(ctx, consts.CheckDiskLunThrottlingKey, azcache.CacheReadTypeDefault)
 	if err != nil {
 		klog.Warningf("throttlingCache(%s) return with error: %s", consts.CheckDiskLunThrottlingKey, err)
 		return false
@@ -388,7 +388,7 @@ func (d *Driver) checkDiskExists(ctx context.Context, diskURI string) (*armcompu
 		return nil, err
 	}
 
-	if d.isGetDiskThrottled() {
+	if d.isGetDiskThrottled(ctx) {
 		klog.Warningf("skip checkDiskExists(%s) since it's still in throttling", diskURI)
 		return nil, nil
 	}
@@ -405,7 +405,7 @@ func (d *Driver) checkDiskExists(ctx context.Context, diskURI string) (*armcompu
 }
 
 func (d *Driver) checkDiskCapacity(ctx context.Context, subsID, resourceGroup, diskName string, requestGiB int) (bool, error) {
-	if d.isGetDiskThrottled() {
+	if d.isGetDiskThrottled(ctx) {
 		klog.Warningf("skip checkDiskCapacity(%s, %s) since it's still in throttling", resourceGroup, diskName)
 		return true, nil
 	}
@@ -588,8 +588,8 @@ func (d *DriverCore) getUsedLunsFromVolumeAttachments(ctx context.Context, nodeN
 }
 
 // getUsedLunsFromNode returns a list of sorted used luns from Node
-func (d *DriverCore) getUsedLunsFromNode(nodeName types.NodeName) ([]int, error) {
-	disks, _, err := d.diskController.GetNodeDataDisks(nodeName, azcache.CacheReadTypeDefault)
+func (d *DriverCore) getUsedLunsFromNode(ctx context.Context, nodeName types.NodeName) ([]int, error) {
+	disks, _, err := d.diskController.GetNodeDataDisks(ctx, nodeName, azcache.CacheReadTypeDefault)
 	if err != nil {
 		klog.Errorf("error of getting data disks for node %s: %v", nodeName, err)
 		return nil, err

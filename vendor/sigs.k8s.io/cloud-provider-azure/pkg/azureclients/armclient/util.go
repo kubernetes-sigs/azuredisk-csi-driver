@@ -19,6 +19,7 @@ package armclient
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"html"
 	"io"
@@ -121,7 +122,7 @@ func DoHackRegionalRetryForGET(c *Client) autorest.SendDecorator {
 
 			bodyString := string(bodyBytes)
 			trimmed := strings.TrimSpace(bodyString)
-			klog.V(6).Infof("Send.sendRequest got response with ContentLength %d, StatusCode %d and responseBody length %d", response.ContentLength, response.StatusCode, len(trimmed))
+			klog.V(6).Infof("%s %s got response with ContentLength %d, StatusCode %d and responseBody length %d", request.Method, request.URL.Path, response.ContentLength, response.StatusCode, len(trimmed))
 
 			// Hack: retry the regional ARM endpoint in case of ARM traffic split and arm resource group replication is too slow
 			// Empty content and 2xx http status code are returned in this case.
@@ -186,8 +187,8 @@ func DoHackRegionalRetryForGET(c *Client) autorest.SendDecorator {
 			emptyResp = (regionalResponse.ContentLength == 0 || trimmed == "" || trimmed == "{}") && regionalResponse.StatusCode >= 200 && regionalResponse.StatusCode < 300
 			if emptyResp {
 				contentLengthErrStr := fmt.Sprintf("empty response with trimmed body %q, ContentLength %d and StatusCode %d", trimmed, regionalResponse.ContentLength, regionalResponse.StatusCode)
-				klog.Errorf(contentLengthErrStr)
-				return response, fmt.Errorf(contentLengthErrStr)
+				klog.Error(contentLengthErrStr)
+				return response, errors.New(contentLengthErrStr)
 			}
 
 			return regionalResponse, regionalError

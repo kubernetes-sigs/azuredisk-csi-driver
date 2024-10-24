@@ -121,6 +121,12 @@ const (
 	VMSetCIDRIPV4TagKey = "kubernetesNodeCIDRMaskIPV4"
 	// VMSetCIDRIPV6TagKey specifies the node ipv6 CIDR mask of the instances on the VMSS or VMAS
 	VMSetCIDRIPV6TagKey = "kubernetesNodeCIDRMaskIPV6"
+	// VmssWindows2019ImageGalleryName is the name of Windows 2019 images from the
+	// Microsoft.Compute/galleries/AKSWindows gallery
+	VmssWindows2019ImageGalleryName = "windows-2019-containerd"
+	// Windows2019OSBuildVersion is the official build version of Windows Server 2019
+	// https://learn.microsoft.com/en-us/windows-server/get-started/windows-server-release-info
+	Windows2019OSBuildVersion = "17763"
 
 	// TagsDelimiter is the delimiter of tags
 	TagsDelimiter = ","
@@ -413,8 +419,8 @@ const (
 	CannotUpdateVMBeingDeletedMessagePrefix = "'Put on Virtual Machine Scale Set VM Instance' is not allowed on Virtual Machine Scale Set"
 	// CannotUpdateVMBeingDeletedMessageSuffix is the suffix of the error message that the request failed due to delete a VM that is being deleted
 	CannotUpdateVMBeingDeletedMessageSuffix = "since it is marked for deletion"
-	// OperationPreemptedErrorCode is the error code returned for vm operation preempted errors
-	OperationPreemptedErrorCode = "OperationPreempted"
+	// OperationPreemptedErrorMessage is the error message returned for vm operation preempted errors
+	OperationPreemptedErrorMessage = "Operation execution has been preempted by a more recent operation"
 )
 
 // node ipam controller
@@ -585,4 +591,17 @@ const (
 	VMPowerStateDeallocated  = "deallocated"
 	VMPowerStateDeallocating = "deallocating"
 	VMPowerStateUnknown      = "unknown"
+)
+
+// Azure resource lock
+const (
+	AzureResourceLockHolderNameCloudControllerManager = "cloud-controller-manager"
+	AzureResourceLockLeaseName                        = "aks-managed-resource-locker"
+	AzureResourceLockLeaseNamespace                   = "kube-system"
+	AzureResourceLockLeaseDuration                    = int32(15 * 60)
+	AzureResourceLockPreviousHolderNameAnnotation     = "aks-managed-resource-locker-previous-holder"
+
+	AzureResourceLockFailedToLockErrorTemplate                = "%s failed due to fail to lock azure resources. This may because another component is trying to update azure resources, e.g., load balancers. This will be automatically retried by cloud provider exponentially: %w"
+	AzureResourceLockFailedToUnlockErrorTemplate              = "%s failed due to fail to unlock azure resources. This will be automatically retried by cloud provider exponentially, but can also be manually unlocked by removing the holder of the lease '%s/%s'. Before doing this, please be aware that this could lead to unexpected issues: %w"
+	AzureResourceLockFailedToReconcileWithUnlockErrorTemplate = "%s failed due to %s, and when unlocking azure resources another error happened: %w"
 )
