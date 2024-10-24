@@ -29,7 +29,7 @@ import (
 	utilerrors "k8s.io/apimachinery/pkg/util/errors"
 	"k8s.io/client-go/util/flowcontrol"
 	"k8s.io/klog/v2"
-	"k8s.io/utils/pointer"
+	"k8s.io/utils/ptr"
 
 	azclients "sigs.k8s.io/cloud-provider-azure/pkg/azureclients"
 	"sigs.k8s.io/cloud-provider-azure/pkg/azureclients/armclient"
@@ -217,7 +217,7 @@ func (c *Client) listVMSSVM(ctx context.Context, resourceGroupName string, virtu
 		result = append(result, page.Values()...)
 
 		// Abort the loop when there's no nextLink in the response.
-		if pointer.StringDeref(page.Response().NextLink, "") == "" {
+		if ptr.Deref(page.Response().NextLink, "") == "" {
 			break
 		}
 
@@ -383,12 +383,12 @@ func (c *Client) listResponder(resp *http.Response) (result compute.VirtualMachi
 // virtualMachineScaleSetListResultPreparer prepares a request to retrieve the next set of results.
 // It returns nil if no more results exist.
 func (c *Client) virtualMachineScaleSetVMListResultPreparer(ctx context.Context, vmssvmlr compute.VirtualMachineScaleSetVMListResult) (*http.Request, error) {
-	if vmssvmlr.NextLink == nil || len(pointer.StringDeref(vmssvmlr.NextLink, "")) < 1 {
+	if vmssvmlr.NextLink == nil || len(ptr.Deref(vmssvmlr.NextLink, "")) < 1 {
 		return nil, nil
 	}
 
 	decorators := []autorest.PrepareDecorator{
-		autorest.WithBaseURL(pointer.StringDeref(vmssvmlr.NextLink, "")),
+		autorest.WithBaseURL(ptr.Deref(vmssvmlr.NextLink, "")),
 	}
 	return c.armClient.PrepareGetRequest(ctx, decorators...)
 }
@@ -509,7 +509,48 @@ func (c *Client) updateVMSSVMs(ctx context.Context, resourceGroupName string, VM
 	}
 
 	responses := c.armClient.PutResourcesInBatches(ctx, resources, batchSize)
-	errors := make([]*retry.Error, 0)
+	errors, retryIDs := c.parseResp(ctx, responses, true)
+	if len(retryIDs) > 0 {
+		retryResources := make(map[string]interface{})
+		for _, id := range retryIDs {
+			retryResources[id] = resources[id]
+		}
+		resps := c.armClient.PutResourcesInBatches(ctx, retryResources, batchSize)
+		errs, _ := c.parseResp(ctx, resps, false)
+		errors = append(errors, errs...)
+	}
+
+	// Aggregate errors.
+	if len(errors) > 0 {
+		rerr := &retry.Error{}
+		errs := make([]error, 0)
+		for _, err := range errors {
+			if !err.Retriable && strings.Contains(err.Error().Error(), consts.ConcurrentRequestConflictMessage) {
+				err.Retriable = true
+				err.RetryAfter = time.Now().Add(5 * time.Second)
+			}
+
+			if err.IsThrottled() && err.RetryAfter.After(rerr.RetryAfter) {
+				rerr.RetryAfter = err.RetryAfter
+			}
+			errs = append(errs, err.Error())
+		}
+		rerr.RawError = utilerrors.Flatten(utilerrors.NewAggregate(errs))
+		return rerr
+	}
+
+	return nil
+}
+
+func (c *Client) parseResp(
+	ctx context.Context,
+	responses map[string]*armclient.PutResourcesResponse,
+	shouldRetry bool,
+) ([]*retry.Error, []string) {
+	var (
+		errors   []*retry.Error
+		retryIDs []string
+	)
 	for resourceID, resp := range responses {
 		if resp == nil {
 			continue
@@ -534,6 +575,19 @@ func (c *Client) updateVMSSVMs(ctx context.Context, resourceGroupName string, VM
 				continue
 			}
 
+			if retry.IsSuccessHTTPResponse(resp.Response) &&
+				strings.Contains(
+					strings.ToLower(errMsg),
+					strings.ToLower(consts.OperationPreemptedErrorMessage),
+				) {
+				if shouldRetry {
+					klog.V(2).Infof("The operation on VM %s is preempted, will retry.", resourceID)
+					retryIDs = append(retryIDs, resourceID)
+					continue
+				}
+				klog.V(2).Infof("The operation on VM %s is preempted, will not retry.", resourceID)
+			}
+
 			errors = append(errors, resp.Error)
 			continue
 		}
@@ -546,25 +600,5 @@ func (c *Client) updateVMSSVMs(ctx context.Context, resourceGroupName string, VM
 			}
 		}
 	}
-
-	// Aggregate errors.
-	if len(errors) > 0 {
-		rerr := &retry.Error{}
-		errs := make([]error, 0)
-		for _, err := range errors {
-			if !err.Retriable && strings.Contains(err.Error().Error(), consts.ConcurrentRequestConflictMessage) {
-				err.Retriable = true
-				err.RetryAfter = time.Now().Add(5 * time.Second)
-			}
-
-			if err.IsThrottled() && err.RetryAfter.After(rerr.RetryAfter) {
-				rerr.RetryAfter = err.RetryAfter
-			}
-			errs = append(errs, err.Error())
-		}
-		rerr.RawError = utilerrors.Flatten(utilerrors.NewAggregate(errs))
-		return rerr
-	}
-
-	return nil
+	return errors, retryIDs
 }

@@ -29,7 +29,6 @@ import (
 var (
 	vmCacheTTLDefaultInSeconds           = 60
 	loadBalancerCacheTTLDefaultInSeconds = 120
-	nsgCacheTTLDefaultInSeconds          = 120
 	routeTableCacheTTLDefaultInSeconds   = 120
 	publicIPCacheTTLDefaultInSeconds     = 120
 	plsCacheTTLDefaultInSeconds          = 120

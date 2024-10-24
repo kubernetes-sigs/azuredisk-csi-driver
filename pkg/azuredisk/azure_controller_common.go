@@ -29,7 +29,7 @@ import (
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/to"
-	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute/v5"
+	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute/v6"
 	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2022-08-01/compute"
 
 	"k8s.io/apimachinery/pkg/types"
@@ -39,6 +39,7 @@ import (
 	"k8s.io/klog/v2"
 	"k8s.io/utils/ptr"
 
+	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
 	"sigs.k8s.io/cloud-provider-azure/pkg/azclient"
 	azcache "sigs.k8s.io/cloud-provider-azure/pkg/cache"
@@ -124,11 +125,11 @@ func (c *controllerCommon) AttachDisk(ctx context.Context, diskName, diskURI str
 	// don't check disk state when GetDisk is throttled
 	if disk != nil {
 		if disk.ManagedBy != nil && (disk.Properties == nil || disk.Properties.MaxShares == nil || *disk.Properties.MaxShares <= 1) {
-			vmset, err := c.cloud.GetNodeVMSet(nodeName, azcache.CacheReadTypeUnsafe)
+			vmset, err := c.cloud.GetNodeVMSet(ctx, nodeName, azcache.CacheReadTypeUnsafe)
 			if err != nil {
 				return -1, err
 			}
-			attachedNode, err := vmset.GetNodeNameByProviderID(*disk.ManagedBy)
+			attachedNode, err := vmset.GetNodeNameByProviderID(ctx, *disk.ManagedBy)
 			if err != nil {
 				return -1, err
 			}
@@ -138,7 +139,7 @@ func (c *controllerCommon) AttachDisk(ctx context.Context, diskName, diskURI str
 				if errUpdate := c.UpdateVM(ctx, nodeName); errUpdate != nil {
 					return -1, errUpdate
 				}
-				lun, _, err := c.GetDiskLun(diskName, diskURI, nodeName)
+				lun, _, err := c.GetDiskLun(ctx, diskName, diskURI, nodeName)
 				return lun, err
 			}
 
@@ -207,7 +208,7 @@ func (c *controllerCommon) AttachDisk(ctx context.Context, diskName, diskURI str
 		return -1, err
 	}
 
-	lun, err := c.SetDiskLun(nodeName, diskuri, diskMap, occupiedLuns)
+	lun, err := c.SetDiskLun(ctx, nodeName, diskuri, diskMap, occupiedLuns)
 	if err != nil {
 		return -1, err
 	}
@@ -216,7 +217,7 @@ func (c *controllerCommon) AttachDisk(ctx context.Context, diskName, diskURI str
 	if len(diskMap) == 0 {
 		if !c.DisableDiskLunCheck {
 			// always check disk lun after disk attach complete
-			diskLun, vmState, errGetLun := c.GetDiskLun(diskName, diskURI, nodeName)
+			diskLun, vmState, errGetLun := c.GetDiskLun(ctx, diskName, diskURI, nodeName)
 			if errGetLun != nil {
 				return -1, fmt.Errorf("disk(%s) could not be found on node(%s), vmState: %s, error: %w", diskURI, nodeName, ptr.Deref(vmState, ""), errGetLun)
 			}
@@ -225,7 +226,7 @@ func (c *controllerCommon) AttachDisk(ctx context.Context, diskName, diskURI str
 		return lun, nil
 	}
 
-	vmset, err := c.cloud.GetNodeVMSet(nodeName, azcache.CacheReadTypeUnsafe)
+	vmset, err := c.cloud.GetNodeVMSet(ctx, nodeName, azcache.CacheReadTypeUnsafe)
 	if err != nil {
 		return -1, err
 	}
@@ -235,7 +236,7 @@ func (c *controllerCommon) AttachDisk(ctx context.Context, diskName, diskURI str
 	defer func() {
 		// invalidate the cache if there is error in disk attach
 		if err != nil {
-			_ = vmset.DeleteCacheForNode(string(nodeName))
+			_ = vmset.DeleteCacheForNode(ctx, string(nodeName))
 		}
 	}()
 
@@ -252,7 +253,7 @@ func (c *controllerCommon) AttachDisk(ctx context.Context, diskName, diskURI str
 
 	if !c.DisableDiskLunCheck {
 		// always check disk lun after disk attach complete
-		diskLun, vmState, errGetLun := c.GetDiskLun(diskName, diskURI, nodeName)
+		diskLun, vmState, errGetLun := c.GetDiskLun(ctx, diskName, diskURI, nodeName)
 		if errGetLun != nil {
 			return -1, fmt.Errorf("disk(%s) could not be found on node(%s), vmState: %s, error: %w", diskURI, nodeName, ptr.Deref(vmState, ""), errGetLun)
 		}
@@ -318,7 +319,7 @@ func (c *controllerCommon) DetachDisk(ctx context.Context, diskName, diskURI str
 		return fmt.Errorf("failed to get azure instance id for node %q: %w", nodeName, err)
 	}
 
-	vmset, err := c.cloud.GetNodeVMSet(nodeName, azcache.CacheReadTypeUnsafe)
+	vmset, err := c.cloud.GetNodeVMSet(ctx, nodeName, azcache.CacheReadTypeUnsafe)
 	if err != nil {
 		return err
 	}
@@ -367,7 +368,7 @@ func (c *controllerCommon) DetachDisk(ctx context.Context, diskName, diskURI str
 
 	if !c.DisableDiskLunCheck {
 		// always check disk lun after disk detach complete
-		lun, vmState, errGetLun := c.GetDiskLun(diskName, diskURI, nodeName)
+		lun, vmState, errGetLun := c.GetDiskLun(ctx, diskName, diskURI, nodeName)
 		if errGetLun == nil || !strings.Contains(errGetLun.Error(), consts.CannotFindDiskLUN) {
 			return fmt.Errorf("disk(%s) is still attached to node(%s) on lun(%d), vmState: %s, error: %w", diskURI, nodeName, lun, ptr.Deref(vmState, ""), errGetLun)
 		}
@@ -379,7 +380,7 @@ func (c *controllerCommon) DetachDisk(ctx context.Context, diskName, diskURI str
 
 // UpdateVM updates a vm
 func (c *controllerCommon) UpdateVM(ctx context.Context, nodeName types.NodeName) error {
-	vmset, err := c.cloud.GetNodeVMSet(nodeName, azcache.CacheReadTypeUnsafe)
+	vmset, err := c.cloud.GetNodeVMSet(ctx, nodeName, azcache.CacheReadTypeUnsafe)
 	if err != nil {
 		return err
 	}
@@ -388,7 +389,7 @@ func (c *controllerCommon) UpdateVM(ctx context.Context, nodeName types.NodeName
 	defer c.lockMap.UnlockEntry(node)
 
 	defer func() {
-		_ = vmset.DeleteCacheForNode(string(nodeName))
+		_ = vmset.DeleteCacheForNode(ctx, string(nodeName))
 	}()
 
 	klog.V(2).Infof("azureDisk - update: vm(%s)", nodeName)
@@ -441,20 +442,20 @@ func (c *controllerCommon) cleanDetachDiskRequests(nodeName string) (map[string]
 }
 
 // GetNodeDataDisks invokes vmSet interfaces to get data disks for the node.
-func (c *controllerCommon) GetNodeDataDisks(nodeName types.NodeName, crt azcache.AzureCacheReadType) ([]*armcompute.DataDisk, *string, error) {
-	vmset, err := c.cloud.GetNodeVMSet(nodeName, crt)
+func (c *controllerCommon) GetNodeDataDisks(ctx context.Context, nodeName types.NodeName, crt azcache.AzureCacheReadType) ([]*armcompute.DataDisk, *string, error) {
+	vmset, err := c.cloud.GetNodeVMSet(ctx, nodeName, crt)
 	if err != nil {
 		return nil, nil, err
 	}
 
-	return vmset.GetDataDisks(nodeName, crt)
+	return vmset.GetDataDisks(ctx, nodeName, crt)
 }
 
 // GetDiskLun finds the lun on the host that the vhd is attached to, given a vhd's diskName and diskURI.
-func (c *controllerCommon) GetDiskLun(diskName, diskURI string, nodeName types.NodeName) (int32, *string, error) {
+func (c *controllerCommon) GetDiskLun(ctx context.Context, diskName, diskURI string, nodeName types.NodeName) (int32, *string, error) {
 	// GetNodeDataDisks need to fetch the cached data/fresh data if cache expired here
 	// to ensure we get LUN based on latest entry.
-	disks, provisioningState, err := c.GetNodeDataDisks(nodeName, azcache.CacheReadTypeDefault)
+	disks, provisioningState, err := c.GetNodeDataDisks(ctx, nodeName, azcache.CacheReadTypeDefault)
 	if err != nil {
 		klog.Errorf("error of getting data disks for node %s: %v", nodeName, err)
 		return -1, provisioningState, err
@@ -479,8 +480,8 @@ func (c *controllerCommon) GetDiskLun(diskName, diskURI string, nodeName types.N
 // SetDiskLun find unused luns and allocate lun for every disk in diskMap.
 // occupiedLuns is used to avoid conflict with other disk attach in k8s VolumeAttachments
 // Return lun of diskURI, -1 if all luns are used.
-func (c *controllerCommon) SetDiskLun(nodeName types.NodeName, diskURI string, diskMap map[string]*provider.AttachDiskOptions, occupiedLuns []int) (int32, error) {
-	disks, _, err := c.GetNodeDataDisks(nodeName, azcache.CacheReadTypeDefault)
+func (c *controllerCommon) SetDiskLun(ctx context.Context, nodeName types.NodeName, diskURI string, diskMap map[string]*provider.AttachDiskOptions, occupiedLuns []int) (int32, error) {
+	disks, _, err := c.GetNodeDataDisks(ctx, nodeName, azcache.CacheReadTypeDefault)
 	if err != nil {
 		klog.Errorf("error of getting data disks for node %s: %v", nodeName, err)
 		return -1, err
@@ -550,7 +551,7 @@ func (c *controllerCommon) SetDiskLun(nodeName types.NodeName, diskURI string, d
 }
 
 // DisksAreAttached checks if a list of volumes are attached to the node with the specified NodeName.
-func (c *controllerCommon) DisksAreAttached(diskNames []string, nodeName types.NodeName) (map[string]bool, error) {
+func (c *controllerCommon) DisksAreAttached(ctx context.Context, diskNames []string, nodeName types.NodeName) (map[string]bool, error) {
 	attached := make(map[string]bool)
 	for _, diskName := range diskNames {
 		attached[diskName] = false
@@ -560,7 +561,7 @@ func (c *controllerCommon) DisksAreAttached(diskNames []string, nodeName types.N
 	// for every reconcile call. The cache is invalidated after Attach/Detach
 	// disk. So the new entry will be fetched and cached the first time reconcile
 	// loop runs after the Attach/Disk OP which will reflect the latest model.
-	disks, _, err := c.GetNodeDataDisks(nodeName, azcache.CacheReadTypeUnsafe)
+	disks, _, err := c.GetNodeDataDisks(ctx, nodeName, azcache.CacheReadTypeUnsafe)
 	if err != nil {
 		if errors.Is(err, cloudprovider.InstanceNotFound) {
 			// if host doesn't exist, no need to detach
@@ -630,7 +631,7 @@ func (c *controllerCommon) checkDiskExists(ctx context.Context, diskURI string) 
 }
 
 func IsOperationPreempted(err error) bool {
-	return strings.Contains(err.Error(), consts.OperationPreemptedErrorCode)
+	return strings.Contains(err.Error(), azureconstants.OperationPreemptedErrorCode)
 }
 
 func getValidCreationData(subscriptionID, resourceGroup string, options *ManagedDiskOptions) (armcompute.CreationData, error) {
