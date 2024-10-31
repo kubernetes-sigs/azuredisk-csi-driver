@@ -218,10 +218,6 @@ func newDriverV1(options *DriverOptions) *Driver {
 	driver.cloud = cloud
 
 	if driver.cloud != nil {
-		driver.diskController = NewManagedDiskController(driver.cloud)
-		driver.diskController.DisableUpdateCache = driver.disableUpdateCache
-		driver.diskController.AttachDetachInitialDelayInMs = int(driver.attachDetachInitialDelayInMs)
-		driver.diskController.ForceDetachBackoff = driver.forceDetachBackoff
 		driver.clientFactory = driver.cloud.ComputeClientFactory
 		if driver.vmType != "" {
 			klog.V(2).Infof("override VMType(%s) in cloud config as %s", driver.cloud.VMType, driver.vmType)
@@ -251,6 +247,11 @@ func newDriverV1(options *DriverOptions) *Driver {
 			driver.cloud.VMCacheTTLInSeconds = int(driver.vmssCacheTTLInSeconds)
 			driver.cloud.VmssCacheTTLInSeconds = int(driver.vmssCacheTTLInSeconds)
 		}
+
+		driver.diskController = NewManagedDiskController(driver.cloud)
+		driver.diskController.DisableUpdateCache = driver.disableUpdateCache
+		driver.diskController.AttachDetachInitialDelayInMs = int(driver.attachDetachInitialDelayInMs)
+		driver.diskController.ForceDetachBackoff = driver.forceDetachBackoff
 	}
 
 	driver.deviceHelper = optimization.NewSafeDeviceHelper()
