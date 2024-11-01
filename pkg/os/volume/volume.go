@@ -19,6 +19,7 @@ package volume
 import (
 	"encoding/json"
 	"fmt"
+	"os"
 	"regexp"
 	"strconv"
 	"strings"
@@ -209,12 +210,23 @@ func getTarget(mount string, depth int) (string, error) {
 	if depth == 0 {
 		return "", fmt.Errorf("maximum depth reached on mount %s", mount)
 	}
-	cmd := "(Get-Item -Path $Env:mount).Target"
-	out, err := azureutils.RunPowershellCmd(cmd, fmt.Sprintf("mount=%s", mount))
-	if err != nil || len(out) == 0 {
-		return "", fmt.Errorf("error getting volume from mount. cmd: %s, output: %s, error: %v", cmd, string(out), err)
+	fileInfo, err := os.Stat(mount)
+	if err != nil {
+		fmt.Println(err)
+		return "", fmt.Errorf("error getting file info for mount %s. err: %v", mount, err)
 	}
-	volumeString := strings.TrimSpace(string(out))
+	var volumeString string
+	if fileInfo.Mode()&os.ModeSymlink != 0 {
+		target, err := os.Readlink(mount)
+		if err != nil {
+			return "", fmt.Errorf("error reading link for mount %s. err: %v", mount, err)
+		}
+		klog.V(2).Infof("mount %s is a symlink to %s", mount, target)
+		volumeString = strings.TrimSpace(target)
+	} else {
+		klog.V(2).Infof("mount %s is not a symlink", mount)
+		volumeString = strings.TrimSpace(mount)
+	}
 	if !strings.HasPrefix(volumeString, "Volume") {
 		return getTarget(volumeString, depth-1)
 	}
