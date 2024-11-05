@@ -210,24 +210,15 @@ func getTarget(mount string, depth int) (string, error) {
 	if depth == 0 {
 		return "", fmt.Errorf("maximum depth reached on mount %s", mount)
 	}
-	fileInfo, err := os.Stat(mount)
-	if err != nil {
-		fmt.Println(err)
-		return "", fmt.Errorf("error getting file info for mount %s. err: %v", mount, err)
-	}
 	var volumeString string
-	if fileInfo.Mode()&os.ModeSymlink != 0 {
-		target, err := os.Readlink(mount)
-		if err != nil {
-			return "", fmt.Errorf("error reading link for mount %s. err: %v", mount, err)
-		}
-		klog.V(2).Infof("mount %s is a symlink to %s", mount, target)
-		volumeString = strings.TrimSpace(target)
-	} else {
-		klog.V(2).Infof("mount %s is not a symlink", mount)
-		volumeString = strings.TrimSpace(mount)
+	target, err := os.Readlink(mount)
+	if err != nil {
+		return "", fmt.Errorf("error reading link for mount %s. target %s err: %v", mount, target, err)
 	}
-	if !strings.HasPrefix(volumeString, "Volume") {
+	klog.V(2).Infof("mount %s is a symlink to %s", mount, target)
+	volumeString = strings.TrimSpace(target)
+	klog.V(2).Infof("mount %s is a symlink to %s", mount, volumeString)
+	if !strings.HasPrefix(volumeString, "Volume") && !strings.HasPrefix(volumeString, "\\\\?\\Volume") {
 		return getTarget(volumeString, depth-1)
 	}
 
