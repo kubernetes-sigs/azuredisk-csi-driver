@@ -6,6 +6,7 @@
 Microsoft.Compute/disks/read
 Microsoft.Compute/disks/write
 Microsoft.Compute/disks/delete
+Microsoft.Compute/diskEncryptionSets/read
 Microsoft.Compute/snapshots/read
 Microsoft.Compute/snapshots/write
 Microsoft.Compute/snapshots/delete
