@@ -14,7 +14,7 @@ DriverInfo:
         topology: true
         controllerExpansion: true
         nodeExpansion: true
-        offlineExpansion: true
+        offlineExpansion: false
         onlineExpansion: true
         volumeLimits: true
         snapshotDataSource: true
