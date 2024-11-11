@@ -24,7 +24,9 @@ import (
 	"sigs.k8s.io/cloud-provider-azure/pkg/azclient/blobservicepropertiesclient"
 	"sigs.k8s.io/cloud-provider-azure/pkg/azclient/deploymentclient"
 	"sigs.k8s.io/cloud-provider-azure/pkg/azclient/diskclient"
+	"sigs.k8s.io/cloud-provider-azure/pkg/azclient/fileservicepropertiesclient"
 	"sigs.k8s.io/cloud-provider-azure/pkg/azclient/fileshareclient"
+	"sigs.k8s.io/cloud-provider-azure/pkg/azclient/identityclient"
 	"sigs.k8s.io/cloud-provider-azure/pkg/azclient/interfaceclient"
 	"sigs.k8s.io/cloud-provider-azure/pkg/azclient/ipgroupclient"
 	"sigs.k8s.io/cloud-provider-azure/pkg/azclient/loadbalancerclient"
@@ -37,6 +39,7 @@ import (
 	"sigs.k8s.io/cloud-provider-azure/pkg/azclient/publicipprefixclient"
 	"sigs.k8s.io/cloud-provider-azure/pkg/azclient/registryclient"
 	"sigs.k8s.io/cloud-provider-azure/pkg/azclient/resourcegroupclient"
+	"sigs.k8s.io/cloud-provider-azure/pkg/azclient/roleassignmentclient"
 	"sigs.k8s.io/cloud-provider-azure/pkg/azclient/routetableclient"
 	"sigs.k8s.io/cloud-provider-azure/pkg/azclient/secretclient"
 	"sigs.k8s.io/cloud-provider-azure/pkg/azclient/securitygroupclient"
@@ -58,11 +61,15 @@ type ClientFactory interface {
 	GetBlobContainerClient() blobcontainerclient.Interface
 	GetBlobContainerClientForSub(subscriptionID string) (blobcontainerclient.Interface, error)
 	GetBlobServicePropertiesClient() blobservicepropertiesclient.Interface
+	GetBlobServicePropertiesClientForSub(subscriptionID string) (blobservicepropertiesclient.Interface, error)
 	GetDeploymentClient() deploymentclient.Interface
 	GetDiskClient() diskclient.Interface
 	GetDiskClientForSub(subscriptionID string) (diskclient.Interface, error)
+	GetFileServicePropertiesClient() fileservicepropertiesclient.Interface
+	GetFileServicePropertiesClientForSub(subscriptionID string) (fileservicepropertiesclient.Interface, error)
 	GetFileShareClient() fileshareclient.Interface
 	GetFileShareClientForSub(subscriptionID string) (fileshareclient.Interface, error)
+	GetIdentityClient() identityclient.Interface
 	GetInterfaceClient() interfaceclient.Interface
 	GetIPGroupClient() ipgroupclient.Interface
 	GetLoadBalancerClient() loadbalancerclient.Interface
@@ -75,6 +82,7 @@ type ClientFactory interface {
 	GetPublicIPPrefixClient() publicipprefixclient.Interface
 	GetRegistryClient() registryclient.Interface
 	GetResourceGroupClient() resourcegroupclient.Interface
+	GetRoleAssignmentClient() roleassignmentclient.Interface
 	GetRouteTableClient() routetableclient.Interface
 	GetSecretClient() secretclient.Interface
 	GetSecurityGroupClient() securitygroupclient.Interface
