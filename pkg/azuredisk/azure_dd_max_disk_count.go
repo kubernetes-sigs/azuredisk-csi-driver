@@ -1041,6 +1041,7 @@ var maxDataDiskCountMap = map[string]int64{
 	"STANDARD_NV24_PROMO":        64,
 	"STANDARD_NV24S_V2":          32,
 	"STANDARD_NV24S_V3":          24,
+	"STANDARD_NV28ADMS_V710_V5":  14,
 	"STANDARD_NV30ADMS_A10_V5":   24,
 	"STANDARD_NV30ADS_A10_V5":    24,
 	"STANDARD_NV32AS_V4":         32,
