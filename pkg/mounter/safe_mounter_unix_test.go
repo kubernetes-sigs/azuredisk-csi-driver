@@ -18,12 +18,13 @@ package mounter
 
 import (
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 )
 
 func TestNewSafeMounter(t *testing.T) {
-	resp, err := NewSafeMounter(true, true)
+	resp, err := NewSafeMounter(true, true, 2, time.Duration(120)*time.Second)
 	assert.NotNil(t, resp)
 	assert.Nil(t, err)
 }

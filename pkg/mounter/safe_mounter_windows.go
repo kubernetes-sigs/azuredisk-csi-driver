@@ -25,6 +25,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	disk "github.com/kubernetes-csi/csi-proxy/client/api/disk/v1"
@@ -411,7 +412,7 @@ func newCSIProxyMounter() (*csiProxyMounter, error) {
 	}, nil
 }
 
-func NewSafeMounter(enableWindowsHostProcess, useCSIProxyGAInterface bool) (*mount.SafeFormatAndMount, error) {
+func NewSafeMounter(enableWindowsHostProcess, useCSIProxyGAInterface bool, maxConcurrentFormat int, concurrentFormatTimeout time.Duration) (*mount.SafeFormatAndMount, error) {
 	if enableWindowsHostProcess {
 		klog.V(2).Infof("using windows host process mounter")
 		return &mount.SafeFormatAndMount{
