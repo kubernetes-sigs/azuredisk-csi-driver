@@ -24,14 +24,15 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute/v5"
+	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute/v6"
+	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/network/armnetwork/v6"
 	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2022-08-01/compute"
 	"github.com/Azure/azure-sdk-for-go/services/network/mgmt/2022-07-01/network"
 
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/klog/v2"
 	utilnet "k8s.io/utils/net"
-	"k8s.io/utils/pointer"
+	"k8s.io/utils/ptr"
 
 	azcache "sigs.k8s.io/cloud-provider-azure/pkg/cache"
 	"sigs.k8s.io/cloud-provider-azure/pkg/consts"
@@ -42,8 +43,8 @@ const (
 	IPVersionIPv4 bool = false
 )
 
-var strToExtendedLocationType = map[string]network.ExtendedLocationTypes{
-	"edgezone": network.EdgeZone,
+var strToExtendedLocationType = map[string]armnetwork.ExtendedLocationTypes{
+	"edgezone": armnetwork.ExtendedLocationTypesEdgeZone,
 }
 
 // LockMap used to lock on entries
@@ -97,6 +98,20 @@ func convertMapToMapPointer(origin map[string]string) map[string]*string {
 	return newly
 }
 
+// parseTags processes and combines tags from a string and a map into a single map of string pointers.
+// It handles tag parsing, trimming, and case-insensitive key conflicts.
+//
+// Parameters:
+//   - tags: A string containing tags in the format "key1=value1,key2=value2"
+//   - tagsMap: A map of string key-value pairs representing additional tags
+//
+// Returns:
+//   - A map[string]*string where keys are tag names and values are pointers to tag values
+//
+// The function prioritizes tags from tagsMap over those from the tags string in case of conflicts.
+// It logs warnings for parsing errors and empty keys, and info messages for case-insensitive key replacements.
+//
+// XXX: return error instead of logging; decouple tag parsing and tag application
 func parseTags(tags string, tagsMap map[string]string) map[string]*string {
 	formatted := make(map[string]*string)
 
@@ -113,7 +128,7 @@ func parseTags(tags string, tagsMap map[string]string) map[string]*string {
 				klog.Warning("parseTags: empty key, ignoring this key-value pair")
 				continue
 			}
-			formatted[k] = pointer.String(v)
+			formatted[k] = ptr.To(v)
 		}
 	}
 
@@ -129,7 +144,7 @@ func parseTags(tags string, tagsMap map[string]string) map[string]*string {
 				klog.V(4).Infof("parseTags: found identical keys: %s from tags and %s from tagsMap (case-insensitive), %s will replace %s", k, key, key, k)
 				delete(formatted, k)
 			}
-			formatted[key] = pointer.String(value)
+			formatted[key] = ptr.To(value)
 		}
 	}
 
@@ -157,7 +172,7 @@ func (az *Cloud) reconcileTags(currentTagsOnResource, newTags map[string]*string
 		}
 
 		for _, systemTag := range systemTags {
-			systemTagsMap[systemTag] = pointer.String("")
+			systemTagsMap[systemTag] = ptr.To("")
 		}
 	}
 
@@ -168,7 +183,7 @@ func (az *Cloud) reconcileTags(currentTagsOnResource, newTags map[string]*string
 		if !found {
 			currentTagsOnResource[k] = v
 			changed = true
-		} else if !strings.EqualFold(pointer.StringDeref(v, ""), pointer.StringDeref(currentTagsOnResource[key], "")) {
+		} else if !strings.EqualFold(ptr.Deref(v, ""), ptr.Deref(currentTagsOnResource[key], "")) {
 			currentTagsOnResource[key] = v
 			changed = true
 		}
@@ -179,7 +194,7 @@ func (az *Cloud) reconcileTags(currentTagsOnResource, newTags map[string]*string
 		for k := range currentTagsOnResource {
 			if _, ok := newTags[k]; !ok {
 				if found, _ := findKeyInMapCaseInsensitive(systemTagsMap, k); !found {
-					klog.V(2).Infof("reconcileTags: delete tag %s: %s", k, pointer.StringDeref(currentTagsOnResource[k], ""))
+					klog.V(2).Infof("reconcileTags: delete tag %s: %s", k, ptr.Deref(currentTagsOnResource[k], ""))
 					delete(currentTagsOnResource, k)
 					changed = true
 				}
@@ -190,12 +205,12 @@ func (az *Cloud) reconcileTags(currentTagsOnResource, newTags map[string]*string
 	return currentTagsOnResource, changed
 }
 
-func getExtendedLocationTypeFromString(extendedLocationType string) network.ExtendedLocationTypes {
+func getExtendedLocationTypeFromString(extendedLocationType string) armnetwork.ExtendedLocationTypes {
 	extendedLocationType = strings.ToLower(extendedLocationType)
 	if val, ok := strToExtendedLocationType[extendedLocationType]; ok {
 		return val
 	}
-	return network.EdgeZone
+	return armnetwork.ExtendedLocationTypesEdgeZone
 }
 
 func getNodePrivateIPAddress(node *v1.Node, isIPv6 bool) string {
@@ -246,14 +261,14 @@ func sameContentInSlices(s1 []string, s2 []string) bool {
 	return true
 }
 
-func removeDuplicatedSecurityRules(rules []network.SecurityRule) []network.SecurityRule {
+func removeDuplicatedSecurityRules(rules []*armnetwork.SecurityRule) []*armnetwork.SecurityRule {
 	ruleNames := make(map[string]bool)
 	for i := len(rules) - 1; i >= 0; i-- {
-		if _, ok := ruleNames[pointer.StringDeref(rules[i].Name, "")]; ok {
-			klog.Warningf("Found duplicated rule %s, will be removed.", pointer.StringDeref(rules[i].Name, ""))
+		if _, ok := ruleNames[ptr.Deref(rules[i].Name, "")]; ok {
+			klog.Warningf("Found duplicated rule %s, will be removed.", ptr.Deref(rules[i].Name, ""))
 			rules = append(rules[:i], rules[i+1:]...)
 		}
-		ruleNames[pointer.StringDeref(rules[i].Name, "")] = true
+		ruleNames[ptr.Deref(rules[i].Name, "")] = true
 	}
 	return rules
 }
@@ -428,7 +443,7 @@ func (az *Cloud) isFIPIPv6(service *v1.Service, _ string, fip *network.FrontendI
 	if !isDualStack {
 		return service.Spec.IPFamilies[0] == v1.IPv6Protocol, nil
 	}
-	return managedResourceHasIPv6Suffix(pointer.StringDeref(fip.Name, "")), nil
+	return managedResourceHasIPv6Suffix(ptr.Deref(fip.Name, "")), nil
 }
 
 // getResourceIDPrefix returns a substring from the provided one between beginning and the last "/".
@@ -467,7 +482,7 @@ func countIPsOnBackendPool(backendPool network.BackendAddressPool) int {
 	var ipsCount int
 	for _, loadBalancerBackendAddress := range *backendPool.LoadBalancerBackendAddresses {
 		if loadBalancerBackendAddress.LoadBalancerBackendAddressPropertiesFormat != nil &&
-			pointer.StringDeref(loadBalancerBackendAddress.IPAddress, "") != "" {
+			ptr.Deref(loadBalancerBackendAddress.IPAddress, "") != "" {
 			ipsCount++
 		}
 	}
@@ -483,15 +498,6 @@ func StringInSlice(s string, list []string) bool {
 		}
 	}
 	return false
-}
-
-// stringSlice returns a string slice value for the passed string slice pointer. It returns a nil
-// slice if the pointer is nil.
-func stringSlice(s *[]string) []string {
-	if s != nil {
-		return *s
-	}
-	return nil
 }
 
 // IntInSlice checks if an int is in a list

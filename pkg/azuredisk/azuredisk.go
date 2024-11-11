@@ -26,7 +26,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute/v5"
+	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute/v6"
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 
@@ -185,7 +185,7 @@ func newDriverV1(options *DriverOptions) *Driver {
 	}
 	topologyKey = fmt.Sprintf("topology.%s/zone", driver.Name)
 
-	getter := func(_ string) (interface{}, error) { return nil, nil }
+	getter := func(ctx context.Context, _ string) (interface{}, error) { return nil, nil }
 	var err error
 	if driver.throttlingCache, err = azcache.NewTimedCache(5*time.Minute, getter, false); err != nil {
 		klog.Fatalf("%v", err)
@@ -361,7 +361,7 @@ func (d *Driver) Run(ctx context.Context) error {
 }
 
 func (d *Driver) isGetDiskThrottled() bool {
-	cache, err := d.throttlingCache.Get(consts.GetDiskThrottlingKey, azcache.CacheReadTypeDefault)
+	cache, err := d.throttlingCache.Get(context.Background(), consts.GetDiskThrottlingKey, azcache.CacheReadTypeDefault)
 	if err != nil {
 		klog.Warningf("throttlingCache(%s) return with error: %s", consts.GetDiskThrottlingKey, err)
 		return false
@@ -370,7 +370,7 @@ func (d *Driver) isGetDiskThrottled() bool {
 }
 
 func (d *Driver) isCheckDiskLunThrottled() bool {
-	cache, err := d.checkDiskLunThrottlingCache.Get(consts.CheckDiskLunThrottlingKey, azcache.CacheReadTypeDefault)
+	cache, err := d.checkDiskLunThrottlingCache.Get(context.Background(), consts.CheckDiskLunThrottlingKey, azcache.CacheReadTypeDefault)
 	if err != nil {
 		klog.Warningf("throttlingCache(%s) return with error: %s", consts.CheckDiskLunThrottlingKey, err)
 		return false

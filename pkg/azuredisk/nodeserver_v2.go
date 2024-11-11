@@ -327,7 +327,7 @@ func (d *DriverV2) NodeGetInfo(ctx context.Context, req *csi.NodeGetInfoRequest)
 			failureDomainFromLabels, instanceTypeFromLabels, err = getNodeInfoFromLabels(ctx, d.NodeID, d.cloud.KubeClient)
 		} else {
 			if runtime.GOOS == "windows" && (!d.cloud.UseInstanceMetadata || d.cloud.Metadata == nil) {
-				zone, err = d.cloud.VMSet.GetZoneByNodeName(d.NodeID)
+				zone, err = d.cloud.VMSet.GetZoneByNodeName(ctx, d.NodeID)
 			} else {
 				zone, err = d.cloud.GetZone(ctx)
 			}
@@ -360,7 +360,7 @@ func (d *DriverV2) NodeGetInfo(ctx context.Context, req *csi.NodeGetInfoRequest)
 			}
 		} else {
 			if runtime.GOOS == "windows" && d.cloud.UseInstanceMetadata && d.cloud.Metadata != nil {
-				metadata, err := d.cloud.Metadata.GetMetadata(azcache.CacheReadTypeDefault)
+				metadata, err := d.cloud.Metadata.GetMetadata(ctx, azcache.CacheReadTypeDefault)
 				if err == nil && metadata.Compute != nil {
 					instanceType = metadata.Compute.VMSize
 					klog.V(5).Infof("NodeGetInfo: nodeName(%s), VM Size(%s)", d.NodeID, instanceType)
