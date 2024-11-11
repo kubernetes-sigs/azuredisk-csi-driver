@@ -185,7 +185,7 @@ func newDriverV1(options *DriverOptions) *Driver {
 	}
 	topologyKey = fmt.Sprintf("topology.%s/zone", driver.Name)
 
-	getter := func(ctx context.Context, _ string) (interface{}, error) { return nil, nil }
+	getter := func(_ context.Context, _ string) (interface{}, error) { return nil, nil }
 	var err error
 	if driver.throttlingCache, err = azcache.NewTimedCache(5*time.Minute, getter, false); err != nil {
 		klog.Fatalf("%v", err)

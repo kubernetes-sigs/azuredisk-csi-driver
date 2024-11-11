@@ -166,7 +166,7 @@ func rescanAllVolumes(io azureutils.IOHandler) error {
 
 func (d *DriverCore) GetVolumeStats(ctx context.Context, m *mount.SafeFormatAndMount, volumeID, target string, hostutil hostUtil) ([]*csi.VolumeUsage, error) {
 	// check if the volume stats is cached
-	cache, err := d.volStatsCache.Get(volumeID, azcache.CacheReadTypeDefault)
+	cache, err := d.volStatsCache.Get(ctx, volumeID, azcache.CacheReadTypeDefault)
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, err.Error())
 	}

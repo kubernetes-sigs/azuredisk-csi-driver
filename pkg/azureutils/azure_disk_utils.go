@@ -39,7 +39,6 @@ import (
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/klog/v2"
 	api "k8s.io/kubernetes/pkg/apis/core"
-	volumeUtil "k8s.io/kubernetes/pkg/volume/util"
 	"k8s.io/mount-utils"
 	"k8s.io/utils/ptr"
 	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
@@ -313,7 +312,7 @@ func CreateValidDiskName(volumeName string) string {
 	}
 	if !checkDiskName(diskName) || len(diskName) < diskNameMinLength {
 		// todo: get cluster name
-		diskName = volumeUtil.GenerateVolumeName("pvc-disk", string(uuid.NewUUID()), diskNameGenerateMaxLength)
+		diskName = GenerateVolumeName("pvc-disk", string(uuid.NewUUID()), diskNameGenerateMaxLength)
 		klog.Warningf("the requested volume name (%q) is invalid, so it is regenerated as (%q)", volumeName, diskName)
 	}
 
@@ -839,4 +838,19 @@ func RunPowershellCmd(command string, envs ...string) ([]byte, error) {
 	cmd.Env = append(os.Environ(), envs...)
 	klog.V(6).Infof("Executing command: %q", cmd.String())
 	return cmd.CombinedOutput()
+}
+
+// GenerateVolumeName returns a PV name with clusterName prefix. The function
+// should be used to generate a name of GCE PD or Cinder volume. It basically
+// adds "<clusterName>-dynamic-" before the PV name, making sure the resulting
+// string fits given length and cuts "dynamic" if not.
+func GenerateVolumeName(clusterName, pvName string, maxLength int) string {
+	prefix := clusterName + "-dynamic"
+	pvLen := len(pvName)
+	// cut the "<clusterName>-dynamic" to fit full pvName into maxLength
+	// +1 for the '-' dash
+	if pvLen+1+len(prefix) > maxLength {
+		prefix = prefix[:maxLength-pvLen-1]
+	}
+	return prefix + "-" + pvName
 }
