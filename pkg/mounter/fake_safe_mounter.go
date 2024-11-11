@@ -20,6 +20,7 @@ import (
 	"fmt"
 	"runtime"
 	"strings"
+	"time"
 
 	"k8s.io/mount-utils"
 	"k8s.io/utils/exec"
@@ -35,7 +36,7 @@ type FakeSafeMounter struct {
 // NewFakeSafeMounter creates a mount.SafeFormatAndMount instance suitable for use in unit tests.
 func NewFakeSafeMounter() (*mount.SafeFormatAndMount, error) {
 	if runtime.GOOS == "windows" {
-		return NewSafeMounter(true, true)
+		return NewSafeMounter(true, true, 2, time.Duration(120)*time.Second)
 	}
 
 	fakeSafeMounter := FakeSafeMounter{}

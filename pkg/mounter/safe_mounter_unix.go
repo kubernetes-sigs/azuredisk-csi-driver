@@ -20,13 +20,13 @@ limitations under the License.
 package mounter
 
 import (
+	"time"
+
 	"k8s.io/mount-utils"
 	utilexec "k8s.io/utils/exec"
 )
 
-func NewSafeMounter(_, _ bool) (*mount.SafeFormatAndMount, error) {
-	return &mount.SafeFormatAndMount{
-		Interface: mount.New(""),
-		Exec:      utilexec.New(),
-	}, nil
+func NewSafeMounter(_, _ bool, maxConcurrentFormat int, concurrentFormatTimeout time.Duration) (*mount.SafeFormatAndMount, error) {
+	opt := mount.WithMaxConcurrentFormat(maxConcurrentFormat, concurrentFormatTimeout)
+	return mount.NewSafeFormatAndMount(mount.New(""), utilexec.New(), opt), nil
 }
