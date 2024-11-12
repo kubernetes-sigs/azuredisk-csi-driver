@@ -331,7 +331,7 @@ func (d *Driver) NodeGetInfo(ctx context.Context, _ *csi.NodeGetInfoRequest) (*c
 			failureDomainFromLabels, instanceTypeFromLabels, err = getNodeInfoFromLabels(ctx, d.NodeID, d.cloud.KubeClient)
 		} else {
 			if runtime.GOOS == "windows" && (!d.cloud.UseInstanceMetadata || d.cloud.Metadata == nil) {
-				zone, err = d.cloud.VMSet.GetZoneByNodeName(d.NodeID)
+				zone, err = d.cloud.VMSet.GetZoneByNodeName(ctx, d.NodeID)
 			} else {
 				zone, err = d.cloud.GetZone(ctx)
 			}
@@ -365,7 +365,7 @@ func (d *Driver) NodeGetInfo(ctx context.Context, _ *csi.NodeGetInfoRequest) (*c
 		} else {
 			if runtime.GOOS == "windows" && d.cloud.UseInstanceMetadata && d.cloud.Metadata != nil {
 				var metadata *azure.InstanceMetadata
-				metadata, err = d.cloud.Metadata.GetMetadata(azcache.CacheReadTypeDefault)
+				metadata, err = d.cloud.Metadata.GetMetadata(ctx, azcache.CacheReadTypeDefault)
 				if err == nil && metadata != nil && metadata.Compute != nil {
 					instanceType = metadata.Compute.VMSize
 					klog.V(2).Infof("NodeGetInfo: nodeName(%s), VM Size(%s)", d.NodeID, instanceType)
@@ -397,7 +397,7 @@ func (d *Driver) NodeGetInfo(ctx context.Context, _ *csi.NodeGetInfoRequest) (*c
 
 	nodeID := d.NodeID
 	if d.getNodeIDFromIMDS && d.cloud.UseInstanceMetadata && d.cloud.Metadata != nil {
-		metadata, err := d.cloud.Metadata.GetMetadata(azcache.CacheReadTypeDefault)
+		metadata, err := d.cloud.Metadata.GetMetadata(ctx, azcache.CacheReadTypeDefault)
 		if err == nil && metadata != nil && metadata.Compute != nil {
 			klog.V(2).Infof("NodeGetInfo: NodeID(%s), metadata.Compute.Name(%s)", d.NodeID, metadata.Compute.Name)
 			if metadata.Compute.Name != "" {
