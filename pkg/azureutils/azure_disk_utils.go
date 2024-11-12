@@ -248,6 +248,7 @@ func GetCloudProviderFromClient(ctx context.Context, kubeClient clientset.Interf
 		if len(config.AADClientCertPath) > 0 {
 			// Watch the certificate for changes; if the certificate changes, the pod will be restarted
 			err = filewatcher.WatchFileForChanges(config.AADClientCertPath)
+			klog.Warningf("Failed to watch certificate file for changes: %v", err)
 		}
 		if err = az.InitializeCloudFromConfig(ctx, config, fromSecret, false); err != nil {
 			klog.Warningf("InitializeCloudFromConfig failed with error: %v", err)
