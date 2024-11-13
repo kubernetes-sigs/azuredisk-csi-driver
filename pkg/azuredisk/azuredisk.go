@@ -124,7 +124,9 @@ type DriverCore struct {
 	removeNotReadyTaint          bool
 	kubeClient                   kubernetes.Interface
 	// a timed cache storing volume stats <volumeID, volumeStats>
-	volStatsCache azcache.Resource
+	volStatsCache           azcache.Resource
+	maxConcurrentFormat     int64
+	concurrentFormatTimeout int64
 }
 
 // Driver is the v1 implementation of the Azure Disk CSI Driver.
@@ -175,6 +177,8 @@ func newDriverV1(options *DriverOptions) *Driver {
 	driver.endpoint = options.Endpoint
 	driver.disableAVSetNodes = options.DisableAVSetNodes
 	driver.removeNotReadyTaint = options.RemoveNotReadyTaint
+	driver.maxConcurrentFormat = options.MaxConcurrentFormat
+	driver.concurrentFormatTimeout = options.ConcurrentFormatTimeout
 	driver.volumeLocks = volumehelper.NewVolumeLocks()
 	driver.ioHandler = azureutils.NewOSIOHandler()
 	driver.hostUtil = hostutil.NewHostUtil()
@@ -262,7 +266,7 @@ func newDriverV1(options *DriverOptions) *Driver {
 		}
 	}
 
-	driver.mounter, err = mounter.NewSafeMounter(driver.enableWindowsHostProcess, driver.useCSIProxyGAInterface)
+	driver.mounter, err = mounter.NewSafeMounter(driver.enableWindowsHostProcess, driver.useCSIProxyGAInterface, int(driver.maxConcurrentFormat), time.Duration(driver.concurrentFormatTimeout)*time.Second)
 	if err != nil {
 		klog.Fatalf("Failed to get safe mounter. Error: %v", err)
 	}
