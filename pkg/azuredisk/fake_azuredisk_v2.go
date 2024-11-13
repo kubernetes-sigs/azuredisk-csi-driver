@@ -20,6 +20,8 @@ limitations under the License.
 package azuredisk
 
 import (
+	"time"
+
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	"go.uber.org/mock/gomock"
 	"k8s.io/client-go/kubernetes/fake"
@@ -74,7 +76,7 @@ func newFakeDriverV2(ctrl *gomock.Controller) (*fakeDriverV2, error) {
 	driver.diskController = NewManagedDiskController(driver.cloud)
 	driver.clientFactory = driver.cloud.ComputeClientFactory
 
-	mounter, err := mounter.NewSafeMounter(true, driver.useCSIProxyGAInterface)
+	mounter, err := mounter.NewSafeMounter(true, driver.useCSIProxyGAInterface, int(driver.maxConcurrentFormat), time.Duration(driver.concurrentFormatTimeout)*time.Second)
 	if err != nil {
 		return nil, err
 	}
