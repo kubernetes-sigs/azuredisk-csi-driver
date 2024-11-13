@@ -28,7 +28,7 @@ import (
 	"strings"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/to"
-	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute/v5"
+	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute/v6"
 	"github.com/container-storage-interface/spec/lib/go/csi"
 
 	"google.golang.org/grpc/codes"
@@ -726,7 +726,7 @@ func (d *DriverV2) listVolumesByResourceGroup(ctx context.Context, resourceGroup
 			nodeList := []string{}
 
 			if disk.ManagedBy != nil {
-				attachedNode, err := d.cloud.VMSet.GetNodeNameByProviderID(*disk.ManagedBy)
+				attachedNode, err := d.cloud.VMSet.GetNodeNameByProviderID(ctx, *disk.ManagedBy)
 				if err != nil {
 					return listVolumeStatus{err: err}
 				}

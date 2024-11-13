@@ -28,7 +28,7 @@ import (
 	"time"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/to"
-	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute/v5"
+	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute/v6"
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -1962,5 +1962,26 @@ func TestIsThrottlingError(t *testing.T) {
 			t.Errorf("desc: (%s), input: err(%v), IsThrottlingError returned with bool(%t), not equal to expected(%t)",
 				test.desc, test.err, result, test.expected)
 		}
+	}
+}
+
+func TestGenerateVolumeName(t *testing.T) {
+	// Normal operation, no truncate
+	v1 := GenerateVolumeName("kubernetes", "pv-cinder-abcde", 255)
+	if v1 != "kubernetes-dynamic-pv-cinder-abcde" {
+		t.Errorf("Expected kubernetes-dynamic-pv-cinder-abcde, got %s", v1)
+	}
+	// Truncate trailing "6789-dynamic"
+	prefix := strings.Repeat("0123456789", 9) // 90 characters prefix + 8 chars. of "-dynamic"
+	v2 := GenerateVolumeName(prefix, "pv-cinder-abcde", 100)
+	expect := prefix[:84] + "-pv-cinder-abcde"
+	if v2 != expect {
+		t.Errorf("Expected %s, got %s", expect, v2)
+	}
+	// Truncate really long cluster name
+	prefix = strings.Repeat("0123456789", 1000) // 10000 characters prefix
+	v3 := GenerateVolumeName(prefix, "pv-cinder-abcde", 100)
+	if v3 != expect {
+		t.Errorf("Expected %s, got %s", expect, v3)
 	}
 }

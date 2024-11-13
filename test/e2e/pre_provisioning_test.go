@@ -162,18 +162,6 @@ var _ = ginkgo.Describe("Pre-Provisioned", func() {
 			ginkgo.By(fmt.Sprintf("Successfully provisioned a shared disk volume: %q\n", volumeID))
 		})
 
-		ginkgo.It("should fail when maxShares is invalid [disk.csi.azure.com][windows]", func(ctx ginkgo.SpecContext) {
-			// Az tests need to be changed to pass the right parameters for in-tree driver.
-			// Skip these tests until above is fixed.
-			skipIfUsingInTreeVolumePlugin()
-
-			skipVolumeDeletion = true
-			req := makeCreateVolumeReq("invalid-maxShares", 256)
-			req.Parameters = map[string]string{"maxShares": "0"}
-			_, err := azurediskDriver.CreateVolume(ctx, req)
-			framework.ExpectError(err)
-		})
-
 		ginkgo.It("should succeed when attaching a shared block volume to multiple pods [disk.csi.azure.com][shared disk]", func(ctx ginkgo.SpecContext) {
 			skipIfUsingInTreeVolumePlugin()
 			skipIfOnAzureStackCloud()

@@ -22,13 +22,13 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute/v5"
+	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute/v6"
 	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2022-08-01/compute"
 	"github.com/Azure/go-autorest/autorest/azure"
 
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/klog/v2"
-	"k8s.io/utils/pointer"
+	"k8s.io/utils/ptr"
 
 	azcache "sigs.k8s.io/cloud-provider-azure/pkg/cache"
 	"sigs.k8s.io/cloud-provider-azure/pkg/consts"
@@ -38,7 +38,7 @@ import (
 // AttachDisk attaches a disk to vm
 func (ss *ScaleSet) AttachDisk(ctx context.Context, nodeName types.NodeName, diskMap map[string]*AttachDiskOptions) error {
 	vmName := mapNodeNameToVMName(nodeName)
-	vm, err := ss.getVmssVM(vmName, azcache.CacheReadTypeDefault)
+	vm, err := ss.getVmssVM(ctx, vmName, azcache.CacheReadTypeDefault)
 	if err != nil {
 		return err
 	}
@@ -96,7 +96,7 @@ func (ss *ScaleSet) AttachDisk(ctx context.Context, nodeName types.NodeName, dis
 				Caching:                 opt.CachingMode,
 				CreateOption:            "attach",
 				ManagedDisk:             managedDisk,
-				WriteAcceleratorEnabled: pointer.Bool(opt.WriteAcceleratorEnabled),
+				WriteAcceleratorEnabled: ptr.To(opt.WriteAcceleratorEnabled),
 			})
 	}
 
@@ -143,7 +143,7 @@ func (ss *ScaleSet) WaitForUpdateResult(ctx context.Context, future *azure.Futur
 	var vmssName, instanceID string
 	if result != nil && result.VirtualMachineScaleSetVMProperties != nil {
 		// get vmssName, instanceID from cache first
-		vm, err := ss.getVmssVM(vmName, azcache.CacheReadTypeDefault)
+		vm, err := ss.getVmssVM(ctx, vmName, azcache.CacheReadTypeDefault)
 		if err == nil && vm != nil {
 			vmssName = vm.VMSSName
 			instanceID = vm.InstanceID
@@ -153,9 +153,9 @@ func (ss *ScaleSet) WaitForUpdateResult(ctx context.Context, future *azure.Futur
 	}
 
 	// clean node cache first and then update cache
-	_ = ss.DeleteCacheForNode(vmName)
+	_ = ss.DeleteCacheForNode(ctx, vmName)
 	if vmssName != "" && instanceID != "" {
-		if err := ss.updateCache(vmName, nodeResourceGroup, vmssName, instanceID, result); err != nil {
+		if err := ss.updateCache(ctx, vmName, nodeResourceGroup, vmssName, instanceID, result); err != nil {
 			klog.Errorf("updateCache(%s, %s, %s, %s) failed with error: %v", vmName, nodeResourceGroup, vmssName, instanceID, err)
 		}
 	}
@@ -165,7 +165,7 @@ func (ss *ScaleSet) WaitForUpdateResult(ctx context.Context, future *azure.Futur
 // DetachDisk detaches a disk from VM
 func (ss *ScaleSet) DetachDisk(ctx context.Context, nodeName types.NodeName, diskMap map[string]string, forceDetach bool) error {
 	vmName := mapNodeNameToVMName(nodeName)
-	vm, err := ss.getVmssVM(vmName, azcache.CacheReadTypeDefault)
+	vm, err := ss.getVmssVM(ctx, vmName, azcache.CacheReadTypeDefault)
 	if err != nil {
 		return err
 	}
@@ -192,7 +192,7 @@ func (ss *ScaleSet) DetachDisk(ctx context.Context, nodeName types.NodeName, dis
 				(disk.ManagedDisk != nil && diskURI != "" && strings.EqualFold(*disk.ManagedDisk.ID, diskURI)) {
 				// found the disk
 				klog.V(2).Infof("azureDisk - detach disk: name %s uri %s", diskName, diskURI)
-				disks[i].ToBeDetached = pointer.Bool(true)
+				disks[i].ToBeDetached = ptr.To(true)
 				if forceDetach {
 					disks[i].DetachOption = compute.ForceDetach
 				}
@@ -209,7 +209,7 @@ func (ss *ScaleSet) DetachDisk(ctx context.Context, nodeName types.NodeName, dis
 			// Azure stack does not support ToBeDetached flag, use original way to detach disk
 			var newDisks []compute.DataDisk
 			for _, disk := range disks {
-				if !pointer.BoolDeref(disk.ToBeDetached, false) {
+				if !ptr.Deref(disk.ToBeDetached, false) {
 					newDisks = append(newDisks, disk)
 				}
 			}
@@ -229,12 +229,12 @@ func (ss *ScaleSet) DetachDisk(ctx context.Context, nodeName types.NodeName, dis
 	var rerr *retry.Error
 
 	defer func() {
-		_ = ss.DeleteCacheForNode(vmName)
+		_ = ss.DeleteCacheForNode(ctx, vmName)
 
 		// Update the cache with the updated result only if its not nil
 		// and contains the VirtualMachineScaleSetVMProperties
 		if rerr == nil && result != nil && result.VirtualMachineScaleSetVMProperties != nil {
-			if err := ss.updateCache(vmName, nodeResourceGroup, vm.VMSSName, vm.InstanceID, result); err != nil {
+			if err := ss.updateCache(ctx, vmName, nodeResourceGroup, vm.VMSSName, vm.InstanceID, result); err != nil {
 				klog.Errorf("updateCache(%s, %s, %s, %s) failed with error: %v", vmName, nodeResourceGroup, vm.VMSSName, vm.InstanceID, err)
 			}
 		}
@@ -272,7 +272,7 @@ func (ss *ScaleSet) UpdateVM(ctx context.Context, nodeName types.NodeName) error
 // UpdateVMAsync updates a vm asynchronously
 func (ss *ScaleSet) UpdateVMAsync(ctx context.Context, nodeName types.NodeName) (*azure.Future, error) {
 	vmName := mapNodeNameToVMName(nodeName)
-	vm, err := ss.getVmssVM(vmName, azcache.CacheReadTypeDefault)
+	vm, err := ss.getVmssVM(ctx, vmName, azcache.CacheReadTypeDefault)
 	if err != nil {
 		return nil, err
 	}
@@ -290,8 +290,8 @@ func (ss *ScaleSet) UpdateVMAsync(ctx context.Context, nodeName types.NodeName) 
 }
 
 // GetDataDisks gets a list of data disks attached to the node.
-func (ss *ScaleSet) GetDataDisks(nodeName types.NodeName, crt azcache.AzureCacheReadType) ([]*armcompute.DataDisk, *string, error) {
-	vm, err := ss.getVmssVM(string(nodeName), crt)
+func (ss *ScaleSet) GetDataDisks(ctx context.Context, nodeName types.NodeName, crt azcache.AzureCacheReadType) ([]*armcompute.DataDisk, *string, error) {
+	vm, err := ss.getVmssVM(ctx, string(nodeName), crt)
 	if err != nil {
 		return nil, nil, err
 	}
