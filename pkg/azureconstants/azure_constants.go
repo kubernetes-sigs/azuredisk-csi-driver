@@ -99,7 +99,7 @@ const (
 	SnapshotOpThrottlingSleepSec = 50
 	MaxThrottlingSleepSec        = 1200
 	// define tag value delimiter and default is comma
-	TagValueDelimiterField = "tagValueDelimiter"
+	TagValueDelimiterField = "tagvaluedelimiter"
 )
 
 var (
