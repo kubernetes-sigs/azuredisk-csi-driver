@@ -42,6 +42,7 @@ import (
 	"k8s.io/mount-utils"
 	"k8s.io/utils/ptr"
 	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
+	"sigs.k8s.io/azuredisk-csi-driver/pkg/filewatcher"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/optimization"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/util"
 	"sigs.k8s.io/cloud-provider-azure/pkg/azclient/configloader"
@@ -243,6 +244,11 @@ func GetCloudProviderFromClient(ctx context.Context, kubeClient clientset.Interf
 		if federatedTokenFile := os.Getenv("AZURE_FEDERATED_TOKEN_FILE"); federatedTokenFile != "" {
 			config.AADFederatedTokenFile = federatedTokenFile
 			config.UseFederatedWorkloadIdentityExtension = true
+		}
+		if len(config.AADClientCertPath) > 0 {
+			// Watch the certificate for changes; if the certificate changes, the pod will be restarted
+			err = filewatcher.WatchFileForChanges(config.AADClientCertPath)
+			klog.Warningf("Failed to watch certificate file for changes: %v", err)
 		}
 		if err = az.InitializeCloudFromConfig(ctx, config, fromSecret, false); err != nil {
 			klog.Warningf("InitializeCloudFromConfig failed with error: %v", err)
