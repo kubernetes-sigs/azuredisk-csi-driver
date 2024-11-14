@@ -34,14 +34,14 @@ func WatchFileForChanges(fileToWatch string) error {
 
 	// This starts only one occurrence of the file watcher, which watches the file, fileToWatch.
 	watchCertificateFileOnce.Do(func() {
-		klog.Infof("Starting the file change watcher on file, %s", fileToWatch)
+		klog.V(2).Infof("Starting the file change watcher on file, %s", fileToWatch)
 
 		// Update the file path to watch in case this is a symlink
 		fileToWatch, err = filepath.EvalSymlinks(fileToWatch)
 		if err != nil {
 			return
 		}
-		klog.Infof("Watching file, %s", fileToWatch)
+		klog.V(2).Infof("Watching file, %s", fileToWatch)
 
 		// Start the file watcher to monitor file changes
 		go func() {
@@ -63,7 +63,7 @@ func checkForFileChanges(path string) error {
 			select {
 			case event, ok := <-watcher.Events:
 				if ok && (event.Has(fsnotify.Write) || event.Has(fsnotify.Chmod) || event.Has(fsnotify.Remove)) {
-					klog.Infof("file, %s, was modified, exiting...", event.Name)
+					klog.V(2).Infof("file, %s, was modified, exiting...", event.Name)
 					os.Exit(0)
 				}
 			case err, ok := <-watcher.Errors:
@@ -74,10 +74,5 @@ func checkForFileChanges(path string) error {
 		}
 	}()
 
-	err = watcher.Add(path)
-	if err != nil {
-		return err
-	}
-
-	return nil
+	return watcher.Add(path)
 }
