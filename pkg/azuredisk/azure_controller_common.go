@@ -469,10 +469,10 @@ func (c *controllerCommon) GetDiskLun(diskName, diskURI string, nodeName types.N
 			(disk.Vhd != nil && disk.Vhd.URI != nil && diskURI != "" && strings.EqualFold(*disk.Vhd.URI, diskURI)) ||
 			(disk.ManagedDisk != nil && strings.EqualFold(*disk.ManagedDisk.ID, diskURI)) {
 			if disk.ToBeDetached != nil && *disk.ToBeDetached {
-				klog.Warningf("azureDisk - find disk(ToBeDetached): lun %d name %s uri %s", *disk.Lun, diskName, diskURI)
+				klog.Warningf("azureDisk - found disk(ToBeDetached): lun %d name %s uri %s", *disk.Lun, diskName, diskURI)
 			} else {
 				// found the disk
-				klog.V(2).Infof("azureDisk - find disk: lun %d name %s uri %s", *disk.Lun, diskName, diskURI)
+				klog.V(2).Infof("azureDisk - found disk: lun %d name %s uri %s", *disk.Lun, diskName, diskURI)
 				return *disk.Lun, provisioningState, nil
 			}
 		}
