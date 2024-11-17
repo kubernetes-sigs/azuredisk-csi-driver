@@ -141,8 +141,8 @@ spec:
               path: /healthz
               port: healthz
             initialDelaySeconds: 60
-            timeoutSeconds: 30
-            periodSeconds: 30
+            timeoutSeconds: 60
+            periodSeconds: 60
           env:
             - name: AZURE_CREDENTIAL_FILE
               valueFrom:
