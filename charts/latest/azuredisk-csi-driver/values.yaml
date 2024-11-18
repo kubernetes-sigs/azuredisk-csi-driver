@@ -185,7 +185,6 @@ linux:
   kubelet: /var/lib/kubelet
   distro: debian # available values: debian, fedora
   enablePerfOptimization: true
-  enableRegistrationProbe: true
   otelTracing:
     enabled: false
     otelServiceName: csi-azuredisk-node
