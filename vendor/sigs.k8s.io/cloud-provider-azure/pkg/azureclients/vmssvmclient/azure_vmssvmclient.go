@@ -22,6 +22,7 @@ import (
 	"strings"
 	"time"
 
+	armcompute "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute/v6"
 	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2022-08-01/compute"
 	"github.com/Azure/go-autorest/autorest"
 	"github.com/Azure/go-autorest/autorest/azure"
@@ -601,4 +602,53 @@ func (c *Client) parseResp(
 		}
 	}
 	return errors, retryIDs
+}
+
+// AttachDetachDataDisks attaches or detaches a list of managed data disks to/from a VM.
+func (c *Client) AttachDetachDataDisks(ctx context.Context, resourceGroupName, VMScaleSetName, instanceID string, parameters armcompute.AttachDetachDataDisksRequest, source string) (*armcompute.VirtualMachinesClientAttachDetachDataDisksResponse, *retry.Error) {
+	mc := metrics.NewMetricContext("vmssvm", "AttachDetachDataDisks", resourceGroupName, c.subscriptionID, source)
+
+	// Report errors if the client is rate limited.
+	if !c.rateLimiterWriter.TryAccept() {
+		mc.RateLimitedCount()
+		return nil, retry.GetRateLimitError(true, "VMSSVMAttachDetachDataDisks")
+	}
+
+	// Report errors if the client is throttled.
+	if c.RetryAfterWriter.After(time.Now()) {
+		mc.ThrottledCount()
+		rerr := retry.GetThrottlingError("VMSSVMAttachDetachDataDisks", "client throttled", c.RetryAfterWriter)
+		return nil, rerr
+	}
+
+	resourceID := armclient.GetChildResourceID(
+		c.subscriptionID,
+		resourceGroupName,
+		vmssResourceType,
+		VMScaleSetName,
+		vmResourceType,
+		instanceID,
+	)
+
+	response, rerr := c.armClient.PostResource(ctx, resourceID, "attachDetachDataDisks", parameters, map[string]interface{}{})
+	mc.Observe(rerr)
+	defer c.armClient.CloseResponse(ctx, response)
+	if rerr != nil {
+		if rerr.IsThrottled() {
+			// Update RetryAfterReader so that no more requests would be sent until RetryAfter expires.
+			c.RetryAfterWriter = rerr.RetryAfter
+		}
+		return nil, rerr
+	}
+
+	result := armcompute.VirtualMachinesClientAttachDetachDataDisksResponse{}
+	err := autorest.Respond(
+		response,
+		azure.WithErrorUnlessStatusCode(http.StatusOK, http.StatusCreated),
+		autorest.ByUnmarshallingJSON(&result))
+	if err != nil {
+		klog.V(5).Infof("Received error in %s: resourceID: %s, error: %s", "attachDetachDataDisks.respond", resourceID, err)
+		return &result, retry.GetError(response, err)
+	}
+	return &result, nil
 }
