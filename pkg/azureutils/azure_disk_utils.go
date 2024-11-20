@@ -432,6 +432,15 @@ func IsValidAvailabilityZone(zone, region string) bool {
 	return strings.HasPrefix(zone, fmt.Sprintf("%s-", region))
 }
 
+// GetRegionFromAvailabilityZone returns region from availability zone if it's in format of <region>-<zone-id>
+func GetRegionFromAvailabilityZone(zone string) string {
+	parts := strings.Split(zone, "-")
+	if len(parts) == 2 {
+		return parts[0]
+	}
+	return ""
+}
+
 func IsValidDiskURI(diskURI string) error {
 	if strings.Index(strings.ToLower(diskURI), "/subscriptions/") != 0 {
 		return fmt.Errorf("invalid DiskURI: %v, correct format: %v", diskURI, diskURISupportedManaged)

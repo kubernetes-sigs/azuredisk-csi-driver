@@ -864,6 +864,25 @@ func TestIsAvailabilityZone(t *testing.T) {
 	}
 }
 
+func TestGetRegionFromAvailabilityZone(t *testing.T) {
+	tests := []struct {
+		desc     string
+		zone     string
+		expected string
+	}{
+		{"empty string", "", ""},
+		{"invallid zone", "1", ""},
+		{"valid zone", "eastus-2", "eastus"},
+	}
+
+	for _, test := range tests {
+		result := GetRegionFromAvailabilityZone(test.zone)
+		if result != test.expected {
+			t.Errorf("test [%q] got unexpected result: %v != %v", test.desc, result, test.expected)
+		}
+	}
+}
+
 func TestIsAzureStackCloud(t *testing.T) {
 	tests := []struct {
 		cloud                  string
