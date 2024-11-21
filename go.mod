@@ -17,7 +17,7 @@ require (
 	github.com/kubernetes-csi/csi-lib-utils v0.17.0
 	github.com/kubernetes-csi/csi-proxy/client v1.1.3
 	github.com/kubernetes-csi/external-snapshotter/client/v4 v4.2.0
-	github.com/onsi/ginkgo/v2 v2.21.0
+	github.com/onsi/ginkgo/v2 v2.22.0
 	github.com/onsi/gomega v1.35.1
 	github.com/stretchr/testify v1.9.0
 	go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc v0.53.0
@@ -37,13 +37,13 @@ require (
 	k8s.io/cloud-provider v0.31.2
 	k8s.io/component-base v0.31.2
 	k8s.io/klog/v2 v2.130.1
-	k8s.io/kubernetes v1.31.2
+	k8s.io/kubernetes v1.31.3
 	k8s.io/mount-utils v0.29.7
 	k8s.io/pod-security-admission v0.0.0
 	k8s.io/utils v0.0.0-20241104163129-6fe5fd82f078
 	sigs.k8s.io/cloud-provider-azure v1.29.1-0.20241111034044-6ebb6c3c3260
 	sigs.k8s.io/cloud-provider-azure/pkg/azclient v0.1.15
-	sigs.k8s.io/cloud-provider-azure/pkg/azclient/configloader v0.1.5
+	sigs.k8s.io/cloud-provider-azure/pkg/azclient/configloader v0.1.6
 	sigs.k8s.io/yaml v1.4.0
 )
 
