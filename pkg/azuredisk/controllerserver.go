@@ -118,10 +118,6 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 		return nil, status.Error(codes.InvalidArgument, "After round-up, volume size exceeds the limit specified")
 	}
 
-	if diskParams.Location == "" {
-		diskParams.Location = d.cloud.Location
-	}
-
 	localCloud := d.cloud
 	localDiskController := d.diskController
 
@@ -188,6 +184,14 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 	}
 
 	diskZone := azureutils.PickAvailabilityZone(req.GetAccessibilityRequirements(), diskParams.Location, topologyKey)
+	if diskParams.Location == "" {
+		diskParams.Location = d.cloud.Location
+		region := azureutils.GetRegionFromAvailabilityZone(diskZone)
+		if region != "" && region != d.cloud.Location {
+			klog.V(2).Infof("got a different region from zone %s for disk %s", diskZone, diskParams.DiskName)
+			diskParams.Location = region
+		}
+	}
 	accessibleTopology := []*csi.Topology{}
 
 	if d.enableDiskCapacityCheck {
