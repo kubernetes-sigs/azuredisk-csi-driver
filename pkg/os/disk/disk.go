@@ -47,51 +47,37 @@ const (
 func ListDiskLocations() (map[uint32]Location, error) {
 	// sample response
 	// [{
-	//    "number":  0,
-	//    "location":  "PCI Slot 3 : Adapter 0 : Port 0 : Target 1 : LUN 0"
+	//    "Index":  3,
+	//    "SCSILogicalUnit":  1,
+	//    "SCSITargetId":  0,
+	//    "SCSIPort":  1,
+	//    "SCSIBus":  0
 	// }, ...]
-	cmd := fmt.Sprintf("ConvertTo-Json @(Get-Disk | select Number, Location)")
+	cmd := fmt.Sprintf("ConvertTo-Json @(Get-CimInstance win32_diskdrive|where-object -FilterScript {$_.SCSIPort -Ne 0}|Select Index,SCSILogicalUnit,SCSITargetId,SCSIPort,SCSIBus)")
 	out, err := azureutils.RunPowershellCmd(cmd)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list disk location. cmd: %q, output: %q, err %v", cmd, string(out), err)
 	}
 
-	var getDisk []map[string]interface{}
-	err = json.Unmarshal(out, &getDisk)
+	var getCimInstance []struct {
+		Index           uint32 `json:"Index"`
+		SCSILogicalUnit int    `json:"SCSILogicalUnit"`
+		SCSITargetId    int    `json:"SCSITargetId"`
+		SCSIPort        int    `json:"SCSIPort"`
+		SCSIBus         int    `json:"SCSIBus"`
+	}
+	err = json.Unmarshal(out, &getCimInstance)
 	if err != nil {
 		return nil, err
 	}
 
 	m := make(map[uint32]Location)
-	for _, v := range getDisk {
-		str := v["Location"].(string)
-		num := v["Number"].(float64)
-
-		found := false
-		s := strings.Split(str, ":")
-		if len(s) >= 5 {
-			var d Location
-			for _, item := range s {
-				item = strings.TrimSpace(item)
-				itemSplit := strings.Split(item, " ")
-				if len(itemSplit) == 2 {
-					found = true
-					switch strings.TrimSpace(itemSplit[0]) {
-					case "Adapter":
-						d.Adapter = strings.TrimSpace(itemSplit[1])
-					case "Target":
-						d.Target = strings.TrimSpace(itemSplit[1])
-					case "LUN":
-						d.LUNID = strings.TrimSpace(itemSplit[1])
-					default:
-						klog.Warningf("Got unknown field : %s=%s", itemSplit[0], itemSplit[1])
-					}
-				}
-			}
-
-			if found {
-				m[uint32(num)] = d
-			}
+	for _, v := range getCimInstance {
+		m[v.Index] = Location{
+			Adapter: strconv.Itoa(v.SCSIPort),
+			Bus:     strconv.Itoa(v.SCSIBus),
+			Target:  strconv.Itoa(v.SCSITargetId),
+			LUNID:   strconv.Itoa(v.SCSILogicalUnit),
 		}
 	}
 	return m, nil
