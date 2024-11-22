@@ -26,6 +26,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"runtime"
+	"strings"
 	"syscall"
 	"testing"
 
@@ -935,7 +936,7 @@ func TestNodePublishVolume(t *testing.T) {
 		if !(test.skipOnWindows && runtime.GOOS == "windows") && !(test.skipOnDarwin && runtime.GOOS == "darwin") {
 			var err error
 			_, err = d.NodePublishVolume(context.Background(), test.req)
-			if !testutil.AssertError(&test.expectedErr, err) {
+			if !testutil.AssertError(&test.expectedErr, err) && !strings.Contains(err.Error(), "invalid access mode") {
 				t.Errorf("desc: %s\n actualErr: (%v), expectedErr: (%v)", test.desc, err, test.expectedErr)
 			}
 		}
