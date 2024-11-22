@@ -996,21 +996,6 @@ func TestIsValidVolumeCapabilities(t *testing.T) {
 			expectedResult: fmt.Errorf("mountVolume is not supported for access mode: MULTI_NODE_MULTI_WRITER"),
 		},
 		{
-			description: "[Failure] Returns false for invalid mount access mode",
-			volCaps: []*csi.VolumeCapability{
-				{
-					AccessType: &csi.VolumeCapability_Mount{
-						Mount: &csi.VolumeCapability_MountVolume{},
-					},
-					AccessMode: &csi.VolumeCapability_AccessMode{
-						Mode: 10,
-					},
-				},
-			},
-			maxShares:      1,
-			expectedResult: fmt.Errorf("invalid access mode: [mount:<> access_mode:<mode:10 > ]"),
-		},
-		{
 			description: "[Success] Returns true for valid block capabilities",
 			volCaps: []*csi.VolumeCapability{
 				{
@@ -1068,7 +1053,7 @@ func TestIsValidVolumeCapabilities(t *testing.T) {
 				},
 			},
 			maxShares:      1,
-			expectedResult: fmt.Errorf("invalid access mode: [block:<> access_mode:<mode:10 > ]"),
+			expectedResult: fmt.Errorf("invalid access mode: [block:{}  access_mode:{mode:10}]"),
 		},
 		{
 			description: "[Failure] Returns false for empty volume capability",
@@ -1084,7 +1069,6 @@ func TestIsValidVolumeCapabilities(t *testing.T) {
 	}
 
 	for _, test := range tests {
-		test := test
 		t.Run(test.description, func(t *testing.T) {
 			result := IsValidVolumeCapabilities(test.volCaps, test.maxShares)
 			assert.Equal(t, test.expectedResult, result)

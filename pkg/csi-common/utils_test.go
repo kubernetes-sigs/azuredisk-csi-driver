@@ -119,7 +119,6 @@ func TestLogGRPC(t *testing.T) {
 					"account_name": "k8s",
 					"account_key":  "testkey",
 				},
-				XXX_sizecache: 100,
 			},
 			`GRPC request: {"secrets":"***stripped***","volume_id":"vol_1"}`,
 		},
@@ -172,7 +171,6 @@ func TestNewControllerServiceCapability(t *testing.T) {
 	for _, test := range tests {
 		resp := NewControllerServiceCapability(test.cap)
 		assert.NotNil(t, resp)
-		assert.Equal(t, resp.XXX_sizecache, int32(0))
 	}
 }
 
@@ -196,7 +194,6 @@ func TestNewNodeServiceCapability(t *testing.T) {
 	for _, test := range tests {
 		resp := NewNodeServiceCapability(test.cap)
 		assert.NotNil(t, resp)
-		assert.Equal(t, resp.XXX_sizecache, int32(0))
 	}
 }
 
