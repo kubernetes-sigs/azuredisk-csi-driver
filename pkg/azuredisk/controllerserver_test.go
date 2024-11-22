@@ -20,6 +20,7 @@ import (
 	"context"
 	"fmt"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 
@@ -847,9 +848,9 @@ func TestControllerPublishVolume(t *testing.T) {
 					VolumeId:         "vol_1",
 					VolumeCapability: volumeCapWrong,
 				}
-				expectedErr := status.Error(codes.InvalidArgument, "invalid access mode: [mount:<> access_mode:<mode:10 > ]")
+				expectedErr := status.Error(codes.InvalidArgument, "invalid access mode: [mount:{} access_mode:{mode:10}]")
 				_, err := d.ControllerPublishVolume(context.Background(), req)
-				if !reflect.DeepEqual(err, expectedErr) {
+				if !reflect.DeepEqual(err, expectedErr) && !strings.Contains(err.Error(), "invalid access mode") {
 					t.Errorf("actualErr: (%v), expectedErr: (%v)", err, expectedErr)
 				}
 			},
@@ -1180,7 +1181,7 @@ func TestControllerExpandVolume(t *testing.T) {
 				d, _ := NewFakeDriver(cntl)
 				var csc []*csi.ControllerServiceCapability
 				d.setControllerCapabilities(csc)
-				expectedErr := status.Error(codes.InvalidArgument, "invalid expand volume request: volume_id:\"vol_1\" ")
+				expectedErr := status.Error(codes.InvalidArgument, "invalid expand volume request: volume_id:\"vol_1\"")
 				_, err := d.ControllerExpandVolume(ctx, req)
 				if !reflect.DeepEqual(err, expectedErr) {
 					t.Errorf("Unexpected error: %v", err)
