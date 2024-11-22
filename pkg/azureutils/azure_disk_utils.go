@@ -77,28 +77,14 @@ var (
 	)
 
 	// volumeCaps represents how the volume could be accessed.
-	volumeCaps = []csi.VolumeCapability_AccessMode{
-		{
-			Mode: csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER,
-		},
-		{
-			Mode: csi.VolumeCapability_AccessMode_SINGLE_NODE_READER_ONLY,
-		},
-		{
-			Mode: csi.VolumeCapability_AccessMode_SINGLE_NODE_SINGLE_WRITER,
-		},
-		{
-			Mode: csi.VolumeCapability_AccessMode_SINGLE_NODE_MULTI_WRITER,
-		},
-		{
-			Mode: csi.VolumeCapability_AccessMode_MULTI_NODE_READER_ONLY,
-		},
-		{
-			Mode: csi.VolumeCapability_AccessMode_MULTI_NODE_SINGLE_WRITER,
-		},
-		{
-			Mode: csi.VolumeCapability_AccessMode_MULTI_NODE_MULTI_WRITER,
-		},
+	volumeCaps = []*csi.VolumeCapability_AccessMode{
+		{Mode: csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER},
+		{Mode: csi.VolumeCapability_AccessMode_SINGLE_NODE_READER_ONLY},
+		{Mode: csi.VolumeCapability_AccessMode_SINGLE_NODE_SINGLE_WRITER},
+		{Mode: csi.VolumeCapability_AccessMode_SINGLE_NODE_MULTI_WRITER},
+		{Mode: csi.VolumeCapability_AccessMode_MULTI_NODE_READER_ONLY},
+		{Mode: csi.VolumeCapability_AccessMode_MULTI_NODE_SINGLE_WRITER},
+		{Mode: csi.VolumeCapability_AccessMode_MULTI_NODE_MULTI_WRITER},
 	}
 
 	// lock mutex for RunPowerShellCommand
