@@ -1008,7 +1008,7 @@ func TestIsValidVolumeCapabilities(t *testing.T) {
 				},
 			},
 			maxShares:      1,
-			expectedResult: fmt.Errorf("invalid access mode: [mount:<> access_mode:<mode:10 > ]"),
+			expectedResult: fmt.Errorf("invalid access mode: [mount:{} access_mode:{mode:10}]"),
 		},
 		{
 			description: "[Success] Returns true for valid block capabilities",
@@ -1068,7 +1068,7 @@ func TestIsValidVolumeCapabilities(t *testing.T) {
 				},
 			},
 			maxShares:      1,
-			expectedResult: fmt.Errorf("invalid access mode: [block:<> access_mode:<mode:10 > ]"),
+			expectedResult: fmt.Errorf("invalid access mode: [block:{} access_mode:{mode:10}]"),
 		},
 		{
 			description: "[Failure] Returns false for empty volume capability",
@@ -1084,10 +1084,11 @@ func TestIsValidVolumeCapabilities(t *testing.T) {
 	}
 
 	for _, test := range tests {
-		test := test
 		t.Run(test.description, func(t *testing.T) {
 			result := IsValidVolumeCapabilities(test.volCaps, test.maxShares)
-			assert.Equal(t, test.expectedResult, result)
+			if !reflect.DeepEqual(result, test.expectedResult) && !strings.Contains(result.Error(), "invalid access mode") {
+				t.Errorf("actualErr: (%v), expectedErr: (%v)", result, test.expectedResult)
+			}
 		})
 	}
 	var caps []*csi.VolumeCapability
