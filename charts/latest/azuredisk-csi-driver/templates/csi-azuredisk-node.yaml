@@ -212,9 +212,11 @@ spec:
             - mountPath: /sys/class/
               name: sys-class
             {{- if eq .Values.cloud "AzureStackCloud" }}
+            {{- if ne .Values.linux.distro "fedora" }}
             - name: ssl
               mountPath: /etc/ssl/certs
               readOnly: true
+            {{- end }}
             {{- end }}
             {{- if eq .Values.linux.distro "fedora" }}
             - name: ssl
@@ -255,9 +257,11 @@ spec:
             type: Directory
           name: sys-class
         {{- if eq .Values.cloud "AzureStackCloud" }}
+        {{- if ne .Values.linux.distro "fedora" }}
         - name: ssl
           hostPath:
             path: /etc/ssl/certs
+        {{- end }}
         {{- end }}
         {{- if eq .Values.linux.distro "fedora" }}
         - name: ssl

@@ -293,9 +293,11 @@ spec:
             - mountPath: /etc/kubernetes/
               name: azure-cred
             {{- if eq .Values.cloud "AzureStackCloud" }}
+            {{- if ne .Values.linux.distro "fedora" }}
             - name: ssl
               mountPath: /etc/ssl/certs
               readOnly: true
+            {{- end }}
             {{- end }}
             {{- if eq .Values.linux.distro "fedora" }}
             - name: ssl
@@ -318,9 +320,11 @@ spec:
             path: /etc/kubernetes/
             type: DirectoryOrCreate
         {{- if eq .Values.cloud "AzureStackCloud" }}
+        {{- if ne .Values.linux.distro "fedora" }}
         - name: ssl
           hostPath:
             path: /etc/ssl/certs
+        {{- end }}
         {{- end }}
         {{- if eq .Values.linux.distro "fedora" }}
         - name: ssl
