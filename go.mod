@@ -31,9 +31,9 @@ require (
 	golang.org/x/sys v0.27.0
 	google.golang.org/grpc v1.68.0
 	google.golang.org/protobuf v1.35.2
-	k8s.io/api v0.31.2
-	k8s.io/apimachinery v0.31.2
-	k8s.io/client-go v0.31.2
+	k8s.io/api v0.31.3
+	k8s.io/apimachinery v0.31.3
+	k8s.io/client-go v0.31.3
 	k8s.io/cloud-provider v0.31.2
 	k8s.io/component-base v0.31.2
 	k8s.io/klog/v2 v2.130.1
@@ -43,7 +43,7 @@ require (
 	k8s.io/utils v0.0.0-20241104163129-6fe5fd82f078
 	sigs.k8s.io/cloud-provider-azure v1.29.1-0.20241111034044-6ebb6c3c3260
 	sigs.k8s.io/cloud-provider-azure/pkg/azclient v0.1.15
-	sigs.k8s.io/cloud-provider-azure/pkg/azclient/configloader v0.1.6
+	sigs.k8s.io/cloud-provider-azure/pkg/azclient/configloader v0.1.7
 	sigs.k8s.io/yaml v1.4.0
 )
 
