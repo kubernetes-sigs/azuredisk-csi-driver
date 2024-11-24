@@ -50,7 +50,7 @@ func ListDiskLocations() (map[uint32]Location, error) {
 	//    "number":  0,
 	//    "location":  "PCI Slot 3 : Adapter 0 : Port 0 : Target 1 : LUN 0"
 	// }, ...]
-	cmd := fmt.Sprintf("ConvertTo-Json @(Get-Disk | select Number, Location)")
+	cmd := fmt.Sprintf("ConvertTo-Json @(Get-Disk | select Number, Location, PartitionStyle)")
 	out, err := azureutils.RunPowershellCmd(cmd)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list disk location. cmd: %q, output: %q, err %v", cmd, string(out), err)
@@ -66,6 +66,11 @@ func ListDiskLocations() (map[uint32]Location, error) {
 	for _, v := range getDisk {
 		str := v["Location"].(string)
 		num := v["Number"].(float64)
+		partitionStyle := v["PartitionStyle"].(string)
+		if strings.EqualFold(partitionStyle, "MBR") {
+			klog.V(2).Infof("skipping MBR disk, number: %d, location: %s", int(num), str)
+			continue
+		}
 
 		found := false
 		s := strings.Split(str, ":")
