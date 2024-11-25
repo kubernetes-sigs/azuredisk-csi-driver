@@ -53,6 +53,7 @@ type DriverOptions struct {
 	VolStatsCacheExpireInMinutes int64
 	VMType                       string
 	EnableWindowsHostProcess     bool
+	ListDisksUsingWinCIM         bool
 	GetNodeIDFromIMDS            bool
 	WaitForSnapshotReady         bool
 	CheckDiskLUNCollision        bool
@@ -97,6 +98,7 @@ func (o *DriverOptions) AddFlags() *flag.FlagSet {
 	fs.Int64Var(&o.VolStatsCacheExpireInMinutes, "vol-stats-cache-expire-in-minutes", 10, "The cache expire time in minutes for volume stats cache")
 	fs.StringVar(&o.VMType, "vm-type", "", "type of agent node. available values: vmss, standard")
 	fs.BoolVar(&o.EnableWindowsHostProcess, "enable-windows-host-process", false, "enable windows host process")
+	fs.BoolVar(&o.ListDisksUsingWinCIM, "list-disks-using-win-cim", true, "list disks using CIM API on Windows")
 	fs.BoolVar(&o.GetNodeIDFromIMDS, "get-nodeid-from-imds", false, "boolean flag to get NodeID from IMDS")
 	fs.BoolVar(&o.WaitForSnapshotReady, "wait-for-snapshot-ready", true, "boolean flag to wait for snapshot ready when creating snapshot in same region")
 	fs.BoolVar(&o.CheckDiskLUNCollision, "check-disk-lun-collision", true, "boolean flag to check disk lun collisio before attaching disk")

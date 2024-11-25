@@ -40,10 +40,14 @@ import (
 
 var _ CSIProxyMounter = &winMounter{}
 
-type winMounter struct{}
+type winMounter struct {
+	listDisksUsingWinCIM bool
+}
 
-func NewWinMounter() *winMounter {
-	return &winMounter{}
+func NewWinMounter(listDisksUsingWinCIM bool) *winMounter {
+	return &winMounter{
+		listDisksUsingWinCIM: listDisksUsingWinCIM,
+	}
 }
 
 // Mount just creates a soft link at target pointing to source.
@@ -206,7 +210,13 @@ func (mounter *winMounter) Rescan() error {
 
 // FindDiskByLun - given a lun number, find out the corresponding disk
 func (mounter *winMounter) FindDiskByLun(lun string) (diskNum string, err error) {
-	diskLocations, err := disk.ListDiskLocations()
+	var diskLocations map[uint32]disk.Location
+
+	if mounter.listDisksUsingWinCIM {
+		diskLocations, err = disk.ListDisksUsingCIM()
+	} else {
+		diskLocations, err = disk.ListDiskLocations()
+	}
 	if err != nil {
 		return "", err
 	}
