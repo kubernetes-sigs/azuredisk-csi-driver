@@ -26,7 +26,7 @@ import (
 	utilexec "k8s.io/utils/exec"
 )
 
-func NewSafeMounter(_, _ bool, maxConcurrentFormat int, concurrentFormatTimeout time.Duration) (*mount.SafeFormatAndMount, error) {
+func NewSafeMounter(_, _, _ bool, maxConcurrentFormat int, concurrentFormatTimeout time.Duration) (*mount.SafeFormatAndMount, error) {
 	opt := mount.WithMaxConcurrentFormat(maxConcurrentFormat, concurrentFormatTimeout)
 	return mount.NewSafeFormatAndMount(mount.New(""), utilexec.New(), opt), nil
 }

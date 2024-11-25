@@ -24,7 +24,7 @@ import (
 )
 
 func TestNewSafeMounter(t *testing.T) {
-	resp, err := NewSafeMounter(true, true, 2, time.Duration(120)*time.Second)
+	resp, err := NewSafeMounter(true, true, true, 2, time.Duration(120)*time.Second)
 	assert.NotNil(t, resp)
 	assert.Nil(t, err)
 }
