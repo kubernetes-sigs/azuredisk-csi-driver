@@ -211,7 +211,7 @@ spec:
               name: sys-devices-dir
             - mountPath: /sys/class/
               name: sys-class
-            {{- if eq .Values.cloud "AzureStackCloud" }}
+            {{- if and (eq .Values.cloud "AzureStackCloud") (ne .Values.linux.distro "fedora") }}
             - name: ssl
               mountPath: /etc/ssl/certs
               readOnly: true
@@ -254,7 +254,7 @@ spec:
             path: /sys/class/
             type: Directory
           name: sys-class
-        {{- if eq .Values.cloud "AzureStackCloud" }}
+        {{- if and (eq .Values.cloud "AzureStackCloud") (ne .Values.linux.distro "fedora") }}
         - name: ssl
           hostPath:
             path: /etc/ssl/certs
