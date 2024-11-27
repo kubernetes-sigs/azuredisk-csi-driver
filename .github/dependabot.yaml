@@ -13,7 +13,7 @@ updates:
     k8s:
       applies-to: version-updates
       patterns:
-      - "*"
+      - "k8s.io*"
       update-types:
       - "patch"
       - "minor"
