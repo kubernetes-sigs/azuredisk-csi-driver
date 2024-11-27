@@ -173,7 +173,7 @@ The following table lists the configurable parameters of the latest Azure Disk C
 | `controller.resources.csiResizer.limits.memory`       | csi-resizer memory limits                         | 500Mi                                                          |
 | `controller.resources.csiResizer.requests.cpu`        | csi-resizer cpu requests                   | 10m                                                            |
 | `controller.resources.csiResizer.requests.memory`     | csi-resizer memory requests                | 20Mi                                                           |
-| `controller.resources.csiSnapshotter.limits.memory`   | csi-snapshotter memory limits                         | 500Mi                                                          |
+| `controller.resources.csiSnapshotter.limits.memory`   | csi-snapshotter memory limits                         | 400Mi                                                          |
 | `controller.resources.csiSnapshotter.requests.cpu`    | csi-snapshotter cpu requests                   | 10m                                                            |
 | `controller.resources.csiSnapshotter.requests.memory` | csi-snapshotter memory requests                | 20Mi                                                           |
 | `controller.resources.livenessProbe.limits.memory`    | liveness-probe memory limits                          | 100Mi                                                          |
@@ -204,7 +204,7 @@ The following table lists the configurable parameters of the latest Azure Disk C
 | `snapshot.snapshotController.annotations`                          | snapshot controller deployment extra annotations               | `{}`
 | `snapshot.snapshotController.podLabels`                            | snapshot controller pods extra labels                          | `{}`
 | `snapshot.snapshotController.podAnnotations`                       | snapshot controller pods extra annotations                     | `{}`
-| `snapshot.snapshotController.resources.limits.memory`          | csi-snapshot-controller memory limits                          | 100Mi                                                          |
+| `snapshot.snapshotController.resources.limits.memory`          | csi-snapshot-controller memory limits                          | 500Mi                                                          |
 | `snapshot.snapshotController.resources.requests.cpu`           | csi-snapshot-controller cpu requests                    | 10m                                                            |
 | `snapshot.snapshotController.resources.requests.memory`        | csi-snapshot-controller memory requests                 | 20Mi                                                           |
 | `linux.enabled`                                   | whether enable linux feature                               | `true`                                                         |
