@@ -42,6 +42,48 @@ const (
 	IOCTL_STORAGE_QUERY_PROPERTY    = 0x002d1400
 )
 
+// ListDisksUsingCIM - constructs a map with the disk number as the key and the DiskLocation structure
+// as the value. The DiskLocation struct has various fields like the Adapter, Bus, Target and LUNID.
+func ListDisksUsingCIM() (map[uint32]Location, error) {
+	// sample response
+	// [{
+	//    "Index":  3,
+	//    "SCSILogicalUnit":  1,
+	//    "SCSITargetId":  0,
+	//    "SCSIPort":  1,
+	//    "SCSIBus":  0
+	// }, ...]
+	cmd := fmt.Sprintf("ConvertTo-Json @(Get-CimInstance win32_diskdrive|Where-Object { $_.Model -eq \"Virtual_Disk NVME Premium\" -or $_.SCSIPort -Ne 0 }|Select Index,SCSILogicalUnit,SCSITargetId,SCSIPort,SCSIBus)")
+	out, err := azureutils.RunPowershellCmd(cmd)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list disk location. cmd: %q, output: %q, err %v", cmd, string(out), err)
+	}
+	klog.V(6).Infof("ListDisksUsingCIM output: %s", string(out))
+
+	var getCimInstance []struct {
+		Index           uint32 `json:"Index"`
+		SCSILogicalUnit int    `json:"SCSILogicalUnit"`
+		SCSITargetId    int    `json:"SCSITargetId"`
+		SCSIPort        int    `json:"SCSIPort"`
+		SCSIBus         int    `json:"SCSIBus"`
+	}
+	err = json.Unmarshal(out, &getCimInstance)
+	if err != nil {
+		return nil, err
+	}
+
+	m := make(map[uint32]Location)
+	for _, v := range getCimInstance {
+		m[v.Index] = Location{
+			Adapter: strconv.Itoa(v.SCSIPort),
+			Bus:     strconv.Itoa(v.SCSIBus),
+			Target:  strconv.Itoa(v.SCSITargetId),
+			LUNID:   strconv.Itoa(v.SCSILogicalUnit),
+		}
+	}
+	return m, nil
+}
+
 // ListDiskLocations - constructs a map with the disk number as the key and the DiskLocation structure
 // as the value. The DiskLocation struct has various fields like the Adapter, Bus, Target and LUNID.
 func ListDiskLocations() (map[uint32]Location, error) {
@@ -50,11 +92,12 @@ func ListDiskLocations() (map[uint32]Location, error) {
 	//    "number":  0,
 	//    "location":  "PCI Slot 3 : Adapter 0 : Port 0 : Target 1 : LUN 0"
 	// }, ...]
-	cmd := fmt.Sprintf("ConvertTo-Json @(Get-Disk | select Number, Location)")
+	cmd := fmt.Sprintf("ConvertTo-Json @(Get-Disk | select Number, Location, PartitionStyle)")
 	out, err := azureutils.RunPowershellCmd(cmd)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list disk location. cmd: %q, output: %q, err %v", cmd, string(out), err)
 	}
+	klog.V(6).Infof("ListDiskLocations output: %s", string(out))
 
 	var getDisk []map[string]interface{}
 	err = json.Unmarshal(out, &getDisk)
@@ -66,6 +109,11 @@ func ListDiskLocations() (map[uint32]Location, error) {
 	for _, v := range getDisk {
 		str := v["Location"].(string)
 		num := v["Number"].(float64)
+		partitionStyle := v["PartitionStyle"].(string)
+		if strings.EqualFold(partitionStyle, "MBR") {
+			klog.V(2).Infof("skipping MBR disk, number: %d, location: %s", int(num), str)
+			continue
+		}
 
 		found := false
 		s := strings.Split(str, ":")

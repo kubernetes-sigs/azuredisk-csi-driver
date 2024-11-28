@@ -121,6 +121,7 @@ type DriverCore struct {
 	attachDetachInitialDelayInMs int64
 	vmType                       string
 	enableWindowsHostProcess     bool
+	listDisksUsingWinCIM         bool
 	getNodeIDFromIMDS            bool
 	enableOtelTracing            bool
 	shouldWaitForSnapshotReady   bool
@@ -176,6 +177,7 @@ func newDriverV1(options *DriverOptions) *Driver {
 	driver.volStatsCacheExpireInMinutes = options.VolStatsCacheExpireInMinutes
 	driver.vmType = options.VMType
 	driver.enableWindowsHostProcess = options.EnableWindowsHostProcess
+	driver.listDisksUsingWinCIM = options.ListDisksUsingWinCIM
 	driver.getNodeIDFromIMDS = options.GetNodeIDFromIMDS
 	driver.enableOtelTracing = options.EnableOtelTracing
 	driver.shouldWaitForSnapshotReady = options.WaitForSnapshotReady
@@ -273,7 +275,7 @@ func newDriverV1(options *DriverOptions) *Driver {
 		}
 	}
 
-	driver.mounter, err = mounter.NewSafeMounter(driver.enableWindowsHostProcess, driver.useCSIProxyGAInterface, int(driver.maxConcurrentFormat), time.Duration(driver.concurrentFormatTimeout)*time.Second)
+	driver.mounter, err = mounter.NewSafeMounter(driver.enableWindowsHostProcess, driver.listDisksUsingWinCIM, driver.useCSIProxyGAInterface, int(driver.maxConcurrentFormat), time.Duration(driver.concurrentFormatTimeout)*time.Second)
 	if err != nil {
 		klog.Fatalf("Failed to get safe mounter. Error: %v", err)
 	}
