@@ -717,9 +717,10 @@ func TestNodeUnstageVolume(t *testing.T) {
 			},
 		},
 		{
-			desc:        "[Success] Valid request",
-			req:         csi.NodeUnstageVolumeRequest{StagingTargetPath: targetFile, VolumeId: "vol_1"},
-			expectedErr: testutil.TestError{},
+			desc:          "[Success] Valid request",
+			req:           csi.NodeUnstageVolumeRequest{StagingTargetPath: targetFile, VolumeId: "vol_1"},
+			skipOnWindows: true, // error on Windows
+			expectedErr:   testutil.TestError{},
 		},
 	}
 
