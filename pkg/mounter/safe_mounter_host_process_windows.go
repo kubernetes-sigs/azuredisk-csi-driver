@@ -58,7 +58,14 @@ func (mounter *winMounter) Rmdir(path string) error {
 
 // Unmount - Removes the directory - equivalent to unmount on Linux.
 func (mounter *winMounter) Unmount(target string) error {
-	klog.V(4).Infof("Unmount: %s", target)
+	volumeID, err := mounter.GetDeviceNameFromMount(target, "")
+	if err != nil {
+		return err
+	}
+	klog.V(2).Infof("Unmounting volume %s from %s", volumeID, target)
+	if err = volume.UnmountVolume(volumeID, normalizeWindowsPath(target)); err != nil {
+		return err
+	}
 	return mounter.Rmdir(target)
 }
 
