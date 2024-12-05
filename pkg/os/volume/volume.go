@@ -122,7 +122,7 @@ func UnmountVolume(volumeID, path string) error {
 	cmd := "Get-Volume -UniqueId \"$Env:volumeID\" | Get-Partition | Remove-PartitionAccessPath -AccessPath $Env:path"
 	out, err := azureutils.RunPowershellCmd(cmd, fmt.Sprintf("volumeID=%s", volumeID), fmt.Sprintf("path=%s", path))
 	if err != nil {
-		return fmt.Errorf("error getting driver letter to mount volume. cmd: %s, output: %s,error: %v", cmd, string(out), err)
+		return fmt.Errorf("failed to mount volume. cmd: %s, output: %s,error: %v", cmd, string(out), err)
 	}
 	return nil
 }
