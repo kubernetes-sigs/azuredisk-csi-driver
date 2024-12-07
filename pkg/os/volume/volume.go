@@ -26,6 +26,7 @@ import (
 
 	"k8s.io/klog/v2"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
+	"sigs.k8s.io/azuredisk-csi-driver/pkg/util"
 )
 
 var (
@@ -167,6 +168,8 @@ func ResizeVolume(volumeID string, size int64) error {
 		klog.V(2).Infof("Attempted to resize volume %s to a lower size, from currentBytes=%d wantedBytes=%d", volumeID, currentSize, finalSize)
 		return nil
 	}
+
+	finalSize = util.RoundUpBytes(finalSize)
 
 	cmd = fmt.Sprintf("Get-Volume -UniqueId \"$Env:volumeID\" | Get-Partition | Resize-Partition -Size %d", finalSize)
 	out, err = azureutils.RunPowershellCmd(cmd, fmt.Sprintf("volumeID=%s", volumeID))
