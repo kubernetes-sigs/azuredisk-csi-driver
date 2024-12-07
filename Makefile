@@ -198,6 +198,7 @@ container-windows:
 ifdef WINDOWS_USE_HOST_PROCESS_CONTAINERS
 ifeq ($(OSVERSION),ltsc2022)
 	$(MAKE) container-windows-hostprocess
+	$(MAKE) container-windows-hostprocess-latest
 endif
 endif
 
@@ -256,14 +257,18 @@ ifdef PUBLISH
 		done; \
 	done
 	docker manifest inspect $(CSI_IMAGE_TAG_LATEST)
+	docker manifest create --amend $(CSI_IMAGE_TAG_LATEST)-windows-hp $(CSI_IMAGE_TAG_LATEST)-windows-hp
+	docker manifest inspect $(CSI_IMAGE_TAG_LATEST)-windows-hp
 endif
 
 .PHONY: push-latest
 push-latest:
 ifdef CI
 	docker manifest push --purge $(CSI_IMAGE_TAG_LATEST)
+	docker manifest push --purge $(CSI_IMAGE_TAG_LATEST)-windows-hp
 else
 	docker push $(CSI_IMAGE_TAG_LATEST)
+	docker push $(CSI_IMAGE_TAG_LATEST)-windows-hp
 endif
 
 .PHONY: clean
