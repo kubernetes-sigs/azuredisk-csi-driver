@@ -25,7 +25,6 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 	"unicode"
 
@@ -101,8 +100,8 @@ var (
 		},
 	}
 
-	// lock mutex for RunPowerShellCommand
-	mutex = &sync.Mutex{}
+	// control the number of concurrent powershell commands running on Windows node
+	powershellCmdSem = make(chan struct{}, 3)
 )
 
 type ManagedDiskParameters struct {
@@ -831,9 +830,9 @@ func SetKeyValueInMap(m map[string]string, key, value string) {
 }
 
 func RunPowershellCmd(command string, envs ...string) ([]byte, error) {
-	// only one powershell command can be executed at a time to avoid OOM
-	mutex.Lock()
-	defer mutex.Unlock()
+	// acquire a semaphore to limit the number of concurrent operations
+	powershellCmdSem <- struct{}{}
+	defer func() { <-powershellCmdSem }()
 
 	cmd := exec.Command("powershell", "-Mta", "-NoProfile", "-Command", command)
 	cmd.Env = append(os.Environ(), envs...)
