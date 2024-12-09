@@ -110,7 +110,7 @@ spec:
                   fieldPath: spec.nodeName
           resources:
             limits:
-              memory: 600Mi
+              memory: 1000Mi
             requests:
               cpu: 10m
               memory: 40Mi
