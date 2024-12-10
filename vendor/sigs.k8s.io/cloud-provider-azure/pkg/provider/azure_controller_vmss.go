@@ -22,7 +22,7 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute/v6"
+	armcompute "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute/v6"
 	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2022-08-01/compute"
 	"github.com/Azure/go-autorest/autorest/azure"
 
@@ -37,6 +37,10 @@ import (
 
 // AttachDisk attaches a disk to vm
 func (ss *ScaleSet) AttachDisk(ctx context.Context, nodeName types.NodeName, diskMap map[string]*AttachDiskOptions) error {
+	if len(diskMap) == 0 {
+		return fmt.Errorf("no disk to attach")
+	}
+
 	vmName := mapNodeNameToVMName(nodeName)
 	vm, err := ss.getVmssVM(ctx, vmName, azcache.CacheReadTypeDefault)
 	if err != nil {
@@ -48,14 +52,8 @@ func (ss *ScaleSet) AttachDisk(ctx context.Context, nodeName types.NodeName, dis
 		return err
 	}
 
-	var disks []compute.DataDisk
-
+	var dataDisksToAttach []*armcompute.DataDisksToAttach
 	storageProfile := vm.AsVirtualMachineScaleSetVM().StorageProfile
-
-	if storageProfile != nil && storageProfile.DataDisks != nil {
-		disks = make([]compute.DataDisk, len(*storageProfile.DataDisks))
-		copy(disks, *storageProfile.DataDisks)
-	}
 
 	for k, v := range diskMap {
 		diskURI := k
@@ -76,7 +74,13 @@ func (ss *ScaleSet) AttachDisk(ctx context.Context, nodeName types.NodeName, dis
 			continue
 		}
 
-		managedDisk := &compute.ManagedDiskParameters{ID: &diskURI}
+		cachingMode := armcompute.CachingTypes(opt.CachingMode)
+		dataDisk := armcompute.DataDisksToAttach{
+			DiskID:                  &diskURI,
+			Lun:                     &opt.Lun,
+			Caching:                 &cachingMode,
+			WriteAcceleratorEnabled: ptr.To(opt.WriteAcceleratorEnabled),
+		}
 		if opt.DiskEncryptionSetID == "" {
 			if storageProfile.OsDisk != nil &&
 				storageProfile.OsDisk.ManagedDisk != nil &&
@@ -87,44 +91,27 @@ func (ss *ScaleSet) AttachDisk(ctx context.Context, nodeName types.NodeName, dis
 			}
 		}
 		if opt.DiskEncryptionSetID != "" {
-			managedDisk.DiskEncryptionSet = &compute.DiskEncryptionSetParameters{ID: &opt.DiskEncryptionSetID}
+			dataDisk.DiskEncryptionSet = &armcompute.DiskEncryptionSetParameters{ID: &opt.DiskEncryptionSetID}
 		}
-		disks = append(disks,
-			compute.DataDisk{
-				Name:                    &opt.DiskName,
-				Lun:                     &opt.Lun,
-				Caching:                 opt.CachingMode,
-				CreateOption:            "attach",
-				ManagedDisk:             managedDisk,
-				WriteAcceleratorEnabled: ptr.To(opt.WriteAcceleratorEnabled),
-			})
+		dataDisksToAttach = append(dataDisksToAttach, &dataDisk)
 	}
 
-	newVM := compute.VirtualMachineScaleSetVM{
-		VirtualMachineScaleSetVMProperties: &compute.VirtualMachineScaleSetVMProperties{
-			StorageProfile: &compute.StorageProfile{
-				DataDisks: &disks,
-			},
-		},
+	attachDataDisksRequest := armcompute.AttachDetachDataDisksRequest{
+		DataDisksToAttach: dataDisksToAttach,
 	}
+
+	defer func() {
+		_ = ss.DeleteCacheForNode(ctx, vmName)
+	}()
 
 	klog.V(2).Infof("azureDisk - update: rg(%s) vm(%s) - attach disk list(%+v)", nodeResourceGroup, nodeName, diskMap)
-	future, rerr := ss.VirtualMachineScaleSetVMsClient.UpdateAsync(ctx, nodeResourceGroup, vm.VMSSName, vm.InstanceID, newVM, "attach_disk")
-	if rerr != nil {
-		klog.Errorf("azureDisk - attach disk list(%+v) on rg(%s) vm(%s) failed, err: %v", diskMap, nodeResourceGroup, nodeName, rerr)
-		if rerr.HTTPStatusCode == http.StatusNotFound {
-			klog.Errorf("azureDisk - begin to filterNonExistingDisks(%v) on rg(%s) vm(%s)", diskMap, nodeResourceGroup, nodeName)
-			disks := FilterNonExistingDisks(ctx, ss.DisksClient, *newVM.VirtualMachineScaleSetVMProperties.StorageProfile.DataDisks)
-			newVM.VirtualMachineScaleSetVMProperties.StorageProfile.DataDisks = &disks
-			future, rerr = ss.VirtualMachineScaleSetVMsClient.UpdateAsync(ctx, nodeResourceGroup, vm.VMSSName, vm.InstanceID, newVM, "attach_disk")
-		}
+	// todo: update cache with result
+	_, retryErr := ss.VirtualMachineScaleSetVMsClient.AttachDetachDataDisks(ctx, nodeResourceGroup, vm.VMSSName, vm.InstanceID, attachDataDisksRequest, "attach_disk")
+	klog.V(2).Infof("azureDisk - update: rg(%s) vm(%s) - attach disk list(%+v) returned with %v", nodeResourceGroup, nodeName, diskMap, retryErr)
+	if retryErr != nil {
+		return retryErr.Error()
 	}
-
-	klog.V(2).Infof("azureDisk - update: rg(%s) vm(%s) - attach disk list(%+v) returned with %v", nodeResourceGroup, nodeName, diskMap, rerr)
-	if rerr != nil {
-		return rerr.Error()
-	}
-	return ss.WaitForUpdateResult(ctx, future, nodeName, "attach_disk")
+	return nil
 }
 
 // WaitForUpdateResult waits for the response of the update request

@@ -30,6 +30,7 @@ import (
 	context "context"
 	reflect "reflect"
 
+	armcompute "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute/v6"
 	compute "github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2022-08-01/compute"
 	azure "github.com/Azure/go-autorest/autorest/azure"
 	gomock "go.uber.org/mock/gomock"
@@ -146,4 +147,19 @@ func (m *MockInterface) WaitForUpdateResult(ctx context.Context, future *azure.F
 func (mr *MockInterfaceMockRecorder) WaitForUpdateResult(ctx, future, resourceGroupName, source any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "WaitForUpdateResult", reflect.TypeOf((*MockInterface)(nil).WaitForUpdateResult), ctx, future, resourceGroupName, source)
+}
+
+// AttachDetachDataDisks mocks base method.
+func (m *MockInterface) AttachDetachDataDisks(ctx context.Context, resourceGroupName, VMScaleSetName, instanceID string, parameters armcompute.AttachDetachDataDisksRequest, source string) (*armcompute.VirtualMachinesClientAttachDetachDataDisksResponse, *retry.Error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "AttachDetachDataDisks", ctx, resourceGroupName, VMScaleSetName, instanceID, parameters, source)
+	ret0, _ := ret[0].(*armcompute.VirtualMachinesClientAttachDetachDataDisksResponse)
+	ret1, _ := ret[1].(*retry.Error)
+	return ret0, ret1
+}
+
+// AttachDetachDataDisks indicates an expected call of AttachDetachDataDisks.
+func (mr *MockInterfaceMockRecorder) AttachDetachDataDisks(ctx, resourceGroupName, VMScaleSetName, instanceID, parameters, source any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AttachDetachDataDisks", reflect.TypeOf((*MockInterface)(nil).AttachDetachDataDisks), ctx, resourceGroupName, VMScaleSetName, instanceID, parameters, source)
 }
