@@ -28,17 +28,6 @@ import (
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
 )
 
-var (
-	// VolumeRegexp matches a Windows Volume
-	// example: Volume{452e318a-5cde-421e-9831-b9853c521012}
-	//
-	// The field UniqueId has an additional prefix which is NOT included in the regex
-	// however the regex can match UniqueId too
-	// PS C:\disks> (Get-Disk -Number 1 | Get-Partition | Get-Volume).UniqueId
-	// \\?\Volume{452e318a-5cde-421e-9831-b9853c521012}\
-	VolumeRegexp = regexp.MustCompile(`Volume\{[\w-]*\}`)
-)
-
 func getVolumeSize(volumeID string) (int64, error) {
 	cmd := "(Get-Volume -UniqueId \"$Env:volumeID\" | Get-partition).Size"
 	out, err := azureutils.RunPowershellCmd(cmd, fmt.Sprintf("volumeID=%s", volumeID))
