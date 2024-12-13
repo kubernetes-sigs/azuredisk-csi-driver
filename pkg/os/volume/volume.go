@@ -143,7 +143,8 @@ func ResizeVolume(volumeID string, size int64) error {
 		return fmt.Errorf("error getting the current size of volume (%s) with error (%v)", volumeID, err)
 	}
 
-	if currentSize >= finalSize {
+	// only resize if finalSize - currentSize is greater than 100MB
+	if finalSize-currentSize < 100*1024*1024 {
 		klog.V(2).Infof("Attempted to resize volume %s to a lower size, from currentBytes=%d wantedBytes=%d", volumeID, currentSize, finalSize)
 		return nil
 	}
