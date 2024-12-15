@@ -40,7 +40,7 @@ require (
 	k8s.io/component-base v0.31.3
 	k8s.io/klog/v2 v2.130.1
 	k8s.io/kubernetes v1.31.4
-	k8s.io/mount-utils v0.29.7
+	k8s.io/mount-utils v0.32.0
 	k8s.io/pod-security-admission v0.0.0
 	k8s.io/utils v0.0.0-20241104163129-6fe5fd82f078
 	sigs.k8s.io/cloud-provider-azure v1.29.1-0.20241203125659-88ef46cb15b8
@@ -112,7 +112,8 @@ require (
 	github.com/kylelemons/godebug v1.1.0 // indirect
 	github.com/mailru/easyjson v0.7.7 // indirect
 	github.com/moby/spdystream v0.4.0 // indirect
-	github.com/moby/sys/mountinfo v0.7.1 // indirect
+	github.com/moby/sys/mountinfo v0.7.2 // indirect
+	github.com/moby/sys/userns v0.1.0 // indirect
 	github.com/modern-go/concurrent v0.0.0-20180306012644-bacd9c7ef1dd // indirect
 	github.com/modern-go/reflect2 v1.0.2 // indirect
 	github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822 // indirect
@@ -196,7 +197,6 @@ replace (
 	k8s.io/kubelet => k8s.io/kubelet v0.31.2
 	k8s.io/legacy-cloud-providers => k8s.io/legacy-cloud-providers v0.31.2
 	k8s.io/metrics => k8s.io/metrics v0.31.2
-	k8s.io/mount-utils => k8s.io/mount-utils v0.29.7
 	k8s.io/pod-security-admission => k8s.io/pod-security-admission v0.31.2
 	k8s.io/sample-apiserver => k8s.io/sample-apiserver v0.31.2
 	k8s.io/sample-cli-plugin => k8s.io/sample-cli-plugin v0.31.2
