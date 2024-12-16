@@ -312,7 +312,7 @@ func (d *DriverV2) ControllerModifyVolume(ctx context.Context, req *csi.Controll
 
 	diskName, err := azureutils.GetDiskName(diskURI)
 	if err != nil {
-		return nil, status.Errorf(codes.Internal, "%v", err)
+		return nil, status.Errorf(codes.NotFound, "%v", err)
 	}
 
 	if _, err := d.checkDiskExists(ctx, diskURI); err != nil {
