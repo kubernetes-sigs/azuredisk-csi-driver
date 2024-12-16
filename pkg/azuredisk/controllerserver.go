@@ -70,11 +70,14 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 		klog.Errorf("invalid create volume req: %v", req)
 		return nil, err
 	}
-	params := req.GetParameters()
-	diskParams, err := azureutils.ParseDiskParameters(params)
+	diskParams, err := azureutils.ParseDiskParameters(req.GetParameters())
 	if err != nil {
 		return nil, status.Errorf(codes.InvalidArgument, "Failed parsing disk parameters: %v", err)
 	}
+	if _, err = azureutils.ParseDiskParameters(req.GetMutableParameters()); err != nil {
+		return nil, status.Errorf(codes.InvalidArgument, "Failed parsing disk mutable parameters: %v", err)
+	}
+
 	name := req.GetName()
 	if len(name) == 0 {
 		return nil, status.Error(codes.InvalidArgument, "CreateVolume Name must be provided")
@@ -400,7 +403,7 @@ func (d *Driver) ControllerModifyVolume(ctx context.Context, req *csi.Controller
 
 	diskName, err := azureutils.GetDiskName(diskURI)
 	if err != nil {
-		return nil, status.Errorf(codes.Internal, "%v", err)
+		return nil, status.Errorf(codes.NotFound, "%v", err)
 	}
 
 	if _, err := d.checkDiskExists(ctx, diskURI); err != nil {

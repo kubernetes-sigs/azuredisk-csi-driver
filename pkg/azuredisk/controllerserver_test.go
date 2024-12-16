@@ -666,7 +666,7 @@ func TestControllerModifyVolume(t *testing.T) {
 				VolumeId: "123",
 			},
 			expectedResp:    nil,
-			expectedErrCode: codes.Internal,
+			expectedErrCode: codes.NotFound,
 		},
 		{
 			desc: "fail with wrong disk name",
@@ -674,7 +674,7 @@ func TestControllerModifyVolume(t *testing.T) {
 				VolumeId: "/subscriptions/123",
 			},
 			expectedResp:    nil,
-			expectedErrCode: codes.Internal,
+			expectedErrCode: codes.NotFound,
 		},
 		{
 			desc: "fail with wrong sku name",
