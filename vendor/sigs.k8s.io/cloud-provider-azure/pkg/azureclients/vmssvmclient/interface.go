@@ -19,6 +19,7 @@ package vmssvmclient
 import (
 	"context"
 
+	armcompute "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute/v6"
 	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2022-08-01/compute"
 	"github.com/Azure/go-autorest/autorest/azure"
 
@@ -27,7 +28,7 @@ import (
 
 const (
 	// APIVersion is the API version for VMSS.
-	APIVersion = "2022-03-01"
+	APIVersion = "2024-07-01"
 	// AzureStackCloudAPIVersion is the API version for Azure Stack
 	AzureStackCloudAPIVersion = "2019-07-01"
 	// AzureStackCloudName is the cloud name of Azure Stack
@@ -54,4 +55,7 @@ type Interface interface {
 
 	// UpdateVMs updates a list of VirtualMachineScaleSetVM from map[instanceID]compute.VirtualMachineScaleSetVM.
 	UpdateVMs(ctx context.Context, resourceGroupName string, VMScaleSetName string, instances map[string]compute.VirtualMachineScaleSetVM, source string, batchSize int) *retry.Error
+
+	// AttachDetachDataDisks attaches or detaches a list of managed data disks to/from a VM.
+	AttachDetachDataDisks(ctx context.Context, resourceGroupName, VMScaleSetName, instanceID string, parameters armcompute.AttachDetachDataDisksRequest, source string) (*armcompute.VirtualMachinesClientAttachDetachDataDisksResponse, *retry.Error)
 }
