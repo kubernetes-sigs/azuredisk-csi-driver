@@ -120,6 +120,10 @@ func findDiskByLun(lun int, io azureutils.IOHandler, _ *mount.SafeFormatAndMount
 }
 
 func formatAndMount(source, target, fstype string, options []string, m *mount.SafeFormatAndMount) error {
+	if newOptions, exists := azureutils.RemoveOptionIfExists(options, "noformat"); exists {
+		klog.V(2).Infof("formatAndMount - skip format for %s, old options: %v, new options: %v", target, options, newOptions)
+		return m.Mount(source, target, fstype, newOptions)
+	}
 	return m.FormatAndMount(source, target, fstype, options)
 }
 
