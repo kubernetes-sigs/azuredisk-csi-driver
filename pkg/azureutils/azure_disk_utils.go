@@ -862,3 +862,14 @@ func RunPowershellCmd(command string, envs ...string) ([]byte, error) {
 	klog.V(6).Infof("Executing command: %q", cmd.String())
 	return cmd.CombinedOutput()
 }
+
+// RemoveOptionIfExists removes the given option from the list of options
+// return the new list and a boolean indicating whether the option was found.
+func RemoveOptionIfExists(options []string, removeOption string) ([]string, bool) {
+	for i, option := range options {
+		if option == removeOption {
+			return append(options[:i], options[i+1:]...), true
+		}
+	}
+	return options, false
+}
