@@ -165,6 +165,8 @@ func (d *Driver) NodeStageVolume(_ context.Context, req *csi.NodeStageVolumeRequ
 		needResize = true
 	}
 	if !needResize {
+		// Filesystem resize is required after snapshot restore / volume clone
+		// https://github.com/kubernetes/kubernetes/issues/94929
 		if needResize, err = needResizeVolume(source, target, d.mounter); err != nil {
 			klog.Errorf("NodeStageVolume: could not determine if volume %s needs to be resized: %v", diskURI, err)
 		}
