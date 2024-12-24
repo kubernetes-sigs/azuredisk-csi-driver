@@ -2357,7 +2357,6 @@ func TestGetSourceDiskSize(t *testing.T) {
 }
 
 func getFakeDriverWithKubeClient(ctrl *gomock.Controller) FakeDriver {
-
 	d, _ := NewFakeDriver(ctrl)
 
 	corev1 := mockcorev1.NewMockInterface(ctrl)

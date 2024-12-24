@@ -197,6 +197,10 @@ spec:
             capabilities:
               drop:
               - ALL
+          lifecycle:
+            preStop:
+              exec:
+                command: ["/azurediskplugin", "--pre-stop-hook=true"]
           volumeMounts:
             - mountPath: /csi
               name: socket-dir

@@ -26,7 +26,7 @@ import (
 
 func TestMain(t *testing.T) {
 	// Set the version flag to true
-	os.Args = []string{"cmd", "-version"}
+	os.Args = []string{"cmd", "--version"}
 
 	// Capture stdout
 	old := os.Stdout
