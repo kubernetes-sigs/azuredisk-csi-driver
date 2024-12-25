@@ -137,7 +137,7 @@ func IsSymlink(tgt string) (bool, error) {
 	}
 
 	// If its a link and it points to an existing file then its a mount point.
-	if stat.Mode()&os.ModeSymlink != 0 {
+	if stat.Mode()&os.ModeSymlink != 0 || stat.Mode()&os.ModeIrregular != 0 {
 		target, err := os.Readlink(tgt)
 		if err != nil {
 			return false, fmt.Errorf("readlink error: %v", err)
