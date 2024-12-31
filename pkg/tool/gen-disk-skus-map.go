@@ -49,6 +49,11 @@ func init() {
 	klog.InitFlags(nil)
 }
 
+// exit is a separate function to handle program termination
+var exit = func(code int) {
+	os.Exit(code)
+}
+
 func main() {
 
 	boilerPlate := `/*
@@ -137,7 +142,7 @@ import (
 			diskSkuInfoMap[account][diskSize], err = getDiskCapabilities(sku)
 			if err != nil {
 				klog.Errorf("populateSkuMap: Failed to get disk capabilities for disk %s %s %s. Error: %v", *sku.Name, *sku.Size, *sku.Tier, err)
-				os.Exit(1)
+				exit(1)
 			}
 		} else if resType == "virtualmachines" {
 
@@ -146,7 +151,7 @@ import (
 			err = populateNodeCapabilities(sku, &nodeInfo)
 			if err != nil {
 				klog.Errorf("populateSkuMap: Failed to populate node capabilities. Error: %v", err)
-				os.Exit(1)
+				exit(1)
 			}
 			vmSkuInfoMap[strings.ToLower(*sku.Name)] = nodeInfo
 		}
