@@ -118,3 +118,7 @@ spec:
             capabilities:
               drop:
                 - ALL
+          lifecycle:
+            preStop:
+              exec:
+                command: ["/azurediskplugin.exe", "--pre-stop-hook=true"]
