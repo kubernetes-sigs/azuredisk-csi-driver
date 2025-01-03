@@ -20,10 +20,20 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
+	"sync/atomic"
 
 	"github.com/fsnotify/fsnotify"
 	"k8s.io/klog/v2"
 )
+
+var exit atomic.Value
+
+func init() {
+	exit.Store(func(code int) {
+		os.Exit(code)
+	})
+
+}
 
 var watchCertificateFileOnce sync.Once
 
@@ -64,7 +74,7 @@ func checkForFileChanges(path string) error {
 			case event, ok := <-watcher.Events:
 				if ok && (event.Has(fsnotify.Write) || event.Has(fsnotify.Chmod) || event.Has(fsnotify.Remove)) {
 					klog.V(2).Infof("file, %s, was modified, exiting...", event.Name)
-					os.Exit(0)
+					exit.Load().(func(int))(0)
 				}
 			case err, ok := <-watcher.Errors:
 				if ok {
