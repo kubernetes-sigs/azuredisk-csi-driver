@@ -410,7 +410,12 @@ func (d *Driver) checkDiskExists(ctx context.Context, diskURI string) (*armcompu
 	if err != nil {
 		return nil, err
 	}
-	disk, err := diskClient.Get(ctx, resourceGroup, diskName)
+
+	// get disk operation should timeout within 1min if it takes too long time
+	newCtx, cancel := context.WithTimeout(ctx, time.Minute)
+	defer cancel()
+
+	disk, err := diskClient.Get(newCtx, resourceGroup, diskName)
 	if err != nil {
 		return nil, err
 	}
