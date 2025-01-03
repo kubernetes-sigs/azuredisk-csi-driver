@@ -95,7 +95,7 @@ import (
 
 	var resources []*armcompute.ResourceSKU
 
-	if err := getAllSkus(skusFullfilePath); err != nil {
+	if err := getAllSkus(&skusFullfilePath); err != nil {
 		klog.Errorf("Could not get skus. Error: %v", err)
 	}
 
@@ -145,7 +145,6 @@ import (
 				exit(1)
 			}
 		} else if resType == "virtualmachines" {
-
 			nodeInfo := optimization.NodeInfo{}
 			nodeInfo.SkuName = *sku.Name
 			err = populateNodeCapabilities(sku, &nodeInfo)
@@ -215,13 +214,19 @@ func formatInt(value int) string {
 
 	return strconv.Itoa(value)
 }
-func getAllSkus(filePath string) (err error) {
-	klog.V(2).Infof("Getting skus and writing to %s", filePath)
+func getAllSkus(filePath *string) (err error) {
+	if os.Getenv("TEST_SCENARIO") == "true" {
+		if _, err := os.Stat("skus-sample.json"); err == nil {
+			*filePath = "skus-sample.json"
+			return nil
+		}
+	}
+	klog.V(2).Infof("Getting skus and writing to %s", *filePath)
 	cmd := exec.Command("az", "vm", "list-skus")
-	outfile, err := os.Create(filePath)
+	outfile, err := os.Create(*filePath)
 	var errorBuf bytes.Buffer
 	if err != nil {
-		klog.Errorf("Could dnot create file. Error: %v File: %s", err, filePath)
+		klog.Errorf("Could not create file. Error: %v File: %s", err, *filePath)
 		return err
 	}
 	defer outfile.Close()

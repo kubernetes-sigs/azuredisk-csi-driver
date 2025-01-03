@@ -1,0 +1,366 @@
+[
+  {
+    "apiVersions": null,
+    "capabilities": [
+      {
+        "name": "MaximumPlatformFaultDomainCount",
+        "value": "2"
+      }
+    ],
+    "capacity": null,
+    "costs": null,
+    "family": null,
+    "kind": null,
+    "locationInfo": [
+      {
+        "location": "AustraliaCentral",
+        "zoneDetails": [],
+        "zones": []
+      }
+    ],
+    "locations": [
+      "AustraliaCentral"
+    ],
+    "name": "Aligned",
+    "resourceType": "availabilitySets",
+    "restrictions": [],
+    "size": null,
+    "tier": null
+  },
+  {
+    "apiVersions": null,
+    "capabilities": [
+      {
+        "name": "MaxResourceVolumeMB",
+        "value": "10240"
+      },
+      {
+        "name": "OSVhdSizeMB",
+        "value": "1047552"
+      },
+      {
+        "name": "vCPUs",
+        "value": "1"
+      },
+      {
+        "name": "MemoryPreservingMaintenanceSupported",
+        "value": "True"
+      },
+      {
+        "name": "HyperVGenerations",
+        "value": "V1"
+      },
+      {
+        "name": "MemoryGB",
+        "value": "2"
+      },
+      {
+        "name": "MaxDataDiskCount",
+        "value": "2"
+      },
+      {
+        "name": "CpuArchitectureType",
+        "value": "x64"
+      },
+      {
+        "name": "LowPriorityCapable",
+        "value": "True"
+      },
+      {
+        "name": "PremiumIO",
+        "value": "False"
+      },
+      {
+        "name": "VMDeploymentTypes",
+        "value": "PaaS,IaaS"
+      },
+      {
+        "name": "vCPUsAvailable",
+        "value": "1"
+      },
+      {
+        "name": "ACUs",
+        "value": "100"
+      },
+      {
+        "name": "vCPUsPerCore",
+        "value": "1"
+      },
+      {
+        "name": "CombinedTempDiskAndCachedIOPS",
+        "value": "1000"
+      },
+      {
+        "name": "CombinedTempDiskAndCachedReadBytesPerSecond",
+        "value": "20971520"
+      },
+      {
+        "name": "CombinedTempDiskAndCachedWriteBytesPerSecond",
+        "value": "10485760"
+      },
+      {
+        "name": "UncachedDiskIOPS",
+        "value": "1600"
+      },
+      {
+        "name": "UncachedDiskBytesPerSecond",
+        "value": "24000000"
+      },
+      {
+        "name": "EphemeralOSDiskSupported",
+        "value": "False"
+      },
+      {
+        "name": "EncryptionAtHostSupported",
+        "value": "False"
+      },
+      {
+        "name": "CapacityReservationSupported",
+        "value": "False"
+      },
+      {
+        "name": "AcceleratedNetworkingEnabled",
+        "value": "False"
+      },
+      {
+        "name": "RdmaEnabled",
+        "value": "False"
+      },
+      {
+        "name": "MaxNetworkInterfaces",
+        "value": "2"
+      }
+    ],
+    "capacity": null,
+    "costs": null,
+    "family": "standardAv2Family",
+    "kind": null,
+    "locationInfo": [
+      {
+        "location": "australiaeast",
+        "zoneDetails": [],
+        "zones": [
+          "1",
+          "2",
+          "3"
+        ]
+      }
+    ],
+    "locations": [
+      "australiaeast"
+    ],
+    "name": "Standard_A1_v2",
+    "resourceType": "virtualMachines",
+    "restrictions": [],
+    "size": "A1_v2",
+    "tier": "Standard"
+  },
+  {
+    "apiVersions": null,
+    "capabilities": [
+      {
+        "name": "MaxSizeGiB",
+        "value": "65536"
+      },
+      {
+        "name": "MinSizeGiB",
+        "value": "1"
+      },
+      {
+        "name": "MaxIOpsReadWrite",
+        "value": "80000"
+      },
+      {
+        "name": "MinIOpsReadWrite",
+        "value": "3000"
+      },
+      {
+        "name": "MaxBandwidthMBpsReadWrite",
+        "value": "1200"
+      },
+      {
+        "name": "MinBandwidthMBpsReadWrite",
+        "value": "125"
+      },
+      {
+        "name": "MaxValueOfMaxShares",
+        "value": "15"
+      },
+      {
+        "name": "MinIOSizeKiBps",
+        "value": "4"
+      },
+      {
+        "name": "MaxIOSizeKiBps",
+        "value": "256"
+      },
+      {
+        "name": "MinIopsReadOnly",
+        "value": "3000"
+      },
+      {
+        "name": "MaxIopsReadOnly",
+        "value": "80000"
+      },
+      {
+        "name": "MinBandwidthMBpsReadOnly",
+        "value": "125"
+      },
+      {
+        "name": "MaxBandwidthMBpsReadOnly",
+        "value": "1200"
+      },
+      {
+        "name": "MaxIopsPerGiBReadWrite",
+        "value": "500"
+      },
+      {
+        "name": "MaxIopsPerGiBReadOnly",
+        "value": "500"
+      },
+      {
+        "name": "MinIopsPerGiBReadWrite",
+        "value": "1"
+      },
+      {
+        "name": "MinIopsPerGiBReadOnly",
+        "value": "1"
+      },
+      {
+        "name": "BillingPartitionSizes",
+        "value": "1, 2, 3, 4, 8, 16, 32, 64, 128, 256, 512, 1024, 2048, 3072, 4096, 5120, 6144, 7168, 8192, 9216, 10240, 11264, 12288, 13312, 14336, 15360, 16384, 17408, 18432, 19456, 20480, 21504, 22528, 23552,24576,25600,26624,27648,28672,29696,30720,31744,32768,33792,34816,35840,36864,37888,38912,39936,40960,41984,43008,44032,45056,46080,47104,48128,49152,50176,51200,52224,53248,54272,55296,56320,57344,58368,59392,60416,61440,62464,63488,64512,65536"
+      },
+      {
+        "name": "PlatformFaultDomainCount",
+        "value": "2"
+      }
+    ],
+    "capacity": null,
+    "costs": null,
+    "family": null,
+    "kind": null,
+    "locationInfo": [
+      {
+        "location": "australiaeast",
+        "zoneDetails": [],
+        "zones": [
+          "3",
+          "1",
+          "2"
+        ]
+      }
+    ],
+    "locations": [
+      "australiaeast"
+    ],
+    "name": "PremiumV2_LRS",
+    "resourceType": "disks",
+    "restrictions": [],
+    "size": "P",
+    "tier": "Premium"
+  },
+  {
+    "apiVersions": null,
+    "capabilities": [
+      {
+        "name": "MaxSizeGiB",
+        "value": "65536"
+      },
+      {
+        "name": "MinSizeGiB",
+        "value": "1"
+      },
+      {
+        "name": "MaxIOpsReadWrite",
+        "value": "80000"
+      },
+      {
+        "name": "MinIOpsReadWrite",
+        "value": "3000"
+      },
+      {
+        "name": "MaxBandwidthMBpsReadWrite",
+        "value": "1200"
+      },
+      {
+        "name": "MinBandwidthMBpsReadWrite",
+        "value": "125"
+      },
+      {
+        "name": "MaxValueOfMaxShares",
+        "value": "15"
+      },
+      {
+        "name": "MinIOSizeKiBps",
+        "value": "4"
+      },
+      {
+        "name": "MaxIOSizeKiBps",
+        "value": "256"
+      },
+      {
+        "name": "MinIopsReadOnly",
+        "value": "3000"
+      },
+      {
+        "name": "MaxIopsReadOnly",
+        "value": "80000"
+      },
+      {
+        "name": "MinBandwidthMBpsReadOnly",
+        "value": "125"
+      },
+      {
+        "name": "MaxBandwidthMBpsReadOnly",
+        "value": "1200"
+      },
+      {
+        "name": "MaxIopsPerGiBReadWrite",
+        "value": "500"
+      },
+      {
+        "name": "MaxIopsPerGiBReadOnly",
+        "value": "500"
+      },
+      {
+        "name": "MinIopsPerGiBReadWrite",
+        "value": "1"
+      },
+      {
+        "name": "MinIopsPerGiBReadOnly",
+        "value": "1"
+      },
+      {
+        "name": "BillingPartitionSizes",
+        "value": "1, 2, 3, 4, 8, 16, 32, 64, 128, 256, 512, 1024, 2048, 3072, 4096, 5120, 6144, 7168, 8192, 9216, 10240, 11264, 12288, 13312, 14336, 15360, 16384, 17408, 18432, 19456, 20480, 21504, 22528, 23552,24576,25600,26624,27648,28672,29696,30720,31744,32768,33792,34816,35840,36864,37888,38912,39936,40960,41984,43008,44032,45056,46080,47104,48128,49152,50176,51200,52224,53248,54272,55296,56320,57344,58368,59392,60416,61440,62464,63488,64512,65536"
+      },
+      {
+        "name": "PlatformFaultDomainCount",
+        "value": "2"
+      }
+    ],
+    "capacity": null,
+    "costs": null,
+    "family": null,
+    "kind": null,
+    "locationInfo": [
+      {
+        "location": "australiaeast",
+        "zoneDetails": [],
+        "zones": [
+          "3",
+          "1",
+          "2"
+        ]
+      }
+    ],
+    "locations": [
+      "australiaeast"
+    ],
+    "name": "PremiumV2_LRS",
+    "resourceType": "disks",
+    "restrictions": [],
+    "size": "P",
+    "tier": "Premium"
+  }
+]
