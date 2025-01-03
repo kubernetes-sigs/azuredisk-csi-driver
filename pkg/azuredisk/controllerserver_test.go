@@ -725,7 +725,7 @@ func TestControllerModifyVolume(t *testing.T) {
 		}
 		diskClient := mock_diskclient.NewMockInterface(cntl)
 		d.getClientFactory().(*mock_azclient.MockClientFactory).EXPECT().GetDiskClientForSub(gomock.Any()).Return(diskClient, nil).AnyTimes()
-		diskClient.EXPECT().Get(gomock.Eq(ctx), gomock.Any(), gomock.Any()).Return(disk, nil).AnyTimes()
+		diskClient.EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any()).Return(disk, nil).AnyTimes()
 		diskClient.EXPECT().Patch(gomock.Eq(ctx), gomock.Any(), gomock.Any(), gomock.Any()).Return(disk, nil).AnyTimes()
 
 		result, err := d.ControllerModifyVolume(ctx, test.req)
