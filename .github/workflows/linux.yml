@@ -26,4 +26,4 @@ jobs:
     - name: Send coverage
       env:
         COVERALLS_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      run: goveralls -coverprofile=profile.cov -service=github
+      run: goveralls -coverprofile=profile.cov -service=github -ignore=./pkg/azuredisk/mockcorev1/interface.go,pkg/azuredisk/mockkubeclient/interface.go,pkg/azuredisk/mockpersistentvolume/interface.go,pkg/azureutils/fake_iohandler.go,pkg/mounter/fake_safe_mounter.go
