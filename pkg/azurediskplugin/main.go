@@ -23,6 +23,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"runtime"
 	"strings"
 
 	"k8s.io/component-base/metrics/legacyregistry"
@@ -60,6 +61,9 @@ func main() {
 }
 
 func handle() {
+	runtime.GOMAXPROCS(int(driverOptions.GoMaxProcs))
+	klog.Infof("Sys info: NumCPU: %v MAXPROC: %v", runtime.NumCPU(), runtime.GOMAXPROCS(0))
+
 	driver := azuredisk.NewDriver(&driverOptions)
 	if driver == nil {
 		klog.Fatalln("Failed to initialize azuredisk CSI Driver")
