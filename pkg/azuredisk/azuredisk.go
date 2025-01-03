@@ -343,7 +343,12 @@ func (d *Driver) checkDiskExists(ctx context.Context, diskURI string) (*compute.
 		return nil, nil
 	}
 	subsID := azureutils.GetSubscriptionIDFromURI(diskURI)
-	disk, rerr := d.cloud.DisksClient.Get(ctx, subsID, resourceGroup, diskName)
+
+	// get disk operation should timeout within 1min if it takes too long time
+	newCtx, cancel := context.WithTimeout(ctx, time.Minute)
+	defer cancel()
+
+	disk, rerr := d.cloud.DisksClient.Get(newCtx, subsID, resourceGroup, diskName)
 	if rerr != nil {
 		if rerr.IsThrottled() || strings.Contains(rerr.RawError.Error(), consts.RateLimited) {
 			klog.Warningf("checkDiskExists(%s) is throttled with error: %v", diskURI, rerr.Error())
