@@ -64,6 +64,7 @@ type DriverOptions struct {
 	RemoveNotReadyTaint          bool
 	MaxConcurrentFormat          int64
 	ConcurrentFormatTimeout      int64
+	GoMaxProcs                   int64
 }
 
 func (o *DriverOptions) AddFlags() *flag.FlagSet {
@@ -109,6 +110,6 @@ func (o *DriverOptions) AddFlags() *flag.FlagSet {
 	fs.StringVar(&o.Endpoint, "endpoint", "unix://tmp/csi.sock", "CSI endpoint")
 	fs.Int64Var(&o.MaxConcurrentFormat, "max-concurrent-format", 2, "maximum number of concurrent format exec calls")
 	fs.Int64Var(&o.ConcurrentFormatTimeout, "concurrent-format-timeout", 300, "maximum time in seconds duration of a format operation before its concurrency token is released")
-
+	fs.Int64Var(&o.GoMaxProcs, "max-procs", 2, "maximum number of CPUs that can be executing simultaneously in golang runtime")
 	return fs
 }
