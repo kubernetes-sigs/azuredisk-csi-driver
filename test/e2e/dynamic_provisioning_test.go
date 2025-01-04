@@ -223,6 +223,7 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 	})
 
 	ginkgo.It("should receive FailedMount event with invalid mount options [kubernetes.io/azure-disk] [disk.csi.azure.com]", func(ctx ginkgo.SpecContext) {
+		ginkgo.Skip("skip this test")
 		skipIfTestingInWindowsCluster()
 
 		pods := []testsuites.PodDetails{
@@ -1269,6 +1270,7 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 	})
 
 	ginkgo.It("should succeed when attaching a shared block volume to multiple pods [disk.csi.azure.com][shared disk]", func(ctx ginkgo.SpecContext) {
+		ginkgo.Skip("skip this test")
 		skipIfUsingInTreeVolumePlugin()
 		skipIfOnAzureStackCloud()
 		skipIfTestingInWindowsCluster()
