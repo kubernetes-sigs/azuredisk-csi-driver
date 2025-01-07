@@ -22,6 +22,10 @@ import (
 )
 
 func TestMain(t *testing.T) {
+	// Set environment variable for test scenario
+	os.Setenv("TEST_SCENARIO", "true")
+	defer os.Unsetenv("TEST_SCENARIO")
+
 	// Capture stdout
 	old := os.Stdout
 	_, w, _ := os.Pipe()
