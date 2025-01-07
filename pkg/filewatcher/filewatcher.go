@@ -32,6 +32,11 @@ var exit = func(code int) {
 
 var watchCertificateFileOnce sync.Once
 
+// resetWatchCertificateFileOnce resets the watchCertificateFileOnce variable. This is used for testing purposes.
+func resetWatchCertificateFileOnce() {
+	watchCertificateFileOnce = sync.Once{}
+}
+
 // WatchFileForChanges watches the file, fileToWatch, for changes. If the file contents have changed, the pod this
 // function is running on will be restarted.
 func WatchFileForChanges(fileToWatch string) error {
