@@ -132,7 +132,7 @@ func (c *controllerCommon) AttachDisk(ctx context.Context, diskName, diskURI str
 			if err != nil {
 				return -1, err
 			}
-			if strings.EqualFold(string(nodeName), string(attachedNode)) {
+			if isSameNode(string(nodeName), string(attachedNode)) {
 				klog.Warningf("volume %s is actually attached to current node %s, invalidate vm cache and return error", diskURI, nodeName)
 				// update VM(invalidate vm cache)
 				if errUpdate := c.UpdateVM(ctx, nodeName); errUpdate != nil {
