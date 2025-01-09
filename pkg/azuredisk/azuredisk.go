@@ -786,38 +786,3 @@ func checkAllocatable(ctx context.Context, clientset kubernetes.Interface, nodeN
 
 	return fmt.Errorf("isAllocatableSet: driver not found on node %s", nodeName)
 }
-
-// isSameNode checks whether node1 and node2 are the same node
-func isSameNode(node1, node2 string) bool {
-	if strings.EqualFold(node1, node2) {
-		return true
-	}
-	// check whether node1 and node2 are VMSS instance name
-	if len(node1) < 6 || len(node2) < 6 {
-		return false
-	}
-
-	// machineName is composed of computerNamePrefix and 36-based instanceID.
-	// And instanceID part if in fixed length of 6 characters.
-	// Refer https://msftstack.wordpress.com/2017/05/10/figuring-out-azure-vm-scale-set-machine-names/.
-	if strings.EqualFold(node1[:len(node1)-6], node2[:len(node2)-6]) {
-		// check whether node1 is 36-based instanceID and node2 is 10-based instanceID
-		id1, err := strconv.ParseUint(node1[len(node1)-6:], 36, 64)
-		if err == nil {
-			id2, err := strconv.ParseUint(node2[len(node2)-6:], 10, 64)
-			if err == nil && id1 == id2 {
-				return true
-			}
-		}
-
-		// check whether node1 is 10-based instanceID and node2 is 36-based instanceID
-		id1, err = strconv.ParseUint(node1[len(node1)-6:], 10, 64)
-		if err == nil {
-			id2, err := strconv.ParseUint(node2[len(node2)-6:], 36, 64)
-			if err == nil && id1 == id2 {
-				return true
-			}
-		}
-	}
-	return false
-}
