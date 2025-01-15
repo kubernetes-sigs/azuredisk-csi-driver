@@ -35,10 +35,6 @@ spec:
 {{ toYaml . | indent 8 }}
 {{- end }}
     spec:
-      {{- if .Values.imagePullSecrets }}
-      imagePullSecrets:
-{{ toYaml .Values.imagePullSecrets | indent 8 }}
-      {{- end }}
       hostNetwork: {{ .Values.linux.hostNetwork }}
       dnsPolicy: Default
       serviceAccountName: {{ .Values.serviceAccount.node }}
