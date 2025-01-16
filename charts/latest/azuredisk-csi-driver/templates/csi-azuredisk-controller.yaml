@@ -31,10 +31,6 @@ spec:
 {{ toYaml . | indent 8 }}
 {{- end }}
     spec:
-      {{- if .Values.imagePullSecrets }}
-      imagePullSecrets:
-{{ toYaml .Values.imagePullSecrets | indent 8 }}
-      {{- end }}
       hostNetwork: {{ .Values.controller.hostNetwork }}
       serviceAccountName: {{ .Values.serviceAccount.controller }}
       nodeSelector:
