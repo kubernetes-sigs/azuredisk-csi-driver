@@ -20,7 +20,6 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strconv"
@@ -86,9 +85,6 @@ var (
 		{Mode: csi.VolumeCapability_AccessMode_MULTI_NODE_SINGLE_WRITER},
 		{Mode: csi.VolumeCapability_AccessMode_MULTI_NODE_MULTI_WRITER},
 	}
-
-	// control the number of concurrent powershell commands running on Windows node
-	powershellCmdSem = make(chan struct{}, 3)
 )
 
 type ManagedDiskParameters struct {
@@ -828,17 +824,6 @@ func SetKeyValueInMap(m map[string]string, key, value string) {
 		}
 	}
 	m[key] = value
-}
-
-func RunPowershellCmd(command string, envs ...string) ([]byte, error) {
-	// acquire a semaphore to limit the number of concurrent operations
-	powershellCmdSem <- struct{}{}
-	defer func() { <-powershellCmdSem }()
-
-	cmd := exec.Command("powershell", "-Mta", "-NoProfile", "-Command", command)
-	cmd.Env = append(os.Environ(), envs...)
-	klog.V(6).Infof("Executing command: %q", cmd.String())
-	return cmd.CombinedOutput()
 }
 
 // GenerateVolumeName returns a PV name with clusterName prefix. The function
