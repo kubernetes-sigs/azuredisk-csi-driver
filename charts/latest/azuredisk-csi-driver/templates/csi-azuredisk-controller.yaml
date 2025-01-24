@@ -200,7 +200,7 @@ spec:
               drop:
               - ALL
 {{- if eq .Values.controller.enableTrafficManager true }}
-        - image: mcr.microsoft.com/aks/ccp/ccp-auto-thrust:master.221118.2
+        - image: mcr.microsoft.com/aks/ccp/ccp-auto-thrust:master.250108.7
           imagePullPolicy: IfNotPresent
           name: proxy
           command:
