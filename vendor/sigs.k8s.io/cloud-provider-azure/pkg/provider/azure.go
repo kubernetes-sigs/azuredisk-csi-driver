@@ -71,7 +71,6 @@ import (
 	"sigs.k8s.io/cloud-provider-azure/pkg/provider/securitygroup"
 	"sigs.k8s.io/cloud-provider-azure/pkg/provider/subnet"
 	"sigs.k8s.io/cloud-provider-azure/pkg/provider/zone"
-	"sigs.k8s.io/cloud-provider-azure/pkg/version"
 
 	azcache "sigs.k8s.io/cloud-provider-azure/pkg/cache"
 	"sigs.k8s.io/cloud-provider-azure/pkg/consts"
@@ -468,18 +467,17 @@ func (az *Cloud) InitializeCloudFromConfig(ctx context.Context, config *config.C
 	az.configAzureClients(servicePrincipalToken, multiTenantServicePrincipalToken, networkResourceServicePrincipalToken)
 
 	if az.ComputeClientFactory == nil {
-		if az.ARMClientConfig.UserAgent == "" {
-			k8sVersion := version.Get().GitVersion
-			az.ARMClientConfig.UserAgent = fmt.Sprintf("kubernetes-cloudprovider/%s", k8sVersion)
+		cloud, _, err := azclient.GetAzureCloudConfigAndEnvConfig(&az.ARMClientConfig)
+		if err != nil {
+			return err
 		}
-
 		var cred azcore.TokenCredential
 		if authProvider.IsMultiTenantModeEnabled() {
 			multiTenantCred := authProvider.GetMultiTenantIdentity()
 			networkTenantCred := authProvider.GetNetworkAzIdentity()
 			az.NetworkClientFactory, err = azclient.NewClientFactory(&azclient.ClientFactoryConfig{
 				SubscriptionID: az.NetworkResourceSubscriptionID,
-			}, &az.ARMClientConfig, networkTenantCred)
+			}, &az.ARMClientConfig, cloud, networkTenantCred)
 			if err != nil {
 				return err
 			}
@@ -489,7 +487,7 @@ func (az *Cloud) InitializeCloudFromConfig(ctx context.Context, config *config.C
 		}
 		az.ComputeClientFactory, err = azclient.NewClientFactory(&azclient.ClientFactoryConfig{
 			SubscriptionID: az.SubscriptionID,
-		}, &az.ARMClientConfig, cred)
+		}, &az.ARMClientConfig, cloud, cred)
 		if err != nil {
 			return err
 		}
