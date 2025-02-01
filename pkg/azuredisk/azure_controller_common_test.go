@@ -32,32 +32,29 @@ import (
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/to"
-	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute/v6"
-	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2022-08-01/compute"
+	armcompute "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute/v6"
 	"github.com/Azure/go-autorest/autorest/azure"
 	autorestmocks "github.com/Azure/go-autorest/autorest/mocks"
 	"github.com/stretchr/testify/assert"
 	"go.uber.org/mock/gomock"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/wait"
-	cloudprovider "k8s.io/cloud-provider"
 	"k8s.io/utils/ptr"
 
 	"sigs.k8s.io/cloud-provider-azure/pkg/azclient/diskclient/mock_diskclient"
 	"sigs.k8s.io/cloud-provider-azure/pkg/azclient/mock_azclient"
-	"sigs.k8s.io/cloud-provider-azure/pkg/azureclients/vmclient/mockvmclient"
+	mockvmclient "sigs.k8s.io/cloud-provider-azure/pkg/azclient/virtualmachineclient/mock_virtualmachineclient"
 	"sigs.k8s.io/cloud-provider-azure/pkg/consts"
 	"sigs.k8s.io/cloud-provider-azure/pkg/provider"
-	"sigs.k8s.io/cloud-provider-azure/pkg/retry"
 )
 
 var (
-	conflictingUserInputError = retry.NewError(false, errors.New(`Code="ConflictingUserInput" Message="Cannot attach the disk pvc-xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxx to VM /subscriptions/xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxx/resourceGroups/test-rg/providers/Microsoft.Compute/virtualMachineScaleSets/aks-nodepool0-00000000-vmss/virtualMachines/aks-nodepool0-00000000-vmss_0 because it is already attached to VM /subscriptions/xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxx/resourceGroups/test-rg/providers/Microsoft.Compute/virtualMachineScaleSets/aks-nodepool0-00000000-vmss/virtualMachines/aks-nodepool0-00000000-vmss_1. A disk can be attached to only one VM at a time."`))
+	conflictingUserInputError = errors.New(`Code="ConflictingUserInput" Message="Cannot attach the disk pvc-xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxx to VM /subscriptions/xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxx/resourceGroups/test-rg/providers/Microsoft.Compute/virtualMachineScaleSets/aks-nodepool0-00000000-vmss/virtualMachines/aks-nodepool0-00000000-vmss_0 because it is already attached to VM /subscriptions/xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxx/resourceGroups/test-rg/providers/Microsoft.Compute/virtualMachineScaleSets/aks-nodepool0-00000000-vmss/virtualMachines/aks-nodepool0-00000000-vmss_1. A disk can be attached to only one VM at a time."`)
 )
 
-func fakeUpdateAsync(statusCode int) func(context.Context, string, string, compute.VirtualMachineUpdate, string) (*azure.Future, *retry.Error) {
-	return func(_ context.Context, _, nodeName string, parameters compute.VirtualMachineUpdate, _ string) (*azure.Future, *retry.Error) {
-		vm := &compute.VirtualMachine{
+func fakeUpdateAsync(statusCode int) func(context.Context, string, string, armcompute.VirtualMachineUpdate, string) (*azure.Future, error) {
+	return func(_ context.Context, _, nodeName string, parameters armcompute.VirtualMachineUpdate, _ string) (*azure.Future, error) {
+		vm := &armcompute.VirtualMachine{
 			Name:                     &nodeName,
 			Plan:                     parameters.Plan,
 			VirtualMachineProperties: parameters.VirtualMachineProperties,
@@ -67,7 +64,7 @@ func fakeUpdateAsync(statusCode int) func(context.Context, string, string, compu
 		}
 		s, err := json.Marshal(vm)
 		if err != nil {
-			return nil, retry.NewError(false, err)
+			return nil, err
 		}
 
 		body := autorestmocks.NewBodyWithBytes(s)
@@ -77,7 +74,7 @@ func fakeUpdateAsync(statusCode int) func(context.Context, string, string, compu
 
 		f, err := azure.NewFutureFromResponse(r)
 		if err != nil {
-			return nil, retry.NewError(false, err)
+			return nil, err
 		}
 
 		return &f, nil
@@ -91,17 +88,17 @@ func TestCommonAttachDisk(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	initVM := func(testCloud *provider.Cloud, expectedVMs []compute.VirtualMachine) {
+	initVM := func(testCloud *provider.Cloud, expectedVMs []armcompute.VirtualMachine) {
 		mockVMsClient := testCloud.VirtualMachinesClient.(*mockvmclient.MockInterface)
 		for _, vm := range expectedVMs {
 			mockVMsClient.EXPECT().Get(gomock.Any(), testCloud.ResourceGroup, *vm.Name, gomock.Any()).Return(vm, nil).AnyTimes()
 		}
 		if len(expectedVMs) == 0 {
-			mockVMsClient.EXPECT().Get(gomock.Any(), testCloud.ResourceGroup, gomock.Any(), gomock.Any()).Return(compute.VirtualMachine{}, &retry.Error{HTTPStatusCode: http.StatusNotFound, RawError: cloudprovider.InstanceNotFound}).AnyTimes()
+			mockVMsClient.EXPECT().Get(gomock.Any(), testCloud.ResourceGroup, gomock.Any(), gomock.Any()).Return(armcompute.VirtualMachine{}, nil).AnyTimes()
 		}
 	}
 
-	defaultSetup := func(testCloud *provider.Cloud, expectedVMs []compute.VirtualMachine, statusCode int, result *retry.Error) {
+	defaultSetup := func(testCloud *provider.Cloud, expectedVMs []armcompute.VirtualMachine, statusCode int, result error) {
 		initVM(testCloud, expectedVMs)
 		mockVMsClient := testCloud.VirtualMachinesClient.(*mockvmclient.MockInterface)
 		mockVMsClient.EXPECT().UpdateAsync(gomock.Any(), testCloud.ResourceGroup, gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(fakeUpdateAsync(statusCode)).MaxTimes(1)
@@ -123,11 +120,11 @@ func TestCommonAttachDisk(t *testing.T) {
 		isDataDisksFull      bool
 		isBadDiskURI         bool
 		isDiskUsed           bool
-		setup                func(testCloud *provider.Cloud, expectedVMs []compute.VirtualMachine, statusCode int, result *retry.Error)
+		setup                func(testCloud *provider.Cloud, expectedVMs []armcompute.VirtualMachine, statusCode int, result error)
 		expectErr            bool
 		isContextDeadlineErr bool
 		statusCode           int
-		waitResult           *retry.Error
+		waitResult           error
 		expectedLun          int32
 		contextDuration      time.Duration
 	}{
@@ -316,7 +313,7 @@ func TestCommonDetachDisk(t *testing.T) {
 			mockVMsClient.EXPECT().Get(gomock.Any(), testCloud.ResourceGroup, *vm.Name, gomock.Any()).Return(vm, nil).AnyTimes()
 		}
 		if len(expectedVMs) == 0 {
-			mockVMsClient.EXPECT().Get(gomock.Any(), testCloud.ResourceGroup, gomock.Any(), gomock.Any()).Return(compute.VirtualMachine{}, &retry.Error{HTTPStatusCode: http.StatusNotFound, RawError: cloudprovider.InstanceNotFound}).AnyTimes()
+			mockVMsClient.EXPECT().Get(gomock.Any(), testCloud.ResourceGroup, gomock.Any(), gomock.Any()).Return(armcompute.VirtualMachine{}, nil).AnyTimes()
 		}
 		mockVMsClient.EXPECT().Update(gomock.Any(), testCloud.ResourceGroup, gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, nil).AnyTimes()
 
@@ -380,7 +377,7 @@ func TestCommonUpdateVM(t *testing.T) {
 			mockVMsClient.EXPECT().Get(gomock.Any(), testCloud.ResourceGroup, *vm.Name, gomock.Any()).Return(vm, nil).AnyTimes()
 		}
 		if len(expectedVMs) == 0 {
-			mockVMsClient.EXPECT().Get(gomock.Any(), testCloud.ResourceGroup, gomock.Any(), gomock.Any()).Return(compute.VirtualMachine{}, &retry.Error{HTTPStatusCode: http.StatusNotFound, RawError: cloudprovider.InstanceNotFound}).AnyTimes()
+			mockVMsClient.EXPECT().Get(gomock.Any(), testCloud.ResourceGroup, gomock.Any(), gomock.Any()).Return(armcompute.VirtualMachine{}, nil).AnyTimes()
 		}
 		r := autorestmocks.NewResponseWithStatus("200", 200)
 		r.Body.Close()
@@ -393,7 +390,7 @@ func TestCommonUpdateVM(t *testing.T) {
 		if test.isErrorRetriable {
 			testCloud.CloudProviderBackoff = true
 			testCloud.ResourceRequestBackoff = wait.Backoff{Steps: 1}
-			mockVMsClient.EXPECT().WaitForUpdateResult(ctx, &future, testCloud.ResourceGroup, gomock.Any()).Return(nil, &retry.Error{HTTPStatusCode: http.StatusBadRequest, Retriable: true, RawError: fmt.Errorf("Retriable: true")}).AnyTimes()
+			mockVMsClient.EXPECT().WaitForUpdateResult(ctx, &future, testCloud.ResourceGroup, gomock.Any()).Return(nil, nil).AnyTimes()
 		} else {
 			mockVMsClient.EXPECT().WaitForUpdateResult(ctx, &future, testCloud.ResourceGroup, gomock.Any()).Return(nil, nil).AnyTimes()
 		}
@@ -553,7 +550,7 @@ func TestDisksAreAttached(t *testing.T) {
 		for _, vm := range expectedVMs {
 			mockVMsClient.EXPECT().Get(gomock.Any(), testCloud.ResourceGroup, *vm.Name, gomock.Any()).Return(vm, nil).AnyTimes()
 		}
-		mockVMsClient.EXPECT().Get(gomock.Any(), testCloud.ResourceGroup, "vm2", gomock.Any()).Return(compute.VirtualMachine{}, &retry.Error{HTTPStatusCode: http.StatusNotFound, RawError: cloudprovider.InstanceNotFound}).AnyTimes()
+		mockVMsClient.EXPECT().Get(gomock.Any(), testCloud.ResourceGroup, "vm2", gomock.Any()).Return(armcompute.VirtualMachine{}, nil).AnyTimes()
 
 		attached, err := common.DisksAreAttached(test.diskNames, test.nodeName)
 		assert.Equal(t, test.expectedAttached, attached, "TestCase[%d]: %s", i, test.desc)
@@ -975,18 +972,18 @@ func TestDetachDiskRequestFuncs(t *testing.T) {
 }
 
 // setTestVirtualMachines sets test virtual machine with powerstate.
-func setTestVirtualMachines(c *provider.Cloud, vmList map[string]string, isDataDisksFull bool) []compute.VirtualMachine {
-	expectedVMs := make([]compute.VirtualMachine, 0)
+func setTestVirtualMachines(c *provider.Cloud, vmList map[string]string, isDataDisksFull bool) []armcompute.VirtualMachine {
+	expectedVMs := make([]armcompute.VirtualMachine, 0)
 
 	for nodeName, powerState := range vmList {
 		nodeName := nodeName
 		instanceID := fmt.Sprintf("/subscriptions/subscription/resourceGroups/rg/providers/Microsoft.Compute/virtualMachines/%s", nodeName)
-		vm := compute.VirtualMachine{
+		vm := armcompute.VirtualMachine{
 			Name:     &nodeName,
 			ID:       &instanceID,
 			Location: &c.Location,
 		}
-		status := []compute.InstanceViewStatus{
+		status := []armcompute.InstanceViewStatus{
 			{
 				Code: ptr.To(powerState),
 			},
@@ -994,20 +991,20 @@ func setTestVirtualMachines(c *provider.Cloud, vmList map[string]string, isDataD
 				Code: ptr.To("ProvisioningState/succeeded"),
 			},
 		}
-		vm.VirtualMachineProperties = &compute.VirtualMachineProperties{
+		vm.VirtualMachineProperties = &armcompute.VirtualMachineProperties{
 			ProvisioningState: ptr.To(string(consts.ProvisioningStateSucceeded)),
-			HardwareProfile: &compute.HardwareProfile{
-				VMSize: compute.StandardA0,
+			HardwareProfile: &armcompute.HardwareProfile{
+				VMSize: armcompute.StandardA0,
 			},
-			InstanceView: &compute.VirtualMachineInstanceView{
+			InstanceView: &armcompute.VirtualMachineInstanceView{
 				Statuses: &status,
 			},
-			StorageProfile: &compute.StorageProfile{
-				DataDisks: &[]compute.DataDisk{},
+			StorageProfile: &armcompute.StorageProfile{
+				DataDisks: &[]armcompute.DataDisk{},
 			},
 		}
 		if !isDataDisksFull {
-			vm.StorageProfile.DataDisks = &[]compute.DataDisk{
+			vm.StorageProfile.DataDisks = &[]armcompute.DataDisk{
 				{
 					Lun:  ptr.To(int32(0)),
 					Name: ptr.To("disk1"),
@@ -1022,9 +1019,9 @@ func setTestVirtualMachines(c *provider.Cloud, vmList map[string]string, isDataD
 				},
 			}
 		} else {
-			dataDisks := make([]compute.DataDisk, maxLUN)
+			dataDisks := make([]armcompute.DataDisk, maxLUN)
 			for i := 0; i < maxLUN; i++ {
-				dataDisks[i] = compute.DataDisk{Lun: ptr.To(int32(i))}
+				dataDisks[i] = armcompute.DataDisk{Lun: ptr.To(int32(i))}
 			}
 			vm.StorageProfile.DataDisks = &dataDisks
 		}

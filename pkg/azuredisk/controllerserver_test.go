@@ -26,7 +26,6 @@ import (
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/to"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute/v6"
-	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2022-08-01/compute"
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	"github.com/stretchr/testify/assert"
 	"go.uber.org/mock/gomock"
@@ -43,9 +42,8 @@ import (
 	"sigs.k8s.io/cloud-provider-azure/pkg/azclient/diskclient/mock_diskclient"
 	"sigs.k8s.io/cloud-provider-azure/pkg/azclient/mock_azclient"
 	"sigs.k8s.io/cloud-provider-azure/pkg/azclient/snapshotclient/mock_snapshotclient"
-	"sigs.k8s.io/cloud-provider-azure/pkg/azureclients/vmclient/mockvmclient"
+	mockvmclient "sigs.k8s.io/cloud-provider-azure/pkg/azclient/virtualmachineclient/mock_virtualmachineclient"
 	azure "sigs.k8s.io/cloud-provider-azure/pkg/provider"
-	"sigs.k8s.io/cloud-provider-azure/pkg/retry"
 )
 
 var (
@@ -911,12 +909,12 @@ func TestControllerPublishVolume(t *testing.T) {
 				d.getClientFactory().(*mock_azclient.MockClientFactory).EXPECT().GetDiskClientForSub(gomock.Any()).Return(diskClient, nil).AnyTimes()
 				diskClient.EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any()).Return(disk, nil).AnyTimes()
 				instanceID := fmt.Sprintf("/subscriptions/subscription/resourceGroups/rg/providers/Microsoft.Compute/virtualMachines/%s", nodeName)
-				vm := compute.VirtualMachine{
+				vm := armcompute.VirtualMachine{
 					Name:     &nodeName,
 					ID:       &instanceID,
 					Location: &d.getCloud().Location,
 				}
-				vmstatus := []compute.InstanceViewStatus{
+				vmstatus := []armcompute.InstanceViewStatus{
 					{
 						Code: ptr.To("PowerState/Running"),
 					},
@@ -924,25 +922,25 @@ func TestControllerPublishVolume(t *testing.T) {
 						Code: ptr.To("ProvisioningState/succeeded"),
 					},
 				}
-				vm.VirtualMachineProperties = &compute.VirtualMachineProperties{
+				vm.VirtualMachineProperties = &armcompute.VirtualMachineProperties{
 					ProvisioningState: ptr.To("Failed"),
-					HardwareProfile: &compute.HardwareProfile{
-						VMSize: compute.StandardA0,
+					HardwareProfile: &armcompute.HardwareProfile{
+						VMSize: armcompute.StandardA0,
 					},
-					InstanceView: &compute.VirtualMachineInstanceView{
+					InstanceView: &armcompute.VirtualMachineInstanceView{
 						Statuses: &vmstatus,
 					},
-					StorageProfile: &compute.StorageProfile{
-						DataDisks: &[]compute.DataDisk{},
+					StorageProfile: &armcompute.StorageProfile{
+						DataDisks: &[]armcompute.DataDisk{},
 					},
 				}
-				dataDisks := make([]compute.DataDisk, 1)
-				dataDisks[0] = compute.DataDisk{Lun: ptr.To(int32(0)), Name: &testVolumeName}
+				dataDisks := make([]armcompute.DataDisk, 1)
+				dataDisks[0] = armcompute.DataDisk{Lun: ptr.To(int32(0)), Name: &testVolumeName}
 				vm.StorageProfile.DataDisks = &dataDisks
 				mockVMsClient := d.getCloud().VirtualMachinesClient.(*mockvmclient.MockInterface)
 				mockVMsClient.EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(vm, nil).AnyTimes()
-				mockVMsClient.EXPECT().Update(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, &retry.Error{RawError: fmt.Errorf("error")}).AnyTimes()
-				mockVMsClient.EXPECT().UpdateAsync(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, &retry.Error{RawError: fmt.Errorf("error")}).AnyTimes()
+				mockVMsClient.EXPECT().Update(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, fmt.Errorf("error")).AnyTimes()
+				mockVMsClient.EXPECT().UpdateAsync(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, fmt.Errorf("error")).AnyTimes()
 				expectedErr := status.Errorf(codes.Internal, "update instance \"unit-test-node\" failed with Retriable: false, RetryAfter: 0s, HTTPStatusCode: 0, RawError: error")
 				_, err := d.ControllerPublishVolume(context.Background(), req)
 				if !reflect.DeepEqual(err, expectedErr) {
@@ -974,12 +972,12 @@ func TestControllerPublishVolume(t *testing.T) {
 				d.getClientFactory().(*mock_azclient.MockClientFactory).EXPECT().GetDiskClientForSub(gomock.Any()).Return(diskClient, nil).AnyTimes()
 				diskClient.EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any()).Return(disk, nil).AnyTimes()
 				instanceID := fmt.Sprintf("/subscriptions/subscription/resourceGroups/rg/providers/Microsoft.Compute/virtualMachines/%s", nodeName)
-				vm := compute.VirtualMachine{
+				vm := armcompute.VirtualMachine{
 					Name:     &nodeName,
 					ID:       &instanceID,
 					Location: &d.getCloud().Location,
 				}
-				vmstatus := []compute.InstanceViewStatus{
+				vmstatus := []armcompute.InstanceViewStatus{
 					{
 						Code: ptr.To("PowerState/Running"),
 					},
@@ -987,20 +985,20 @@ func TestControllerPublishVolume(t *testing.T) {
 						Code: ptr.To("ProvisioningState/succeeded"),
 					},
 				}
-				vm.VirtualMachineProperties = &compute.VirtualMachineProperties{
+				vm.VirtualMachineProperties = &armcompute.VirtualMachineProperties{
 					ProvisioningState: ptr.To("Succeeded"),
-					HardwareProfile: &compute.HardwareProfile{
-						VMSize: compute.StandardA0,
+					HardwareProfile: &armcompute.HardwareProfile{
+						VMSize: armcompute.StandardA0,
 					},
-					InstanceView: &compute.VirtualMachineInstanceView{
+					InstanceView: &armcompute.VirtualMachineInstanceView{
 						Statuses: &vmstatus,
 					},
-					StorageProfile: &compute.StorageProfile{
-						DataDisks: &[]compute.DataDisk{},
+					StorageProfile: &armcompute.StorageProfile{
+						DataDisks: &[]armcompute.DataDisk{},
 					},
 				}
-				dataDisks := make([]compute.DataDisk, 1)
-				dataDisks[0] = compute.DataDisk{Lun: ptr.To(int32(0)), Name: &testVolumeName}
+				dataDisks := make([]armcompute.DataDisk, 1)
+				dataDisks[0] = armcompute.DataDisk{Lun: ptr.To(int32(0)), Name: &testVolumeName}
 				vm.StorageProfile.DataDisks = &dataDisks
 				mockVMsClient := d.getCloud().VirtualMachinesClient.(*mockvmclient.MockInterface)
 				mockVMsClient.EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(vm, nil).AnyTimes()
@@ -1037,12 +1035,12 @@ func TestControllerPublishVolume(t *testing.T) {
 				d.getClientFactory().(*mock_azclient.MockClientFactory).EXPECT().GetDiskClientForSub(gomock.Any()).Return(diskClient, nil).AnyTimes()
 				diskClient.EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any()).Return(disk, nil).AnyTimes()
 				instanceID := fmt.Sprintf("/subscriptions/subscription/resourceGroups/rg/providers/Microsoft.Compute/virtualMachines/%s", nodeName)
-				vm := compute.VirtualMachine{
+				vm := armcompute.VirtualMachine{
 					Name:     &nodeName,
 					ID:       &instanceID,
 					Location: &d.getCloud().Location,
 				}
-				vmstatus := []compute.InstanceViewStatus{
+				vmstatus := []armcompute.InstanceViewStatus{
 					{
 						Code: ptr.To("PowerState/Running"),
 					},
@@ -1050,16 +1048,16 @@ func TestControllerPublishVolume(t *testing.T) {
 						Code: ptr.To("ProvisioningState/succeeded"),
 					},
 				}
-				vm.VirtualMachineProperties = &compute.VirtualMachineProperties{
+				vm.VirtualMachineProperties = &armcompute.VirtualMachineProperties{
 					ProvisioningState: ptr.To("Succeeded"),
-					HardwareProfile: &compute.HardwareProfile{
-						VMSize: compute.StandardA0,
+					HardwareProfile: &armcompute.HardwareProfile{
+						VMSize: armcompute.StandardA0,
 					},
-					InstanceView: &compute.VirtualMachineInstanceView{
+					InstanceView: &armcompute.VirtualMachineInstanceView{
 						Statuses: &vmstatus,
 					},
-					StorageProfile: &compute.StorageProfile{
-						DataDisks: &[]compute.DataDisk{},
+					StorageProfile: &armcompute.StorageProfile{
+						DataDisks: &[]armcompute.DataDisk{},
 					},
 				}
 				mockVMsClient := d.getCloud().VirtualMachinesClient.(*mockvmclient.MockInterface)
