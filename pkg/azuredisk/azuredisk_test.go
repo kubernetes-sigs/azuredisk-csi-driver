@@ -554,16 +554,16 @@ func TestGetUsedLunsFromNode(t *testing.T) {
 	defer cntl.Finish()
 	d, _ := NewFakeDriver(cntl)
 	vm := armcompute.VirtualMachine{}
-	dataDisks := make([]armcompute.DataDisk, 2)
-	dataDisks[0] = armcompute.DataDisk{Lun: ptr.To(int32(0)), Name: &testVolumeName}
-	dataDisks[1] = armcompute.DataDisk{Lun: ptr.To(int32(2)), Name: &testVolumeName}
-	vm.VirtualMachineProperties = &armcompute.VirtualMachineProperties{
+	dataDisks := make([]*armcompute.DataDisk, 2)
+	dataDisks[0] = &armcompute.DataDisk{Lun: ptr.To(int32(0)), Name: &testVolumeName}
+	dataDisks[1] = &armcompute.DataDisk{Lun: ptr.To(int32(2)), Name: &testVolumeName}
+	vm.Properties = &armcompute.VirtualMachineProperties{
 		StorageProfile: &armcompute.StorageProfile{
-			DataDisks: &dataDisks,
+			DataDisks: dataDisks,
 		},
 	}
-	mockVMsClient := d.getCloud().VirtualMachinesClient.(*mockvmclient.MockInterface)
-	mockVMsClient.EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(vm, nil).AnyTimes()
+	mockVMClient := d.getCloud().ComputeClientFactory.GetVirtualMachineClient().(*mockvmclient.MockInterface)
+	mockVMClient.EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(&vm, nil).AnyTimes()
 
 	tests := []struct {
 		name                string

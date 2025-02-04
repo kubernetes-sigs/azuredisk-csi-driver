@@ -37,6 +37,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	testingexec "k8s.io/utils/exec/testing"
+	"k8s.io/utils/ptr"
 	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/mounter"
@@ -61,21 +62,21 @@ var (
 
 	testVMName     = fakeNodeID
 	testVMURI      = fmt.Sprintf(virtualMachineURIFormat, testSubscription, testResourceGroup, testVMName)
-	testVMSize     = armcompute.StandardD3V2
+	testVMSize     = armcompute.VirtualMachineSizeTypesStandardD3V2
 	testVMLocation = "westus"
-	testVMZones    = []string{"1"}
+	testVMZones    = []*string{ptr.To("1")}
 	testVM         = armcompute.VirtualMachine{
 		Name:     &testVMName,
 		ID:       &testVMURI,
 		Location: &testVMLocation,
-		Zones:    &testVMZones,
-		VirtualMachineProperties: &armcompute.VirtualMachineProperties{
+		Zones:    testVMZones,
+		Properties: &armcompute.VirtualMachineProperties{
 			ProvisioningState: &provisioningStateSucceeded,
 			HardwareProfile: &armcompute.HardwareProfile{
-				VMSize: testVMSize,
+				VMSize: &testVMSize,
 			},
 			StorageProfile: &armcompute.StorageProfile{
-				DataDisks: new([]armcompute.DataDisk),
+				DataDisks: []*armcompute.DataDisk{},
 			},
 		},
 	}
@@ -239,9 +240,10 @@ func TestNodeGetInfo(t *testing.T) {
 			expectedErr:  nil,
 			skipOnDarwin: true,
 			setupFunc: func(t *testing.T, d FakeDriver) {
-				d.getCloud().VirtualMachinesClient.(*mockvmclient.MockInterface).EXPECT().
+				mockVMClient := d.getCloud().ComputeClientFactory.GetVirtualMachineClient().(*mockvmclient.MockInterface)
+				mockVMClient.EXPECT().
 					Get(gomock.Any(), testResourceGroup, testVMName, gomock.Any()).
-					Return(testVM, nil).
+					Return(&testVM, nil).
 					AnyTimes()
 
 				// cloud-provider-azure's GetZone function assumes the host is a VM and returns it zones.
@@ -249,13 +251,13 @@ func TestNodeGetInfo(t *testing.T) {
 				hostname, err := os.Hostname()
 				require.NoError(t, err)
 
-				d.getCloud().VirtualMachinesClient.(*mockvmclient.MockInterface).EXPECT().
+				mockVMClient.EXPECT().
 					Get(gomock.Any(), testResourceGroup, hostname, gomock.Any()).
-					Return(testVM, nil).
+					Return(&testVM, nil).
 					AnyTimes()
-				d.getCloud().VirtualMachinesClient.(*mockvmclient.MockInterface).EXPECT().
+				mockVMClient.EXPECT().
 					Get(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
-					Return(armcompute.VirtualMachine{}, notFoundErr).
+					Return(&armcompute.VirtualMachine{}, notFoundErr).
 					AnyTimes()
 			},
 			validateFunc: func(t *testing.T, resp *csi.NodeGetInfoResponse) {
@@ -268,9 +270,10 @@ func TestNodeGetInfo(t *testing.T) {
 			desc:        "[Failure] Get node information for non-existing VM",
 			expectedErr: status.Error(codes.Internal, fmt.Sprintf("getNodeInfoFromLabels on node(%s) failed with %s", "fakeNodeID", "kubeClient is nil")),
 			setupFunc: func(_ *testing.T, d FakeDriver) {
-				d.getCloud().VirtualMachinesClient.(*mockvmclient.MockInterface).EXPECT().
+				mockVMClient := d.getCloud().ComputeClientFactory.GetVirtualMachineClient().(*mockvmclient.MockInterface)
+				mockVMClient.EXPECT().
 					Get(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
-					Return(armcompute.VirtualMachine{}, notFoundErr).
+					Return(&armcompute.VirtualMachine{}, notFoundErr).
 					AnyTimes()
 			},
 			validateFunc: func(t *testing.T, resp *csi.NodeGetInfoResponse) {
