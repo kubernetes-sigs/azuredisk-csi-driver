@@ -62,7 +62,7 @@ func TestCommonAttachDisk(t *testing.T) {
 		}
 	}
 
-	defaultSetup := func(testCloud *provider.Cloud, expectedVMs []armcompute.VirtualMachine, _ int, result error) {
+	defaultSetup := func(testCloud *provider.Cloud, expectedVMs []armcompute.VirtualMachine, _ int, _ error) {
 		initVM(testCloud, expectedVMs)
 		mockVMClient := testCloud.ComputeClientFactory.GetVirtualMachineClient().(*mockvmclient.MockInterface)
 		mockVMClient.EXPECT().CreateOrUpdate(gomock.Any(), testCloud.ResourceGroup, gomock.Any(), gomock.Any()).Return(nil, nil).MaxTimes(1)
