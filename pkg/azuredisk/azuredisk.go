@@ -20,6 +20,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"flag"
 	"fmt"
 	"reflect"
 	"strconv"
@@ -60,6 +61,8 @@ import (
 )
 
 var (
+	useDriverV2 = flag.Bool("temp-use-driver-v2", false, "A temporary flag to enable early test and development of Azure Disk CSI Driver V2. This will be removed in the future.")
+
 	// taintRemovalInitialDelay is the initial delay for node taint removal
 	taintRemovalInitialDelay = 1 * time.Second
 	// taintRemovalBackoff is the exponential backoff configuration for node taint removal
