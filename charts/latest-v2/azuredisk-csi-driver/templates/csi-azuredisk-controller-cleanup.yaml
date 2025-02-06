@@ -10,10 +10,6 @@ metadata:
 spec:
   template:
     spec:
-      {{- if .Values.imagePullSecrets }}
-      imagePullSecrets:
-{{ toYaml .Values.imagePullSecrets | indent 8 }}
-      {{- end }}
       serviceAccountName: {{ .Values.serviceAccount.controller }}
       nodeSelector:
         kubernetes.io/os: linux
