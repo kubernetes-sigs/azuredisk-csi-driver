@@ -149,7 +149,6 @@ var _ = ginkgo.BeforeSuite(func(ctx ginkgo.SpecContext) {
 		driverOptions := azuredisk.DriverOptions{
 			NodeID:                  os.Getenv("nodeid"),
 			DriverName:              consts.DefaultDriverName,
-			VolumeAttachLimit:       16,
 			EnablePerfOptimization:  false,
 			Kubeconfig:              os.Getenv(kubeconfigEnvVar),
 			Endpoint:                fmt.Sprintf("unix:///tmp/csi-%s.sock", string(uuid.NewUUID())),
