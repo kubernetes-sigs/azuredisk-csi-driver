@@ -26,7 +26,6 @@ import (
 	"time"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute/v6"
-	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2022-08-01/compute"
 	"github.com/stretchr/testify/assert"
 	"go.uber.org/mock/gomock"
 	"golang.org/x/sync/errgroup"
@@ -38,7 +37,7 @@ import (
 	"sigs.k8s.io/cloud-provider-azure/pkg/azclient/diskclient/mock_diskclient"
 	"sigs.k8s.io/cloud-provider-azure/pkg/azclient/mock_azclient"
 	"sigs.k8s.io/cloud-provider-azure/pkg/azclient/snapshotclient/mock_snapshotclient"
-	"sigs.k8s.io/cloud-provider-azure/pkg/azureclients/vmclient/mockvmclient"
+	mockvmclient "sigs.k8s.io/cloud-provider-azure/pkg/azclient/virtualmachineclient/mock_virtualmachineclient"
 	azure "sigs.k8s.io/cloud-provider-azure/pkg/provider"
 )
 
@@ -554,17 +553,17 @@ func TestGetUsedLunsFromNode(t *testing.T) {
 	cntl := gomock.NewController(t)
 	defer cntl.Finish()
 	d, _ := NewFakeDriver(cntl)
-	vm := compute.VirtualMachine{}
-	dataDisks := make([]compute.DataDisk, 2)
-	dataDisks[0] = compute.DataDisk{Lun: ptr.To(int32(0)), Name: &testVolumeName}
-	dataDisks[1] = compute.DataDisk{Lun: ptr.To(int32(2)), Name: &testVolumeName}
-	vm.VirtualMachineProperties = &compute.VirtualMachineProperties{
-		StorageProfile: &compute.StorageProfile{
-			DataDisks: &dataDisks,
+	vm := armcompute.VirtualMachine{}
+	dataDisks := make([]*armcompute.DataDisk, 2)
+	dataDisks[0] = &armcompute.DataDisk{Lun: ptr.To(int32(0)), Name: &testVolumeName}
+	dataDisks[1] = &armcompute.DataDisk{Lun: ptr.To(int32(2)), Name: &testVolumeName}
+	vm.Properties = &armcompute.VirtualMachineProperties{
+		StorageProfile: &armcompute.StorageProfile{
+			DataDisks: dataDisks,
 		},
 	}
-	mockVMsClient := d.getCloud().VirtualMachinesClient.(*mockvmclient.MockInterface)
-	mockVMsClient.EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(vm, nil).AnyTimes()
+	mockVMClient := d.getCloud().ComputeClientFactory.GetVirtualMachineClient().(*mockvmclient.MockInterface)
+	mockVMClient.EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(&vm, nil).AnyTimes()
 
 	tests := []struct {
 		name                string
