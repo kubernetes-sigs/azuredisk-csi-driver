@@ -716,7 +716,7 @@ func TestModifyDisk(t *testing.T) {
 			diskIOPSReadWrite:  "200",
 			diskMBpsReadWrite:  "200",
 			storageAccountType: armcompute.DiskStorageAccountTypesUltraSSDLRS,
-			existedDisk:        &armcompute.Disk{Name: ptr.To(fakeCreateDiskFailed), SKU: &armcompute.DiskSKU{Name: &storageAccountTypeUltraSSDLRS}, Properties: &armcompute.DiskProperties{DiskIOPSReadWrite: ptr.To(int64(100)), DiskMBpsReadWrite: ptr.To(int64(100))}},
+			existedDisk:        &armcompute.Disk{Name: ptr.To(fakeGetDiskFailed), SKU: &armcompute.DiskSKU{Name: &storageAccountTypeUltraSSDLRS}, Properties: &armcompute.DiskProperties{DiskIOPSReadWrite: ptr.To(int64(100)), DiskMBpsReadWrite: ptr.To(int64(100))}},
 			expectedErr:        true,
 			expectedErrMsg:     fmt.Errorf("Get Disk failed"),
 		},

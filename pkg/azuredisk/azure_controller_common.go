@@ -21,7 +21,6 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"path"
 	"regexp"
 	"strings"
 	"sync"
@@ -612,8 +611,7 @@ func (c *controllerCommon) filterNonExistingDisks(ctx context.Context, unfiltere
 }
 
 func (c *controllerCommon) checkDiskExists(ctx context.Context, diskURI string) (bool, error) {
-	diskName := path.Base(diskURI)
-	resourceGroup, subsID, err := getInfoFromDiskURI(diskURI)
+	subsID, resourceGroup, diskName, err := azureutils.GetInfoFromURI(diskURI)
 	if err != nil {
 		return false, err
 	}

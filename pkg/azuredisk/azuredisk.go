@@ -396,21 +396,15 @@ func (d *Driver) isCheckDiskLunThrottled() bool {
 }
 
 func (d *Driver) checkDiskExists(ctx context.Context, diskURI string) (*armcompute.Disk, error) {
-	diskName, err := azureutils.GetDiskName(diskURI)
-	if err != nil {
-		return nil, err
-	}
-
-	resourceGroup, err := azureutils.GetResourceGroupFromURI(diskURI)
-	if err != nil {
-		return nil, err
-	}
-
 	if d.isGetDiskThrottled() {
 		klog.Warningf("skip checkDiskExists(%s) since it's still in throttling", diskURI)
 		return nil, nil
 	}
-	subsID := azureutils.GetSubscriptionIDFromURI(diskURI)
+
+	subsID, resourceGroup, diskName, err := azureutils.GetInfoFromURI(diskURI)
+	if err != nil {
+		return nil, err
+	}
 	diskClient, err := d.diskController.clientFactory.GetDiskClientForSub(subsID)
 	if err != nil {
 		return nil, err
@@ -419,11 +413,7 @@ func (d *Driver) checkDiskExists(ctx context.Context, diskURI string) (*armcompu
 	newCtx, cancel := context.WithTimeout(ctx, time.Duration(d.getDiskTimeoutInSeconds)*time.Second)
 	defer cancel()
 
-	disk, err := diskClient.Get(newCtx, resourceGroup, diskName)
-	if err != nil {
-		return nil, err
-	}
-	return disk, nil
+	return diskClient.Get(newCtx, resourceGroup, diskName)
 }
 
 func (d *Driver) checkDiskCapacity(ctx context.Context, subsID, resourceGroup, diskName string, requestGiB int) (bool, error) {

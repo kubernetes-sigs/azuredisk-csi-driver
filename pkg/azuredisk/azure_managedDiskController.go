@@ -21,7 +21,6 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"path"
 	"strconv"
 	"strings"
 
@@ -36,6 +35,7 @@ import (
 	"k8s.io/utils/ptr"
 
 	azureconsts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
+	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
 	"sigs.k8s.io/cloud-provider-azure/pkg/consts"
 	"sigs.k8s.io/cloud-provider-azure/pkg/provider"
 )
@@ -306,7 +306,7 @@ func (c *ManagedDiskController) CreateManagedDisk(ctx context.Context, options *
 
 // DeleteManagedDisk : delete managed disk
 func (c *ManagedDiskController) DeleteManagedDisk(ctx context.Context, diskURI string) error {
-	resourceGroup, subsID, err := getInfoFromDiskURI(diskURI)
+	subsID, resourceGroup, diskName, err := azureutils.GetInfoFromURI(diskURI)
 	if err != nil {
 		return err
 	}
@@ -315,7 +315,6 @@ func (c *ManagedDiskController) DeleteManagedDisk(ctx context.Context, diskURI s
 		return fmt.Errorf("failed to delete disk(%s) since it's in %s state", diskURI, state.(string))
 	}
 
-	diskName := path.Base(diskURI)
 	diskClient, err := c.clientFactory.GetDiskClientForSub(subsID)
 	if err != nil {
 		return err
@@ -365,8 +364,7 @@ func (c *ManagedDiskController) GetDisk(ctx context.Context, subsID, resourceGro
 
 // ResizeDisk Expand the disk to new size
 func (c *ManagedDiskController) ResizeDisk(ctx context.Context, diskURI string, oldSize resource.Quantity, newSize resource.Quantity, supportOnlineResize bool) (resource.Quantity, error) {
-	diskName := path.Base(diskURI)
-	resourceGroup, subsID, err := getInfoFromDiskURI(diskURI)
+	subsID, resourceGroup, diskName, err := azureutils.GetInfoFromURI(diskURI)
 	if err != nil {
 		return oldSize, err
 	}
@@ -417,9 +415,9 @@ func (c *ManagedDiskController) ResizeDisk(ctx context.Context, diskURI string, 
 
 // ModifyDisk: modify disk
 func (c *ManagedDiskController) ModifyDisk(ctx context.Context, options *ManagedDiskOptions) error {
-	klog.V(4).Infof("azureDisk - modifying managed Name:%s, StorageAccountType:%s, DiskIOPSReadWrite:%s, DiskMBpsReadWrite:%s", options.DiskName, options.StorageAccountType, options.DiskIOPSReadWrite, options.DiskMBpsReadWrite)
+	klog.V(4).Infof("azureDisk - modifying managed disk URI:%s, StorageAccountType:%s, DiskIOPSReadWrite:%s, DiskMBpsReadWrite:%s", options.SourceResourceID, options.StorageAccountType, options.DiskIOPSReadWrite, options.DiskMBpsReadWrite)
 
-	rg, subsID, err := getInfoFromDiskURI(options.SourceResourceID)
+	subsID, rg, diskName, err := azureutils.GetInfoFromURI(options.SourceResourceID)
 	if err != nil {
 		return err
 	}
@@ -429,16 +427,16 @@ func (c *ManagedDiskController) ModifyDisk(ctx context.Context, options *Managed
 		return err
 	}
 
-	model := armcompute.DiskUpdate{}
-	result, err := diskClient.Get(ctx, rg, options.DiskName)
+	result, err := diskClient.Get(ctx, rg, diskName)
 	if err != nil {
 		return err
 	}
 
 	if result.Properties == nil || result.SKU == nil || result.SKU.Name == nil {
-		return fmt.Errorf("DiskProperties or SKU of disk(%s) is nil", options.DiskName)
+		return fmt.Errorf("DiskProperties or SKU of disk(%s) is nil", diskName)
 	}
 
+	model := armcompute.DiskUpdate{}
 	diskSku := *result.SKU.Name
 	if options.StorageAccountType != "" && options.StorageAccountType != diskSku {
 		diskSku = options.StorageAccountType
@@ -479,22 +477,11 @@ func (c *ManagedDiskController) ModifyDisk(ctx context.Context, options *Managed
 	}
 
 	if model.SKU != nil || model.Properties != nil {
-		if _, err := diskClient.Patch(ctx, rg, options.DiskName, model); err != nil {
+		if _, err := diskClient.Patch(ctx, rg, diskName, model); err != nil {
 			return err
 		}
 	} else {
-		klog.V(4).Infof("azureDisk - no modification needed for disk(%s)", options.DiskName)
+		klog.V(4).Infof("azureDisk - no modification needed for disk(%s)", diskName)
 	}
 	return nil
-}
-
-// get resource group name, subs id from a managed disk URI, e.g. return {group-name}, {sub-id} according to
-// /subscriptions/{sub-id}/resourcegroups/{group-name}/providers/microsoft.compute/disks/{disk-id}
-// according to https://docs.microsoft.com/en-us/rest/api/compute/disks/get
-func getInfoFromDiskURI(diskURI string) (string, string, error) {
-	fields := strings.Split(diskURI, "/")
-	if len(fields) != 9 || strings.ToLower(fields[3]) != "resourcegroups" {
-		return "", "", fmt.Errorf("invalid disk URI: %s", diskURI)
-	}
-	return fields[4], fields[2], nil
 }

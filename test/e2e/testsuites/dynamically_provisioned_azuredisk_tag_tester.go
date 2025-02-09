@@ -69,10 +69,10 @@ func (t *DynamicallyProvisionedAzureDiskWithTag) Run(ctx context.Context, client
 		pvname := pvc.Spec.VolumeName
 		pv, _ := client.CoreV1().PersistentVolumes().Get(ctx, pvname, metav1.GetOptions{})
 		diskURI := pv.Spec.PersistentVolumeSource.CSI.VolumeHandle
-		diskName, err := azureutils.GetDiskName(diskURI)
-		framework.ExpectNoError(err, fmt.Sprintf("Error getting diskName for azuredisk %v", err))
-		resourceGroup, err := azureutils.GetResourceGroupFromURI(diskURI)
-		framework.ExpectNoError(err, fmt.Sprintf("Error getting resourceGroup for azuredisk %v", err))
+		_, resourceGroup, diskName, err := azureutils.GetInfoFromURI(diskURI)
+		if err != nil {
+			framework.ExpectNoError(err, fmt.Sprintf("Error getting diskName for azuredisk %v", err))
+		}
 
 		creds, err := credentials.CreateAzureCredentialFile()
 		gomega.Expect(err).NotTo(gomega.HaveOccurred())

@@ -389,54 +389,6 @@ func TestGetDiskLUN(t *testing.T) {
 	}
 }
 
-func TestGetDiskName(t *testing.T) {
-	mDiskPathRE := consts.ManagedDiskPathRE
-	tests := []struct {
-		options   string
-		expected1 string
-		expected2 error
-	}{
-		{
-			options:   "testurl/subscriptions/12/resourceGroups/23/providers/Microsoft.Compute/disks/name",
-			expected1: "name",
-			expected2: nil,
-		},
-		{
-			options:   "testurl/subscriptions/23/providers/Microsoft.Compute/disks/name",
-			expected1: "",
-			expected2: fmt.Errorf("could not get disk name from testurl/subscriptions/23/providers/Microsoft.Compute/disks/name, correct format: %s", mDiskPathRE),
-		},
-		{
-			options:   "testurl/subscriptions/12/resourcegroups/23/providers/microsoft.compute/disks/name",
-			expected1: "name",
-			expected2: nil,
-		},
-		{
-			options:   "testurl/subscriPtions/12/Resourcegroups/23/Providers/microsoft.compute/dISKS/name",
-			expected1: "name",
-			expected2: nil,
-		},
-		{
-			options:   "http://test.com/vhds/name",
-			expected1: "",
-			expected2: fmt.Errorf("could not get disk name from http://test.com/vhds/name, correct format: %s", mDiskPathRE),
-		},
-		{
-			options:   "http://test.io/name",
-			expected1: "",
-			expected2: fmt.Errorf("could not get disk name from http://test.io/name, correct format: %s", mDiskPathRE),
-		},
-	}
-
-	for _, test := range tests {
-		result1, result2 := GetDiskName(test.options)
-		if !reflect.DeepEqual(result1, test.expected1) || !reflect.DeepEqual(result2, test.expected2) {
-			t.Errorf("input: %q, getDiskName result1: %q, expected1: %q, result2: %q, expected2: %q", test.options, result1, test.expected1,
-				result2, test.expected2)
-		}
-	}
-}
-
 func TestGetFStype(t *testing.T) {
 	tests := []struct {
 		options  map[string]string
@@ -521,48 +473,6 @@ func TestGetMaxShares(t *testing.T) {
 		}
 		if !reflect.DeepEqual(err, test.expectedError) {
 			t.Errorf("input: %q, GetMaxShates error: %v, expected: %v", test.options, err, test.expectedError)
-		}
-	}
-}
-
-func TestGetResourceGroupFromURI(t *testing.T) {
-	tests := []struct {
-		diskURL        string
-		expectedResult string
-		expectError    bool
-	}{
-		{
-			diskURL:        "/subscriptions/4be8920b-2978-43d7-axyz-04d8549c1d05/resourceGroups/azure-k8s1102/providers/Microsoft.Compute/disks/andy-mghyb1102-dynamic-pvc-f7f014c9-49f4-11e8-ab5c-000d3af7b38e",
-			expectedResult: "azure-k8s1102",
-			expectError:    false,
-		},
-		{
-			// case insensitive check
-			diskURL:        "/subscriptions/4be8920b-2978-43d7-axyz-04d8549c1d05/resourcegroups/azure-k8s1102/providers/Microsoft.Compute/disks/andy-mghyb1102-dynamic-pvc-f7f014c9-49f4-11e8-ab5c-000d3af7b38e",
-			expectedResult: "azure-k8s1102",
-			expectError:    false,
-		},
-		{
-			diskURL:        "/4be8920b-2978-43d7-axyz-04d8549c1d05/resourceGroups/azure-k8s1102/providers/Microsoft.Compute/disks/andy-mghyb1102-dynamic-pvc-f7f014c9-49f4-11e8-ab5c-000d3af7b38e",
-			expectedResult: "",
-			expectError:    true,
-		},
-		{
-			diskURL:        "",
-			expectedResult: "",
-			expectError:    true,
-		},
-	}
-
-	for _, test := range tests {
-		result, err := GetResourceGroupFromURI(test.diskURL)
-		assert.Equal(t, result, test.expectedResult, "Expect result not equal with getResourceGroupFromURI(%s) return: %q, expected: %q",
-			test.diskURL, result, test.expectedResult)
-
-		if test.expectError {
-			assert.NotNil(t, err, "Expect error during getResourceGroupFromURI(%s)", test.diskURL)
-		} else {
-			assert.Nil(t, err, "Expect error is nil during getResourceGroupFromURI(%s)", test.diskURL)
 		}
 	}
 }
@@ -916,47 +826,6 @@ func TestIsAzureStackCloud(t *testing.T) {
 	for i, test := range tests {
 		result := IsAzureStackCloud(test.cloud, test.disableAzureStackCloud)
 		assert.Equal(t, test.expectedResult, result, "TestCase[%d]", i)
-	}
-}
-
-func TestIsValidDiskURI(t *testing.T) {
-	supportedManagedDiskURI := diskURISupportedManaged
-
-	tests := []struct {
-		diskURI     string
-		expectError error
-	}{
-		{
-			diskURI:     "/subscriptions/b9d2281e/resourceGroups/test-resource/providers/Microsoft.Compute/disks/pvc-disk-dynamic-9e102c53",
-			expectError: nil,
-		},
-		{
-			diskURI:     "/Subscriptions/b9d2281e/resourceGroups/test-resource/providers/Microsoft.Compute/disks/pvc-disk-dynamic-9e102c53",
-			expectError: nil,
-		},
-		{
-			diskURI:     "resourceGroups/test-resource/providers/Microsoft.Compute/disks/pvc-disk-dynamic-9e102c53",
-			expectError: fmt.Errorf("invalid DiskURI: resourceGroups/test-resource/providers/Microsoft.Compute/disks/pvc-disk-dynamic-9e102c53, correct format: %v", supportedManagedDiskURI),
-		},
-		{
-			diskURI:     "https://test-saccount.blob.core.windows.net/container/pvc-disk-dynamic-9e102c53-593d-11e9-934e-705a0f18a318.vhd",
-			expectError: fmt.Errorf("invalid DiskURI: https://test-saccount.blob.core.windows.net/container/pvc-disk-dynamic-9e102c53-593d-11e9-934e-705a0f18a318.vhd, correct format: %v", supportedManagedDiskURI),
-		},
-		{
-			diskURI:     "test.com",
-			expectError: fmt.Errorf("invalid DiskURI: test.com, correct format: %v", supportedManagedDiskURI),
-		},
-		{
-			diskURI:     "http://test-saccount.blob.core.windows.net/container/pvc-disk-dynamic-9e102c53-593d-11e9-934e-705a0f18a318.vhd",
-			expectError: fmt.Errorf("invalid DiskURI: http://test-saccount.blob.core.windows.net/container/pvc-disk-dynamic-9e102c53-593d-11e9-934e-705a0f18a318.vhd, correct format: %v", supportedManagedDiskURI),
-		},
-	}
-
-	for _, test := range tests {
-		err := IsValidDiskURI(test.diskURI)
-		if !reflect.DeepEqual(err, test.expectError) {
-			t.Errorf("DiskURI: %q, isValidDiskURI err: %q, expected1: %q", test.diskURI, err, test.expectError)
-		}
 	}
 }
 
@@ -2065,6 +1934,58 @@ func TestRemoveOptionIfExists(t *testing.T) {
 		}
 		if exists != test.expected {
 			t.Errorf("test[%s]: unexpected output: %v, expected result: %v", test.desc, exists, test.expected)
+		}
+	}
+}
+
+func TestGetInfoFromURI(t *testing.T) {
+	tests := []struct {
+		URL            string
+		expectedName   string
+		expectedRGName string
+		expectedSubsID string
+		expectedError  error
+	}{
+		{
+			URL:            "/subscriptions/12/resourceGroups/23/providers/Microsoft.Compute/disks/disk-name",
+			expectedName:   "disk-name",
+			expectedRGName: "23",
+			expectedSubsID: "12",
+			expectedError:  nil,
+		},
+		{
+			URL:            "testurl/subscriptions/12/resourceGroups/23/providers/Microsoft.Compute/snapshots/snapshot-name",
+			expectedName:   "snapshot-name",
+			expectedRGName: "23",
+			expectedSubsID: "12",
+			expectedError:  nil,
+		},
+		{
+			// case insensitive check
+			URL:            "testurl/subscriptions/12/resourcegroups/23/providers/Microsoft.Compute/snapshots/snapshot-name",
+			expectedName:   "snapshot-name",
+			expectedRGName: "23",
+			expectedSubsID: "12",
+			expectedError:  nil,
+		},
+		{
+			URL:            "testurl/subscriptions/23/providers/Microsoft.Compute/snapshots/snapshot-name",
+			expectedName:   "",
+			expectedRGName: "",
+			expectedError:  fmt.Errorf("invalid URI: testurl/subscriptions/23/providers/Microsoft.Compute/snapshots/snapshot-name"),
+		},
+	}
+	for _, test := range tests {
+		subsID, resourceGroup, snapshotName, err := GetInfoFromURI(test.URL)
+		if !reflect.DeepEqual(snapshotName, test.expectedName) ||
+			!reflect.DeepEqual(resourceGroup, test.expectedRGName) ||
+			!reflect.DeepEqual(subsID, test.expectedSubsID) ||
+			!reflect.DeepEqual(err, test.expectedError) {
+			t.Errorf("input: %q, getSnapshotName result: %q, expectedName: %q, getresourcegroup result: %q, expectedRGName: %q\n", test.URL, snapshotName, test.expectedName,
+				resourceGroup, test.expectedRGName)
+			if err != nil {
+				t.Errorf("err result %q\n", err)
+			}
 		}
 	}
 }

@@ -72,11 +72,10 @@ func (t *DynamicallyProvisionedAzureDiskDetach) Run(ctx context.Context, client 
 		} else if pv.Spec.PersistentVolumeSource.AzureDisk != nil {
 			diskURI = pv.Spec.PersistentVolumeSource.AzureDisk.DataDiskURI
 		}
-		diskName, err := azureutils.GetDiskName(diskURI)
-		framework.ExpectNoError(err, fmt.Sprintf("Error getting diskName for azuredisk %v", err))
-		resourceGroup, err := azureutils.GetResourceGroupFromURI(diskURI)
-		framework.ExpectNoError(err, fmt.Sprintf("Error getting resourceGroup for azuredisk %v", err))
-
+		_, resourceGroup, diskName, err := azureutils.GetInfoFromURI(diskURI)
+		if err != nil {
+			framework.ExpectNoError(err, fmt.Sprintf("Error getting diskName for azuredisk %v", err))
+		}
 		creds, err := credentials.CreateAzureCredentialFile()
 		gomega.Expect(err).NotTo(gomega.HaveOccurred())
 		azureClient, err := azure.GetAzureClient(creds.Cloud, creds.SubscriptionID, creds.AADClientID, creds.TenantID, creds.AADClientSecret, creds.AADFederatedTokenFile)
