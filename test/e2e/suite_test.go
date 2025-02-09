@@ -147,12 +147,12 @@ var _ = ginkgo.BeforeSuite(func(ctx ginkgo.SpecContext) {
 		execTestCmd([]testCmd{e2eBootstrap, createMetricsSVC})
 
 		driverOptions := azuredisk.DriverOptions{
-			NodeID:                 os.Getenv("nodeid"),
-			DriverName:             consts.DefaultDriverName,
-			VolumeAttachLimit:      16,
-			EnablePerfOptimization: false,
-			Kubeconfig:             os.Getenv(kubeconfigEnvVar),
-			Endpoint:               fmt.Sprintf("unix:///tmp/csi-%s.sock", string(uuid.NewUUID())),
+			NodeID:                  os.Getenv("nodeid"),
+			DriverName:              consts.DefaultDriverName,
+			EnablePerfOptimization:  false,
+			Kubeconfig:              os.Getenv(kubeconfigEnvVar),
+			Endpoint:                fmt.Sprintf("unix:///tmp/csi-%s.sock", string(uuid.NewUUID())),
+			GetDiskTimeoutInSeconds: 15,
 		}
 		os.Setenv("AZURE_CREDENTIAL_FILE", credentials.TempAzureCredentialFilePath)
 		azurediskDriver = azuredisk.NewDriver(&driverOptions)
