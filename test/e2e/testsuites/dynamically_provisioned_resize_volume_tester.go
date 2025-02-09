@@ -142,10 +142,10 @@ func (t *DynamicallyProvisionedResizeVolumeTest) Run(ctx context.Context, client
 		diskURI = newPv.Spec.PersistentVolumeSource.AzureDisk.DataDiskURI
 	}
 	ginkgo.By(fmt.Sprintf("got DiskURI: %v", diskURI))
-	diskName, err := azureutils.GetDiskName(diskURI)
-	framework.ExpectNoError(err, fmt.Sprintf("Error getting diskName for azuredisk %v", err))
-	resourceGroup, err := azureutils.GetResourceGroupFromURI(diskURI)
-	framework.ExpectNoError(err, fmt.Sprintf("Error getting resourceGroup for azuredisk %v", err))
+	_, resourceGroup, diskName, err := azureutils.GetInfoFromURI(diskURI)
+	if err != nil {
+		framework.ExpectNoError(err, fmt.Sprintf("Error getting diskName for azuredisk %v", err))
+	}
 
 	creds, err := credentials.CreateAzureCredentialFile()
 	gomega.Expect(err).NotTo(gomega.HaveOccurred())
