@@ -216,28 +216,16 @@ func (d *DriverV2) Run(ctx context.Context) error {
 }
 
 func (d *DriverV2) checkDiskExists(ctx context.Context, diskURI string) (*armcompute.Disk, error) {
-	diskName, err := azureutils.GetDiskName(diskURI)
+	subsID, resourceGroup, diskName, err := azureutils.GetInfoFromURI(diskURI)
 	if err != nil {
 		return nil, err
 	}
-
-	resourceGroup, err := azureutils.GetResourceGroupFromURI(diskURI)
-	if err != nil {
-		return nil, err
-	}
-
-	subsID := azureutils.GetSubscriptionIDFromURI(diskURI)
 	diskClient, err := d.clientFactory.GetDiskClientForSub(subsID)
 	if err != nil {
 		return nil, err
 	}
 
-	disk, err := diskClient.Get(ctx, resourceGroup, diskName)
-	if err != nil {
-		return nil, err
-	}
-
-	return disk, nil
+	return diskClient.Get(ctx, resourceGroup, diskName)
 }
 
 func (d *DriverV2) checkDiskCapacity(ctx context.Context, subsID, resourceGroup, diskName string, requestGiB int) (bool, error) {

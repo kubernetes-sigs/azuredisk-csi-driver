@@ -890,7 +890,7 @@ func (t *TestPod) SetupInlineVolume(name, mountPath, diskURI string, readOnly bo
 	t.pod.Spec.Containers[0].VolumeMounts = append(t.pod.Spec.Containers[0].VolumeMounts, volumeMount)
 
 	kind := v1.AzureDataDiskKind("Managed")
-	diskName, _ := azureutils.GetDiskName(diskURI)
+	_, _, diskName, _ := azureutils.GetInfoFromURI(diskURI) //nolint
 	volume := v1.Volume{
 		Name: name,
 		VolumeSource: v1.VolumeSource{
