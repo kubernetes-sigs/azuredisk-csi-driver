@@ -967,6 +967,18 @@ func (d *Driver) ControllerExpandVolume(ctx context.Context, req *csi.Controller
 	isOperationSucceeded = true
 	klog.V(2).Infof("expand azure disk(%s) successfully, currentSize(%d)", diskURI, currentSize)
 
+	if result.ManagedBy != nil {
+		attachedNode, err := d.cloud.VMSet.GetNodeNameByProviderID(ctx, *result.ManagedBy)
+		if err == nil {
+			klog.V(2).Infof("delete cache for node (%s, %s) after disk(%s) expanded", attachedNode, *result.ManagedBy, diskURI)
+			if err = d.cloud.VMSet.DeleteCacheForNode(ctx, string(attachedNode)); err != nil {
+				klog.Warningf("failed to delete cache for node %s with error(%v)", attachedNode, err)
+			}
+		} else {
+			klog.Warningf("failed to get attached node for disk(%s) with error(%v)", diskURI, err)
+		}
+	}
+
 	return &csi.ControllerExpandVolumeResponse{
 		CapacityBytes:         currentSize,
 		NodeExpansionRequired: true,
