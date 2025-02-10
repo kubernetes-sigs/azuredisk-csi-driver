@@ -234,7 +234,7 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 			}
 			subsID, resourceGroup, diskName, err := azureutils.GetInfoFromURI(sourceID)
 			if err != nil {
-				return nil, status.Errorf(codes.Internal, "%v", err)
+				return nil, status.Errorf(codes.NotFound, "%v", err)
 			}
 			sourceGiB, disk, err := d.GetSourceDiskSize(ctx, subsID, resourceGroup, diskName, 0, consts.SourceDiskSearchMaxDepth)
 			if err == nil {
@@ -1164,9 +1164,16 @@ func (d *Driver) DeleteSnapshot(ctx context.Context, req *csi.DeleteSnapshotRequ
 		return nil, status.Error(codes.InvalidArgument, "Snapshot ID must be provided")
 	}
 
-	subsID, resourceGroup, snapshotName, err := azureutils.GetInfoFromURI(snapshotID)
-	if err != nil {
-		return nil, status.Errorf(codes.InvalidArgument, "%v", err)
+	var err error
+	var subsID string
+	snapshotName := snapshotID
+	resourceGroup := d.cloud.ResourceGroup
+
+	if azureutils.IsARMResourceID(snapshotID) {
+		subsID, resourceGroup, snapshotName, err = azureutils.GetInfoFromURI(snapshotID)
+		if err != nil {
+			return nil, status.Errorf(codes.InvalidArgument, "%v", err)
+		}
 	}
 
 	mc := metrics.NewMetricContext(consts.AzureDiskCSIDriverName, "controller_delete_snapshot", d.cloud.ResourceGroup, d.cloud.SubscriptionID, d.Name)

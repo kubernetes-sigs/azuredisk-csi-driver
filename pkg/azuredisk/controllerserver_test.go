@@ -371,7 +371,7 @@ func TestCreateVolume(t *testing.T) {
 				diskClient.EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any()).Return(disk, nil).AnyTimes()
 				diskClient.EXPECT().CreateOrUpdate(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, fmt.Errorf(consts.NotFound)).AnyTimes()
 				_, err := d.CreateVolume(context.Background(), req)
-				expectedErr := status.Error(codes.Internal, "invalid URI: ")
+				expectedErr := status.Error(codes.NotFound, "invalid URI: ")
 				if !reflect.DeepEqual(err, expectedErr) {
 					t.Errorf("actualErr: (%v), expectedErr: (%v)", err, expectedErr)
 				}
