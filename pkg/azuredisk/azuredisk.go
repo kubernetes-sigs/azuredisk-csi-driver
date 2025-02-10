@@ -112,6 +112,7 @@ type DriverCore struct {
 	vmssCacheTTLInSeconds        int64
 	volStatsCacheExpireInMinutes int64
 	attachDetachInitialDelayInMs int64
+	getDiskTimeoutInSeconds      int64
 	vmType                       string
 	enableWindowsHostProcess     bool
 	getNodeIDFromIMDS            bool
@@ -167,6 +168,7 @@ func newDriverV1(options *DriverOptions) *Driver {
 	driver.trafficManagerPort = options.TrafficManagerPort
 	driver.vmssCacheTTLInSeconds = options.VMSSCacheTTLInSeconds
 	driver.volStatsCacheExpireInMinutes = options.VolStatsCacheExpireInMinutes
+	driver.getDiskTimeoutInSeconds = options.GetDiskTimeoutInSeconds
 	driver.vmType = options.VMType
 	driver.enableWindowsHostProcess = options.EnableWindowsHostProcess
 	driver.getNodeIDFromIMDS = options.GetNodeIDFromIMDS
@@ -400,8 +402,7 @@ func (d *Driver) checkDiskExists(ctx context.Context, diskURI string) (*armcompu
 		return nil, err
 	}
 
-	// get disk operation should timeout within 1min if it takes too long time
-	newCtx, cancel := context.WithTimeout(ctx, time.Minute)
+	newCtx, cancel := context.WithTimeout(ctx, time.Duration(d.getDiskTimeoutInSeconds)*time.Second)
 	defer cancel()
 
 	disk, err := diskClient.Get(newCtx, resourceGroup, diskName)
