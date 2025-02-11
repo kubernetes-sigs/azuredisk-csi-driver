@@ -1660,7 +1660,7 @@ k8s.io/kubelet/pkg/apis/pluginregistration/v1
 k8s.io/kubelet/pkg/apis/podresources/v1
 k8s.io/kubelet/pkg/apis/podresources/v1alpha1
 k8s.io/kubelet/pkg/apis/stats/v1alpha1
-# k8s.io/kubernetes v1.32.0
+# k8s.io/kubernetes v1.32.1
 ## explicit; go 1.23.0
 k8s.io/kubernetes/pkg/api/legacyscheme
 k8s.io/kubernetes/pkg/api/service
@@ -1817,7 +1817,7 @@ k8s.io/kubernetes/test/utils/kubeconfig
 k8s.io/kubernetes/third_party/forked/golang/expansion
 k8s.io/kubernetes/third_party/forked/libcontainer/apparmor
 k8s.io/kubernetes/third_party/forked/libcontainer/utils
-# k8s.io/mount-utils v0.32.0
+# k8s.io/mount-utils v0.32.1
 ## explicit; go 1.23.0
 k8s.io/mount-utils
 # k8s.io/pod-security-admission v0.32.0 => k8s.io/pod-security-admission v0.32.0
