@@ -19,7 +19,6 @@ package azuredisk
 import (
 	"context"
 	"fmt"
-	"path"
 	"sort"
 	"strconv"
 	"strings"
@@ -233,8 +232,11 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 					},
 				},
 			}
-			subsID := azureutils.GetSubscriptionIDFromURI(sourceID)
-			sourceGiB, disk, err := d.GetSourceDiskSize(ctx, subsID, diskParams.ResourceGroup, path.Base(sourceID), 0, consts.SourceDiskSearchMaxDepth)
+			subsID, resourceGroup, diskName, err := azureutils.GetInfoFromURI(sourceID)
+			if err != nil {
+				return nil, status.Errorf(codes.NotFound, "%v", err)
+			}
+			sourceGiB, disk, err := d.GetSourceDiskSize(ctx, subsID, resourceGroup, diskName, 0, consts.SourceDiskSearchMaxDepth)
 			if err == nil {
 				if sourceGiB != nil && *sourceGiB < int32(requestGiB) {
 					diskParams.VolumeContext[consts.ResizeRequired] = strconv.FormatBool(true)
@@ -361,8 +363,8 @@ func (d *Driver) DeleteVolume(ctx context.Context, req *csi.DeleteVolumeRequest)
 	}
 	diskURI := volumeID
 
-	if err := azureutils.IsValidDiskURI(diskURI); err != nil {
-		klog.Errorf("validateDiskURI(%s) in DeleteVolume failed with error: %v", diskURI, err)
+	if !azureutils.IsARMResourceID(diskURI) {
+		klog.Errorf("diskURI(%s) is not a valid ARM resource ID", diskURI)
 		return &csi.DeleteVolumeResponse{}, nil
 	}
 
@@ -400,12 +402,6 @@ func (d *Driver) ControllerModifyVolume(ctx context.Context, req *csi.Controller
 		return nil, status.Errorf(codes.Internal, "invalid modify volume req: %v", req)
 	}
 	diskURI := volumeID
-
-	diskName, err := azureutils.GetDiskName(diskURI)
-	if err != nil {
-		return nil, status.Errorf(codes.NotFound, "%v", err)
-	}
-
 	if _, err := d.checkDiskExists(ctx, diskURI); err != nil {
 		return nil, status.Error(codes.NotFound, fmt.Sprintf("Volume not found, failed with error: %v", err))
 	}
@@ -430,7 +426,6 @@ func (d *Driver) ControllerModifyVolume(ctx context.Context, req *csi.Controller
 	volumeOptions := &ManagedDiskOptions{
 		DiskIOPSReadWrite:  diskParams.DiskIOPSReadWrite,
 		DiskMBpsReadWrite:  diskParams.DiskMBPSReadWrite,
-		DiskName:           diskName,
 		ResourceGroup:      diskParams.ResourceGroup,
 		SubscriptionID:     diskParams.SubscriptionID,
 		StorageAccountType: skuName,
@@ -490,7 +485,7 @@ func (d *Driver) ControllerPublishVolume(ctx context.Context, req *csi.Controlle
 	}
 
 	nodeName := types.NodeName(nodeID)
-	diskName, err := azureutils.GetDiskName(diskURI)
+	_, _, diskName, err := azureutils.GetInfoFromURI(diskURI)
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "%v", err)
 	}
@@ -597,7 +592,7 @@ func (d *Driver) ControllerUnpublishVolume(ctx context.Context, req *csi.Control
 	}
 	nodeName := types.NodeName(nodeID)
 
-	diskName, err := azureutils.GetDiskName(diskURI)
+	_, _, diskName, err := azureutils.GetInfoFromURI(diskURI)
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "%v", err)
 	}
@@ -742,18 +737,9 @@ func (d *Driver) listVolumesInCluster(ctx context.Context, start, maxEntries int
 	for _, pv := range pvList.Items {
 		if pv.Spec.CSI != nil && pv.Spec.CSI.Driver == d.Name {
 			diskURI := pv.Spec.CSI.VolumeHandle
-			if err := azureutils.IsValidDiskURI(diskURI); err != nil {
-				klog.Warningf("invalid disk uri (%s) with error(%v)", diskURI, err)
-				continue
-			}
-			rg, err := azureutils.GetResourceGroupFromURI(diskURI)
+			_, rg, _, err := azureutils.GetInfoFromURI(diskURI)
 			if err != nil {
-				klog.Warningf("failed to get resource group from disk uri (%s) with error(%v)", diskURI, err)
-				continue
-			}
-			subsID := azureutils.GetSubscriptionIDFromURI(diskURI)
-			if !strings.EqualFold(subsID, d.cloud.SubscriptionID) {
-				klog.V(6).Infof("disk(%s) not in current subscription(%s), skip", diskURI, d.cloud.SubscriptionID)
+				klog.Warningf("failed to get subscription id, resource group from disk uri (%s) with error(%v)", diskURI, err)
 				continue
 			}
 			rg, diskURI = strings.ToLower(rg), strings.ToLower(diskURI)
@@ -920,20 +906,10 @@ func (d *Driver) ControllerExpandVolume(ctx context.Context, req *csi.Controller
 	requestSize := *resource.NewQuantity(capacityBytes, resource.BinarySI)
 
 	diskURI := req.GetVolumeId()
-	if err := azureutils.IsValidDiskURI(diskURI); err != nil {
-		return nil, status.Errorf(codes.InvalidArgument, "disk URI(%s) is not valid: %v", diskURI, err)
-	}
-
-	diskName, err := azureutils.GetDiskName(diskURI)
+	subsID, resourceGroup, diskName, err := azureutils.GetInfoFromURI(diskURI)
 	if err != nil {
-		return nil, status.Errorf(codes.Internal, "could not get disk name from diskURI(%s) with error(%v)", diskURI, err)
+		return nil, status.Errorf(codes.InvalidArgument, "%v", err)
 	}
-	resourceGroup, err := azureutils.GetResourceGroupFromURI(diskURI)
-	if err != nil {
-		return nil, status.Errorf(codes.Internal, "could not get resource group from diskURI(%s) with error(%v)", diskURI, err)
-	}
-
-	subsID := azureutils.GetSubscriptionIDFromURI(diskURI)
 	diskClient, err := d.clientFactory.GetDiskClientForSub(subsID)
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "could not get disk client for subscription(%s) with error(%v)", subsID, err)
@@ -1039,8 +1015,7 @@ func (d *Driver) CreateSnapshot(ctx context.Context, req *csi.CreateSnapshotRequ
 	}
 
 	if resourceGroup == "" {
-		resourceGroup, err = azureutils.GetResourceGroupFromURI(sourceVolumeID)
-		if err != nil {
+		if _, resourceGroup, _, err = azureutils.GetInfoFromURI(sourceVolumeID); err != nil {
 			return nil, status.Errorf(codes.InvalidArgument, "could not get resource group from diskURI(%s) with error(%v)", sourceVolumeID, err)
 		}
 	}
@@ -1195,9 +1170,9 @@ func (d *Driver) DeleteSnapshot(ctx context.Context, req *csi.DeleteSnapshotRequ
 	resourceGroup := d.cloud.ResourceGroup
 
 	if azureutils.IsARMResourceID(snapshotID) {
-		snapshotName, resourceGroup, subsID, err = d.getSnapshotInfo(snapshotID)
+		subsID, resourceGroup, snapshotName, err = azureutils.GetInfoFromURI(snapshotID)
 		if err != nil {
-			return nil, status.Errorf(codes.Internal, "%v", err)
+			return nil, status.Errorf(codes.InvalidArgument, "%v", err)
 		}
 	}
 
@@ -1256,9 +1231,9 @@ func (d *Driver) getSnapshotByID(ctx context.Context, subsID, resourceGroup, sna
 	var err error
 	snapshotName := snapshotID
 	if azureutils.IsARMResourceID(snapshotID) {
-		snapshotName, resourceGroup, subsID, err = d.getSnapshotInfo(snapshotID)
+		subsID, resourceGroup, snapshotName, err = azureutils.GetInfoFromURI(snapshotID)
 		if err != nil {
-			return nil, status.Errorf(codes.Internal, "%v", err)
+			return nil, status.Errorf(codes.InvalidArgument, "%v", err)
 		}
 	}
 	snapshotClient, err := d.clientFactory.GetSnapshotClientForSub(subsID)
@@ -1293,8 +1268,10 @@ func (d *Driver) GetSourceDiskSize(ctx context.Context, subsID, resourceGroup, d
 	if result.Properties.CreationData != nil && result.Properties.CreationData.CreateOption != nil && *result.Properties.CreationData.CreateOption == armcompute.DiskCreateOptionCopy {
 		klog.V(2).Infof("Clone source disk has a parent source")
 		sourceResourceID := *result.Properties.CreationData.SourceResourceID
-		parentResourceGroup, _ := azureutils.GetResourceGroupFromURI(sourceResourceID)
-		parentDiskName := path.Base(sourceResourceID)
+		subsID, parentResourceGroup, parentDiskName, err := azureutils.GetInfoFromURI(sourceResourceID)
+		if err != nil {
+			return nil, result, status.Error(codes.Internal, fmt.Sprintf("failed to get subscription id, resource group from disk uri (%s) with error(%v)", sourceResourceID, err))
+		}
 		return d.GetSourceDiskSize(ctx, subsID, parentResourceGroup, parentDiskName, curDepth+1, maxDepth)
 	}
 
@@ -1302,18 +1279,4 @@ func (d *Driver) GetSourceDiskSize(ctx context.Context, subsID, resourceGroup, d
 		return nil, result, status.Error(codes.Internal, fmt.Sprintf("DiskSizeGB for disk (%s) in resourcegroup (%s) is nil", diskName, resourceGroup))
 	}
 	return (*result.Properties).DiskSizeGB, result, nil
-}
-
-// The format of snapshot id is /subscriptions/xxx/resourceGroups/xxx/providers/Microsoft.Compute/snapshots/snapshot-xxx-xxx.
-func (d *Driver) getSnapshotInfo(snapshotID string) (snapshotName, resourceGroup, subsID string, err error) {
-	if snapshotName, err = azureutils.GetSnapshotNameFromURI(snapshotID); err != nil {
-		return "", "", "", err
-	}
-	if resourceGroup, err = azureutils.GetResourceGroupFromURI(snapshotID); err != nil {
-		return "", "", "", err
-	}
-	if subsID = azureutils.GetSubscriptionIDFromURI(snapshotID); subsID == "" {
-		return "", "", "", fmt.Errorf("cannot get SubscriptionID from %s", snapshotID)
-	}
-	return snapshotName, resourceGroup, subsID, err
 }
