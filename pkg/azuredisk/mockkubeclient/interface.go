@@ -57,6 +57,7 @@ import (
 	v1beta19 "k8s.io/client-go/kubernetes/typed/flowcontrol/v1beta1"
 	v1beta20 "k8s.io/client-go/kubernetes/typed/flowcontrol/v1beta2"
 	v1beta3 "k8s.io/client-go/kubernetes/typed/flowcontrol/v1beta3"
+	v116 "k8s.io/client-go/kubernetes/typed/flowcontrol/v1"
 	v110 "k8s.io/client-go/kubernetes/typed/networking/v1"
 	v1alpha13 "k8s.io/client-go/kubernetes/typed/networking/v1alpha1"
 	v1beta110 "k8s.io/client-go/kubernetes/typed/networking/v1beta1"
@@ -546,6 +547,20 @@ func (m *MockInterface) FlowcontrolV1beta3() v1beta3.FlowcontrolV1beta3Interface
 func (mr *MockInterfaceMockRecorder) FlowcontrolV1beta3() *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "FlowcontrolV1beta3", reflect.TypeOf((*MockInterface)(nil).FlowcontrolV1beta3))
+}
+
+// FlowcontrolV1 mocks base method.
+func (m *MockInterface) FlowcontrolV1() v116.FlowcontrolV1Interface {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "FlowcontrolV1")
+	ret0, _ := ret[0].(v116.FlowcontrolV1Interface)
+	return ret0
+}
+
+// FlowcontrolV1 indicates an expected call of FlowcontrolV1.
+func (mr *MockInterfaceMockRecorder) FlowcontrolV1() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "FlowcontrolV1", reflect.TypeOf((*MockInterface)(nil).FlowcontrolV1))
 }
 
 // InternalV1alpha1 mocks base method.
