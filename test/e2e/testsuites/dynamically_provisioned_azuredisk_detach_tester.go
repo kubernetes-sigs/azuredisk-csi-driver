@@ -87,7 +87,7 @@ func (t *DynamicallyProvisionedAzureDiskDetach) Run(ctx context.Context, client 
 		framework.ExpectNoError(err, fmt.Sprintf("Error getting client for azuredisk %v", err))
 		disktest, err := disksClient.Get(ctx, resourceGroup, diskName)
 		framework.ExpectNoError(err, fmt.Sprintf("Error getting disk for azuredisk %v", err))
-		framework.ExpectEqual(string(compute.Attached), string(*disktest.Properties.DiskState))
+		gomega.Expect(compute.Attached).To(gomega.Equal(*disktest.Properties.DiskState))
 
 		ginkgo.By("begin to delete the pod")
 		tpod.Cleanup(ctx)
