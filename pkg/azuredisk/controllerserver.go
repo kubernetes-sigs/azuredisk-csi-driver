@@ -303,7 +303,7 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 		PerformancePlus:     diskParams.PerformancePlus,
 	}
 
-	volumeOptions.SkipGetDiskOperation = d.isGetDiskThrottled()
+	volumeOptions.SkipGetDiskOperation = d.isGetDiskThrottled(ctx)
 	// Azure Stack Cloud does not support NetworkAccessPolicy, PublicNetworkAccess
 	if !azureutils.IsAzureStackCloud(localCloud.Config.Cloud, localCloud.Config.DisableAzureStackCloud) {
 		volumeOptions.NetworkAccessPolicy = networkAccessPolicy
@@ -494,7 +494,7 @@ func (d *Driver) ControllerPublishVolume(ctx context.Context, req *csi.Controlle
 		mc.ObserveOperationWithResult(isOperationSucceeded, consts.VolumeID, diskURI, consts.Node, string(nodeName))
 	}()
 
-	lun, vmState, err := d.diskController.GetDiskLun(diskName, diskURI, nodeName)
+	lun, vmState, err := d.diskController.GetDiskLun(ctx, diskName, diskURI, nodeName)
 	if err == cloudprovider.InstanceNotFound {
 		return nil, status.Error(codes.NotFound, fmt.Sprintf("failed to get azure instance id for node %q (%v)", nodeName, err))
 	}
@@ -656,7 +656,7 @@ func (d *Driver) ValidateVolumeCapabilities(ctx context.Context, req *csi.Valida
 // getOccupiedLunsFromNode returns the occupied luns from node
 func (d *Driver) getOccupiedLunsFromNode(ctx context.Context, nodeName types.NodeName, diskURI string) []int {
 	var occupiedLuns []int
-	if d.checkDiskLUNCollision && !d.isCheckDiskLunThrottled() {
+	if d.checkDiskLUNCollision && !d.isCheckDiskLunThrottled(ctx) {
 		timer := time.AfterFunc(checkDiskLunThrottleLatency, func() {
 			klog.Warningf("checkDiskLun(%s) on node %s took longer than %v, disable disk lun check temporarily", diskURI, nodeName, checkDiskLunThrottleLatency)
 			d.checkDiskLunThrottlingCache.Set(consts.CheckDiskLunThrottlingKey, "")
@@ -664,7 +664,7 @@ func (d *Driver) getOccupiedLunsFromNode(ctx context.Context, nodeName types.Nod
 		now := time.Now()
 		if usedLunsFromVA, err := d.getUsedLunsFromVolumeAttachments(ctx, string(nodeName)); err == nil {
 			if len(usedLunsFromVA) > 0 {
-				if usedLunsFromNode, err := d.getUsedLunsFromNode(nodeName); err == nil {
+				if usedLunsFromNode, err := d.getUsedLunsFromNode(ctx, nodeName); err == nil {
 					occupiedLuns = volumehelper.GetElementsInArray1NotInArray2(usedLunsFromVA, usedLunsFromNode)
 					if len(occupiedLuns) > 0 {
 						klog.Warningf("node: %s, usedLuns from VolumeAttachments: %v, usedLuns from Node: %v, occupiedLuns: %v, disk: %s", nodeName, usedLunsFromVA, usedLunsFromNode, occupiedLuns, diskURI)

@@ -580,7 +580,7 @@ func TestGetUsedLunsFromNode(t *testing.T) {
 		},
 	}
 	for _, test := range tests {
-		result, err := d.getUsedLunsFromNode(types.NodeName(test.nodeName))
+		result, err := d.getUsedLunsFromNode(context.Background(), types.NodeName(test.nodeName))
 		if !reflect.DeepEqual(err, test.expectedErr) {
 			t.Errorf("test(%s): err(%v) != expected err(%v)", test.name, err, test.expectedErr)
 		}
