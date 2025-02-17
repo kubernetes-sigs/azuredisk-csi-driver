@@ -193,12 +193,7 @@ func (c *controllerCommon) AttachDisk(ctx context.Context, diskName, diskURI str
 	}
 
 	c.lockMap.LockEntry(node)
-	unlock := false
-	defer func() {
-		if !unlock {
-			c.lockMap.UnlockEntry(node)
-		}
-	}()
+	defer c.lockMap.UnlockEntry(node)
 
 	if c.AttachDetachInitialDelayInMs > 0 && requestNum == 1 {
 		klog.V(2).Infof("wait %dms for more requests on node %s, current disk attach: %s", c.AttachDetachInitialDelayInMs, node, diskURI)
