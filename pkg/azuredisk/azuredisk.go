@@ -374,8 +374,8 @@ func (d *Driver) Run(ctx context.Context) error {
 	return err
 }
 
-func (d *Driver) isGetDiskThrottled() bool {
-	cache, err := d.throttlingCache.Get(context.Background(), consts.GetDiskThrottlingKey, azcache.CacheReadTypeDefault)
+func (d *Driver) isGetDiskThrottled(ctx context.Context) bool {
+	cache, err := d.throttlingCache.Get(ctx, consts.GetDiskThrottlingKey, azcache.CacheReadTypeDefault)
 	if err != nil {
 		klog.Warningf("throttlingCache(%s) return with error: %s", consts.GetDiskThrottlingKey, err)
 		return false
@@ -383,8 +383,8 @@ func (d *Driver) isGetDiskThrottled() bool {
 	return cache != nil
 }
 
-func (d *Driver) isCheckDiskLunThrottled() bool {
-	cache, err := d.checkDiskLunThrottlingCache.Get(context.Background(), consts.CheckDiskLunThrottlingKey, azcache.CacheReadTypeDefault)
+func (d *Driver) isCheckDiskLunThrottled(ctx context.Context) bool {
+	cache, err := d.checkDiskLunThrottlingCache.Get(ctx, consts.CheckDiskLunThrottlingKey, azcache.CacheReadTypeDefault)
 	if err != nil {
 		klog.Warningf("throttlingCache(%s) return with error: %s", consts.CheckDiskLunThrottlingKey, err)
 		return false
@@ -393,7 +393,7 @@ func (d *Driver) isCheckDiskLunThrottled() bool {
 }
 
 func (d *Driver) checkDiskExists(ctx context.Context, diskURI string) (*armcompute.Disk, error) {
-	if d.isGetDiskThrottled() {
+	if d.isGetDiskThrottled(ctx) {
 		klog.Warningf("skip checkDiskExists(%s) since it's still in throttling", diskURI)
 		return nil, nil
 	}
@@ -414,7 +414,7 @@ func (d *Driver) checkDiskExists(ctx context.Context, diskURI string) (*armcompu
 }
 
 func (d *Driver) checkDiskCapacity(ctx context.Context, subsID, resourceGroup, diskName string, requestGiB int) (bool, error) {
-	if d.isGetDiskThrottled() {
+	if d.isGetDiskThrottled(ctx) {
 		klog.Warningf("skip checkDiskCapacity(%s, %s) since it's still in throttling", resourceGroup, diskName)
 		return true, nil
 	}
@@ -597,8 +597,8 @@ func (d *DriverCore) getUsedLunsFromVolumeAttachments(ctx context.Context, nodeN
 }
 
 // getUsedLunsFromNode returns a list of sorted used luns from Node
-func (d *DriverCore) getUsedLunsFromNode(nodeName types.NodeName) ([]int, error) {
-	disks, _, err := d.diskController.GetNodeDataDisks(nodeName, azcache.CacheReadTypeDefault)
+func (d *DriverCore) getUsedLunsFromNode(ctx context.Context, nodeName types.NodeName) ([]int, error) {
+	disks, _, err := d.diskController.GetNodeDataDisks(ctx, nodeName, azcache.CacheReadTypeDefault)
 	if err != nil {
 		klog.Errorf("error of getting data disks for node %s: %v", nodeName, err)
 		return nil, err
