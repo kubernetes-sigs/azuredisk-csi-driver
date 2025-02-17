@@ -95,7 +95,7 @@ type FakeDriver interface {
 	getDevicePathWithLUN(lunStr string) (string, error)
 	setThrottlingCache(key string, value string)
 	getUsedLunsFromVolumeAttachments(context.Context, string) ([]int, error)
-	getUsedLunsFromNode(nodeName types.NodeName) ([]int, error)
+	getUsedLunsFromNode(context.Context, types.NodeName) ([]int, error)
 }
 
 type fakeDriverV1 struct {

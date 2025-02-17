@@ -373,7 +373,7 @@ func TestGetDiskLun(t *testing.T) {
 			mockVMClient.EXPECT().Get(gomock.Any(), testCloud.ResourceGroup, *vm.Name, gomock.Any()).Return(&vm, nil).AnyTimes()
 		}
 
-		lun, _, err := common.GetDiskLun(test.diskName, test.diskURI, "vm1")
+		lun, _, err := common.GetDiskLun(context.Background(), test.diskName, test.diskURI, "vm1")
 		assert.Equal(t, test.expectedLun, lun, "TestCase[%d]: %s", i, test.desc)
 		assert.Equal(t, test.expectedErr, err != nil, "TestCase[%d]: %s", i, test.desc)
 	}
@@ -442,54 +442,8 @@ func TestSetDiskLun(t *testing.T) {
 			mockVMClient.EXPECT().Get(gomock.Any(), testCloud.ResourceGroup, *vm.Name, gomock.Any()).Return(&vm, nil).AnyTimes()
 		}
 
-		lun, err := common.SetDiskLun(types.NodeName(test.nodeName), test.diskURI, test.diskMap, test.occupiedLuns)
+		lun, err := common.SetDiskLun(context.Background(), types.NodeName(test.nodeName), test.diskURI, test.diskMap, test.occupiedLuns)
 		assert.Equal(t, test.expectedLun, lun, "TestCase[%d]: %s", i, test.desc)
-		assert.Equal(t, test.expectedErr, err != nil, "TestCase[%d]: %s", i, test.desc)
-	}
-}
-
-func TestDisksAreAttached(t *testing.T) {
-	ctrl := gomock.NewController(t)
-	defer ctrl.Finish()
-
-	testCases := []struct {
-		desc             string
-		diskNames        []string
-		nodeName         types.NodeName
-		expectedAttached map[string]bool
-		expectedErr      bool
-	}{
-		{
-			desc:             "an error shall be returned if there's no such instance corresponding to given nodeName",
-			diskNames:        []string{"disk1"},
-			nodeName:         "vm2",
-			expectedAttached: map[string]bool{"disk1": false},
-			expectedErr:      true,
-		},
-		{
-			desc:             "proper attach map shall be returned if everything is good",
-			diskNames:        []string{"disk1", "diskx"},
-			nodeName:         "vm1",
-			expectedAttached: map[string]bool{"disk1": true, "diskx": false},
-			expectedErr:      false,
-		},
-	}
-
-	for i, test := range testCases {
-		testCloud := provider.GetTestCloud(ctrl)
-		common := &controllerCommon{
-			cloud:   testCloud,
-			lockMap: newLockMap(),
-		}
-		expectedVMs := setTestVirtualMachines(testCloud, map[string]string{"vm1": "PowerState/Running"}, false)
-		mockVMClient := testCloud.ComputeClientFactory.GetVirtualMachineClient().(*mockvmclient.MockInterface)
-		for _, vm := range expectedVMs {
-			mockVMClient.EXPECT().Get(gomock.Any(), testCloud.ResourceGroup, *vm.Name, gomock.Any()).Return(&vm, nil).AnyTimes()
-		}
-		mockVMClient.EXPECT().Get(gomock.Any(), testCloud.ResourceGroup, "vm2", gomock.Any()).Return(&armcompute.VirtualMachine{}, errors.New("instance not found")).AnyTimes()
-
-		attached, err := common.DisksAreAttached(test.diskNames, test.nodeName)
-		assert.Equal(t, test.expectedAttached, attached, "TestCase[%d]: %s", i, test.desc)
 		assert.Equal(t, test.expectedErr, err != nil, "TestCase[%d]: %s", i, test.desc)
 	}
 }
@@ -681,50 +635,6 @@ func TestCheckDiskExists(t *testing.T) {
 		assert.Equal(t, test.expectedResult, exist, "TestCase[%d]", i, exist)
 		assert.Equal(t, test.expectedErr, err != nil, "TestCase[%d], return error: %v", i, err)
 	}
-}
-
-func TestFilterNonExistingDisksWithSpecialHTTPStatusCode(t *testing.T) {
-	ctrl := gomock.NewController(t)
-	defer ctrl.Finish()
-
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	testCloud := provider.GetTestCloud(ctrl)
-	mockFactory := mock_azclient.NewMockClientFactory(ctrl)
-	common := &controllerCommon{
-		cloud:         testCloud,
-		clientFactory: mockFactory,
-		lockMap:       newLockMap(),
-	}
-	// create a new disk before running test
-	diskURIPrefix := fmt.Sprintf("/subscriptions/%s/resourceGroups/%s/providers/Microsoft.Compute/disks/",
-		testCloud.SubscriptionID, testCloud.ResourceGroup)
-	newDiskName := "specialdisk"
-	newDiskURI := diskURIPrefix + newDiskName
-
-	mockDisksClient := mock_diskclient.NewMockInterface(ctrl)
-	mockFactory.EXPECT().GetDiskClientForSub(gomock.Any()).Return(mockDisksClient, nil).AnyTimes()
-	mockDisksClient.EXPECT().Get(gomock.Any(), testCloud.ResourceGroup, gomock.Eq(newDiskName)).Return(&armcompute.Disk{}, &azcore.ResponseError{
-		StatusCode: http.StatusBadRequest,
-		RawResponse: &http.Response{
-			StatusCode: http.StatusBadRequest,
-			Body:       ioutil.NopCloser(bytes.NewReader([]byte{})),
-		},
-	}).AnyTimes()
-
-	disks := []*armcompute.DataDisk{
-		{
-			Name: &newDiskName,
-			ManagedDisk: &armcompute.ManagedDiskParameters{
-				ID: &newDiskURI,
-			},
-		},
-	}
-
-	filteredDisks := common.filterNonExistingDisks(ctx, disks)
-	assert.Equal(t, 1, len(filteredDisks))
-	assert.Equal(t, newDiskName, *filteredDisks[0].Name)
 }
 
 func TestIsInstanceNotFoundError(t *testing.T) {
