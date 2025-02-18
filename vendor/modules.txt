@@ -1823,7 +1823,7 @@ k8s.io/kubernetes/test/utils/kubeconfig
 k8s.io/kubernetes/third_party/forked/golang/expansion
 k8s.io/kubernetes/third_party/forked/libcontainer/apparmor
 k8s.io/kubernetes/third_party/forked/libcontainer/utils
-# k8s.io/mount-utils v0.32.1
+# k8s.io/mount-utils v0.32.2
 ## explicit; go 1.23.0
 k8s.io/mount-utils
 # k8s.io/pod-security-admission v0.32.0 => k8s.io/pod-security-admission v0.32.0
