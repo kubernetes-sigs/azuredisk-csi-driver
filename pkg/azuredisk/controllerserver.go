@@ -476,7 +476,12 @@ func (d *Driver) ControllerPublishVolume(ctx context.Context, req *csi.Controlle
 
 	disk, err := d.checkDiskExists(ctx, diskURI)
 	if err != nil {
-		return nil, status.Error(codes.NotFound, fmt.Sprintf("Volume not found, failed with error: %v", err))
+		if strings.Contains(err.Error(), "context deadline") {
+			disk = nil
+			klog.Warningf("checkDiskExists(%s) failed with %v, proceed to attach disk", diskURI, err)
+		} else {
+			return nil, status.Error(codes.NotFound, fmt.Sprintf("Volume not found, failed with error: %v", err))
+		}
 	}
 
 	nodeID := req.GetNodeId()
