@@ -540,6 +540,62 @@ func TestCreateVolume(t *testing.T) {
 				}
 			},
 		},
+		{
+			name: "valid disk created with custom parameters",
+			testFunc: func(t *testing.T) {
+				cntl := gomock.NewController(t)
+				defer cntl.Finish()
+				d, _ := NewFakeDriver(cntl)
+				stdCapacityRangetest := &csi.CapacityRange{
+					RequiredBytes: volumehelper.GiBToBytes(10),
+					LimitBytes:    volumehelper.GiBToBytes(514),
+				}
+				req := &csi.CreateVolumeRequest{
+					Name:               testVolumeName,
+					VolumeCapabilities: stdVolumeCapabilities,
+					CapacityRange:      stdCapacityRangetest,
+					Parameters: map[string]string{
+						consts.SkuNameField:           string(armcompute.DiskStorageAccountTypesPremiumV2LRS),
+						consts.DiskIOPSReadWriteField: "3000",
+						consts.DiskMBPSReadWriteField: "125",
+					},
+					MutableParameters: map[string]string{
+						consts.DiskIOPSReadWriteField: "5000",
+						consts.DiskMBPSReadWriteField: "300",
+					},
+				}
+				size := int32(volumehelper.BytesToGiB(req.CapacityRange.RequiredBytes))
+				id := fmt.Sprintf(consts.ManagedDiskPath, "subs", "rg", testVolumeName)
+				state := "Succeeded"
+				disk := &armcompute.Disk{
+					ID:   &id,
+					Name: &testVolumeName,
+					Properties: &armcompute.DiskProperties{
+						DiskSizeGB:        &size,
+						ProvisioningState: &state,
+					},
+				}
+				diskClient := mock_diskclient.NewMockInterface(cntl)
+				d.getClientFactory().(*mock_azclient.MockClientFactory).EXPECT().GetDiskClientForSub(gomock.Any()).Return(diskClient, nil).AnyTimes()
+				diskClient.EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any()).Return(disk, nil).AnyTimes()
+				diskClient.EXPECT().CreateOrUpdate(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(disk, nil).AnyTimes()
+				res, err := d.CreateVolume(context.Background(), req)
+				expectedVolumeContext := map[string]string{
+					consts.CachingModeField:       "None",
+					consts.SkuNameField:           string(armcompute.DiskStorageAccountTypesPremiumV2LRS),
+					consts.DiskIOPSReadWriteField: "5000",
+					consts.DiskMBPSReadWriteField: "300",
+					consts.RequestedSizeGib:       "10",
+				}
+				if !reflect.DeepEqual(expectedVolumeContext, res.Volume.GetVolumeContext()) {
+					t.Errorf("actualVolumeContext: (%v), expectedVolumeContext: (%v)", res.Volume.GetVolumeContext(), expectedVolumeContext)
+				}
+				expectedErr := error(nil)
+				if !reflect.DeepEqual(err, expectedErr) {
+					t.Errorf("actualErr: (%v), expectedErr: (%v)", err, expectedErr)
+				}
+			},
+		},
 	}
 	for _, tc := range testCases {
 		t.Run(tc.name, tc.testFunc)
