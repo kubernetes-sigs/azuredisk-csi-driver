@@ -121,10 +121,10 @@ The following table lists the configurable parameters of the latest Azure Disk C
 | `image.csiProvisioner.tag`                        | csi-provisioner container image tag                           | `v5.2.0`                                                       |
 | `image.csiProvisioner.pullPolicy`                 | csi-provisioner image pull policy                          | `IfNotPresent`                                                 |
 | `image.csiAttacher.repository`                    | csi-attacher container image                                  | `/oss/kubernetes-csi/csi-attacher`            |
-| `image.csiAttacher.tag`                           | csi-attacher container image tag                              | `v4.8.0`                                                       |
+| `image.csiAttacher.tag`                           | csi-attacher container image tag                              | `v4.8.1`                                                       |
 | `image.csiAttacher.pullPolicy`                    | csi-attacher image pull policy                             | `IfNotPresent`                                                 |
 | `image.csiResizer.repository`                     | csi-resizer container image                                   | `/oss/kubernetes-csi/csi-resizer`             |
-| `image.csiResizer.tag`                            | csi-resizer container image tag                               | `v1.13.1`                                                       |
+| `image.csiResizer.tag`                            | csi-resizer container image tag                               | `v1.13.2`                                                       |
 | `image.csiResizer.pullPolicy`                     | csi-resizer image pull policy                              | `IfNotPresent`                                                 |
 | `image.livenessProbe.repository`                  | liveness-probe container image                                | `/oss/kubernetes-csi/livenessprobe`           |
 | `image.livenessProbe.tag`                         | liveness-probe container image tag                            | `v2.15.0`                                                       |
