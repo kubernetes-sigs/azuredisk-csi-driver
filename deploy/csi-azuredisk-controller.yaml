@@ -68,7 +68,7 @@ spec:
               drop:
                 - ALL
         - name: csi-attacher
-          image: mcr.microsoft.com/oss/kubernetes-csi/csi-attacher:v4.8.0
+          image: mcr.microsoft.com/oss/kubernetes-csi/csi-attacher:v4.8.1
           args:
             - "-v=2"
             - "-csi-address=$(ADDRESS)"
@@ -121,7 +121,7 @@ spec:
               drop:
                 - ALL
         - name: csi-resizer
-          image: mcr.microsoft.com/oss/kubernetes-csi/csi-resizer:v1.13.1
+          image: mcr.microsoft.com/oss/kubernetes-csi/csi-resizer:v1.13.2
           args:
             - "-csi-address=$(ADDRESS)"
             - "-v=2"
