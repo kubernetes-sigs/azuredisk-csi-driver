@@ -302,15 +302,12 @@ spec:
               name: socket-dir
             - mountPath: /etc/kubernetes/
               name: azure-cred
-            {{- if and (eq .Values.cloud "AzureStackCloud") (ne .Values.linux.distro "fedora") }}
+            {{- if or (eq .Values.cloud "AzureStackCloud") (eq .Values.linux.distro "fedora") }}
             - name: ssl
               mountPath: /etc/ssl/certs
               readOnly: true
             {{- end }}
             {{- if eq .Values.linux.distro "fedora" }}
-            - name: ssl
-              mountPath: /etc/ssl/certs
-              readOnly: true
             - name: ssl-pki
               mountPath: /etc/pki/ca-trust/extracted
               readOnly: true
@@ -327,15 +324,12 @@ spec:
           hostPath:
             path: /etc/kubernetes/
             type: DirectoryOrCreate
-        {{- if and (eq .Values.cloud "AzureStackCloud") (ne .Values.linux.distro "fedora") }}
+        {{- if or (eq .Values.cloud "AzureStackCloud") (eq .Values.linux.distro "fedora") }}
         - name: ssl
           hostPath:
             path: /etc/ssl/certs
         {{- end }}
         {{- if eq .Values.linux.distro "fedora" }}
-        - name: ssl
-          hostPath:
-            path: /etc/ssl/certs
         - name: ssl-pki
           hostPath:
             path: /etc/pki/ca-trust/extracted
