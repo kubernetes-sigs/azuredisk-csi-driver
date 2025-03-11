@@ -70,7 +70,7 @@ spec:
 {{- end }}
           args:
             - --csi-address=/csi/csi.sock
-            - --probe-timeout=3s
+            - --probe-timeout=10s
 {{- if eq .Values.node.hostNetwork true }}
             - --http-endpoint=localhost:{{ .Values.node.livenessProbe.healthPort }}
 {{- else }}
@@ -147,7 +147,7 @@ spec:
               port: healthz
 {{- end }}
             initialDelaySeconds: 30
-            timeoutSeconds: 10
+            timeoutSeconds: 30
             periodSeconds: 30
           env:
             - name: AZURE_CREDENTIAL_FILE
