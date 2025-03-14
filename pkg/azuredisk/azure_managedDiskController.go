@@ -272,39 +272,40 @@ func (c *ManagedDiskController) CreateManagedDisk(ctx context.Context, options *
 	if err != nil {
 		return "", err
 	}
-	if _, err := diskClient.CreateOrUpdate(ctx, rg, options.DiskName, model); err != nil {
+
+	diskID := fmt.Sprintf(managedDiskPath, subsID, rg, options.DiskName)
+	disk, err := diskClient.CreateOrUpdate(ctx, rg, options.DiskName, model)
+	if err != nil {
 		return "", err
 	}
 
-	diskID := fmt.Sprintf(managedDiskPath, subsID, rg, options.DiskName)
-
-	if options.SkipGetDiskOperation {
-		klog.Warningf("azureDisk - GetDisk(%s, StorageAccountType:%s) is throttled, unable to confirm provisioningState in poll process", options.DiskName, options.StorageAccountType)
-	} else {
-		err = kwait.ExponentialBackoffWithContext(ctx, defaultBackOff, func(_ context.Context) (bool, error) {
-			provisionState, id, err := c.GetDisk(ctx, subsID, rg, options.DiskName)
-			if err == nil {
-				if id != "" {
-					diskID = id
-				}
-			} else {
-				// We are waiting for provisioningState==Succeeded
-				// We don't want to hand-off managed disks to k8s while they are
-				//still being provisioned, this is to avoid some race conditions
-				return false, err
+	err = kwait.ExponentialBackoffWithContext(ctx, defaultBackOff, func(_ context.Context) (bool, error) {
+		if disk != nil && disk.Properties != nil && strings.EqualFold(ptr.Deref((*disk.Properties).ProvisioningState, ""), "succeeded") {
+			if ptr.Deref(disk.ID, "") != "" {
+				diskID = *disk.ID
 			}
-			if strings.ToLower(provisionState) == "succeeded" {
-				return true, nil
-			}
-			return false, nil
-		})
-
-		if err != nil {
-			klog.Warningf("azureDisk - created new MD Name:%s StorageAccountType:%s Size:%v but was unable to confirm provisioningState in poll process", options.DiskName, options.StorageAccountType, options.SizeGB)
+			return true, nil
 		}
-	}
 
-	klog.V(2).Infof("azureDisk - created new MD Name:%s StorageAccountType:%s Size:%v", options.DiskName, options.StorageAccountType, options.SizeGB)
+		if options.SkipGetDiskOperation {
+			klog.Warningf("azureDisk - GetDisk(%s, StorageAccountType:%s) is throttled, unable to confirm provisioningState in poll process", options.DiskName, options.StorageAccountType)
+			return true, nil
+		}
+		klog.V(4).Infof("azureDisk - waiting for disk(%s) in resourceGroup(%s) to be provisioned", options.DiskName, rg)
+		if disk, err = diskClient.Get(ctx, rg, options.DiskName); err != nil {
+			// We are waiting for provisioningState==Succeeded
+			// We don't want to hand-off managed disks to k8s while they are
+			//still being provisioned, this is to avoid some race conditions
+			return false, err
+		}
+		return false, nil
+	})
+
+	if err != nil {
+		klog.Warningf("azureDisk - created new MD Name:%s StorageAccountType:%s Size:%v but was unable to confirm provisioningState in poll process", options.DiskName, options.StorageAccountType, options.SizeGB)
+	} else {
+		klog.V(2).Infof("azureDisk - created new MD Name:%s StorageAccountType:%s Size:%v", options.DiskName, options.StorageAccountType, options.SizeGB)
+	}
 	return diskID, nil
 }
 
