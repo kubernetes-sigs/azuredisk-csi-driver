@@ -1221,7 +1221,7 @@ func TestControllerExpandVolume(t *testing.T) {
 				defer cntl.Finish()
 				d, _ := NewFakeDriver(cntl)
 
-				expectedErr := status.Error(codes.InvalidArgument, "invalid URI: httptest")
+				expectedErr := status.Error(codes.Internal, "GetDiskByURI(httptest) failed with error(invalid URI: httptest)")
 				_, err := d.ControllerExpandVolume(ctx, req)
 				if !reflect.DeepEqual(err, expectedErr) {
 					t.Errorf("Unexpected error: %v", err)
@@ -1241,7 +1241,7 @@ func TestControllerExpandVolume(t *testing.T) {
 				defer cntl.Finish()
 				d, _ := NewFakeDriver(cntl)
 
-				expectedErr := status.Errorf(codes.InvalidArgument, "invalid URI: vol_1")
+				expectedErr := status.Errorf(codes.Internal, "GetDiskByURI(vol_1) failed with error(invalid URI: vol_1)")
 				_, err := d.ControllerExpandVolume(ctx, req)
 				if !reflect.DeepEqual(err, expectedErr) {
 					t.Errorf("actualErr: (%v), expectedErr: (%v)", err, expectedErr)
@@ -1270,7 +1270,7 @@ func TestControllerExpandVolume(t *testing.T) {
 				diskClient := mock_diskclient.NewMockInterface(cntl)
 				d.getClientFactory().(*mock_azclient.MockClientFactory).EXPECT().GetDiskClientForSub(gomock.Any()).Return(diskClient, nil).AnyTimes()
 				diskClient.EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any()).Return(disk, nil).AnyTimes()
-				expectedErr := status.Errorf(codes.Internal, "could not get size of the disk(unit-test-volume)")
+				expectedErr := status.Errorf(codes.Internal, "could not get size of the disk(/subscriptions/subs/resourceGroups/rg/providers/Microsoft.Compute/disks/unit-test-volume)")
 				_, err := d.ControllerExpandVolume(ctx, req)
 				if !reflect.DeepEqual(err, expectedErr) {
 					t.Errorf("actualErr: (%v), expectedErr: (%v)", err, expectedErr)

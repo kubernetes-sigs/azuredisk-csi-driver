@@ -20,13 +20,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"net/http"
 	"regexp"
 	"strings"
 	"sync"
 	"time"
 
-	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/to"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute/v6"
 
@@ -558,26 +556,6 @@ func (c *controllerCommon) SetDiskLun(ctx context.Context, nodeName types.NodeNa
 		return lun, fmt.Errorf("could not find lun of diskURI(%s), diskMap(%v)", diskURI, diskMap)
 	}
 	return lun, nil
-}
-
-func (c *controllerCommon) checkDiskExists(ctx context.Context, diskURI string) (bool, error) {
-	subsID, resourceGroup, diskName, err := azureutils.GetInfoFromURI(diskURI)
-	if err != nil {
-		return false, err
-	}
-
-	diskClient, err := c.clientFactory.GetDiskClientForSub(subsID)
-	if err != nil {
-		return false, err
-	}
-	if _, err := diskClient.Get(ctx, resourceGroup, diskName); err != nil {
-		var respErr = &azcore.ResponseError{}
-		if errors.As(err, &respErr) && respErr.StatusCode == http.StatusNotFound {
-			return false, nil
-		}
-		return false, err
-	}
-	return true, nil
 }
 
 func IsOperationPreempted(err error) bool {
