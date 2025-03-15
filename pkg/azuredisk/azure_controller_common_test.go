@@ -17,18 +17,15 @@ limitations under the License.
 package azuredisk
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"fmt"
-	"io/ioutil"
 	"net/http"
 	"reflect"
 	"strings"
 	"testing"
 	"time"
 
-	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/to"
 	armcompute "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute/v6"
 	autorestmocks "github.com/Azure/go-autorest/autorest/mocks"
@@ -38,8 +35,6 @@ import (
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/utils/ptr"
 
-	"sigs.k8s.io/cloud-provider-azure/pkg/azclient/diskclient/mock_diskclient"
-	"sigs.k8s.io/cloud-provider-azure/pkg/azclient/mock_azclient"
 	mockvmclient "sigs.k8s.io/cloud-provider-azure/pkg/azclient/virtualmachineclient/mock_virtualmachineclient"
 	azcache "sigs.k8s.io/cloud-provider-azure/pkg/cache"
 	"sigs.k8s.io/cloud-provider-azure/pkg/consts"
@@ -594,65 +589,6 @@ func TestGetValidCreationData(t *testing.T) {
 		if !reflect.DeepEqual(result, test.expected1) || !reflect.DeepEqual(err, test.expected2) {
 			t.Errorf("input sourceResourceID: %v, sourceType: %v, getValidCreationData result: %v, expected1 : %v, err: %v, expected2: %v", test.sourceResourceID, test.sourceType, result, test.expected1, err, test.expected2)
 		}
-	}
-}
-
-func TestCheckDiskExists(t *testing.T) {
-	ctrl := gomock.NewController(t)
-	defer ctrl.Finish()
-
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	testCloud := provider.GetTestCloud(ctrl)
-	mockFactory := mock_azclient.NewMockClientFactory(ctrl)
-	common := &controllerCommon{
-		cloud:         testCloud,
-		clientFactory: mockFactory,
-		lockMap:       newLockMap(),
-	}
-	// create a new disk before running test
-	newDiskName := "newdisk"
-	newDiskURI := fmt.Sprintf("/subscriptions/%s/resourceGroups/%s/providers/Microsoft.Compute/disks/%s",
-		testCloud.SubscriptionID, testCloud.ResourceGroup, newDiskName)
-
-	mockDisksClient := mock_diskclient.NewMockInterface(ctrl)
-	mockFactory.EXPECT().GetDiskClientForSub(gomock.Any()).Return(mockDisksClient, nil).AnyTimes()
-	mockDisksClient.EXPECT().Get(gomock.Any(), testCloud.ResourceGroup, newDiskName).Return(&armcompute.Disk{}, nil).AnyTimes()
-	mockDisksClient.EXPECT().Get(gomock.Any(), gomock.Not(testCloud.ResourceGroup), gomock.Any()).Return(&armcompute.Disk{}, &azcore.ResponseError{
-		StatusCode: http.StatusNotFound,
-		RawResponse: &http.Response{
-			StatusCode: http.StatusNotFound,
-			Body:       ioutil.NopCloser(bytes.NewReader([]byte{})),
-		},
-	}).AnyTimes()
-
-	testCases := []struct {
-		diskURI        string
-		expectedResult bool
-		expectedErr    bool
-	}{
-		{
-			diskURI:        "incorrect disk URI format",
-			expectedResult: false,
-			expectedErr:    true,
-		},
-		{
-			diskURI:        "/subscriptions/xxx/resourceGroups/xxx/providers/Microsoft.Compute/disks/non-existing-disk",
-			expectedResult: false,
-			expectedErr:    false,
-		},
-		{
-			diskURI:        newDiskURI,
-			expectedResult: true,
-			expectedErr:    false,
-		},
-	}
-
-	for i, test := range testCases {
-		exist, err := common.checkDiskExists(ctx, test.diskURI)
-		assert.Equal(t, test.expectedResult, exist, "TestCase[%d]", i, exist)
-		assert.Equal(t, test.expectedErr, err != nil, "TestCase[%d], return error: %v", i, err)
 	}
 }
 

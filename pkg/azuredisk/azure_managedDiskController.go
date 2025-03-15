@@ -343,28 +343,24 @@ func (c *ManagedDiskController) DeleteManagedDisk(ctx context.Context, diskURI s
 	}
 	// We don't need poll here, k8s will immediately stop referencing the disk
 	// the disk will be eventually deleted - cleanly - by ARM
-
 	klog.V(2).Infof("azureDisk - deleted a managed disk: %s", diskURI)
-
 	return nil
 }
 
-// GetDisk return: disk provisionState, diskID, error
-func (c *ManagedDiskController) GetDisk(ctx context.Context, subsID, resourceGroup, diskName string) (string, string, error) {
+func (c *ManagedDiskController) GetDiskByURI(ctx context.Context, diskURI string) (*armcompute.Disk, error) {
+	subsID, resourceGroup, diskName, err := azureutils.GetInfoFromURI(diskURI)
+	if err != nil {
+		return nil, err
+	}
+	return c.GetDisk(ctx, subsID, resourceGroup, diskName)
+}
+
+func (c *ManagedDiskController) GetDisk(ctx context.Context, subsID, resourceGroup, diskName string) (*armcompute.Disk, error) {
 	diskclient, err := c.clientFactory.GetDiskClientForSub(subsID)
 	if err != nil {
-		return "", "", err
+		return nil, err
 	}
-
-	result, err := diskclient.Get(ctx, resourceGroup, diskName)
-	if err != nil {
-		return "", "", err
-	}
-
-	if result.Properties != nil && (*result.Properties).ProvisioningState != nil {
-		return *(*result.Properties).ProvisioningState, *result.ID, nil
-	}
-	return "", "", nil
+	return diskclient.Get(ctx, resourceGroup, diskName)
 }
 
 // ResizeDisk Expand the disk to new size
@@ -382,7 +378,7 @@ func (c *ManagedDiskController) ResizeDisk(ctx context.Context, diskURI string, 
 		return oldSize, err
 	}
 
-	if result.Properties == nil || result.Properties.DiskSizeGB == nil {
+	if result == nil || result.Properties == nil || result.Properties.DiskSizeGB == nil {
 		return oldSize, fmt.Errorf("DiskProperties of disk(%s) is nil", diskName)
 	}
 
@@ -437,7 +433,7 @@ func (c *ManagedDiskController) ModifyDisk(ctx context.Context, options *Managed
 		return err
 	}
 
-	if result.Properties == nil || result.SKU == nil || result.SKU.Name == nil {
+	if result == nil || result.Properties == nil || result.SKU == nil || result.SKU.Name == nil {
 		return fmt.Errorf("DiskProperties or SKU of disk(%s) is nil", diskName)
 	}
 

@@ -758,27 +758,18 @@ func (d *DriverV2) ControllerExpandVolume(ctx context.Context, req *csi.Controll
 	requestSize := *resource.NewQuantity(capacityBytes, resource.BinarySI)
 
 	diskURI := req.GetVolumeId()
-	subsID, resourceGroup, diskName, err := azureutils.GetInfoFromURI(diskURI)
-	if err != nil {
-		return nil, status.Errorf(codes.InvalidArgument, "%v", err)
-	}
-
 	mc := metrics.NewMetricContext(consts.AzureDiskCSIDriverName, "controller_expand_volume", d.cloud.ResourceGroup, d.cloud.SubscriptionID, d.Name)
 	isOperationSucceeded := false
 	defer func() {
 		mc.ObserveOperationWithResult(isOperationSucceeded, consts.VolumeID, diskURI)
 	}()
 
-	diskClient, err := d.clientFactory.GetDiskClientForSub(subsID)
+	result, err := d.diskController.GetDiskByURI(ctx, diskURI)
 	if err != nil {
-		return nil, status.Errorf(codes.Internal, "could not get disk client for subscription(%s) with error(%v)", subsID, err)
-	}
-	result, err := diskClient.Get(ctx, resourceGroup, diskName)
-	if err != nil {
-		return nil, status.Errorf(codes.Internal, "could not get the disk(%s) under rg(%s) with error(%v)", diskName, resourceGroup, err)
+		return nil, status.Errorf(codes.Internal, "GetDiskByURI(%s) failed with error(%v)", diskURI, err)
 	}
 	if result.Properties.DiskSizeGB == nil {
-		return nil, status.Errorf(codes.Internal, "could not get size of the disk(%s)", diskName)
+		return nil, status.Errorf(codes.Internal, "could not get size of the disk(%s)", diskURI)
 	}
 	oldSize := *resource.NewQuantity(int64(*result.Properties.DiskSizeGB), resource.BinarySI)
 
@@ -1013,15 +1004,11 @@ func (d *DriverV2) GetSourceDiskSize(ctx context.Context, subsID, resourceGroup,
 	if curDepth > maxDepth {
 		return nil, nil, status.Error(codes.Internal, fmt.Sprintf("current depth (%d) surpassed the max depth (%d) while searching for the source disk size", curDepth, maxDepth))
 	}
-	diskClient, err := d.clientFactory.GetDiskClientForSub(subsID)
-	if err != nil {
-		return nil, nil, status.Error(codes.Internal, err.Error())
-	}
-	result, err := diskClient.Get(ctx, resourceGroup, diskName)
+	result, err := d.diskController.GetDisk(ctx, subsID, resourceGroup, diskName)
 	if err != nil {
 		return nil, result, err
 	}
-	if result.Properties == nil {
+	if result == nil || result.Properties == nil {
 		return nil, result, status.Error(codes.Internal, fmt.Sprintf("DiskProperty not found for disk (%s) in resource group (%s)", diskName, resourceGroup))
 	}
 

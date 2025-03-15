@@ -435,30 +435,24 @@ func TestGetDisk(t *testing.T) {
 	defer cancel()
 
 	testCases := []struct {
-		desc                      string
-		diskName                  string
-		existedDisk               *armcompute.Disk
-		expectedErr               bool
-		expectedErrMsg            error
-		expectedProvisioningState string
-		expectedDiskID            string
+		desc           string
+		diskName       string
+		existedDisk    *armcompute.Disk
+		expectedErr    bool
+		expectedErrMsg error
 	}{
 		{
-			desc:                      "no error shall be returned if get a normal disk without DiskProperties",
-			diskName:                  disk1Name,
-			existedDisk:               &armcompute.Disk{Name: ptr.To(disk1Name)},
-			expectedErr:               false,
-			expectedProvisioningState: "",
-			expectedDiskID:            "",
+			desc:        "no error shall be returned if get a normal disk without DiskProperties",
+			diskName:    disk1Name,
+			existedDisk: &armcompute.Disk{Name: ptr.To(disk1Name)},
+			expectedErr: false,
 		},
 		{
-			desc:                      "an error shall be returned if get disk failed",
-			diskName:                  fakeGetDiskFailed,
-			existedDisk:               &armcompute.Disk{Name: ptr.To(fakeGetDiskFailed)},
-			expectedErr:               true,
-			expectedErrMsg:            fmt.Errorf("Get Disk failed"),
-			expectedProvisioningState: "",
-			expectedDiskID:            "",
+			desc:           "an error shall be returned if get disk failed",
+			diskName:       fakeGetDiskFailed,
+			existedDisk:    &armcompute.Disk{Name: ptr.To(fakeGetDiskFailed)},
+			expectedErr:    true,
+			expectedErrMsg: fmt.Errorf("Get Disk failed"),
 		},
 	}
 
@@ -481,13 +475,73 @@ func TestGetDisk(t *testing.T) {
 			mockDisksClient.EXPECT().Get(gomock.Any(), testCloud.ResourceGroup, test.diskName).Return(test.existedDisk, nil).AnyTimes()
 		}
 
-		provisioningState, diskid, err := managedDiskController.GetDisk(ctx, "", testCloud.ResourceGroup, test.diskName)
+		disk, err := managedDiskController.GetDisk(ctx, "", testCloud.ResourceGroup, test.diskName)
 		assert.Equal(t, test.expectedErr, err != nil, "TestCase[%d]: %s, return error: %v", i, test.desc, err)
 		if test.expectedErr {
+			assert.Equal(t, test.existedDisk, disk, "TestCase[%d]: %s, expected: %v, return: %v", i, test.desc, test.existedDisk, disk)
 			assert.EqualError(t, test.expectedErrMsg, err.Error(), "TestCase[%d]: %s, expected: %v, return: %v", i, test.desc, test.expectedErrMsg, err)
+		} else {
+			assert.Equal(t, *test.existedDisk, *disk, "TestCase[%d]: %s, expected: %v, return: %v", i, test.desc, test.existedDisk, disk)
 		}
-		assert.Equal(t, test.expectedProvisioningState, provisioningState, "TestCase[%d]: %s, expected ProvisioningState: %v, return ProvisioningState: %v", i, test.desc, test.expectedProvisioningState, provisioningState)
-		assert.Equal(t, test.expectedDiskID, diskid, "TestCase[%d]: %s, expected DiskID: %v, return DiskID: %v", i, test.desc, test.expectedDiskID, diskid)
+	}
+}
+
+func TestGetDiskByURI(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	testCases := []struct {
+		desc           string
+		diskURI        string
+		existedDisk    *armcompute.Disk
+		expectedErr    bool
+		expectedErrMsg error
+	}{
+		{
+			desc:        "no error shall be returned if get a normal disk without DiskProperties",
+			diskURI:     fmt.Sprintf("/subscriptions/subscription/resourceGroups/rg/providers/Microsoft.Compute/disks/%s", disk1Name),
+			existedDisk: &armcompute.Disk{Name: ptr.To(disk1Name)},
+			expectedErr: false,
+		},
+		{
+			desc:           "an error shall be returned if get disk failed",
+			diskURI:        fmt.Sprintf("/subscriptions/subscription/resourceGroups/rg/providers/Microsoft.Compute/disks/%s", fakeGetDiskFailed),
+			existedDisk:    &armcompute.Disk{Name: ptr.To(fakeGetDiskFailed)},
+			expectedErr:    true,
+			expectedErrMsg: fmt.Errorf("Get Disk failed"),
+		},
+	}
+
+	for i, test := range testCases {
+		testCloud := provider.GetTestCloud(ctrl)
+		managedDiskController := &ManagedDiskController{
+			controllerCommon: &controllerCommon{
+				cloud:               testCloud,
+				lockMap:             newLockMap(),
+				DisableDiskLunCheck: true,
+				clientFactory:       testCloud.ComputeClientFactory,
+			},
+		}
+
+		mockDisksClient := mock_diskclient.NewMockInterface(ctrl)
+		managedDiskController.controllerCommon.clientFactory.(*mock_azclient.MockClientFactory).EXPECT().GetDiskClientForSub("subscription").Return(mockDisksClient, nil).AnyTimes()
+		if test.diskURI == fmt.Sprintf("/subscriptions/subscription/resourceGroups/rg/providers/Microsoft.Compute/disks/%s", fakeGetDiskFailed) {
+			mockDisksClient.EXPECT().Get(gomock.Any(), testCloud.ResourceGroup, fakeGetDiskFailed).Return(test.existedDisk, fmt.Errorf("Get Disk failed")).AnyTimes()
+		} else {
+			mockDisksClient.EXPECT().Get(gomock.Any(), testCloud.ResourceGroup, disk1Name).Return(test.existedDisk, nil).AnyTimes()
+		}
+
+		disk, err := managedDiskController.GetDiskByURI(ctx, test.diskURI)
+		assert.Equal(t, test.expectedErr, err != nil, "TestCase[%d]: %s, return error: %v", i, test.desc, err)
+		if test.expectedErr {
+			assert.Equal(t, test.existedDisk, disk, "TestCase[%d]: %s, expected: %v, return: %v", i, test.desc, test.existedDisk, disk)
+			assert.EqualError(t, test.expectedErrMsg, err.Error(), "TestCase[%d]: %s, expected: %v, return: %v", i, test.desc, test.expectedErrMsg, err)
+		} else {
+			assert.Equal(t, *test.existedDisk, *disk, "TestCase[%d]: %s, expected: %v, return: %v", i, test.desc, test.existedDisk, disk)
+		}
 	}
 }
 

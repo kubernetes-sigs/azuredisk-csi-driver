@@ -401,19 +401,9 @@ func (d *Driver) checkDiskExists(ctx context.Context, diskURI string) (*armcompu
 		return nil, nil
 	}
 
-	subsID, resourceGroup, diskName, err := azureutils.GetInfoFromURI(diskURI)
-	if err != nil {
-		return nil, err
-	}
-	diskClient, err := d.diskController.clientFactory.GetDiskClientForSub(subsID)
-	if err != nil {
-		return nil, err
-	}
-
 	newCtx, cancel := context.WithTimeout(ctx, time.Duration(d.getDiskTimeoutInSeconds)*time.Second)
 	defer cancel()
-
-	return diskClient.Get(newCtx, resourceGroup, diskName)
+	return d.diskController.GetDiskByURI(newCtx, diskURI)
 }
 
 func (d *Driver) checkDiskCapacity(ctx context.Context, subsID, resourceGroup, diskName string, requestGiB int) (bool, error) {
@@ -421,11 +411,7 @@ func (d *Driver) checkDiskCapacity(ctx context.Context, subsID, resourceGroup, d
 		klog.Warningf("skip checkDiskCapacity(%s, %s) since it's still in throttling", resourceGroup, diskName)
 		return true, nil
 	}
-	diskClient, err := d.clientFactory.GetDiskClientForSub(subsID)
-	if err != nil {
-		return false, err
-	}
-	disk, err := diskClient.Get(ctx, resourceGroup, diskName)
+	disk, err := d.diskController.GetDisk(ctx, subsID, resourceGroup, diskName)
 	// Because we can not judge the reason of the error. Maybe the disk does not exist.
 	// So here we do not handle the error.
 	if err == nil {
