@@ -95,61 +95,24 @@ func CleanupMountPoint(path string, m *mount.SafeFormatAndMount, unmountVolume b
 }
 
 func getDevicePathWithMountPath(mountPath string, m *mount.SafeFormatAndMount) (string, error) {
-	var devicePath string
-	var err error
-
 	if proxy, ok := m.Interface.(mounter.CSIProxyMounter); ok {
-		devicePath, err = proxy.GetDeviceNameFromMount(mountPath, "")
-	} else {
-		return "", fmt.Errorf("could not cast to csi proxy class")
+		return proxy.GetDeviceNameFromMount(mountPath, "")
 	}
-
-	if err != nil {
-		if sts, ok := status.FromError(err); ok {
-			return "", fmt.Errorf(sts.Message())
-		}
-		return "", err
-	}
-
-	return devicePath, nil
+	return "", fmt.Errorf("could not cast to csi proxy class")
 }
 
 func getBlockSizeBytes(devicePath string, m *mount.SafeFormatAndMount) (int64, error) {
-	var sizeInBytes int64
-	var err error
-
 	if proxy, ok := m.Interface.(mounter.CSIProxyMounter); ok {
-		sizeInBytes, err = proxy.GetVolumeSizeInBytes(devicePath)
-	} else {
-		return -1, fmt.Errorf("could not cast to csi proxy class")
+		return proxy.GetVolumeSizeInBytes(devicePath)
 	}
-
-	if err != nil {
-		if sts, ok := status.FromError(err); ok {
-			return -1, fmt.Errorf(sts.Message())
-		}
-		return -1, err
-	}
-
-	return sizeInBytes, nil
+	return -1, fmt.Errorf("could not cast to csi proxy class")
 }
 
 func resizeVolume(devicePath, volumePath string, m *mount.SafeFormatAndMount) error {
-	var err error
 	if proxy, ok := m.Interface.(mounter.CSIProxyMounter); ok {
-		err = proxy.ResizeVolume(devicePath)
-	} else {
-		return fmt.Errorf("could not cast to csi proxy class")
+		return proxy.ResizeVolume(devicePath)
 	}
-
-	if err != nil {
-		if sts, ok := status.FromError(err); ok {
-			return fmt.Errorf(sts.Message())
-		}
-		return err
-	}
-
-	return nil
+	return fmt.Errorf("could not cast to csi proxy class")
 }
 
 // needResizeVolume check whether device needs resize
@@ -171,7 +134,7 @@ func (d *DriverCore) GetVolumeStats(ctx context.Context, m *mount.SafeFormatAndM
 	// check if the volume stats is cached
 	cache, err := d.volStatsCache.Get(ctx, volumeID, azcache.CacheReadTypeDefault)
 	if err != nil {
-		return nil, status.Errorf(codes.Internal, err.Error())
+		return nil, status.Errorf(codes.Internal, "%v", err)
 	}
 	if cache != nil {
 		volUsage := cache.(csi.VolumeUsage)
