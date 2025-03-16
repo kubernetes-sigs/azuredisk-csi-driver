@@ -280,8 +280,8 @@ func (c *ManagedDiskController) CreateManagedDisk(ctx context.Context, options *
 	}
 
 	err = kwait.ExponentialBackoffWithContext(ctx, defaultBackOff, func(_ context.Context) (bool, error) {
-		if disk != nil && disk.Properties != nil && strings.EqualFold(ptr.Deref((*disk.Properties).ProvisioningState, ""), "succeeded") {
-			if ptr.Deref(disk.ID, "") != "" {
+		if disk != nil && disk.Properties != nil && disk.Properties.ProvisioningState != nil && strings.EqualFold(*disk.Properties.ProvisioningState, "succeeded") {
+			if disk.ID != nil && *disk.ID != "" {
 				diskID = *disk.ID
 			}
 			return true, nil
