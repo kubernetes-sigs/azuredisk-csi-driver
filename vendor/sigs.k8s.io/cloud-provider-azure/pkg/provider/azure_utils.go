@@ -30,6 +30,7 @@ import (
 	"github.com/Azure/azure-sdk-for-go/services/network/mgmt/2022-07-01/network"
 
 	v1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/klog/v2"
 	utilnet "k8s.io/utils/net"
 	"k8s.io/utils/ptr"
@@ -132,6 +133,23 @@ func findKeyInMapCaseInsensitive(targetMap map[string]*string, key string) (bool
 	return false, ""
 }
 
+// This function extends the functionality of findKeyInMapCaseInsensitive by supporting both
+// exact case-insensitive key matching and prefix-based key matching in the given map.
+// 1. If the key is found in the map (case-insensitively), the function returns true and the matching key in the map.
+// 2. If the key's prefix is found in the map (case-insensitively), the function also returns true and the matching key in the map.
+// This function is designed to enable systemTags to support prefix-based tag keys,
+// allowing more flexible and efficient tag key matching.
+func findKeyInMapWithPrefix(targetMap map[string]*string, key string) (bool, string) {
+	for k := range targetMap {
+		// use prefix-based key matching
+		// use case-insensitive comparison
+		if strings.HasPrefix(strings.ToLower(key), strings.ToLower(k)) {
+			return true, k
+		}
+	}
+	return false, ""
+}
+
 func (az *Cloud) reconcileTags(currentTagsOnResource, newTags map[string]*string) (reconciledTags map[string]*string, changed bool) {
 	var systemTags []string
 	systemTagsMap := make(map[string]*string)
@@ -164,7 +182,7 @@ func (az *Cloud) reconcileTags(currentTagsOnResource, newTags map[string]*string
 	if len(systemTagsMap) > 0 {
 		for k := range currentTagsOnResource {
 			if _, ok := newTags[k]; !ok {
-				if found, _ := findKeyInMapCaseInsensitive(systemTagsMap, k); !found {
+				if found, _ := findKeyInMapWithPrefix(systemTagsMap, k); !found {
 					klog.V(2).Infof("reconcileTags: delete tag %s: %s", k, ptr.Deref(currentTagsOnResource[k], ""))
 					delete(currentTagsOnResource, k)
 					changed = true
@@ -550,4 +568,11 @@ func ToArmcomputeDisk(disks []compute.DataDisk) ([]*armcompute.DataDisk, error) 
 	}
 
 	return result, nil
+}
+
+func isEmptyLabelSelector(selector *metav1.LabelSelector) bool {
+	if selector == nil {
+		return true
+	}
+	return len(selector.MatchLabels) == 0 && len(selector.MatchExpressions) == 0
 }
