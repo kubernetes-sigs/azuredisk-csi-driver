@@ -19,7 +19,7 @@ metadata:
   name: managed-csi
 provisioner: disk.csi.azure.com
 parameters:
-  skuName: Premium_LRS
+  skuName: Premium_LRS # Use PremiumV2_LRS for Premium SSD v2. See other Sku names in https://learn.microsoft.com/en-us/azure/aks/azure-csi-disk-storage-provision#dynamically-provision-a-volume.
   maxShares: "2"
   cachingMode: None  # ReadOnly cache is not available for premium SSD with maxShares>1
 reclaimPolicy: Delete
