@@ -130,10 +130,14 @@ spec:
             - "--get-node-info-from-labels={{ .Values.linux.getNodeInfoFromLabels }}"
             - "--get-nodeid-from-imds={{ .Values.node.getNodeIDFromIMDS }}"
             - "--enable-otel-tracing={{ .Values.linux.otelTracing.enabled }}"
+            - "--metrics-address=0.0.0.0:{{ .Values.node.metricsPort }}"
 {{- if ne .Values.node.hostNetwork true }}
           ports:
             - containerPort: {{ .Values.node.livenessProbe.healthPort }}
               name: healthz
+              protocol: TCP
+            - containerPort: {{ .Values.node.metricsPort }}
+              name: metrics
               protocol: TCP
 {{- end }}
           livenessProbe:
