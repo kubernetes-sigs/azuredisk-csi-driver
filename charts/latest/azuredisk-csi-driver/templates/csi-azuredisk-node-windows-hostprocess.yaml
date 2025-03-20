@@ -128,6 +128,11 @@ spec:
             - "--enable-windows-host-process=true"
             - "--get-nodeid-from-imds={{ .Values.node.getNodeIDFromIMDS }}"
             - "--enable-otel-tracing={{ .Values.windows.otelTracing.enabled }}"
+            - "--metrics-address=0.0.0.0:{{ .Values.node.metricsPort }}"
+          ports:
+            - containerPort: {{ .Values.node.metricsPort }}
+              name: metrics
+              protocol: TCP
           env:
             - name: AZURE_CREDENTIAL_FILE
               valueFrom:
