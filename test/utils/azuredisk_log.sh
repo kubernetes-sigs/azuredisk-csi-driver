@@ -81,3 +81,14 @@ for CONTROLLER_POD in "${CONTROLLER_PODS[@]}"; do
     curl http://localhost:32000/metrics
     kill -9 $KUBEPROXY
 done
+
+mapfile -t NODE_PODS < <(kubectl get pods -n kube-system -l app=csi-azuredisk-node --output jsonpath='{range .items[*]}{.metadata.name}{"\n"}{end}')
+for NODE_PODS in "${NODE_PODS[@]}"; do
+    kubectl port-forward -n kube-system "pods/${NODE_PODS}" 32001:29605 &
+    KUBEPROXY=$!
+    sleep 10
+    echo "print out ${NODE_PODS} metrics ..."
+    echo "======================================================================================"
+    curl http://localhost:32001/metrics
+    kill -9 $KUBEPROXY
+done
