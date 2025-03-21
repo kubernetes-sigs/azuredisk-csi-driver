@@ -506,12 +506,6 @@ func (mr *MockInterfaceMockRecorder) ExtensionsV1beta1() *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ExtensionsV1beta1", reflect.TypeOf((*MockInterface)(nil).ExtensionsV1beta1))
 }
 
-// FlowcontrolV1alpha1 indicates an expected call of FlowcontrolV1alpha1.
-func (mr *MockInterfaceMockRecorder) FlowcontrolV1alpha1() *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "FlowcontrolV1alpha1", reflect.TypeOf((*MockInterface)(nil).FlowcontrolV1alpha1))
-}
-
 // FlowcontrolV1beta1 mocks base method.
 func (m *MockInterface) FlowcontrolV1beta1() v1beta19.FlowcontrolV1beta1Interface {
 	m.ctrl.T.Helper()
