@@ -84,8 +84,6 @@ var _ = ginkgo.BeforeSuite(func(ctx ginkgo.SpecContext) {
 		kubeconfig := filepath.Join(os.Getenv("HOME"), ".kube", "config")
 		os.Setenv(kubeconfigEnvVar, kubeconfig)
 	}
-	handleFlags()
-	framework.AfterReadingAllFlags(&framework.TestContext)
 
 	// Default storage driver configuration is CSI. Freshly built
 	// CSI driver is installed for that case.
@@ -259,6 +257,12 @@ var _ = ginkgo.AfterSuite(func(_ ginkgo.SpecContext) {
 		gomega.Expect(err).NotTo(gomega.HaveOccurred())
 	}
 })
+
+func TestMain(m *testing.M) {
+	handleFlags()
+	framework.AfterReadingAllFlags(&framework.TestContext)
+	os.Exit(m.Run())
+}
 
 func TestE2E(t *testing.T) {
 	gomega.RegisterFailHandler(ginkgo.Fail)
