@@ -129,6 +129,7 @@ spec:
             - "--get-nodeid-from-imds={{ .Values.node.getNodeIDFromIMDS }}"
             - "--enable-otel-tracing={{ .Values.windows.otelTracing.enabled }}"
             - "--metrics-address=0.0.0.0:{{ .Values.node.metricsPort }}"
+            - "--remove-not-ready-taint={{ .Values.node.removeNotReadyTaint }}"
           ports:
             - containerPort: {{ .Values.node.metricsPort }}
               name: metrics

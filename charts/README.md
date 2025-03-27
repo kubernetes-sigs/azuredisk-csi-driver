@@ -188,6 +188,7 @@ The following table lists the configurable parameters of the latest Azure Disk C
 | `node.reservedDataDiskSlotNum`                  | reserved data disk slot number per node by default(`0`)    | `0` |
 | `node.supportZone`                                | Whether getting zone info in NodeGetInfo on the node (requires instance metadata support)               | `true`
 | `node.getNodeIDFromIMDS`                          | Whether getting NodeID from IMDS on the node (requires instance metadata support)               | `false`
+| `node.removeNotReadyTaint`                        | Whether enable the startup taint removal feature            | `true`
 | `node.allowEmptyCloudConfig`                      | Whether allow running node driver without cloud config               | `true`
 | `node.maxUnavailable`                             | `maxUnavailable` value of driver node daemonset            | `1`
 | `node.metricsPort`                          | metrics port of driver node daemonset                   | `29605`                                                        |
