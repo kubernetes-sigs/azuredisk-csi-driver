@@ -63,8 +63,6 @@ import (
 var (
 	useDriverV2 = flag.Bool("temp-use-driver-v2", false, "A temporary flag to enable early test and development of Azure Disk CSI Driver V2. This will be removed in the future.")
 
-	// taintRemovalInitialDelay is the initial delay for node taint removal
-	taintRemovalInitialDelay = 1 * time.Second
 	// taintRemovalBackoff is the exponential backoff configuration for node taint removal
 	taintRemovalBackoff = wait.Backoff{
 		Duration: 500 * time.Millisecond,
@@ -319,7 +317,7 @@ func newDriverV1(options *DriverOptions) *Driver {
 	if kubeClient != nil && driver.removeNotReadyTaint && driver.NodeID != "" {
 		// Remove taint from node to indicate driver startup success
 		// This is done at the last possible moment to prevent race conditions or false positive removals
-		time.AfterFunc(taintRemovalInitialDelay, func() {
+		time.AfterFunc(time.Duration(options.TaintRemovalInitialDelayInSeconds)*time.Second, func() {
 			removeTaintInBackground(kubeClient, driver.NodeID, driver.Name, taintRemovalBackoff, removeNotReadyTaint)
 		})
 	}
