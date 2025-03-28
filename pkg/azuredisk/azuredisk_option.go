@@ -38,34 +38,35 @@ type DriverOptions struct {
 	EnableOtelTracing          bool
 
 	//only used in v1
-	EnableDiskOnlineResize       bool
-	AllowEmptyCloudConfig        bool
-	EnableListVolumes            bool
-	EnableListSnapshots          bool
-	SupportZone                  bool
-	GetNodeInfoFromLabels        bool
-	EnableDiskCapacityCheck      bool
-	DisableUpdateCache           bool
-	EnableTrafficManager         bool
-	TrafficManagerPort           int64
-	AttachDetachInitialDelayInMs int64
-	VMSSCacheTTLInSeconds        int64
-	VolStatsCacheExpireInMinutes int64
-	GetDiskTimeoutInSeconds      int64
-	VMType                       string
-	EnableWindowsHostProcess     bool
-	ListDisksUsingWinCIM         bool
-	GetNodeIDFromIMDS            bool
-	WaitForSnapshotReady         bool
-	CheckDiskLUNCollision        bool
-	ForceDetachBackoff           bool
-	Kubeconfig                   string
-	Endpoint                     string
-	DisableAVSetNodes            bool
-	RemoveNotReadyTaint          bool
-	MaxConcurrentFormat          int64
-	ConcurrentFormatTimeout      int64
-	GoMaxProcs                   int64
+	EnableDiskOnlineResize            bool
+	AllowEmptyCloudConfig             bool
+	EnableListVolumes                 bool
+	EnableListSnapshots               bool
+	SupportZone                       bool
+	GetNodeInfoFromLabels             bool
+	EnableDiskCapacityCheck           bool
+	DisableUpdateCache                bool
+	EnableTrafficManager              bool
+	TrafficManagerPort                int64
+	AttachDetachInitialDelayInMs      int64
+	VMSSCacheTTLInSeconds             int64
+	VolStatsCacheExpireInMinutes      int64
+	GetDiskTimeoutInSeconds           int64
+	VMType                            string
+	EnableWindowsHostProcess          bool
+	ListDisksUsingWinCIM              bool
+	GetNodeIDFromIMDS                 bool
+	WaitForSnapshotReady              bool
+	CheckDiskLUNCollision             bool
+	ForceDetachBackoff                bool
+	Kubeconfig                        string
+	Endpoint                          string
+	DisableAVSetNodes                 bool
+	RemoveNotReadyTaint               bool
+	TaintRemovalInitialDelayInSeconds int64
+	MaxConcurrentFormat               int64
+	ConcurrentFormatTimeout           int64
+	GoMaxProcs                        int64
 }
 
 func (o *DriverOptions) AddFlags() *flag.FlagSet {
@@ -109,6 +110,7 @@ func (o *DriverOptions) AddFlags() *flag.FlagSet {
 	fs.StringVar(&o.Kubeconfig, "kubeconfig", "", "Absolute path to the kubeconfig file. Required only when running out of cluster.")
 	fs.BoolVar(&o.DisableAVSetNodes, "disable-avset-nodes", false, "disable DisableAvailabilitySetNodes in cloud config for controller")
 	fs.BoolVar(&o.RemoveNotReadyTaint, "remove-not-ready-taint", true, "remove NotReady taint from node when node is ready")
+	fs.Int64Var(&o.TaintRemovalInitialDelayInSeconds, "taint-removal-initial-delay-seconds", 30, "initial delay in seconds for taint removal")
 	fs.StringVar(&o.Endpoint, "endpoint", "unix://tmp/csi.sock", "CSI endpoint")
 	fs.Int64Var(&o.MaxConcurrentFormat, "max-concurrent-format", 2, "maximum number of concurrent format exec calls")
 	fs.Int64Var(&o.ConcurrentFormatTimeout, "concurrent-format-timeout", 300, "maximum time in seconds duration of a format operation before its concurrency token is released")
