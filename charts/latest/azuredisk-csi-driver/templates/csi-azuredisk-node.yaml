@@ -131,6 +131,7 @@ spec:
             - "--get-nodeid-from-imds={{ .Values.node.getNodeIDFromIMDS }}"
             - "--enable-otel-tracing={{ .Values.linux.otelTracing.enabled }}"
             - "--metrics-address=0.0.0.0:{{ .Values.node.metricsPort }}"
+            - "--remove-not-ready-taint={{ .Values.node.removeNotReadyTaint }}"
 {{- if ne .Values.node.hostNetwork true }}
           ports:
             - containerPort: {{ .Values.node.livenessProbe.healthPort }}
