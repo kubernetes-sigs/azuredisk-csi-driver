@@ -125,6 +125,7 @@ node:
   supportZone: true
   allowEmptyCloudConfig: true
   getNodeIDFromIMDS: false
+  removeNotReadyTaint: true
   maxUnavailable: 1
   logLevel: 5
   metricsPort: 29605
