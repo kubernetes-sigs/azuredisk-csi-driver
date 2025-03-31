@@ -365,7 +365,7 @@ github.com/klauspost/compress/zstd/internal/xxhash
 # github.com/kubernetes-csi/csi-lib-utils v0.19.0
 ## explicit; go 1.22.5
 github.com/kubernetes-csi/csi-lib-utils/protosanitizer
-# github.com/kubernetes-csi/csi-proxy/client v1.2.0
+# github.com/kubernetes-csi/csi-proxy/client v1.2.1
 ## explicit; go 1.16
 github.com/kubernetes-csi/csi-proxy/client
 github.com/kubernetes-csi/csi-proxy/client/api/disk/v1
