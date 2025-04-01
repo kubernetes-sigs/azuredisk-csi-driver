@@ -104,6 +104,7 @@ spec:
             - "--timeout=1200s"
             - "--extra-create-metadata=true"
             - "--retry-interval-max=30m"
+            - "--worker-threads=100"
           env:
             - name: ADDRESS
               value: /csi/csi.sock
