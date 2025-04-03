@@ -6,6 +6,7 @@ metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.15.0
     api-approved.kubernetes.io: "https://github.com/kubernetes-csi/external-snapshotter/pull/814"
+  creationTimestamp: null
   name: volumesnapshots.snapshot.storage.k8s.io
 spec:
   group: snapshot.storage.k8s.io
@@ -61,19 +62,19 @@ spec:
     name: v1
     schema:
       openAPIV3Schema:
-        description: |-
+        description:
           VolumeSnapshot is a user's request for either creating a point-in-time
           snapshot of a persistent volume, or binding to a pre-existing snapshot.
         properties:
           apiVersion:
-            description: |-
+            description:
               APIVersion defines the versioned schema of this representation of an object.
               Servers should convert recognized schemas to the latest internal value, and
               may reject unrecognized values.
               More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
             type: string
           kind:
-            description: |-
+            description:
               Kind is a string value representing the REST resource this object represents.
               Servers may infer this from the endpoint the client submits requests to.
               Cannot be updated.
@@ -83,19 +84,19 @@ spec:
           metadata:
             type: object
           spec:
-            description: |-
+            description:
               spec defines the desired characteristics of a snapshot requested by a user.
               More info: https://kubernetes.io/docs/concepts/storage/volume-snapshots#volumesnapshots
               Required.
             properties:
               source:
-                description: |-
+                description:
                   source specifies where a snapshot will be created from.
                   This field is immutable after creation.
                   Required.
                 properties:
                   persistentVolumeClaimName:
-                    description: |-
+                    description:
                       persistentVolumeClaimName specifies the name of the PersistentVolumeClaim
                       object representing the volume from which a snapshot should be created.
                       This PVC is assumed to be in the same namespace as the VolumeSnapshot
@@ -108,7 +109,7 @@ spec:
                     - message: persistentVolumeClaimName is immutable
                       rule: self == oldSelf
                   volumeSnapshotContentName:
-                    description: |-
+                    description:
                       volumeSnapshotContentName specifies the name of a pre-existing VolumeSnapshotContent
                       object representing an existing volume snapshot.
                       This field should be set if the snapshot already exists and only needs a representation in Kubernetes.
@@ -128,7 +129,7 @@ spec:
                   rule: (has(self.volumeSnapshotContentName) && !has(self.persistentVolumeClaimName))
                     || (!has(self.volumeSnapshotContentName) && has(self.persistentVolumeClaimName))
               volumeSnapshotClassName:
-                description: |-
+                description:
                   VolumeSnapshotClassName is the name of the VolumeSnapshotClass
                   requested by the VolumeSnapshot.
                   VolumeSnapshotClassName may be left nil to indicate that the default
@@ -150,7 +151,7 @@ spec:
             - source
             type: object
           status:
-            description: |-
+            description:
               status represents the current information of a snapshot.
               Consumers must verify binding between VolumeSnapshot and
               VolumeSnapshotContent objects is successful (by validating that both
@@ -158,7 +159,7 @@ spec:
               using this object.
             properties:
               boundVolumeSnapshotContentName:
-                description: |-
+                description:
                   boundVolumeSnapshotContentName is the name of the VolumeSnapshotContent
                   object to which this VolumeSnapshot object intends to bind to.
                   If not specified, it indicates that the VolumeSnapshot object has not been
@@ -169,7 +170,7 @@ spec:
                   this object.
                 type: string
               creationTime:
-                description: |-
+                description:
                   creationTime is the timestamp when the point-in-time snapshot is taken
                   by the underlying storage system.
                   In dynamic snapshot creation case, this field will be filled in by the
@@ -181,7 +182,7 @@ spec:
                 format: date-time
                 type: string
               error:
-                description: |-
+                description:
                   error is the last observed error during snapshot creation, if any.
                   This field could be helpful to upper level controllers(i.e., application controller)
                   to decide whether they should continue on waiting for the snapshot to be created
@@ -190,7 +191,7 @@ spec:
                   snapshot creation. Upon success, this error field will be cleared.
                 properties:
                   message:
-                    description: |-
+                    description:
                       message is a string detailing the encountered error during snapshot
                       creation if specified.
                       NOTE: message may be logged, and it should not contain sensitive
@@ -202,7 +203,7 @@ spec:
                     type: string
                 type: object
               readyToUse:
-                description: |-
+                description:
                   readyToUse indicates if the snapshot is ready to be used to restore a volume.
                   In dynamic snapshot creation case, this field will be filled in by the
                   snapshot controller with the "ready_to_use" value returned from CSI
@@ -214,7 +215,7 @@ spec:
                 type: boolean
               restoreSize:
                 type: string
-                description: |-
+                description:
                   restoreSize represents the minimum size of volume required to create a volume
                   from this snapshot.
                   In dynamic snapshot creation case, this field will be filled in by the
@@ -228,7 +229,7 @@ spec:
                 pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
                 x-kubernetes-int-or-string: true
               volumeGroupSnapshotName:
-                description: |-
+                description:
                   VolumeGroupSnapshotName is the name of the VolumeGroupSnapshot of which this
                   VolumeSnapshot is a part of.
                 type: string
@@ -357,6 +358,7 @@ metadata:
   annotations:
     api-approved.kubernetes.io: "https://github.com/kubernetes-csi/external-snapshotter/pull/814"
     controller-gen.kubebuilder.io/version: v0.15.0
+  creationTimestamp: null
   name: volumesnapshotclasses.snapshot.storage.k8s.io
 spec:
   group: snapshot.storage.k8s.io
@@ -385,21 +387,21 @@ spec:
     name: v1
     schema:
       openAPIV3Schema:
-        description: |-
+        description:
           VolumeSnapshotClass specifies parameters that a underlying storage system uses when
           creating a volume snapshot. A specific VolumeSnapshotClass is used by specifying its
           name in a VolumeSnapshot object.
           VolumeSnapshotClasses are non-namespaced
         properties:
           apiVersion:
-            description: |-
+            description:
               APIVersion defines the versioned schema of this representation of an object.
               Servers should convert recognized schemas to the latest internal value, and
               may reject unrecognized values.
               More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
             type: string
           deletionPolicy:
-            description: |-
+            description:
               deletionPolicy determines whether a VolumeSnapshotContent created through
               the VolumeSnapshotClass should be deleted when its bound VolumeSnapshot is deleted.
               Supported values are "Retain" and "Delete".
@@ -411,12 +413,12 @@ spec:
             - Retain
             type: string
           driver:
-            description: |-
+            description:
               driver is the name of the storage driver that handles this VolumeSnapshotClass.
               Required.
             type: string
           kind:
-            description: |-
+            description:
               Kind is a string value representing the REST resource this object represents.
               Servers may infer this from the endpoint the client submits requests to.
               Cannot be updated.
@@ -428,7 +430,7 @@ spec:
           parameters:
             additionalProperties:
               type: string
-            description: |-
+            description:
               parameters is a key-value map with storage driver specific parameters for creating snapshots.
               These values are opaque to Kubernetes.
             type: object
@@ -500,6 +502,7 @@ metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.15.0
     api-approved.kubernetes.io: "https://github.com/kubernetes-csi/external-snapshotter/pull/955"
+  creationTimestamp: null
   name: volumesnapshotcontents.snapshot.storage.k8s.io
 spec:
   group: snapshot.storage.k8s.io
@@ -553,19 +556,19 @@ spec:
     name: v1
     schema:
       openAPIV3Schema:
-        description: |-
+        description:
           VolumeSnapshotContent represents the actual "on-disk" snapshot object in the
           underlying storage system
         properties:
           apiVersion:
-            description: |-
+            description:
               APIVersion defines the versioned schema of this representation of an object.
               Servers should convert recognized schemas to the latest internal value, and
               may reject unrecognized values.
               More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
             type: string
           kind:
-            description: |-
+            description:
               Kind is a string value representing the REST resource this object represents.
               Servers may infer this from the endpoint the client submits requests to.
               Cannot be updated.
@@ -575,12 +578,12 @@ spec:
           metadata:
             type: object
           spec:
-            description: |-
+            description:
               spec defines properties of a VolumeSnapshotContent created by the underlying storage system.
               Required.
             properties:
               deletionPolicy:
-                description: |-
+                description:
                   deletionPolicy determines whether this VolumeSnapshotContent and its physical snapshot on
                   the underlying storage system should be deleted when its bound VolumeSnapshot is deleted.
                   Supported values are "Retain" and "Delete".
@@ -597,7 +600,7 @@ spec:
                 - Retain
                 type: string
               driver:
-                description: |-
+                description:
                   driver is the name of the CSI driver used to create the physical snapshot on
                   the underlying storage system.
                   This MUST be the same as the name returned by the CSI GetPluginName() call for
@@ -605,14 +608,14 @@ spec:
                   Required.
                 type: string
               source:
-                description: |-
+                description:
                   source specifies whether the snapshot is (or should be) dynamically provisioned
                   or already exists, and just requires a Kubernetes object representation.
                   This field is immutable after creation.
                   Required.
                 properties:
                   snapshotHandle:
-                    description: |-
+                    description:
                       snapshotHandle specifies the CSI "snapshot_id" of a pre-existing snapshot on
                       the underlying storage system for which a Kubernetes object representation
                       was (or should be) created.
@@ -622,7 +625,7 @@ spec:
                     - message: snapshotHandle is immutable
                       rule: self == oldSelf
                   volumeHandle:
-                    description: |-
+                    description:
                       volumeHandle specifies the CSI "volume_id" of the volume from which a snapshot
                       should be dynamically taken from.
                       This field is immutable.
@@ -641,7 +644,7 @@ spec:
                   rule: (has(self.volumeHandle) && !has(self.snapshotHandle)) || (!has(self.volumeHandle)
                     && has(self.snapshotHandle))
               sourceVolumeMode:
-                description: |-
+                description:
                   SourceVolumeMode is the mode of the volume whose snapshot is taken.
                   Can be either “Filesystem” or “Block”.
                   If not specified, it indicates the source volume's mode is unknown.
@@ -652,7 +655,7 @@ spec:
                 - message: sourceVolumeMode is immutable
                   rule: self == oldSelf
               volumeSnapshotClassName:
-                description: |-
+                description:
                   name of the VolumeSnapshotClass from which this snapshot was (or will be)
                   created.
                   Note that after provisioning, the VolumeSnapshotClass may be deleted or
@@ -660,7 +663,7 @@ spec:
                   post-snapshot creation.
                 type: string
               volumeSnapshotRef:
-                description: |-
+                description:
                   volumeSnapshotRef specifies the VolumeSnapshot object to which this
                   VolumeSnapshotContent object is bound.
                   VolumeSnapshot.Spec.VolumeSnapshotContentName field must reference to
@@ -674,7 +677,7 @@ spec:
                     description: API version of the referent.
                     type: string
                   fieldPath:
-                    description: |-
+                    description:
                       If referring to a piece of an object instead of an entire object, this string
                       should contain a valid JSON/Go field access statement, such as desiredState.manifest.containers[2].
                       For example, if the object reference is to a container within a pod, this would take on a value like:
@@ -685,27 +688,27 @@ spec:
                       TODO: this design is not final and this field is subject to change in the future.
                     type: string
                   kind:
-                    description: |-
+                    description:
                       Kind of the referent.
                       More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
                     type: string
                   name:
-                    description: |-
+                    description:
                       Name of the referent.
                       More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
                     type: string
                   namespace:
-                    description: |-
+                    description:
                       Namespace of the referent.
                       More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/namespaces/
                     type: string
                   resourceVersion:
-                    description: |-
+                    description:
                       Specific resourceVersion to which this reference is made, if any.
                       More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#concurrency-control-and-consistency
                     type: string
                   uid:
-                    description: |-
+                    description:
                       UID of the referent.
                       More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#uids
                     type: string
@@ -728,7 +731,7 @@ spec:
             description: status represents the current information of a snapshot.
             properties:
               creationTime:
-                description: |-
+                description:
                   creationTime is the timestamp when the point-in-time snapshot is taken
                   by the underlying storage system.
                   In dynamic snapshot creation case, this field will be filled in by the
@@ -743,12 +746,12 @@ spec:
                 format: int64
                 type: integer
               error:
-                description: |-
+                description:
                   error is the last observed error during snapshot creation, if any.
                   Upon success after retry, this error field will be cleared.
                 properties:
                   message:
-                    description: |-
+                    description:
                       message is a string detailing the encountered error during snapshot
                       creation if specified.
                       NOTE: message may be logged, and it should not contain sensitive
@@ -760,7 +763,7 @@ spec:
                     type: string
                 type: object
               readyToUse:
-                description: |-
+                description:
                   readyToUse indicates if a snapshot is ready to be used to restore a volume.
                   In dynamic snapshot creation case, this field will be filled in by the
                   CSI snapshotter sidecar with the "ready_to_use" value returned from CSI
@@ -771,7 +774,7 @@ spec:
                   If not specified, it means the readiness of a snapshot is unknown.
                 type: boolean
               restoreSize:
-                description: |-
+                description:
                   restoreSize represents the complete size of the snapshot in bytes.
                   In dynamic snapshot creation case, this field will be filled in by the
                   CSI snapshotter sidecar with the "size_bytes" value returned from CSI
@@ -785,13 +788,13 @@ spec:
                 minimum: 0
                 type: integer
               snapshotHandle:
-                description: |-
+                description:
                   snapshotHandle is the CSI "snapshot_id" of a snapshot on the underlying storage system.
                   If not specified, it indicates that dynamic snapshot creation has either failed
                   or it is still in progress.
                 type: string
               volumeGroupSnapshotHandle:
-                description: |-
+                description:
                   VolumeGroupSnapshotHandle is the CSI "group_snapshot_id" of a group snapshot
                   on the underlying storage system.
                 type: string
