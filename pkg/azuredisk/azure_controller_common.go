@@ -98,8 +98,6 @@ type controllerCommon struct {
 	// AttachDetachInitialDelayInMs determines initial delay in milliseconds for batch disk attach/detach
 	AttachDetachInitialDelayInMs int
 	ForceDetachBackoff           bool
-	// a timed cache for disk attach hitting max data disk count, <nodeName, "">
-	hitMaxDataDiskCountCache azcache.Resource
 }
 
 // ExtendedLocation contains additional info about the location of resources.
@@ -186,25 +184,17 @@ func (c *controllerCommon) AttachDisk(ctx context.Context, diskName, diskURI str
 	}
 	node := strings.ToLower(string(nodeName))
 	diskuri := strings.ToLower(diskURI)
-
-	isMaxDataDiskCountExceeded := c.isMaxDataDiskCountExceeded(ctx, node)
-	if isMaxDataDiskCountExceeded {
-		c.lockMap.LockEntry(node)
-		defer c.lockMap.UnlockEntry(node)
-	}
-
 	requestNum, err := c.insertAttachDiskRequest(diskuri, node, &options)
 	if err != nil {
 		return -1, err
 	}
-	if !isMaxDataDiskCountExceeded {
-		c.lockMap.LockEntry(node)
-		defer c.lockMap.UnlockEntry(node)
 
-		if c.AttachDetachInitialDelayInMs > 0 && requestNum == 1 {
-			klog.V(2).Infof("wait %dms for more requests on node %s, current disk attach: %s", c.AttachDetachInitialDelayInMs, node, diskURI)
-			time.Sleep(time.Duration(c.AttachDetachInitialDelayInMs) * time.Millisecond)
-		}
+	c.lockMap.LockEntry(node)
+	defer c.lockMap.UnlockEntry(node)
+
+	if c.AttachDetachInitialDelayInMs > 0 && requestNum == 1 {
+		klog.V(2).Infof("wait %dms for more requests on node %s, current disk attach: %s", c.AttachDetachInitialDelayInMs, node, diskURI)
+		time.Sleep(time.Duration(c.AttachDetachInitialDelayInMs) * time.Millisecond)
 	}
 
 	diskMap, err := c.cleanAttachDiskRequests(node)
@@ -246,10 +236,6 @@ func (c *controllerCommon) AttachDisk(ctx context.Context, diskName, diskURI str
 
 	err = vmset.AttachDisk(ctx, nodeName, diskMap)
 	if err != nil {
-		if strings.Contains(err.Error(), "maximum number of data disks") {
-			klog.Warningf("hit max data disk count, set cache for node(%s)", nodeName)
-			c.hitMaxDataDiskCountCache.Set(node, "")
-		}
 		if IsOperationPreempted(err) {
 			klog.Errorf("Retry VM Update on node (%s) due to error (%v)", nodeName, err)
 			err = vmset.UpdateVM(ctx, nodeName)
@@ -608,13 +594,4 @@ func isInstanceNotFoundError(err error) bool {
 		return true
 	}
 	return strings.Contains(errMsg, errStatusCode400) && strings.Contains(errMsg, errInvalidParameter) && strings.Contains(errMsg, errTargetInstanceIDs)
-}
-
-func (c *controllerCommon) isMaxDataDiskCountExceeded(ctx context.Context, nodeName string) bool {
-	cache, err := c.hitMaxDataDiskCountCache.Get(ctx, nodeName, azcache.CacheReadTypeDefault)
-	if err != nil {
-		klog.Warningf("throttlingCache(%s) return with error: %s", nodeName, err)
-		return false
-	}
-	return cache != nil
 }
