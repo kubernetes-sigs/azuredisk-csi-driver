@@ -59,6 +59,7 @@ type DriverOptions struct {
 	WaitForSnapshotReady              bool
 	CheckDiskLUNCollision             bool
 	ForceDetachBackoff                bool
+	WaitForDetach                     bool
 	Kubeconfig                        string
 	Endpoint                          string
 	DisableAVSetNodes                 bool
@@ -107,6 +108,7 @@ func (o *DriverOptions) AddFlags() *flag.FlagSet {
 	fs.BoolVar(&o.WaitForSnapshotReady, "wait-for-snapshot-ready", true, "boolean flag to wait for snapshot ready when creating snapshot in same region")
 	fs.BoolVar(&o.CheckDiskLUNCollision, "check-disk-lun-collision", true, "boolean flag to check disk lun collisio before attaching disk")
 	fs.BoolVar(&o.ForceDetachBackoff, "force-detach-backoff", true, "boolean flag to force detach in disk detach backoff")
+	fs.BoolVar(&o.WaitForDetach, "wait-for-detach", true, "boolean flag to wait for detach before attaching disk on the same node")
 	fs.StringVar(&o.Kubeconfig, "kubeconfig", "", "Absolute path to the kubeconfig file. Required only when running out of cluster.")
 	fs.BoolVar(&o.DisableAVSetNodes, "disable-avset-nodes", false, "disable DisableAvailabilitySetNodes in cloud config for controller")
 	fs.BoolVar(&o.RemoveNotReadyTaint, "remove-not-ready-taint", true, "remove NotReady taint from node when node is ready")
