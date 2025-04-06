@@ -17,7 +17,7 @@ Disclaimer: Deploying this driver manually is not an officially supported Micros
 |Driver Version  |Image                                                      | supported k8s version |
 |----------------|-----------------------------------------------------------|-----------------------|
 |`master` branch |mcr.microsoft.com/k8s/csi/azuredisk-csi:latest             | 1.21+                 |
-|v1.31.6         |mcr.microsoft.com/oss/kubernetes-csi/azuredisk-csi:v1.31.6 | 1.21+                 |
+|v1.31.7         |mcr.microsoft.com/oss/kubernetes-csi/azuredisk-csi:v1.31.7 | 1.21+                 |
 |v1.30.3         |mcr.microsoft.com/oss/kubernetes-csi/azuredisk-csi:v1.30.3 | 1.21+                 |
 |v1.29.8         |mcr.microsoft.com/oss/kubernetes-csi/azuredisk-csi:v1.29.8 | 1.21+                 |
 |v1.28.10         |mcr.microsoft.com/oss/kubernetes-csi/azuredisk-csi:v1.28.10 | 1.21+                 |
