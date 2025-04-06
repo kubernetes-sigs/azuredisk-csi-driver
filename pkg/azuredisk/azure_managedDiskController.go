@@ -24,7 +24,6 @@ import (
 	"path"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/to"
@@ -37,7 +36,6 @@ import (
 	"k8s.io/utils/pointer"
 
 	azureconsts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
-	azcache "sigs.k8s.io/cloud-provider-azure/pkg/cache"
 	"sigs.k8s.io/cloud-provider-azure/pkg/consts"
 	"sigs.k8s.io/cloud-provider-azure/pkg/provider"
 )
@@ -55,8 +53,6 @@ func NewManagedDiskController(provider *provider.Cloud) *ManagedDiskController {
 		clientFactory:                provider.ComputeClientFactory,
 	}
 
-	getter := func(_ string) (interface{}, error) { return nil, nil }
-	common.hitMaxDataDiskCountCache, _ = azcache.NewTimedCache(5*time.Minute, getter, false)
 	return &ManagedDiskController{common}
 }
 

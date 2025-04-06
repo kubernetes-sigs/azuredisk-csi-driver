@@ -46,7 +46,6 @@ import (
 	"sigs.k8s.io/cloud-provider-azure/pkg/azclient/diskclient/mock_diskclient"
 	"sigs.k8s.io/cloud-provider-azure/pkg/azclient/mock_azclient"
 	"sigs.k8s.io/cloud-provider-azure/pkg/azureclients/vmclient/mockvmclient"
-	azcache "sigs.k8s.io/cloud-provider-azure/pkg/cache"
 	"sigs.k8s.io/cloud-provider-azure/pkg/consts"
 	"sigs.k8s.io/cloud-provider-azure/pkg/provider"
 	"sigs.k8s.io/cloud-provider-azure/pkg/retry"
@@ -92,8 +91,6 @@ func TestCommonAttachDisk(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	getter := func(_ string) (interface{}, error) { return nil, nil }
-
 	initVM := func(testCloud *provider.Cloud, expectedVMs []compute.VirtualMachine) {
 		mockVMsClient := testCloud.VirtualMachinesClient.(*mockvmclient.MockInterface)
 		for _, vm := range expectedVMs {
@@ -118,22 +115,21 @@ func TestCommonAttachDisk(t *testing.T) {
 	testTags := make(map[string]*string)
 	testTags[WriteAcceleratorEnabled] = pointer.String("true")
 	testCases := []struct {
-		desc                       string
-		diskName                   string
-		existedDisk                *armcompute.Disk
-		nodeName                   types.NodeName
-		vmList                     map[string]string
-		isDataDisksFull            bool
-		isBadDiskURI               bool
-		isDiskUsed                 bool
-		isMaxDataDiskCountExceeded bool
-		setup                      func(testCloud *provider.Cloud, expectedVMs []compute.VirtualMachine, statusCode int, result *retry.Error)
-		expectErr                  bool
-		isContextDeadlineErr       bool
-		statusCode                 int
-		waitResult                 *retry.Error
-		expectedLun                int32
-		contextDuration            time.Duration
+		desc                 string
+		diskName             string
+		existedDisk          *armcompute.Disk
+		nodeName             types.NodeName
+		vmList               map[string]string
+		isDataDisksFull      bool
+		isBadDiskURI         bool
+		isDiskUsed           bool
+		setup                func(testCloud *provider.Cloud, expectedVMs []compute.VirtualMachine, statusCode int, result *retry.Error)
+		expectErr            bool
+		isContextDeadlineErr bool
+		statusCode           int
+		waitResult           *retry.Error
+		expectedLun          int32
+		contextDuration      time.Duration
 	}{
 		{
 			desc:        "correct LUN and no error shall be returned if disk is nil",
@@ -144,17 +140,6 @@ func TestCommonAttachDisk(t *testing.T) {
 			expectedLun: 3,
 			expectErr:   false,
 			statusCode:  200,
-		},
-		{
-			desc:                       "correct LUN and no error shall be returned if disk is nil with max data disk count exceeded",
-			vmList:                     map[string]string{"vm1": "PowerState/Running"},
-			nodeName:                   "vm1",
-			diskName:                   "disk-name",
-			isMaxDataDiskCountExceeded: true,
-			existedDisk:                nil,
-			expectedLun:                3,
-			expectErr:                  false,
-			statusCode:                 200,
 		},
 		{
 			desc:        "LUN -1 and error shall be returned if there's no such instance corresponding to given nodeName",
@@ -271,10 +256,7 @@ func TestCommonAttachDisk(t *testing.T) {
 				cloud:               testCloud,
 				lockMap:             newLockMap(),
 				DisableDiskLunCheck: true,
-			}
-			testdiskController.hitMaxDataDiskCountCache, _ = azcache.NewTimedCache(5*time.Minute, getter, false)
-			if tt.isMaxDataDiskCountExceeded {
-				testdiskController.hitMaxDataDiskCountCache.Set(string(tt.nodeName), "")
+				WaitForDetach:       true,
 			}
 			lun, err := testdiskController.AttachDisk(ctx, test.diskName, diskURI, tt.nodeName, armcompute.CachingTypesReadOnly, tt.existedDisk, nil)
 
@@ -324,8 +306,9 @@ func TestCommonDetachDisk(t *testing.T) {
 	for i, test := range testCases {
 		testCloud := provider.GetTestCloud(ctrl)
 		common := &controllerCommon{
-			cloud:   testCloud,
-			lockMap: newLockMap(),
+			cloud:              testCloud,
+			lockMap:            newLockMap(),
+			ForceDetachBackoff: true,
 		}
 		diskURI := fmt.Sprintf("/subscriptions/%s/resourceGroups/%s/providers/Microsoft.Compute/disks/disk-name",
 			testCloud.SubscriptionID, testCloud.ResourceGroup)
@@ -842,7 +825,7 @@ func TestIsInstanceNotFoundError(t *testing.T) {
 	}
 }
 
-func TestAttachDiskRequestFuncs(t *testing.T) {
+func TestAttachDiskRequest(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
@@ -918,7 +901,7 @@ func TestAttachDiskRequestFuncs(t *testing.T) {
 	}
 }
 
-func TestDetachDiskRequestFuncs(t *testing.T) {
+func TestDetachDiskRequest(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
@@ -993,47 +976,74 @@ func TestDetachDiskRequestFuncs(t *testing.T) {
 	}
 }
 
-func TestIsMaxDataDiskCountExceeded(t *testing.T) {
+func TestGetDetachDiskRequestNum(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
-	testCloud := provider.GetTestCloud(ctrl)
-	common := &controllerCommon{
-		cloud:   testCloud,
-		lockMap: newLockMap(),
-	}
-	getter := func(_ string) (interface{}, error) { return nil, nil }
-	common.hitMaxDataDiskCountCache, _ = azcache.NewTimedCache(5*time.Minute, getter, false)
 
 	testCases := []struct {
-		desc           string
-		nodeName       string
-		expectedResult bool
+		desc                 string
+		diskURI              string
+		nodeName             string
+		diskName             string
+		diskNum              int
+		duplicateDiskRequest bool
+		expectedErr          bool
 	}{
 		{
-			desc:           "max data disk count is not exceeded",
-			nodeName:       "",
-			expectedResult: false,
+			desc:        "one disk request in queue",
+			diskURI:     "diskURI",
+			nodeName:    "nodeName",
+			diskName:    "diskName",
+			diskNum:     1,
+			expectedErr: false,
 		},
 		{
-			desc:           "max data disk count is not exceeded though another node has exceeded",
-			nodeName:       "node1",
-			expectedResult: false,
+			desc:        "multiple disk requests in queue",
+			diskURI:     "diskURI",
+			nodeName:    "nodeName",
+			diskName:    "diskName",
+			diskNum:     10,
+			expectedErr: false,
 		},
 		{
-			desc:           "max data disk count is exceeded",
-			nodeName:       "node1",
-			expectedResult: true,
+			desc:        "zero disk request in queue",
+			diskURI:     "diskURI",
+			nodeName:    "nodeName",
+			diskName:    "diskName",
+			diskNum:     0,
+			expectedErr: false,
+		},
+		{
+			desc:                 "multiple disk requests in queue",
+			diskURI:              "diskURI",
+			nodeName:             "nodeName",
+			diskName:             "diskName",
+			duplicateDiskRequest: true,
+			diskNum:              10,
+			expectedErr:          false,
 		},
 	}
 
 	for i, test := range testCases {
-		if test.expectedResult {
-			common.hitMaxDataDiskCountCache.Set(test.nodeName, "")
-		} else if test.nodeName != "" {
-			common.hitMaxDataDiskCountCache.Set("node2", "")
+		testCloud := provider.GetTestCloud(ctrl)
+		common := &controllerCommon{
+			cloud:   testCloud,
+			lockMap: newLockMap(),
 		}
-		result := common.isMaxDataDiskCountExceeded(context.Background(), test.nodeName)
-		assert.Equal(t, test.expectedResult, result, "TestCase[%d]: %s", i, test.desc)
+		for i := 1; i <= test.diskNum; i++ {
+			diskURI := fmt.Sprintf("%s%d", test.diskURI, i)
+			diskName := fmt.Sprintf("%s%d", test.diskName, i)
+			_, err := common.insertDetachDiskRequest(diskName, diskURI, test.nodeName)
+			assert.Equal(t, test.expectedErr, err != nil, "TestCase[%d]: %s", i, test.desc)
+			if test.duplicateDiskRequest {
+				_, err := common.insertDetachDiskRequest(diskName, diskURI, test.nodeName)
+				assert.Equal(t, test.expectedErr, err != nil, "TestCase[%d]: %s", i, test.desc)
+			}
+		}
+
+		detachDiskReqeustNum, err := common.getDetachDiskRequestNum(test.nodeName)
+		assert.Equal(t, test.expectedErr, err != nil, "TestCase[%d]: %s", i, test.desc)
+		assert.Equal(t, test.diskNum, detachDiskReqeustNum, "TestCase[%d]: %s", i, test.desc)
 	}
 }
 
