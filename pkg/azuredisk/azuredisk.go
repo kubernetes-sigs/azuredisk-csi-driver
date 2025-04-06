@@ -126,6 +126,7 @@ type DriverCore struct {
 	shouldWaitForSnapshotReady   bool
 	checkDiskLUNCollision        bool
 	forceDetachBackoff           bool
+	waitForDetach                bool
 	endpoint                     string
 	disableAVSetNodes            bool
 	removeNotReadyTaint          bool
@@ -183,6 +184,7 @@ func newDriverV1(options *DriverOptions) *Driver {
 	driver.shouldWaitForSnapshotReady = options.WaitForSnapshotReady
 	driver.checkDiskLUNCollision = options.CheckDiskLUNCollision
 	driver.forceDetachBackoff = options.ForceDetachBackoff
+	driver.waitForDetach = options.WaitForDetach
 	driver.endpoint = options.Endpoint
 	driver.disableAVSetNodes = options.DisableAVSetNodes
 	driver.removeNotReadyTaint = options.RemoveNotReadyTaint
@@ -264,6 +266,7 @@ func newDriverV1(options *DriverOptions) *Driver {
 		driver.diskController.DisableUpdateCache = driver.disableUpdateCache
 		driver.diskController.AttachDetachInitialDelayInMs = int(driver.attachDetachInitialDelayInMs)
 		driver.diskController.ForceDetachBackoff = driver.forceDetachBackoff
+		driver.diskController.WaitForDetach = driver.waitForDetach
 	}
 
 	driver.deviceHelper = optimization.NewSafeDeviceHelper()

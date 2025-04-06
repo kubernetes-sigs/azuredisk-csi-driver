@@ -255,6 +255,7 @@ func TestCommonAttachDisk(t *testing.T) {
 				cloud:               testCloud,
 				lockMap:             newLockMap(),
 				DisableDiskLunCheck: true,
+				WaitForDetach:       true,
 			}
 			lun, err := testdiskController.AttachDisk(ctx, test.diskName, diskURI, tt.nodeName, armcompute.CachingTypesReadOnly, tt.existedDisk, nil)
 
@@ -304,8 +305,9 @@ func TestCommonDetachDisk(t *testing.T) {
 	for i, test := range testCases {
 		testCloud := provider.GetTestCloud(ctrl)
 		common := &controllerCommon{
-			cloud:   testCloud,
-			lockMap: newLockMap(),
+			cloud:              testCloud,
+			lockMap:            newLockMap(),
+			ForceDetachBackoff: true,
 		}
 		diskURI := fmt.Sprintf("/subscriptions/%s/resourceGroups/%s/providers/Microsoft.Compute/disks/disk-name",
 			testCloud.SubscriptionID, testCloud.ResourceGroup)
@@ -602,7 +604,7 @@ func TestIsInstanceNotFoundError(t *testing.T) {
 	}
 }
 
-func TestAttachDiskRequestFuncs(t *testing.T) {
+func TestAttachDiskRequest(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
@@ -678,7 +680,7 @@ func TestAttachDiskRequestFuncs(t *testing.T) {
 	}
 }
 
-func TestDetachDiskRequestFuncs(t *testing.T) {
+func TestDetachDiskRequest(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
@@ -750,6 +752,77 @@ func TestDetachDiskRequestFuncs(t *testing.T) {
 			assert.Equal(t, strings.Contains(diskURI, test.diskURI), true, "TestCase[%d]: %s", i, test.desc)
 			assert.Equal(t, strings.Contains(diskName, test.diskName), true, "TestCase[%d]: %s", i, test.desc)
 		}
+	}
+}
+
+func TestGetDetachDiskRequestNum(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	testCases := []struct {
+		desc                 string
+		diskURI              string
+		nodeName             string
+		diskName             string
+		diskNum              int
+		duplicateDiskRequest bool
+		expectedErr          bool
+	}{
+		{
+			desc:        "one disk request in queue",
+			diskURI:     "diskURI",
+			nodeName:    "nodeName",
+			diskName:    "diskName",
+			diskNum:     1,
+			expectedErr: false,
+		},
+		{
+			desc:        "multiple disk requests in queue",
+			diskURI:     "diskURI",
+			nodeName:    "nodeName",
+			diskName:    "diskName",
+			diskNum:     10,
+			expectedErr: false,
+		},
+		{
+			desc:        "zero disk request in queue",
+			diskURI:     "diskURI",
+			nodeName:    "nodeName",
+			diskName:    "diskName",
+			diskNum:     0,
+			expectedErr: false,
+		},
+		{
+			desc:                 "multiple disk requests in queue",
+			diskURI:              "diskURI",
+			nodeName:             "nodeName",
+			diskName:             "diskName",
+			duplicateDiskRequest: true,
+			diskNum:              10,
+			expectedErr:          false,
+		},
+	}
+
+	for i, test := range testCases {
+		testCloud := provider.GetTestCloud(ctrl)
+		common := &controllerCommon{
+			cloud:   testCloud,
+			lockMap: newLockMap(),
+		}
+		for i := 1; i <= test.diskNum; i++ {
+			diskURI := fmt.Sprintf("%s%d", test.diskURI, i)
+			diskName := fmt.Sprintf("%s%d", test.diskName, i)
+			_, err := common.insertDetachDiskRequest(diskName, diskURI, test.nodeName)
+			assert.Equal(t, test.expectedErr, err != nil, "TestCase[%d]: %s", i, test.desc)
+			if test.duplicateDiskRequest {
+				_, err := common.insertDetachDiskRequest(diskName, diskURI, test.nodeName)
+				assert.Equal(t, test.expectedErr, err != nil, "TestCase[%d]: %s", i, test.desc)
+			}
+		}
+
+		detachDiskReqeustNum, err := common.getDetachDiskRequestNum(test.nodeName)
+		assert.Equal(t, test.expectedErr, err != nil, "TestCase[%d]: %s", i, test.desc)
+		assert.Equal(t, test.diskNum, detachDiskReqeustNum, "TestCase[%d]: %s", i, test.desc)
 	}
 }
 

@@ -32,6 +32,7 @@ import (
 	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2022-08-01/compute"
 
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/apimachinery/pkg/util/wait"
 	kwait "k8s.io/apimachinery/pkg/util/wait"
 	cloudprovider "k8s.io/cloud-provider"
 	volerr "k8s.io/cloud-provider/volume/errors"
@@ -74,7 +75,7 @@ const (
 )
 
 var defaultBackOff = kwait.Backoff{
-	Steps:    20,
+	Steps:    7,
 	Duration: 2 * time.Second,
 	Factor:   1.5,
 	Jitter:   0.0,
@@ -101,6 +102,7 @@ type controllerCommon struct {
 	// AttachDetachInitialDelayInMs determines initial delay in milliseconds for batch disk attach/detach
 	AttachDetachInitialDelayInMs int
 	ForceDetachBackoff           bool
+	WaitForDetach                bool
 }
 
 // ExtendedLocation contains additional info about the location of resources.
@@ -192,10 +194,29 @@ func (c *controllerCommon) AttachDisk(ctx context.Context, diskName, diskURI str
 		return -1, err
 	}
 
+	var waitForDetachHappened bool
+	if c.WaitForDetach {
+		// wait for disk detach to finish first on the same node
+		if err = wait.PollUntilContextTimeout(ctx, 2*time.Second, 30*time.Second, true, func(context.Context) (bool, error) {
+			detachDiskReqeustNum, err := c.getDetachDiskRequestNum(node)
+			if err != nil {
+				return false, err
+			}
+			if detachDiskReqeustNum == 0 {
+				return true, nil
+			}
+			klog.V(4).Infof("there are still %d detach disk requests on node %s, wait for detach to finish, current disk: %s", detachDiskReqeustNum, node, diskName)
+			waitForDetachHappened = true
+			return false, nil
+		}); err != nil {
+			klog.Errorf("current disk: %s, wait for detach disk requests on node %s failed: %v", diskName, node, err)
+		}
+	}
+
 	c.lockMap.LockEntry(node)
 	defer c.lockMap.UnlockEntry(node)
 
-	if c.AttachDetachInitialDelayInMs > 0 && requestNum == 1 {
+	if !waitForDetachHappened && c.AttachDetachInitialDelayInMs > 0 && requestNum == 1 {
 		klog.V(2).Infof("wait %dms for more requests on node %s, current disk attach: %s", c.AttachDetachInitialDelayInMs, node, diskURI)
 		time.Sleep(time.Duration(c.AttachDetachInitialDelayInMs) * time.Millisecond)
 	}
@@ -436,6 +457,20 @@ func (c *controllerCommon) cleanDetachDiskRequests(nodeName string) (map[string]
 	// clean up original requests in disk map
 	c.detachDiskMap.Store(nodeName, make(map[string]string))
 	return diskMap, nil
+}
+
+func (c *controllerCommon) getDetachDiskRequestNum(nodeName string) (int, error) {
+	detachDiskMapKey := nodeName + detachDiskMapKeySuffix
+	c.lockMap.LockEntry(detachDiskMapKey)
+	defer c.lockMap.UnlockEntry(detachDiskMapKey)
+	v, ok := c.detachDiskMap.Load(nodeName)
+	if !ok {
+		return 0, nil
+	}
+	if diskMap, ok := v.(map[string]string); ok {
+		return len(diskMap), nil
+	}
+	return -1, fmt.Errorf("convert detachDiskMap failure on node(%s)", nodeName)
 }
 
 // GetNodeDataDisks invokes vmSet interfaces to get data disks for the node.
