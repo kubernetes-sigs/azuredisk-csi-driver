@@ -11,7 +11,7 @@ require (
 	github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/resources/armresources v1.2.0
 	github.com/Azure/go-autorest/autorest/mocks v0.4.3
 	github.com/container-storage-interface/spec v1.11.0
-	github.com/fsnotify/fsnotify v1.8.0
+	github.com/fsnotify/fsnotify v1.9.0
 	github.com/golang/protobuf v1.5.4
 	github.com/grpc-ecosystem/go-grpc-middleware/providers/prometheus v1.0.1
 	github.com/kubernetes-csi/csi-lib-utils v0.19.0
