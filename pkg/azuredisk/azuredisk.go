@@ -268,8 +268,6 @@ func newDriverV1(options *DriverOptions) *Driver {
 		driver.diskController = NewManagedDiskController(driver.cloud)
 		driver.diskController.DisableUpdateCache = driver.disableUpdateCache
 		driver.diskController.AttachDetachInitialDelayInMs = int(driver.attachDetachInitialDelayInMs)
-		driver.diskController.ForceDetachBackoff = driver.forceDetachBackoff
-		driver.diskController.WaitForDetach = driver.waitForDetach
 	}
 
 	driver.deviceHelper = optimization.NewSafeDeviceHelper()
