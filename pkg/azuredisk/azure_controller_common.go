@@ -38,6 +38,7 @@ import (
 	"k8s.io/utils/ptr"
 
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
+	"sigs.k8s.io/azuredisk-csi-driver/pkg/util"
 	"sigs.k8s.io/cloud-provider-azure/pkg/azclient"
 	azcache "sigs.k8s.io/cloud-provider-azure/pkg/cache"
 	"sigs.k8s.io/cloud-provider-azure/pkg/consts"
@@ -100,6 +101,8 @@ type controllerCommon struct {
 	ForceDetachBackoff           bool
 	WaitForDetach                bool
 	CheckDiskCountForBatching    bool
+	// a timed cache for disk attach hitting max data disk count, <nodeName, maxDataDiskCount>
+	hitMaxDataDiskCountCache azcache.Resource
 }
 
 // ExtendedLocation contains additional info about the location of resources.
@@ -296,6 +299,15 @@ func (c *controllerCommon) AttachDisk(ctx context.Context, diskName, diskURI str
 
 	err = vmset.AttachDisk(ctx, nodeName, diskMap)
 	if err != nil {
+		if strings.Contains(err.Error(), util.MaximumDataDiskExceededMsg) {
+			count := util.GetMaximumDataDiskCount(err.Error())
+			if count <= 0 {
+				klog.Errorf("failed to get max data disk count from error: %s", err.Error())
+			} else {
+				klog.V(2).Infof("hit max data disk count(%d) when attaching disk %s, set cache for node(%s)", count, diskName, nodeName)
+				c.hitMaxDataDiskCountCache.Set(node, count)
+			}
+		}
 		if IsOperationPreempted(err) {
 			klog.Errorf("Retry VM Update on node (%s) due to error (%v)", nodeName, err)
 			err = vmset.UpdateVM(ctx, nodeName)
@@ -314,6 +326,17 @@ func (c *controllerCommon) AttachDisk(ctx context.Context, diskName, diskURI str
 		lun = diskLun
 	}
 	return lun, nil
+}
+
+// isMaxDataDiskCountExceeded checks if the max data disk count is exceeded
+// return the max data disk count if exceeded, otherwise 0
+func (c *controllerCommon) isMaxDataDiskCountExceeded(ctx context.Context, nodeName string) int {
+	cache, err := c.hitMaxDataDiskCountCache.Get(ctx, nodeName, azcache.CacheReadTypeDefault)
+	if err != nil {
+		klog.Warningf("isMaxDataDiskCountExceeded(%s) return with error: %s", nodeName, err)
+		return 0
+	}
+	return cache.(int)
 }
 
 // insertAttachDiskRequest return (attachDiskRequestQueueLength, error)
@@ -575,6 +598,29 @@ func (c *controllerCommon) SetDiskLun(ctx context.Context, nodeName types.NodeNa
 	if len(diskMap) == 0 {
 		// attach disk request is empty, return directly
 		return lun, nil
+	}
+
+	maxDataDiskCount := c.isMaxDataDiskCountExceeded(ctx, string(nodeName))
+	if maxDataDiskCount > 0 {
+		removeNum := len(diskMap) + len(disks) - maxDataDiskCount
+		if removeNum > 0 {
+			klog.V(2).Infof("hit max data disk count(%d) when attaching disk %s, current disk count: %d, diskMap len: %d, removeNum: %d", maxDataDiskCount, diskURI, len(disks), len(diskMap), removeNum)
+			count := 0
+			for k, _ := range diskMap {
+				if count >= removeNum {
+					break
+				}
+				if strings.EqualFold(k, diskURI) {
+					klog.V(2).Infof("disk %s is in diskMap, skip removing it", k)
+					continue
+				}
+				count++
+				klog.V(2).Infof("remove disk %s from diskMap", k)
+				delete(diskMap, k)
+			}
+		} else {
+			klog.V(2).Infof("current disk count(%d) is less than max data disk count(%d), no need to remove any disk from diskMap", len(disks), maxDataDiskCount)
+		}
 	}
 
 	for _, lun := range occupiedLuns {

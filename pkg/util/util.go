@@ -21,6 +21,7 @@ import (
 	"os"
 	"runtime"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 
@@ -28,8 +29,9 @@ import (
 )
 
 const (
-	GiB                  = 1024 * 1024 * 1024
-	TagKeyValueDelimiter = "="
+	GiB                        = 1024 * 1024 * 1024
+	TagKeyValueDelimiter       = "="
+	MaximumDataDiskExceededMsg = "attached to a VM of this size is"
 )
 
 // IsWindowsOS decides whether the driver is running on windows OS.
@@ -179,4 +181,18 @@ func GetElementsInArray1NotInArray2(arr1 []int, arr2 []int) []int {
 		i++
 	}
 	return result
+}
+
+// GetMaximumDataDiskCount extracts the maximum data disk count from the error message.
+// The error message is expected to contain a specific format, e.g. "The maximum number of data disks attached to a VM of this size is 16."
+// If the error message does not contain the expected format, it returns 0.
+func GetMaximumDataDiskCount(msg string) int {
+	if index := strings.Index(msg, MaximumDataDiskExceededMsg); index != -1 {
+		number := msg[index+len(MaximumDataDiskExceededMsg):]
+		count, err := strconv.Atoi(strings.TrimSpace(number))
+		if err == nil {
+			return count
+		}
+	}
+	return 0
 }
