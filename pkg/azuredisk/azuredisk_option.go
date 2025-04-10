@@ -45,7 +45,6 @@ type DriverOptions struct {
 	SupportZone                       bool
 	GetNodeInfoFromLabels             bool
 	EnableDiskCapacityCheck           bool
-	DisableUpdateCache                bool
 	EnableTrafficManager              bool
 	TrafficManagerPort                int64
 	AttachDetachInitialDelayInMs      int64
@@ -94,7 +93,6 @@ func (o *DriverOptions) AddFlags() *flag.FlagSet {
 	fs.BoolVar(&o.SupportZone, "support-zone", true, "boolean flag to get zone info in NodeGetInfo")
 	fs.BoolVar(&o.GetNodeInfoFromLabels, "get-node-info-from-labels", false, "boolean flag to get zone info from node labels in NodeGetInfo")
 	fs.BoolVar(&o.EnableDiskCapacityCheck, "enable-disk-capacity-check", false, "boolean flag to enable volume capacity check in CreateVolume")
-	fs.BoolVar(&o.DisableUpdateCache, "disable-update-cache", false, "boolean flag to disable update cache during disk attach/detach")
 	fs.BoolVar(&o.EnableTrafficManager, "enable-traffic-manager", false, "boolean flag to enable traffic manager")
 	fs.Int64Var(&o.TrafficManagerPort, "traffic-manager-port", 7788, "default traffic manager port")
 	fs.Int64Var(&o.AttachDetachInitialDelayInMs, "attach-detach-initial-delay-ms", 1000, "initial delay in milliseconds for batch disk attach/detach")
