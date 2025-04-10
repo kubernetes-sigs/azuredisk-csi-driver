@@ -95,8 +95,6 @@ type controllerCommon struct {
 	// <nodeName, map<diskURI, *provider.AttachDiskOptions/DetachDiskOptions>>
 	attachDiskMap sync.Map
 	detachDiskMap sync.Map
-	// DisableUpdateCache whether disable update cache in disk attach/detach
-	DisableUpdateCache bool
 	// DisableDiskLunCheck whether disable disk lun check after disk attach/detach
 	DisableDiskLunCheck bool
 	// AttachDetachInitialDelayInMs determines initial delay in milliseconds for batch disk attach/detach
