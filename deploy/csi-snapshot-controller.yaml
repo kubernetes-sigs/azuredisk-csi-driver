@@ -50,7 +50,7 @@ spec:
             - "--v=2"
             - "--leader-election=true"
             - "--leader-election-namespace=kube-system"
-            - "--worker-threads=100"
+            - "--worker-threads=250"
             - "--retry-interval-max=30m"
           resources:
             limits:
