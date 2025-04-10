@@ -114,7 +114,6 @@ type DriverCore struct {
 	supportZone                  bool
 	getNodeInfoFromLabels        bool
 	enableDiskCapacityCheck      bool
-	disableUpdateCache           bool
 	enableTrafficManager         bool
 	trafficManagerPort           int64
 	vmssCacheTTLInSeconds        int64
@@ -172,7 +171,6 @@ func newDriverV1(options *DriverOptions) *Driver {
 	driver.supportZone = options.SupportZone
 	driver.getNodeInfoFromLabels = options.GetNodeInfoFromLabels
 	driver.enableDiskCapacityCheck = options.EnableDiskCapacityCheck
-	driver.disableUpdateCache = options.DisableUpdateCache
 	driver.attachDetachInitialDelayInMs = options.AttachDetachInitialDelayInMs
 	driver.enableTrafficManager = options.EnableTrafficManager
 	driver.trafficManagerPort = options.TrafficManagerPort
@@ -266,7 +264,6 @@ func newDriverV1(options *DriverOptions) *Driver {
 		}
 
 		driver.diskController = NewManagedDiskController(driver.cloud)
-		driver.diskController.DisableUpdateCache = driver.disableUpdateCache
 		driver.diskController.AttachDetachInitialDelayInMs = int(driver.attachDetachInitialDelayInMs)
 		driver.diskController.ForceDetachBackoff = driver.forceDetachBackoff
 		driver.diskController.WaitForDetach = driver.waitForDetach
