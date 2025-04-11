@@ -142,7 +142,6 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 				WaitForDetach:       d.waitForDetach,
 			},
 		}
-		localDiskController.DisableUpdateCache = d.disableUpdateCache
 		localDiskController.AttachDetachInitialDelayInMs = int(d.attachDetachInitialDelayInMs)
 
 	}
