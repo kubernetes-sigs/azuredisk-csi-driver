@@ -108,7 +108,6 @@ func newDriverV2(options *DriverOptions) *DriverV2 {
 
 	if driver.cloud != nil {
 		driver.diskController = NewManagedDiskController(driver.cloud)
-		driver.diskController.DisableUpdateCache = driver.disableUpdateCache
 		driver.diskController.AttachDetachInitialDelayInMs = int(driver.attachDetachInitialDelayInMs)
 		driver.clientFactory = driver.cloud.ComputeClientFactory
 		if driver.vmType != "" {
