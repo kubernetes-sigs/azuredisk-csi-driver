@@ -46,14 +46,8 @@ func (ss *ScaleSet) AttachDisk(ctx context.Context, nodeName types.NodeName, dis
 		return err
 	}
 
-	var disks []*armcompute.DataDisk
-
+	var dataDisksToAttach []*armcompute.DataDisksToAttach
 	storageProfile := vm.AsVirtualMachineScaleSetVM().Properties.StorageProfile
-
-	if storageProfile != nil && storageProfile.DataDisks != nil {
-		disks = make([]*armcompute.DataDisk, len(storageProfile.DataDisks))
-		copy(disks, storageProfile.DataDisks)
-	}
 
 	for k, v := range diskMap {
 		diSKURI := k
@@ -74,7 +68,13 @@ func (ss *ScaleSet) AttachDisk(ctx context.Context, nodeName types.NodeName, dis
 			continue
 		}
 
-		managedDisk := &armcompute.ManagedDiskParameters{ID: &diSKURI}
+		cachingMode := armcompute.CachingTypes(opt.CachingMode)
+		dataDisk := armcompute.DataDisksToAttach{
+			DiskID:                  &diSKURI,
+			Lun:                     &opt.Lun,
+			Caching:                 &cachingMode,
+			WriteAcceleratorEnabled: ptr.To(opt.WriteAcceleratorEnabled),
+		}
 		if opt.DiskEncryptionSetID == "" {
 			if storageProfile.OSDisk != nil &&
 				storageProfile.OSDisk.ManagedDisk != nil &&
@@ -85,63 +85,46 @@ func (ss *ScaleSet) AttachDisk(ctx context.Context, nodeName types.NodeName, dis
 			}
 		}
 		if opt.DiskEncryptionSetID != "" {
-			managedDisk.DiskEncryptionSet = &armcompute.DiskEncryptionSetParameters{ID: &opt.DiskEncryptionSetID}
+			dataDisk.DiskEncryptionSet = &armcompute.DiskEncryptionSetParameters{ID: &opt.DiskEncryptionSetID}
 		}
-		disks = append(disks,
-			&armcompute.DataDisk{
-				Name:                    &opt.DiskName,
-				Lun:                     &opt.Lun,
-				Caching:                 to.Ptr(opt.CachingMode),
-				CreateOption:            to.Ptr(armcompute.DiskCreateOptionTypesAttach),
-				ManagedDisk:             managedDisk,
-				WriteAcceleratorEnabled: ptr.To(opt.WriteAcceleratorEnabled),
-			})
+		dataDisksToAttach = append(dataDisksToAttach, &dataDisk)
 	}
 
-	newVM := &armcompute.VirtualMachineScaleSetVM{
-		Properties: &armcompute.VirtualMachineScaleSetVMProperties{
-			StorageProfile: &armcompute.StorageProfile{
-				DataDisks: disks,
-			},
-		},
+	attachDataDisksRequest := armcompute.AttachDetachDataDisksRequest{
+		DataDisksToAttach: dataDisksToAttach,
 	}
+
+	defer func() {
+		_ = ss.DeleteCacheForNode(ctx, vmName)
+	}()
 
 	klog.V(2).Infof("azureDisk - update: rg(%s) vm(%s) - attach disk list(%+v)", nodeResourceGroup, nodeName, diskMap)
-	result, rerr := ss.ComputeClientFactory.GetVirtualMachineScaleSetVMClient().Update(ctx, nodeResourceGroup, vm.VMSSName, vm.InstanceID, *newVM)
-	if rerr != nil {
-		klog.Errorf("azureDisk - attach disk list(%+v) on rg(%s) vm(%s) failed, err: %v", diskMap, nodeResourceGroup, nodeName, rerr)
-		if exists, err := errutils.CheckResourceExistsFromAzcoreError(rerr); !exists && !strings.Contains(rerr.Error(), consts.ParentResourceNotFoundMessageCode) && err == nil {
-			klog.Errorf("azureDisk - begin to filterNonExistingDisks(%v) on rg(%s) vm(%s)", diskMap, nodeResourceGroup, nodeName)
-			disks := FilterNonExistingDisks(ctx, ss.ComputeClientFactory, newVM.Properties.StorageProfile.DataDisks)
-			newVM.Properties.StorageProfile.DataDisks = disks
-			result, rerr = ss.ComputeClientFactory.GetVirtualMachineScaleSetVMClient().Update(ctx, nodeResourceGroup, vm.VMSSName, vm.InstanceID, *newVM)
-		}
+	resp, err := ss.ComputeClientFactory.GetVirtualMachineScaleSetVMClient().AttachDetachDataDisks(ctx, nodeResourceGroup, vm.VMSSName, vm.InstanceID, attachDataDisksRequest)
+	klog.V(2).Infof("azureDisk - update: rg(%s) vm(%s) - attach disk list(%+v) returned with %v", nodeResourceGroup, nodeName, diskMap, err)
+	if err != nil {
+		return err
 	}
 
-	klog.V(2).Infof("azureDisk - update: rg(%s) vm(%s) - attach disk list(%+v) returned with %v", nodeResourceGroup, nodeName, diskMap, rerr)
-	if rerr != nil {
-		return rerr
-	}
-
-	// clean node cache first and then update cache
-	_ = ss.DeleteCacheForNode(ctx, vmName)
-
-	var vmssName, instanceID string
-	if result != nil && result.Properties != nil {
+	if resp != nil {
 		// get vmssName, instanceID from cache first
 		vm, err := ss.getVmssVM(ctx, vmName, azcache.CacheReadTypeDefault)
 		if err == nil && vm != nil {
-			vmssName = vm.VMSSName
-			instanceID = vm.InstanceID
+			updatedVM := armcompute.VirtualMachineScaleSetVM{
+				Properties: &armcompute.VirtualMachineScaleSetVMProperties{
+					StorageProfile: &resp.StorageProfile,
+				},
+				Name:       &vm.Name,
+				ID:         &vm.ID,
+				InstanceID: &vm.InstanceID,
+			}
+			if err := ss.updateCache(ctx, vmName, nodeResourceGroup, vm.VMSSName, vm.InstanceID, &updatedVM); err != nil {
+				klog.Errorf("updateCache(%s, %s, %s, %s) failed with error: %v", vmName, nodeResourceGroup, vm.VMSSName, vm.InstanceID, err)
+			}
 		} else {
 			klog.Errorf("getVmssVM failed with error(%v) or nil pointer", err)
 		}
-
-		if err := ss.updateCache(ctx, vmName, nodeResourceGroup, vmssName, instanceID, result); err != nil {
-			klog.Errorf("updateCache(%s, %s, %s, %s) failed with error: %v", vmName, nodeResourceGroup, vmssName, instanceID, err)
-		}
 	}
-	return rerr
+	return err
 }
 
 // DetachDisk detaches a disk from VM

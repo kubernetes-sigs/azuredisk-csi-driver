@@ -310,6 +310,22 @@ func (mr *MockInterfaceMockRecorder) Update(ctx, resourceGroupName, VMScaleSetNa
 	return &MockInterfaceUpdateCall{Call: call}
 }
 
+// AttachDetachDataDisks mocks base method.
+func (m *MockInterface) AttachDetachDataDisks(ctx context.Context, resourceGroupName, VMScaleSetName, instanceID string, parameters armcompute.AttachDetachDataDisksRequest) (*armcompute.VirtualMachineScaleSetVMsClientAttachDetachDataDisksResponse, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "AttachDetachDataDisks", ctx, resourceGroupName, VMScaleSetName, instanceID, parameters)
+	ret0, _ := ret[0].(*armcompute.VirtualMachineScaleSetVMsClientAttachDetachDataDisksResponse)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// AttachDetachDataDisks indicates an expected call of Update.
+func (mr *MockInterfaceMockRecorder) AttachDetachDataDisks(ctx, resourceGroupName, VMScaleSetName, instanceID, parameters any) *MockInterfaceUpdateCall {
+	mr.mock.ctrl.T.Helper()
+	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AttachDetachDataDisks", reflect.TypeOf((*MockInterface)(nil).Update), ctx, resourceGroupName, VMScaleSetName, instanceID, parameters)
+	return &MockInterfaceUpdateCall{Call: call}
+}
+
 // MockInterfaceUpdateCall wrap *gomock.Call
 type MockInterfaceUpdateCall struct {
 	*gomock.Call
