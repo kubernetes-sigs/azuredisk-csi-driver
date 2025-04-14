@@ -124,6 +124,7 @@ func (c *controllerCommon) AttachDisk(ctx context.Context, diskName, diskURI str
 			if err != nil {
 				return -1, err
 			}
+			klog.V(4).Infof("azureDisk - found disk(%s) is already attached to node %s", diskURI, *disk.ManagedBy)
 			attachedNode, err := vmset.GetNodeNameByProviderID(ctx, *disk.ManagedBy)
 			if err != nil {
 				return -1, err
