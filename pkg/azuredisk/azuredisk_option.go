@@ -53,7 +53,7 @@ type DriverOptions struct {
 	GetDiskTimeoutInSeconds           int64
 	VMType                            string
 	EnableWindowsHostProcess          bool
-	ListDisksUsingWinCIM              bool
+	UseWinCIMAPI                      bool
 	GetNodeIDFromIMDS                 bool
 	WaitForSnapshotReady              bool
 	CheckDiskLUNCollision             bool
@@ -101,7 +101,7 @@ func (o *DriverOptions) AddFlags() *flag.FlagSet {
 	fs.Int64Var(&o.GetDiskTimeoutInSeconds, "get-disk-timeout-seconds", 15, "The timeout in seconds for getting disk")
 	fs.StringVar(&o.VMType, "vm-type", "", "type of agent node. available values: vmss, standard")
 	fs.BoolVar(&o.EnableWindowsHostProcess, "enable-windows-host-process", false, "enable windows host process")
-	fs.BoolVar(&o.ListDisksUsingWinCIM, "list-disks-using-win-cim", true, "list disks using CIM API on Windows")
+	fs.BoolVar(&o.UseWinCIMAPI, "use-win-cim-api", true, "whether perform disk operations using CIM API or Powershell command on Windows node")
 	fs.BoolVar(&o.GetNodeIDFromIMDS, "get-nodeid-from-imds", false, "boolean flag to get NodeID from IMDS")
 	fs.BoolVar(&o.WaitForSnapshotReady, "wait-for-snapshot-ready", true, "boolean flag to wait for snapshot ready when creating snapshot in same region")
 	fs.BoolVar(&o.CheckDiskLUNCollision, "check-disk-lun-collision", true, "boolean flag to check disk lun collisio before attaching disk")

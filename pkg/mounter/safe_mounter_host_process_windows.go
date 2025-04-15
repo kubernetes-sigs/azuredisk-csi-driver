@@ -41,12 +41,12 @@ import (
 var _ CSIProxyMounter = &winMounter{}
 
 type winMounter struct {
-	listDisksUsingWinCIM bool
+	useWinCIMAPI bool
 }
 
-func NewWinMounter(listDisksUsingWinCIM bool) *winMounter {
+func NewWinMounter(useWinCIMAPI bool) *winMounter {
 	return &winMounter{
-		listDisksUsingWinCIM: listDisksUsingWinCIM,
+		useWinCIMAPI: useWinCIMAPI,
 	}
 }
 
