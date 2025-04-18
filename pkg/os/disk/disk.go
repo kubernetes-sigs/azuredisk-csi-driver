@@ -58,7 +58,7 @@ func ListDisksUsingCIM() (map[uint32]Location, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to list disk location. cmd: %q, output: %q, err %v", cmd, string(out), err)
 	}
-	klog.V(6).Infof("ListDisksUsingCIM output: %s", string(out))
+	klog.V(5).Infof("ListDisksUsingCIM output: %s", string(out))
 
 	var getCimInstance []struct {
 		Index           uint32 `json:"Index"`
@@ -97,7 +97,7 @@ func ListDiskLocations() (map[uint32]Location, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to list disk location. cmd: %q, output: %q, err %v", cmd, string(out), err)
 	}
-	klog.V(6).Infof("ListDiskLocations output: %s", string(out))
+	klog.V(5).Infof("ListDiskLocations output: %s", string(out))
 
 	var getDisk []map[string]interface{}
 	err = json.Unmarshal(out, &getDisk)
@@ -127,12 +127,16 @@ func ListDiskLocations() (map[uint32]Location, error) {
 					switch strings.TrimSpace(itemSplit[0]) {
 					case "Adapter":
 						d.Adapter = strings.TrimSpace(itemSplit[1])
+						if d.Adapter == "0" {
+							klog.V(2).Infof("skipping adapter 0 disk, number: %d, location: %s", int(num), str)
+							found = false
+						}
 					case "Target":
 						d.Target = strings.TrimSpace(itemSplit[1])
 					case "LUN":
 						d.LUNID = strings.TrimSpace(itemSplit[1])
 					default:
-						klog.Warningf("Got unknown field : %s=%s", itemSplit[0], itemSplit[1])
+						klog.V(6).Infof("Got unknown field : %s=%s", itemSplit[0], itemSplit[1])
 					}
 				}
 			}
