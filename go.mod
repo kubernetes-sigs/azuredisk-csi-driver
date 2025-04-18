@@ -1,6 +1,6 @@
 module sigs.k8s.io/azuredisk-csi-driver
 
-go 1.24
+go 1.24.0
 
 godebug winsymlink=0
 

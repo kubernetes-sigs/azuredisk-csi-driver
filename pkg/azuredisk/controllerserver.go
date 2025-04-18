@@ -18,7 +18,7 @@ package azuredisk
 
 import (
 	"context"
-	"crypto/md5"
+	"crypto/sha256"
 	"fmt"
 	"sort"
 	"strconv"
@@ -1268,7 +1268,6 @@ func (d *Driver) CreateVolumeGroupSnapshot(ctx context.Context, req *csi.CreateV
 	if len(volumeGroupSnapshotName) == 0 {
 		return nil, status.Error(codes.InvalidArgument, "volume group snapshot name must be provided")
 	}
-	volumeGroupSnapshotName = azureutils.CreateValidDiskName(volumeGroupSnapshotName)
 
 	var customTags string
 	// set incremental snapshot as true by default
@@ -1304,8 +1303,10 @@ func (d *Driver) CreateVolumeGroupSnapshot(ctx context.Context, req *csi.CreateV
 			tags[consts.GroupSnapshotNamespaceTag] = ptr.To(v)
 		case consts.VolumeGroupSnapshotContentNameKey:
 			// ignore the key
+		case consts.SubscriptionIDField:
+			// ignore the key
 		default:
-			return nil, status.Errorf(codes.Internal, "AzureDisk - invalid option %s in VolumeSnapshotClass", k)
+			return nil, status.Errorf(codes.Internal, "AzureDisk - invalid option %s in VolumeGroupSnapshotClass", k)
 		}
 	}
 
@@ -1345,15 +1346,9 @@ func (d *Driver) CreateVolumeGroupSnapshot(ctx context.Context, req *csi.CreateV
 			Location: &d.cloud.Location,
 			Tags:     tags,
 		}
-		_, _, pvcName, err := azureutils.GetInfoFromURI(sourceVolumeID)
-		if err != nil {
-			return nil, err
-		}
-		snapshotNameData := []byte(fmt.Sprintf("%s-%s", volumeGroupSnapshotName, pvcName))
-		snapshotNameHash := md5.Sum(snapshotNameData)
-		klog.V(2).Infof("snapshotNameHash: %x", snapshotNameHash)
-		klog.V(2).Infof("time: %s", fmt.Sprint(time.Now().Format("2006-01-02-15.04.05")))
-		snapshotName := fmt.Sprintf("snapshot-%x-%s", snapshotNameHash, fmt.Sprint(time.Now().Format("2006-01-02-15.04.05")))
+		groupSnapshotUUID := strings.TrimPrefix(volumeGroupSnapshotName, "groupsnapshot-")
+		snapshotName := fmt.Sprintf("snapshot-%x", sha256.Sum256([]byte(groupSnapshotUUID+sourceVolumeID)))
+		snapshotName = azureutils.CreateValidDiskName(snapshotName)
 		snapshotNames = append(snapshotNames, snapshotName)
 
 		if dataAccessAuthMode != "" {
@@ -1398,7 +1393,6 @@ func (d *Driver) CreateVolumeGroupSnapshot(ctx context.Context, req *csi.CreateV
 			return nil, err
 		}
 		if snapshotResp.Snapshot != nil {
-			klog.V(2).Infof("snapshot id: %s, source volume id: %s, creationtime: %v, groupsnapshot id: %s, ready to use: %v", snapshotResp.Snapshot.SnapshotId, snapshotResp.Snapshot.SourceVolumeId, snapshotResp.Snapshot.CreationTime, snapshotResp.Snapshot.GroupSnapshotId, snapshotResp.Snapshot.ReadyToUse)
 			if !snapshotResp.Snapshot.ReadyToUse {
 				volumeGroupReady = false
 			}
@@ -1446,7 +1440,7 @@ func (d *Driver) DeleteVolumeGroupSnapshot(ctx context.Context, req *csi.DeleteV
 		if azureutils.IsARMResourceID(snapshotID) {
 			_, resourceGroup, snapshotNames[idx], err = azureutils.GetInfoFromURI(snapshotID)
 			if err != nil {
-				return nil, status.Errorf(codes.Internal, "%v", err)
+				return nil, status.Errorf(codes.InvalidArgument, "%v", err)
 			}
 		}
 	}
@@ -1501,12 +1495,12 @@ func (d *Driver) GetVolumeGroupSnapshot(ctx context.Context, req *csi.GetVolumeG
 		if azureutils.IsARMResourceID(snapshotID) {
 			_, resourceGroup, snapshotNames[idx], err = azureutils.GetInfoFromURI(snapshotID)
 			if err != nil {
-				return nil, status.Errorf(codes.Internal, "%v", err)
+				return nil, status.Errorf(codes.InvalidArgument, "%v", err)
 			}
 		}
 	}
 
-	mc := metrics.NewMetricContext(consts.AzureDiskCSIDriverName, "controller_delete_volume_group_snapshot", d.cloud.ResourceGroup, d.cloud.SubscriptionID, d.Name)
+	mc := metrics.NewMetricContext(consts.AzureDiskCSIDriverName, "controller_get_volume_group_snapshot", d.cloud.ResourceGroup, d.cloud.SubscriptionID, d.Name)
 	isOperationSucceeded := false
 	defer func() {
 		for _, snapshotID := range snapshotIDs {
@@ -1551,7 +1545,7 @@ func (d *Driver) getVolumeGroupSnapshotByID(ctx context.Context, subsID, resourc
 		if azureutils.IsARMResourceID(snapshotID) {
 			subsID, resourceGroup, snapshotName, err = azureutils.GetInfoFromURI(snapshotID)
 			if err != nil {
-				return nil, status.Errorf(codes.Internal, "%v", err)
+				return nil, status.Errorf(codes.InvalidArgument, "%v", err)
 			}
 		}
 		snapshotClient, err := d.clientFactory.GetSnapshotClientForSub(subsID)
