@@ -1,0 +1,44 @@
+---
+kind: Pod
+apiVersion: v1
+metadata:
+  name: nginx-azuredisk-0
+spec:
+  nodeSelector:
+    kubernetes.io/os: linux
+  containers:
+    - image: mcr.microsoft.com/oss/nginx/nginx:1.17.3-alpine
+      name: nginx-azuredisk-0
+      command:
+        - "/bin/sh"
+        - "-c"
+        - while true; do echo $(date) >> /mnt/azuredisk/outfile; sleep 1; done
+      volumeMounts:
+        - name: azuredisk01
+          mountPath: "/mnt/azuredisk"
+  volumes:
+    - name: azuredisk01
+      persistentVolumeClaim:
+        claimName: pvc-azuredisk-0
+---
+kind: Pod
+apiVersion: v1
+metadata:
+  name: nginx-azuredisk-1
+spec:
+  nodeSelector:
+    kubernetes.io/os: linux
+  containers:
+    - image: mcr.microsoft.com/oss/nginx/nginx:1.17.3-alpine
+      name: nginx-azuredisk-1
+      command:
+        - "/bin/sh"
+        - "-c"
+        - while true; do echo $(date) >> /mnt/azuredisk/outfile; sleep 1; done
+      volumeMounts:
+        - name: azuredisk01
+          mountPath: "/mnt/azuredisk"
+  volumes:
+    - name: azuredisk01
+      persistentVolumeClaim:
+        claimName: pvc-azuredisk-1

@@ -74,6 +74,7 @@ type FakeDriver interface {
 	getVolumeLocks() *volumehelper.VolumeLocks
 	setControllerCapabilities([]*csi.ControllerServiceCapability)
 	setNodeCapabilities([]*csi.NodeServiceCapability)
+	setGroupControllerCapabilities([]*csi.GroupControllerServiceCapability)
 	setName(string)
 	setNodeID(string)
 	setVersion(version string)
@@ -90,6 +91,7 @@ type FakeDriver interface {
 	checkDiskExists(ctx context.Context, diskURI string) (*armcompute.Disk, error)
 	waitForSnapshotReady(context.Context, string, string, string, time.Duration, time.Duration) error
 	getSnapshotByID(context.Context, string, string, string, string) (*csi.Snapshot, error)
+	getVolumeGroupSnapshotByID(context.Context, string, string, string, []string, []string) (*csi.VolumeGroupSnapshot, error)
 	ensureMountPoint(string) (bool, error)
 	ensureBlockTargetFile(string) error
 	getDevicePathWithLUN(lunStr string) (string, error)
@@ -157,6 +159,9 @@ func newFakeDriverV1(ctrl *gomock.Controller) (*fakeDriverV1, error) {
 	driver.AddNodeServiceCapabilities([]csi.NodeServiceCapability_RPC_Type{
 		csi.NodeServiceCapability_RPC_STAGE_UNSTAGE_VOLUME,
 		csi.NodeServiceCapability_RPC_EXPAND_VOLUME,
+	})
+	driver.AddGroupControllerServiceCapabilities([]csi.GroupControllerServiceCapability_RPC_Type{
+		csi.GroupControllerServiceCapability_RPC_CREATE_DELETE_GET_VOLUME_GROUP_SNAPSHOT,
 	})
 
 	return &driver, nil

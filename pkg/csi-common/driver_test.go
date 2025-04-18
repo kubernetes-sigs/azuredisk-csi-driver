@@ -143,3 +143,19 @@ func TestAddCNodeServiceCapabilities(t *testing.T) {
 	assert.Equal(t, nsc, d.NSCap)
 
 }
+
+func TestAddGroupControllerServiceCapabilities(t *testing.T) {
+	d := NewFakeCSIDriver()
+	var gcsc []*csi.GroupControllerServiceCapability
+	rpcTest := []csi.GroupControllerServiceCapability_RPC_Type{
+		csi.GroupControllerServiceCapability_RPC_UNKNOWN,
+		csi.GroupControllerServiceCapability_RPC_CREATE_DELETE_GET_VOLUME_GROUP_SNAPSHOT,
+	}
+	d.AddGroupControllerServiceCapabilities(rpcTest)
+	for _, c := range rpcTest {
+
+		gcsc = append(gcsc, NewGroupControllerServiceCapability(c))
+	}
+	assert.Equal(t, gcsc, d.GCap)
+
+}
