@@ -217,13 +217,20 @@ func (mounter *winMounter) Rescan() error {
 
 // FindDiskByLun - given a lun number, find out the corresponding disk
 func (mounter *winMounter) FindDiskByLun(lun string) (diskNum string, err error) {
-	var diskLocations map[uint32]disk.Location
-
-	if mounter.listDisksUsingWinCIM {
-		diskLocations, err = disk.ListDisksUsingCIM()
-	} else {
-		diskLocations, err = disk.ListDiskLocations()
+	diskLocations, err := disk.ListDiskLocations()
+	if err != nil {
+		return "", err
 	}
+	// List all disk locations and match the lun id being requested for.
+	// If match is found then return back the disk number.
+	for diskID, location := range diskLocations {
+		if strings.EqualFold(location.LUNID, lun) {
+			return strconv.Itoa(int(diskID)), nil
+		}
+	}
+
+	klog.Warningf("ListDiskLocations failed to find lun %s, falling back to ListDisksUsingCIM", lun)
+	diskLocations, err = disk.ListDisksUsingCIM()
 	if err != nil {
 		return "", err
 	}
