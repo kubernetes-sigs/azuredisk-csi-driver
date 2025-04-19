@@ -217,9 +217,32 @@ func (c *controllerCommon) AttachDisk(ctx context.Context, diskName, diskURI str
 		time.Sleep(time.Duration(c.AttachDetachInitialDelayInMs) * time.Millisecond)
 	}
 
+	_, instanceType, err := getNodeInfoFromLabels(ctx, string(nodeName), c.cloud.KubeClient)
+	if err != nil {
+		return -1, err
+	}
+	maxNumDisks := getMaxDataDiskCount(instanceType)
+	numDisksAttached := len(occupiedLuns)
+	numDisksAllowed := int(maxNumDisks) - numDisksAttached
+
 	diskMap, err := c.cleanAttachDiskRequests(node)
 	if err != nil {
 		return -1, err
+	}
+
+	// Remove some disks from the batch if the number is more than the max number of disks allowed
+	removeDisks := len(diskMap) - numDisksAllowed
+	if removeDisks > 0 {
+		klog.V(2).Infof("azureDisk - too many disks to attach, remove %d disks from the request", removeDisks)
+		for diskURI, options := range diskMap {
+			if removeDisks == 0 {
+				break
+			}
+			if options != nil {
+				delete(diskMap, diskURI)
+			}
+			removeDisks--
+		}
 	}
 
 	lun, err := c.SetDiskLun(ctx, nodeName, diskuri, diskMap, occupiedLuns)
