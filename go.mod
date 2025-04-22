@@ -41,7 +41,7 @@ require (
 	k8s.io/mount-utils v0.32.3
 	k8s.io/pod-security-admission v0.32.0
 	k8s.io/utils v0.0.0-20250321185631-1f6e0b77f77e
-	sigs.k8s.io/cloud-provider-azure v1.29.1-0.20250418064547-4dfd672dab58
+	sigs.k8s.io/cloud-provider-azure v1.29.1-0.20250422032600-88c837448b9c
 	sigs.k8s.io/cloud-provider-azure/pkg/azclient v0.6.2
 	sigs.k8s.io/cloud-provider-azure/pkg/azclient/configloader v0.5.2
 	sigs.k8s.io/yaml v1.4.0
