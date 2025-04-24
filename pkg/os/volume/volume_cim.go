@@ -2,7 +2,7 @@
 // +build windows
 
 /*
-Copyright 2023 The Kubernetes Authors.
+Copyright 2025 The Kubernetes Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -17,35 +17,42 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package cim
+package volume
 
 import (
 	"fmt"
-	"os"
 	"strconv"
 	"strings"
 
 	"github.com/go-ole/go-ole"
-	wmierrors "github.com/microsoft/wmi/pkg/errors"
 	"github.com/pkg/errors"
 	"golang.org/x/sys/windows"
 	"k8s.io/klog/v2"
+	"sigs.k8s.io/azuredisk-csi-driver/pkg/os/cim"
 )
 
+var _ VolumeAPI = &cimVolumeAPI{}
+
+type cimVolumeAPI struct{}
+
+func NewCIMVolumeAPI() *cimVolumeAPI {
+	return &cimVolumeAPI{}
+}
+
 // ListVolumesOnDisk - returns back list of volumes(volumeIDs) in a disk and a partition.
-func ListVolumesOnDisk(diskNumber uint32, partitionNumber uint32) (volumeIDs []string, err error) {
-	partitions, err := ListPartitionsOnDisk(diskNumber, partitionNumber, []string{"ObjectId"})
+func (*cimVolumeAPI) ListVolumesOnDisk(diskNumber uint32, partitionNumber uint32) (volumeIDs []string, err error) {
+	partitions, err := cim.ListPartitionsOnDisk(diskNumber, partitionNumber, []string{"ObjectId"})
 	if err != nil {
 		return nil, errors.Wrapf(err, "failed to list partition on disk %d", diskNumber)
 	}
 
-	volumes, err := ListVolumes([]string{"ObjectId", "UniqueId"})
+	volumes, err := cim.ListVolumes([]string{"ObjectId", "UniqueId"})
 	if err != nil {
 		return nil, errors.Wrapf(err, "failed to list volumes")
 	}
 
-	filtered, err := FindVolumesByPartition(volumes, partitions)
-	if IgnoreNotFound(err) != nil {
+	filtered, err := cim.FindVolumesByPartition(volumes, partitions)
+	if cim.IgnoreNotFound(err) != nil {
 		return nil, errors.Wrapf(err, "failed to list volumes on disk %d", diskNumber)
 	}
 
@@ -61,8 +68,8 @@ func ListVolumesOnDisk(diskNumber uint32, partitionNumber uint32) (volumeIDs []s
 }
 
 // FormatVolume - Formats a volume with the NTFS format.
-func FormatVolume(volumeID string) (err error) {
-	volume, err := QueryVolumeByUniqueID(volumeID, nil)
+func (*cimVolumeAPI) FormatVolume(volumeID string) (err error) {
+	volume, err := cim.QueryVolumeByUniqueID(volumeID, nil)
 	if err != nil {
 		return fmt.Errorf("error formatting volume (%s). error: %v", volumeID, err)
 	}
@@ -88,13 +95,13 @@ func FormatVolume(volumeID string) (err error) {
 }
 
 // WriteVolumeCache - Writes the file system cache to disk with the given volume id
-func WriteVolumeCache(volumeID string) (err error) {
+func (*cimVolumeAPI) WriteVolumeCache(volumeID string) (err error) {
 	return writeCache(volumeID)
 }
 
 // IsVolumeFormatted - Check if the volume is formatted with the pre specified filesystem(typically ntfs).
-func IsVolumeFormatted(volumeID string) (bool, error) {
-	volume, err := QueryVolumeByUniqueID(volumeID, []string{"FileSystemType"})
+func (*cimVolumeAPI) IsVolumeFormatted(volumeID string) (bool, error) {
+	volume, err := cim.QueryVolumeByUniqueID(volumeID, []string{"FileSystemType"})
 	if err != nil {
 		return false, fmt.Errorf("error checking if volume (%s) is formatted. error: %v", volumeID, err)
 	}
@@ -109,7 +116,7 @@ func IsVolumeFormatted(volumeID string) (bool, error) {
 }
 
 // MountVolume - mounts a volume to a path. This is done using the Add-PartitionAccessPath for presenting the volume via a path.
-func MountVolume(volumeID, path string) error {
+func (*cimVolumeAPI) MountVolume(volumeID, path string) error {
 	mountPoint := path
 	if !strings.HasSuffix(mountPoint, "\\") {
 		mountPoint += "\\"
@@ -136,7 +143,7 @@ func MountVolume(volumeID, path string) error {
 }
 
 // UnmountVolume - unmounts the volume path by removing the partition access path
-func UnmountVolume(volumeID, path string) error {
+func (*cimVolumeAPI) UnmountVolume(volumeID, path string) error {
 	if err := writeCache(volumeID); err != nil {
 		return err
 	}
@@ -154,10 +161,10 @@ func UnmountVolume(volumeID, path string) error {
 }
 
 // ResizeVolume - resizes a volume with the given size, if size == 0 then max supported size is used
-func ResizeVolume(volumeID string, size int64) error {
+func (*cimVolumeAPI) ResizeVolume(volumeID string, size int64) error {
 	var err error
 	var finalSize int64
-	part, err := GetPartitionByVolumeUniqueID(volumeID, nil)
+	part, err := cim.GetPartitionByVolumeUniqueID(volumeID, nil)
 	if err != nil {
 		return err
 	}
@@ -209,12 +216,12 @@ func ResizeVolume(volumeID string, size int64) error {
 		return fmt.Errorf("error resizing volume (%s). size:%v, finalSize %v, error: %v", volumeID, size, finalSize, err)
 	}
 
-	diskNumber, err := GetPartitionDiskNumber(part)
+	diskNumber, err := cim.GetPartitionDiskNumber(part)
 	if err != nil {
 		return fmt.Errorf("error parsing disk number of volume (%s). error: %v", volumeID, err)
 	}
 
-	disk, err := QueryDiskByNumber(diskNumber, nil)
+	disk, err := cim.QueryDiskByNumber(diskNumber, nil)
 	if err != nil {
 		return fmt.Errorf("error parsing disk number of volume (%s). error: %v", volumeID, err)
 	}
@@ -228,9 +235,9 @@ func ResizeVolume(volumeID string, size int64) error {
 }
 
 // GetDiskNumberFromVolumeID - gets the disk number where the volume is.
-func GetDiskNumberFromVolumeID(volumeID string) (uint32, error) {
+func (*cimVolumeAPI) GetDiskNumberFromVolumeID(volumeID string) (uint32, error) {
 	// get the size and sizeRemaining for the volume
-	part, err := GetPartitionByVolumeUniqueID(volumeID, []string{"DiskNumber"})
+	part, err := cim.GetPartitionByVolumeUniqueID(volumeID, []string{"DiskNumber"})
 	if err != nil {
 		return 0, err
 	}
@@ -244,44 +251,6 @@ func GetDiskNumberFromVolumeID(volumeID string) (uint32, error) {
 }
 
 // GetVolumeIDFromTargetPath - gets the volume ID given a mount point, the function is recursive until it find a volume or errors out
-func GetVolumeIDFromTargetPath(mount string) (string, error) {
+func (*cimVolumeAPI) GetVolumeIDFromTargetPath(mount string) (string, error) {
 	return getTarget(mount, 5 /*max depth*/)
-}
-
-func getTarget(mount string, depth int) (string, error) {
-	if depth == 0 {
-		return "", fmt.Errorf("maximum depth reached on mount %s", mount)
-	}
-	target, err := os.Readlink(mount)
-	if err != nil {
-		return "", fmt.Errorf("error reading link for mount %s. target %s err: %v", mount, target, err)
-	}
-	volumeString := strings.TrimSpace(target)
-	if !strings.HasPrefix(volumeString, "Volume") && !strings.HasPrefix(volumeString, "\\\\?\\Volume") {
-		return getTarget(volumeString, depth-1)
-	}
-
-	return ensureVolumePrefix(volumeString), nil
-}
-
-// ensureVolumePrefix makes sure that the volume has the Volume prefix
-func ensureVolumePrefix(volume string) string {
-	prefix := "\\\\?\\"
-	if !strings.HasPrefix(volume, prefix) {
-		volume = prefix + volume
-	}
-	return volume
-}
-
-func writeCache(volumeID string) error {
-	volume, err := QueryVolumeByUniqueID(volumeID, []string{})
-	if err != nil && !wmierrors.IsNotFound(err) {
-		return fmt.Errorf("error writing volume (%s) cache. error: %v", volumeID, err)
-	}
-
-	result, err := volume.Flush()
-	if result != 0 || err != nil {
-		return fmt.Errorf("error writing volume (%s) cache. result: %d, error: %v", volumeID, result, err)
-	}
-	return nil
 }
