@@ -41,12 +41,18 @@ import (
 var _ CSIProxyMounter = &winMounter{}
 
 type winMounter struct {
-	listDisksUsingWinCIM bool
+	volAPI volume.VolumeAPI
 }
 
-func NewWinMounter(listDisksUsingWinCIM bool) *winMounter {
+func NewWinMounter(useWinCIMAPI bool) *winMounter {
+	var volAPI volume.VolumeAPI
+	if useWinCIMAPI {
+		volAPI = volume.NewCIMVolumeAPI()
+	} else {
+		volAPI = volume.NewPowerShellVolumeAPI()
+	}
 	return &winMounter{
-		listDisksUsingWinCIM: listDisksUsingWinCIM,
+		volAPI: volAPI,
 	}
 }
 
@@ -67,7 +73,7 @@ func (mounter *winMounter) Unmount(target string) error {
 		return err
 	}
 	klog.V(2).Infof("Unmounting volume %s from %s", volumeID, target)
-	if err = volume.UnmountVolume(volumeID, normalizeWindowsPath(target)); err != nil {
+	if err = mounter.volAPI.UnmountVolume(volumeID, normalizeWindowsPath(target)); err != nil {
 		return err
 	}
 	return mounter.Rmdir(target)
@@ -179,7 +185,7 @@ func (mounter *winMounter) FormatAndMount(source, target, fstype string, options
 	}
 
 	// List the volumes on the given disk.
-	volumeIds, err := volume.ListVolumesOnDisk(uint32(diskNum), 0)
+	volumeIds, err := mounter.volAPI.ListVolumesOnDisk(uint32(diskNum), 0)
 	if err != nil {
 		return err
 	}
@@ -193,20 +199,20 @@ func (mounter *winMounter) FormatAndMount(source, target, fstype string, options
 	volumeID := volumeIds[0]
 
 	// Check if the volume is formatted.
-	formatted, err := volume.IsVolumeFormatted(volumeID)
+	formatted, err := mounter.volAPI.IsVolumeFormatted(volumeID)
 	if err != nil {
 		return err
 	}
 
 	// If the volume is not formatted, then format it, else proceed to mount.
 	if !formatted {
-		if err := volume.FormatVolume(volumeID); err != nil {
+		if err := mounter.volAPI.FormatVolume(volumeID); err != nil {
 			return err
 		}
 	}
 
 	// Mount the volume by calling the CSI proxy call.
-	return volume.MountVolume(volumeID, normalizeWindowsPath(target))
+	return mounter.volAPI.MountVolume(volumeID, normalizeWindowsPath(target))
 }
 
 // Rescan would trigger an update storage cache via the CSI proxy.
@@ -247,7 +253,7 @@ func (mounter *winMounter) FindDiskByLun(lun string) (diskNum string, err error)
 
 // GetDeviceNameFromMount returns the volume ID for a mount path.
 func (mounter *winMounter) GetDeviceNameFromMount(mountPath, pluginMountDir string) (string, error) {
-	return volume.GetVolumeIDFromTargetPath(normalizeWindowsPath(mountPath))
+	return mounter.volAPI.GetVolumeIDFromTargetPath(normalizeWindowsPath(mountPath))
 }
 
 // GetVolumeSizeInBytes returns the size of the volume in bytes.
@@ -264,7 +270,7 @@ func (mounter *winMounter) ResizeVolume(source string) error {
 	diskNum, err := strconv.Atoi(source)
 	if err == nil {
 		// List the volumes on the given disk.
-		volumeIds, err := volume.ListVolumesOnDisk(uint32(diskNum), 0)
+		volumeIds, err := mounter.volAPI.ListVolumesOnDisk(uint32(diskNum), 0)
 		if err != nil {
 			return err
 		}
@@ -280,7 +286,7 @@ func (mounter *winMounter) ResizeVolume(source string) error {
 		volumeID = source
 	}
 
-	return volume.ResizeVolume(volumeID, 0)
+	return mounter.volAPI.ResizeVolume(volumeID, 0)
 }
 
 // GetFreeSpace returns the free space of the volume in bytes, total size of the volume in bytes and the used space of the volume in bytes

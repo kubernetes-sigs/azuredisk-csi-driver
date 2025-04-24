@@ -412,11 +412,11 @@ func newCSIProxyMounter() (*csiProxyMounter, error) {
 	}, nil
 }
 
-func NewSafeMounter(enableWindowsHostProcess, listDisksUsingWinCIM, useCSIProxyGAInterface bool, maxConcurrentFormat int, concurrentFormatTimeout time.Duration) (*mount.SafeFormatAndMount, error) {
+func NewSafeMounter(enableWindowsHostProcess, useWinCIMAPI, useCSIProxyGAInterface bool, maxConcurrentFormat int, concurrentFormatTimeout time.Duration) (*mount.SafeFormatAndMount, error) {
 	if enableWindowsHostProcess {
 		klog.V(2).Infof("using windows host process mounter")
 		opt := mount.WithMaxConcurrentFormat(maxConcurrentFormat, concurrentFormatTimeout)
-		return mount.NewSafeFormatAndMount(NewWinMounter(listDisksUsingWinCIM), utilexec.New(), opt), nil
+		return mount.NewSafeFormatAndMount(NewWinMounter(useWinCIMAPI), utilexec.New(), opt), nil
 	} else {
 		if useCSIProxyGAInterface {
 			csiProxyMounter, err := newCSIProxyMounter()

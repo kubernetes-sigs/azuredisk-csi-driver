@@ -31,6 +31,35 @@ import (
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
 )
 
+var _ VolumeAPI = &powerShellVolumeAPI{}
+
+type powerShellVolumeAPI struct{}
+
+func NewPowerShellVolumeAPI() *powerShellVolumeAPI {
+	return &powerShellVolumeAPI{}
+}
+
+type VolumeAPI interface {
+	// ListVolumesOnDisk lists volumes on a disk identified by a `diskNumber` and optionally a partition identified by `partitionNumber`.
+	ListVolumesOnDisk(diskNumber uint32, partitionNumber uint32) (volumeIDs []string, err error)
+	// MountVolume mounts the volume at the requested global staging target path.
+	MountVolume(volumeID, targetPath string) error
+	// UnmountVolume gracefully dismounts a volume.
+	UnmountVolume(volumeID, targetPath string) error
+	// IsVolumeFormatted checks if a volume is formatted with NTFS.
+	IsVolumeFormatted(volumeID string) (bool, error)
+	// FormatVolume formats a volume with the NTFS format.
+	FormatVolume(volumeID string) error
+	// ResizeVolume performs resizing of the partition and file system for a block based volume.
+	ResizeVolume(volumeID string, sizeBytes int64) error
+	// GetDiskNumberFromVolumeID returns the disk number for a given volumeID.
+	GetDiskNumberFromVolumeID(volumeID string) (uint32, error)
+	// GetVolumeIDFromTargetPath returns the volume id of a given target path.
+	GetVolumeIDFromTargetPath(targetPath string) (string, error)
+	// WriteVolumeCache writes the volume `volumeID`'s cache to disk.
+	WriteVolumeCache(volumeID string) error
+}
+
 func getVolumeSize(volumeID string) (int64, error) {
 	cmd := "(Get-Volume -UniqueId \"$Env:volumeID\" | Get-partition).Size"
 	out, err := azureutils.RunPowershellCmd(cmd, fmt.Sprintf("volumeID=%s", volumeID))
@@ -49,7 +78,7 @@ func getVolumeSize(volumeID string) (int64, error) {
 }
 
 // ListVolumesOnDisk - returns back list of volumes(volumeIDs) in a disk and a partition.
-func ListVolumesOnDisk(diskNumber uint32, partitionNumber uint32) (volumeIDs []string, err error) {
+func (*powerShellVolumeAPI) ListVolumesOnDisk(diskNumber uint32, partitionNumber uint32) (volumeIDs []string, err error) {
 	var cmd string
 	if partitionNumber == 0 {
 		// 0 means that the partitionNumber wasn't set so we list all the partitions
@@ -67,7 +96,7 @@ func ListVolumesOnDisk(diskNumber uint32, partitionNumber uint32) (volumeIDs []s
 }
 
 // FormatVolume - Formats a volume with the NTFS format.
-func FormatVolume(volumeID string) (err error) {
+func (*powerShellVolumeAPI) FormatVolume(volumeID string) (err error) {
 	cmd := "Get-Volume -UniqueId \"$Env:volumeID\" | Format-Volume -FileSystem ntfs -Confirm:$false"
 	out, err := azureutils.RunPowershellCmd(cmd, fmt.Sprintf("volumeID=%s", volumeID))
 	if err != nil {
@@ -78,12 +107,12 @@ func FormatVolume(volumeID string) (err error) {
 }
 
 // WriteVolumeCache - Writes the file system cache to disk with the given volume id
-func WriteVolumeCache(volumeID string) (err error) {
+func (*powerShellVolumeAPI) WriteVolumeCache(volumeID string) (err error) {
 	return writeCache(volumeID)
 }
 
 // IsVolumeFormatted - Check if the volume is formatted with the pre specified filesystem(typically ntfs).
-func IsVolumeFormatted(volumeID string) (bool, error) {
+func (*powerShellVolumeAPI) IsVolumeFormatted(volumeID string) (bool, error) {
 	cmd := "(Get-Volume -UniqueId \"$Env:volumeID\" -ErrorAction Stop).FileSystemType"
 	out, err := azureutils.RunPowershellCmd(cmd, fmt.Sprintf("volumeID=%s", volumeID))
 	if err != nil {
@@ -97,7 +126,7 @@ func IsVolumeFormatted(volumeID string) (bool, error) {
 }
 
 // MountVolume - mounts a volume to a path. This is done using the Add-PartitionAccessPath for presenting the volume via a path.
-func MountVolume(volumeID, path string) error {
+func (*powerShellVolumeAPI) MountVolume(volumeID, path string) error {
 	cmd := "Get-Volume -UniqueId \"$Env:volumeID\" | Get-Partition | Add-PartitionAccessPath -AccessPath $Env:path"
 	out, err := azureutils.RunPowershellCmd(cmd, fmt.Sprintf("volumeID=%s", volumeID), fmt.Sprintf("path=%s", path))
 	if err != nil {
@@ -107,7 +136,7 @@ func MountVolume(volumeID, path string) error {
 }
 
 // UnmountVolume - unmounts the volume path by removing the partition access path
-func UnmountVolume(volumeID, path string) error {
+func (*powerShellVolumeAPI) UnmountVolume(volumeID, path string) error {
 	if err := writeCache(volumeID); err != nil {
 		return err
 	}
@@ -120,7 +149,7 @@ func UnmountVolume(volumeID, path string) error {
 }
 
 // ResizeVolume - resizes a volume with the given size, if size == 0 then max supported size is used
-func ResizeVolume(volumeID string, size int64) error {
+func (*powerShellVolumeAPI) ResizeVolume(volumeID string, size int64) error {
 	// if size is 0 then we will resize to the maximum size possible, otherwise just resize to size
 	var finalSize int64
 	if size == 0 {
@@ -161,7 +190,7 @@ func ResizeVolume(volumeID string, size int64) error {
 }
 
 // GetDiskNumberFromVolumeID - gets the disk number where the volume is.
-func GetDiskNumberFromVolumeID(volumeID string) (uint32, error) {
+func (*powerShellVolumeAPI) GetDiskNumberFromVolumeID(volumeID string) (uint32, error) {
 	// get the size and sizeRemaining for the volume
 	cmd := "(Get-Volume -UniqueId \"$Env:volumeID\" | Get-Partition).DiskNumber"
 	out, err := azureutils.RunPowershellCmd(cmd, fmt.Sprintf("volumeID=%s", volumeID))
@@ -186,7 +215,7 @@ func GetDiskNumberFromVolumeID(volumeID string) (uint32, error) {
 }
 
 // GetVolumeIDFromTargetPath - gets the volume ID given a mount point, the function is recursive until it find a volume or errors out
-func GetVolumeIDFromTargetPath(mount string) (string, error) {
+func (*powerShellVolumeAPI) GetVolumeIDFromTargetPath(mount string) (string, error) {
 	return getTarget(mount, 5 /*max depth*/)
 }
 

@@ -140,7 +140,7 @@ func newDriverV2(options *DriverOptions) *DriverV2 {
 		}
 	}
 
-	driver.mounter, err = mounter.NewSafeMounter(driver.enableWindowsHostProcess, driver.listDisksUsingWinCIM, driver.useCSIProxyGAInterface, int(driver.maxConcurrentFormat), time.Duration(driver.concurrentFormatTimeout)*time.Second)
+	driver.mounter, err = mounter.NewSafeMounter(driver.enableWindowsHostProcess, driver.useWinCIMAPI, driver.useCSIProxyGAInterface, int(driver.maxConcurrentFormat), time.Duration(driver.concurrentFormatTimeout)*time.Second)
 	if err != nil {
 		klog.Fatalf("Failed to get safe mounter. Error: %v", err)
 	}
