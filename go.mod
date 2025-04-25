@@ -2,6 +2,8 @@ module sigs.k8s.io/azuredisk-csi-driver
 
 go 1.24
 
+toolchain go1.24.2
+
 godebug winsymlink=0
 
 require (
