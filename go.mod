@@ -1,8 +1,8 @@
 module sigs.k8s.io/azuredisk-csi-driver
 
-go 1.24
+go 1.23.2
 
-toolchain go1.24.1
+toolchain go1.23.8
 
 godebug winsymlink=0
 
@@ -33,17 +33,17 @@ require (
 	golang.org/x/sys v0.32.0
 	google.golang.org/grpc v1.71.0
 	google.golang.org/protobuf v1.36.5
-	k8s.io/api v0.32.3
-	k8s.io/apimachinery v0.32.3
-	k8s.io/client-go v0.32.3
-	k8s.io/cloud-provider v0.32.3
-	k8s.io/component-base v0.32.3
+	k8s.io/api v0.32.4
+	k8s.io/apimachinery v0.32.4
+	k8s.io/client-go v0.32.4
+	k8s.io/cloud-provider v0.32.4
+	k8s.io/component-base v0.32.4
 	k8s.io/klog/v2 v2.130.1
 	k8s.io/kubernetes v1.32.2
 	k8s.io/mount-utils v0.32.2
 	k8s.io/pod-security-admission v0.32.0
 	k8s.io/utils v0.0.0-20250321185631-1f6e0b77f77e
-	sigs.k8s.io/cloud-provider-azure v1.29.1-0.20250422032600-88c837448b9c
+	sigs.k8s.io/cloud-provider-azure v1.29.1-0.20250425133425-2efcaed305f8
 	sigs.k8s.io/cloud-provider-azure/pkg/azclient v0.6.2
 	sigs.k8s.io/cloud-provider-azure/pkg/azclient/configloader v0.5.2
 	sigs.k8s.io/yaml v1.4.0
@@ -168,18 +168,18 @@ require (
 	gopkg.in/natefinch/lumberjack.v2 v2.2.1 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 	k8s.io/apiextensions-apiserver v0.31.4 // indirect
-	k8s.io/apiserver v0.32.3 // indirect
-	k8s.io/component-helpers v0.32.3 // indirect
-	k8s.io/controller-manager v0.32.3 // indirect
+	k8s.io/apiserver v0.32.4 // indirect
+	k8s.io/component-helpers v0.32.4 // indirect
+	k8s.io/controller-manager v0.32.4 // indirect
 	k8s.io/cri-api v0.32.2 // indirect
 	k8s.io/cri-client v0.0.0 // indirect
 	k8s.io/csi-translation-lib v0.31.4 // indirect
 	k8s.io/dynamic-resource-allocation v0.0.0 // indirect
-	k8s.io/kms v0.32.3 // indirect
+	k8s.io/kms v0.32.4 // indirect
 	k8s.io/kube-openapi v0.0.0-20241127205056-99599406b04f // indirect
 	k8s.io/kube-scheduler v0.0.0 // indirect
 	k8s.io/kubectl v0.31.4 // indirect
-	k8s.io/kubelet v0.32.3 // indirect
+	k8s.io/kubelet v0.32.4 // indirect
 	sigs.k8s.io/apiserver-network-proxy/konnectivity-client v0.31.1 // indirect
 	sigs.k8s.io/json v0.0.0-20241014173422-cfa47c3a1cc8 // indirect
 	sigs.k8s.io/structured-merge-diff/v4 v4.4.3 // indirect
