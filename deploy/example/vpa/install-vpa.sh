@@ -19,10 +19,11 @@ set -o pipefail
 set +o xtrace
 
 SCRIPT_ROOT=$(dirname ${BASH_SOURCE[0]})
-COMPONENTS="vpa-v1-crd-gen vpa-rbac updater-deployment recommender-deployment admission-controller-deployment"
+COMPONENTS=("vpa-v1-crd-gen" "vpa-rbac" "updater-deployment" "recommender-deployment" "admission-controller-deployment")
 
 echo "Installing VPA ..."
 for i in "${COMPONENTS[@]}"; do
+  echo "Installing ${i} ..."
   if [ $i == admission-controller-deployment ] ; then
     ${SCRIPT_ROOT}/install-components/gencerts.sh
   fi
