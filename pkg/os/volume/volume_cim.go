@@ -175,7 +175,7 @@ func (*cimVolumeAPI) ResizeVolume(volumeID string, size int64) error {
 		var status string
 		result, err := part.InvokeMethodWithReturn("GetSupportedSize", &sizeMin, &sizeMax, &status)
 		if result != 0 || err != nil {
-			return fmt.Errorf("error getting sizemin, sizemax from volume (%s). result: %d, error: %v", volumeID, result, err)
+			return fmt.Errorf("error getting sizemin, sizemax from volume (%s). result: %d, status: %s, error: %v", volumeID, result, status, err)
 		}
 
 		finalSizeStr := sizeMax.ToString()

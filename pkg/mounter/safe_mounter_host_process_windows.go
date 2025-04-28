@@ -41,18 +41,23 @@ import (
 var _ CSIProxyMounter = &winMounter{}
 
 type winMounter struct {
-	volAPI volume.VolumeAPI
+	volAPI  volume.VolumeAPI
+	diskAPI disk.DiskAPI
 }
 
 func NewWinMounter(useWinCIMAPI bool) *winMounter {
 	var volAPI volume.VolumeAPI
+	var diskAPI disk.DiskAPI
 	if useWinCIMAPI {
 		volAPI = volume.NewCIMVolumeAPI()
+		diskAPI = disk.NewCIMDiskAPI()
 	} else {
 		volAPI = volume.NewPowerShellVolumeAPI()
+		diskAPI = disk.NewPowerShellDiskAPI()
 	}
 	return &winMounter{
-		volAPI: volAPI,
+		volAPI:  volAPI,
+		diskAPI: diskAPI,
 	}
 }
 
@@ -174,13 +179,13 @@ func (mounter *winMounter) FormatAndMount(source, target, fstype string, options
 	}
 
 	// set disk as online and clear readonly flag if there is any.
-	if err := disk.SetDiskState(uint32(diskNum), true); err != nil {
+	if err := mounter.diskAPI.SetDiskState(uint32(diskNum), true); err != nil {
 		// only log the error since SetDiskState is only needed in cloned volume
 		klog.Errorf("SetDiskState on disk(%d) failed with %v", diskNum, err)
 	}
 
 	// Call PartitionDisk CSI proxy call to partition the disk and return the volume id
-	if err := disk.PartitionDisk(uint32(diskNum)); err != nil {
+	if err := mounter.diskAPI.PartitionDisk(uint32(diskNum)); err != nil {
 		return err
 	}
 
@@ -218,12 +223,12 @@ func (mounter *winMounter) FormatAndMount(source, target, fstype string, options
 // Rescan would trigger an update storage cache via the CSI proxy.
 func (mounter *winMounter) Rescan() error {
 	// Call Rescan from disk APIs of CSI Proxy.
-	return disk.Rescan()
+	return mounter.diskAPI.Rescan()
 }
 
 // FindDiskByLun - given a lun number, find out the corresponding disk
 func (mounter *winMounter) FindDiskByLun(lun string) (diskNum string, err error) {
-	diskLocations, err := disk.ListDiskLocations()
+	diskLocations, err := mounter.diskAPI.ListDiskLocations()
 	if err != nil {
 		return "", err
 	}
