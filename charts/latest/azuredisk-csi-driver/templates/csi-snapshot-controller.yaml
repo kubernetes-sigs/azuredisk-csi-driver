@@ -84,6 +84,7 @@ spec:
             - "--leader-election-namespace={{ .Release.Namespace }}"
             - "--worker-threads=250"
             - "--retry-interval-max=30m"
+            - "--feature-gates=CSIVolumeGroupSnapshot={{ .Values.snapshot.enableVolumeGroupSnapshot }}"
           resources: {{- toYaml .Values.snapshot.snapshotController.resources | nindent 12 }}
           imagePullPolicy: {{ .Values.snapshot.image.csiSnapshotController.pullPolicy }}
           securityContext:

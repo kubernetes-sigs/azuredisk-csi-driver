@@ -21,10 +21,12 @@ package azuredisk
 
 import (
 	"context"
+	"crypto/sha256"
 	"fmt"
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/to"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute/v6"
@@ -32,6 +34,7 @@ import (
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/types/known/timestamppb"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -1026,4 +1029,213 @@ func (d *DriverV2) GetSourceDiskSize(ctx context.Context, subsID, resourceGroup,
 		return nil, result, status.Error(codes.Internal, fmt.Sprintf("DiskSizeGB for disk (%s) in resourcegroup (%s) is nil", diskName, resourceGroup))
 	}
 	return (*result.Properties).DiskSizeGB, result, nil
+}
+
+// GroupControllerGetCapabilities returns the capabilities of the Group Controller plugin
+func (d *DriverV2) GroupControllerGetCapabilities(_ context.Context, _ *csi.GroupControllerGetCapabilitiesRequest) (*csi.GroupControllerGetCapabilitiesResponse, error) {
+	return &csi.GroupControllerGetCapabilitiesResponse{
+		Capabilities: d.GCap,
+	}, nil
+}
+
+func (d *DriverV2) CreateVolumeGroupSnapshot(ctx context.Context, req *csi.CreateVolumeGroupSnapshotRequest) (*csi.CreateVolumeGroupSnapshotResponse, error) {
+	sourceVolumeIDs := req.GetSourceVolumeIds()
+	if len(sourceVolumeIDs) == 0 {
+		return nil, status.Error(codes.InvalidArgument, "CreateVolumeGroupSnapshot Source Volume IDs must be provided")
+	}
+	for _, sourceVolumeID := range sourceVolumeIDs {
+		if len(sourceVolumeID) == 0 {
+			return nil, status.Error(codes.InvalidArgument, "CreateVolumeGroupSnapshot Source Volume ID must be provided")
+		}
+	}
+	volumeGroupSnapshotName := req.Name
+	if len(volumeGroupSnapshotName) == 0 {
+		return nil, status.Error(codes.InvalidArgument, "volume group snapshot name must be provided")
+	}
+
+	snapshotNames := []string{}
+	for _, sourceVolumeID := range sourceVolumeIDs {
+		groupSnapshotUUID := strings.TrimPrefix(volumeGroupSnapshotName, "groupsnapshot-")
+		snapshotName := fmt.Sprintf("snapshot-%x", sha256.Sum256([]byte(groupSnapshotUUID+sourceVolumeID)))
+		snapshotName = azureutils.CreateValidDiskName(snapshotName)
+		snapshotNames = append(snapshotNames, snapshotName)
+	}
+
+	if acquired := d.volumeLocks.TryAcquire(volumeGroupSnapshotName); !acquired {
+		return nil, status.Errorf(codes.Aborted, volumeOperationAlreadyExistsFmt, volumeGroupSnapshotName)
+	}
+	defer d.volumeLocks.Release(volumeGroupSnapshotName)
+
+	metricsRequest := "controller_create_volume_group_snapshot"
+
+	mc := metrics.NewMetricContext(consts.AzureDiskCSIDriverName, metricsRequest, d.cloud.ResourceGroup, d.cloud.SubscriptionID, d.Name)
+	isOperationSucceeded := false
+	defer func() {
+		mc.ObserveOperationWithResult(isOperationSucceeded, consts.GroupSnapshotID, volumeGroupSnapshotName)
+		for idx, sourceVolumeID := range sourceVolumeIDs {
+			mc.ObserveOperationWithResult(isOperationSucceeded, consts.SourceResourceID, sourceVolumeID, consts.SnapshotName, snapshotNames[idx])
+		}
+	}()
+
+	klog.V(2).Infof("begin to create volume group snapshot(%s) in region(%s)", volumeGroupSnapshotName, d.cloud.Location)
+	volumeGroupReady := true
+	creationTime := timestamppb.New(time.Now())
+	snapshotList := []*csi.Snapshot{}
+	for idx := range snapshotNames {
+		createSnapshotReq := &csi.CreateSnapshotRequest{
+			Name:           snapshotNames[idx],
+			SourceVolumeId: sourceVolumeIDs[idx],
+			Parameters:     req.Parameters,
+			Secrets:        req.Secrets,
+		}
+		snapshotResp, err := d.CreateSnapshot(ctx, createSnapshotReq)
+		if err != nil {
+			return nil, err
+		}
+		if snapshotResp.Snapshot != nil {
+			if !snapshotResp.Snapshot.ReadyToUse {
+				volumeGroupReady = false
+			}
+			snapshotResp.Snapshot.GroupSnapshotId = volumeGroupSnapshotName
+			snapshotList = append(snapshotList, snapshotResp.Snapshot)
+			creationTime = snapshotResp.Snapshot.CreationTime
+		}
+	}
+	klog.V(2).Infof("create volume group snapshot(%s) in region(%s) successfully", volumeGroupSnapshotName, d.cloud.Location)
+	csiVolumeGroupSnapshot := &csi.VolumeGroupSnapshot{
+		GroupSnapshotId: volumeGroupSnapshotName,
+		Snapshots:       snapshotList,
+		CreationTime:    creationTime,
+		ReadyToUse:      volumeGroupReady,
+	}
+
+	createResp := &csi.CreateVolumeGroupSnapshotResponse{
+		GroupSnapshot: csiVolumeGroupSnapshot,
+	}
+	isOperationSucceeded = true
+	return createResp, nil
+}
+
+func (d *DriverV2) DeleteVolumeGroupSnapshot(ctx context.Context, req *csi.DeleteVolumeGroupSnapshotRequest) (*csi.DeleteVolumeGroupSnapshotResponse, error) {
+	groupSnapshotID := req.GroupSnapshotId
+	snapshotIDs := req.SnapshotIds
+	if len(groupSnapshotID) == 0 {
+		return nil, status.Error(codes.InvalidArgument, "GroupVolumeSnapshot ID must be provided")
+	}
+	if len(snapshotIDs) == 0 {
+		klog.V(2).Infof("GroupVolumeSnapshot is empty")
+		return &csi.DeleteVolumeGroupSnapshotResponse{}, nil
+	}
+
+	var err error
+	groupSnapshotName := groupSnapshotID
+	resourceGroup := d.cloud.ResourceGroup
+	snapshotNames := []string{}
+
+	for idx, snapshotID := range snapshotIDs {
+		if len(snapshotID) == 0 {
+			return nil, status.Error(codes.InvalidArgument, "Snapshot ID must be provided")
+		}
+		snapshotNames = append(snapshotNames, snapshotID)
+		if azureutils.IsARMResourceID(snapshotID) {
+			_, resourceGroup, snapshotNames[idx], err = azureutils.GetInfoFromURI(snapshotID)
+			if err != nil {
+				return nil, status.Errorf(codes.InvalidArgument, "%v", err)
+			}
+		}
+	}
+
+	mc := metrics.NewMetricContext(consts.AzureDiskCSIDriverName, "controller_delete_volume_group_snapshot", d.cloud.ResourceGroup, d.cloud.SubscriptionID, d.Name)
+	isOperationSucceeded := false
+	defer func() {
+		for _, snapshotID := range snapshotIDs {
+			mc.ObserveOperationWithResult(isOperationSucceeded, consts.SnapshotID, snapshotID)
+		}
+	}()
+
+	klog.V(2).Infof("begin to delete group volume snapshot(%s) under rg(%s)", groupSnapshotName, resourceGroup)
+	for _, snapshotName := range snapshotNames {
+		deleteSnapshotReq := &csi.DeleteSnapshotRequest{
+			SnapshotId: snapshotName,
+			Secrets:    req.Secrets,
+		}
+		_, err := d.DeleteSnapshot(ctx, deleteSnapshotReq)
+		if err != nil {
+			return nil, err
+		}
+	}
+	klog.V(2).Infof("delete group volume snapshot(%s) under rg(%s) successfully", groupSnapshotName, resourceGroup)
+	isOperationSucceeded = true
+	return &csi.DeleteVolumeGroupSnapshotResponse{}, nil
+}
+
+func (d *DriverV2) GetVolumeGroupSnapshot(ctx context.Context, req *csi.GetVolumeGroupSnapshotRequest) (*csi.GetVolumeGroupSnapshotResponse, error) {
+	groupSnapshotID := req.GroupSnapshotId
+	snapshotIDs := req.SnapshotIds
+	if len(groupSnapshotID) == 0 {
+		return nil, status.Error(codes.InvalidArgument, "GroupVolumeSnapshot ID must be provided")
+	}
+	if len(snapshotIDs) == 0 {
+		return nil, status.Error(codes.NotFound, "Snapshot IDs is empty")
+	}
+
+	var err error
+	groupSnapshotName := groupSnapshotID
+	resourceGroup := d.cloud.ResourceGroup
+	snapshotNames := []string{}
+
+	volumeSourceIDs := []string{}
+	for idx, snapshotID := range snapshotIDs {
+		volumeSourceIDs = append(volumeSourceIDs, "")
+		if len(snapshotID) == 0 {
+			return nil, status.Error(codes.InvalidArgument, "Snapshot ID must be provided")
+		}
+		snapshotNames = append(snapshotNames, snapshotID)
+		if azureutils.IsARMResourceID(snapshotID) {
+			_, resourceGroup, snapshotNames[idx], err = azureutils.GetInfoFromURI(snapshotID)
+			if err != nil {
+				return nil, status.Errorf(codes.InvalidArgument, "%v", err)
+			}
+		}
+	}
+
+	mc := metrics.NewMetricContext(consts.AzureDiskCSIDriverName, "controller_get_volume_group_snapshot", d.cloud.ResourceGroup, d.cloud.SubscriptionID, d.Name)
+	isOperationSucceeded := false
+	defer func() {
+		for _, snapshotID := range snapshotIDs {
+			mc.ObserveOperationWithResult(isOperationSucceeded, consts.SnapshotID, snapshotID)
+		}
+	}()
+	csiVolumeGroupSnapshot, err := d.getVolumeGroupSnapshotByID(ctx, "", resourceGroup, groupSnapshotName, snapshotIDs, volumeSourceIDs)
+	if err != nil {
+		return nil, err
+	}
+	return &csi.GetVolumeGroupSnapshotResponse{
+		GroupSnapshot: csiVolumeGroupSnapshot,
+	}, nil
+}
+
+func (d *DriverV2) getVolumeGroupSnapshotByID(ctx context.Context, subsID, resourceGroup, volumeGroupSnapshotID string, snapshotIDs, sourceVolumeIDs []string) (*csi.VolumeGroupSnapshot, error) {
+	var err error
+	snapshotList := []*armcompute.Snapshot{}
+	for _, snapshotID := range snapshotIDs {
+		snapshotName := snapshotID
+		if azureutils.IsARMResourceID(snapshotID) {
+			subsID, resourceGroup, snapshotName, err = azureutils.GetInfoFromURI(snapshotID)
+			if err != nil {
+				return nil, status.Errorf(codes.InvalidArgument, "%v", err)
+			}
+		}
+		snapshotClient, err := d.clientFactory.GetSnapshotClientForSub(subsID)
+		if err != nil {
+			return nil, status.Errorf(codes.Internal, "could not get snapshot client for subscription(%s) with error(%v)", subsID, err)
+		}
+		snapshot, err := snapshotClient.Get(ctx, resourceGroup, snapshotName)
+		if err != nil {
+			return nil, status.Error(codes.Internal, fmt.Sprintf("get snapshot %s from rg(%s) error: %v", snapshotName, resourceGroup, err))
+		}
+		snapshotList = append(snapshotList, snapshot)
+	}
+
+	return azureutils.GenerateCSIVolumeGroupSnapshot(volumeGroupSnapshotID, sourceVolumeIDs, snapshotList)
 }

@@ -140,6 +140,7 @@ spec:
             - "--extra-create-metadata=true"
             - "--retry-interval-max=30m"
             - "--worker-threads=250"
+            - "--feature-gates=CSIVolumeGroupSnapshot={{ .Values.snapshot.enableVolumeGroupSnapshot }}"
           env:
             - name: ADDRESS
               value: /csi/csi.sock

@@ -21,7 +21,8 @@ import (
 	"os"
 	"strings"
 
-	snapshotv1 "github.com/kubernetes-csi/external-snapshotter/client/v4/apis/volumesnapshot/v1"
+	volumegroupsnapshotv1beta1 "github.com/kubernetes-csi/external-snapshotter/client/v8/apis/volumegroupsnapshot/v1beta1"
+	snapshotv1 "github.com/kubernetes-csi/external-snapshotter/client/v8/apis/volumesnapshot/v1"
 	v1 "k8s.io/api/core/v1"
 	storagev1 "k8s.io/api/storage/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
@@ -89,6 +90,12 @@ func (d *azureDiskDriver) GetVolumeSnapshotClass(namespace string, parameters ma
 	provisioner := d.driverName
 	generateName := fmt.Sprintf("%s-%s-dynamic-sc-", namespace, normalizeProvisioner(provisioner))
 	return getVolumeSnapshotClass(generateName, provisioner, parameters)
+}
+
+func (d *azureDiskDriver) GetVolumeGroupSnapshotClass(namespace string, parameters map[string]string) *volumegroupsnapshotv1beta1.VolumeGroupSnapshotClass {
+	provisioner := d.driverName
+	generateName := fmt.Sprintf("%s-%s-dynamic-vgsc-", namespace, normalizeProvisioner(provisioner))
+	return getVolumeGroupSnapshotClass(generateName, provisioner, parameters)
 }
 
 func (d *azureDiskDriver) GetPersistentVolume(volumeID, fsType, size string, volumeMode v1.PersistentVolumeMode, accessMode v1.PersistentVolumeAccessMode, reclaimPolicy *v1.PersistentVolumeReclaimPolicy, namespace string, volumeContext map[string]string) *v1.PersistentVolume {

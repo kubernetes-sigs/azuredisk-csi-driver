@@ -102,6 +102,9 @@ func newFakeDriverV2(ctrl *gomock.Controller) (*fakeDriverV2, error) {
 		csi.NodeServiceCapability_RPC_STAGE_UNSTAGE_VOLUME,
 		csi.NodeServiceCapability_RPC_EXPAND_VOLUME,
 	})
+	driver.AddGroupControllerServiceCapabilities([]csi.GroupControllerServiceCapability_RPC_Type{
+		csi.GroupControllerServiceCapability_RPC_CREATE_DELETE_GET_VOLUME_GROUP_SNAPSHOT,
+	})
 
 	return &driver, nil
 }

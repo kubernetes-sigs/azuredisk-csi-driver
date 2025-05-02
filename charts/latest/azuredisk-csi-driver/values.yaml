@@ -134,6 +134,7 @@ node:
 
 snapshot:
   enabled: false
+  enableVolumeGroupSnapshot: true
   name: csi-snapshot-controller
   image:
     csiSnapshotter:

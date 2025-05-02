@@ -52,6 +52,7 @@ spec:
             - "--leader-election-namespace=kube-system"
             - "--worker-threads=250"
             - "--retry-interval-max=30m"
+            - "--feature-gates=CSIVolumeGroupSnapshot=true"
           resources:
             limits:
               memory: 500Mi

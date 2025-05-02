@@ -88,7 +88,7 @@ func (t *DynamicallyProvisionedExternalRgVolumeTest) Run(ctx context.Context, cl
 		}
 
 		ginkgo.By("creating volume in external rg " + externalRG)
-		tpvc, pvcCleanup := volume.SetupDynamicPersistentVolumeClaim(ctx, client, namespace, t.CSIDriver, storageClassParams)
+		tpvc, pvcCleanup := volume.SetupDynamicPersistentVolumeClaim(ctx, client, namespace, t.CSIDriver, storageClassParams, nil)
 		for i := range pvcCleanup {
 			defer pvcCleanup[i](ctx)
 		}

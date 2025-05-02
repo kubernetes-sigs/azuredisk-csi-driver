@@ -1,0 +1,16 @@
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: pvc-azuredisk-volumegroupsnapshot-restored
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: managed-csi
+  resources:
+    requests:
+      storage: 10Gi
+  dataSource:
+    name: snapshot-39bc0b66d76aac9568238da8626dd932568bd60e9118fe6369fdd8c8255f6c7a
+    kind: VolumeSnapshot
+    apiGroup: snapshot.storage.k8s.io

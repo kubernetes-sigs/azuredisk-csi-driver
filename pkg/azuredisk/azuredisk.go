@@ -76,6 +76,7 @@ type CSIDriver interface {
 	csi.ControllerServer
 	csi.NodeServer
 	csi.IdentityServer
+	csi.GroupControllerServer
 
 	Run(ctx context.Context) error
 }
@@ -92,6 +93,7 @@ type DriverCore struct {
 	csi.UnimplementedControllerServer
 	csi.UnimplementedIdentityServer
 	csi.UnimplementedNodeServer
+	csi.UnimplementedGroupControllerServer
 
 	perfOptimizationEnabled      bool
 	cloudConfigSecretName        string
@@ -314,6 +316,10 @@ func newDriverV1(options *DriverOptions) *Driver {
 		csi.NodeServiceCapability_RPC_SINGLE_NODE_MULTI_WRITER,
 	})
 
+	driver.AddGroupControllerServiceCapabilities([]csi.GroupControllerServiceCapability_RPC_Type{
+		csi.GroupControllerServiceCapability_RPC_CREATE_DELETE_GET_VOLUME_GROUP_SNAPSHOT,
+	})
+
 	if kubeClient != nil && driver.removeNotReadyTaint && driver.NodeID != "" {
 		// Remove taint from node to indicate driver startup success
 		// This is done at the last possible moment to prevent race conditions or false positive removals
@@ -356,6 +362,7 @@ func (d *Driver) Run(ctx context.Context) error {
 	csi.RegisterIdentityServer(s, d)
 	csi.RegisterControllerServer(s, d)
 	csi.RegisterNodeServer(s, d)
+	csi.RegisterGroupControllerServer(s, d)
 
 	go func() {
 		//graceful shutdown
@@ -432,6 +439,11 @@ func (d *DriverCore) setControllerCapabilities(caps []*csi.ControllerServiceCapa
 // setNodeCapabilities sets the node capabilities field. It is intended for use with unit tests.
 func (d *DriverCore) setNodeCapabilities(nodeCaps []*csi.NodeServiceCapability) {
 	d.NSCap = nodeCaps
+}
+
+// setGroupControllerCapabilities sets the group controller capabilities field. It is intended for use with unit tests.
+func (d *DriverCore) setGroupControllerCapabilities(gcaps []*csi.GroupControllerServiceCapability) {
+	d.GCap = gcaps
 }
 
 // setName sets the Name field. It is intended for use with unit tests.

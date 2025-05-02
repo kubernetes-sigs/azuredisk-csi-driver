@@ -171,6 +171,9 @@ func newDriverV2(options *DriverOptions) *DriverV2 {
 		csi.NodeServiceCapability_RPC_GET_VOLUME_STATS,
 		csi.NodeServiceCapability_RPC_SINGLE_NODE_MULTI_WRITER,
 	})
+	driver.AddGroupControllerServiceCapabilities([]csi.GroupControllerServiceCapability_RPC_Type{
+		csi.GroupControllerServiceCapability_RPC_CREATE_DELETE_GET_VOLUME_GROUP_SNAPSHOT,
+	})
 	return &driver
 }
 
@@ -195,6 +198,7 @@ func (d *DriverV2) Run(ctx context.Context) error {
 	csi.RegisterIdentityServer(s, d)
 	csi.RegisterControllerServer(s, d)
 	csi.RegisterNodeServer(s, d)
+	csi.RegisterGroupControllerServer(s, d)
 
 	go func() {
 		//graceful shutdown
