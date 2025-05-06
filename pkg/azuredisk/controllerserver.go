@@ -139,6 +139,7 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 				DisableDiskLunCheck:       true,
 				clientFactory:             localCloud.ComputeClientFactory,
 				ForceDetachBackoff:        d.forceDetachBackoff,
+				WaitForDetach:             d.waitForDetach,
 				CheckDiskCountForBatching: d.checkDiskCountForBatching,
 			},
 		}

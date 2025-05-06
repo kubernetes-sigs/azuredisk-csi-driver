@@ -129,6 +129,7 @@ type DriverCore struct {
 	checkDiskLUNCollision        bool
 	checkDiskCountForBatching    bool
 	forceDetachBackoff           bool
+	waitForDetach                bool
 	endpoint                     string
 	disableAVSetNodes            bool
 	removeNotReadyTaint          bool
@@ -186,6 +187,7 @@ func newDriverV1(options *DriverOptions) *Driver {
 	driver.checkDiskLUNCollision = options.CheckDiskLUNCollision
 	driver.checkDiskCountForBatching = options.CheckDiskCountForBatching
 	driver.forceDetachBackoff = options.ForceDetachBackoff
+	driver.waitForDetach = options.WaitForDetach
 	driver.endpoint = options.Endpoint
 	driver.disableAVSetNodes = options.DisableAVSetNodes
 	driver.removeNotReadyTaint = options.RemoveNotReadyTaint
@@ -267,6 +269,7 @@ func newDriverV1(options *DriverOptions) *Driver {
 		driver.diskController = NewManagedDiskController(driver.cloud)
 		driver.diskController.AttachDetachInitialDelayInMs = int(driver.attachDetachInitialDelayInMs)
 		driver.diskController.ForceDetachBackoff = driver.forceDetachBackoff
+		driver.diskController.WaitForDetach = driver.waitForDetach
 		driver.diskController.CheckDiskCountForBatching = driver.checkDiskCountForBatching
 	}
 
