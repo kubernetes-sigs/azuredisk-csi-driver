@@ -124,28 +124,34 @@ func TestGetMaxDataDiskCount(t *testing.T) {
 	tests := []struct {
 		instanceType string
 		expectResult int64
+		expectExists bool
 	}{
 		{
 			instanceType: "standard_d2_v2",
 			expectResult: 8,
+			expectExists: true,
 		},
 		{
 			instanceType: "Standard_DS14_V2",
 			expectResult: 64,
+			expectExists: true,
 		},
 		{
 			instanceType: "NOT_EXISTING",
 			expectResult: defaultAzureVolumeLimit,
+			expectExists: false,
 		},
 		{
 			instanceType: "",
 			expectResult: defaultAzureVolumeLimit,
+			expectExists: false,
 		},
 	}
 
 	for _, test := range tests {
-		result, _ := getMaxDataDiskCount(test.instanceType)
+		result, exists := getMaxDataDiskCount(test.instanceType)
 		assert.Equal(t, test.expectResult, result)
+		assert.Equal(t, test.expectExists, exists)
 	}
 }
 
