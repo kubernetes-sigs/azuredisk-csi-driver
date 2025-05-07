@@ -144,7 +144,7 @@ func TestGetMaxDataDiskCount(t *testing.T) {
 	}
 
 	for _, test := range tests {
-		result := getMaxDataDiskCount(test.instanceType)
+		result, _ := getMaxDataDiskCount(test.instanceType)
 		assert.Equal(t, test.expectResult, result)
 	}
 }
@@ -264,7 +264,8 @@ func TestNodeGetInfo(t *testing.T) {
 			},
 			validateFunc: func(t *testing.T, resp *csi.NodeGetInfoResponse) {
 				assert.Equal(t, testVMName, resp.NodeId)
-				assert.Equal(t, getMaxDataDiskCount(string(testVMSize)), resp.MaxVolumesPerNode)
+				maxDiskdataCount, _ := getMaxDataDiskCount(string(testVMSize))
+				assert.Equal(t, maxDiskdataCount, resp.MaxVolumesPerNode)
 				assert.Len(t, resp.AccessibleTopology.Segments, 2)
 			},
 		},
