@@ -412,7 +412,8 @@ func (d *Driver) NodeGetInfo(ctx context.Context, _ *csi.NodeGetInfoRequest) (*c
 		if instanceType == "" {
 			instanceType = instanceTypeFromLabels
 		}
-		maxDataDiskCount = getMaxDataDiskCount(instanceType) - d.ReservedDataDiskSlotNum
+		totalDiskDataCount, _ := getMaxDataDiskCount(instanceType)
+		maxDataDiskCount = totalDiskDataCount - d.ReservedDataDiskSlotNum
 	}
 
 	nodeID := d.NodeID
@@ -444,16 +445,16 @@ func (d *Driver) NodeGetInfo(ctx context.Context, _ *csi.NodeGetInfoRequest) (*c
 	}, nil
 }
 
-func getMaxDataDiskCount(instanceType string) int64 {
+func getMaxDataDiskCount(instanceType string) (int64, bool) {
 	vmsize := strings.ToUpper(instanceType)
 	maxDataDiskCount, exists := maxDataDiskCountMap[vmsize]
 	if exists {
 		klog.V(5).Infof("got a matching size in getMaxDataDiskCount, VM Size: %s, MaxDataDiskCount: %d", vmsize, maxDataDiskCount)
-		return maxDataDiskCount
+		return maxDataDiskCount, true
 	}
 
 	klog.V(5).Infof("not found a matching size in getMaxDataDiskCount, VM Size: %s, use default volume limit: %d", vmsize, defaultAzureVolumeLimit)
-	return defaultAzureVolumeLimit
+	return defaultAzureVolumeLimit, false
 }
 
 func (d *Driver) NodeGetVolumeStats(ctx context.Context, req *csi.NodeGetVolumeStatsRequest) (*csi.NodeGetVolumeStatsResponse, error) {

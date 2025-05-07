@@ -20,6 +20,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
 	"regexp"
 	"strings"
 	"sync"
@@ -98,6 +99,7 @@ type controllerCommon struct {
 	AttachDetachInitialDelayInMs int
 	ForceDetachBackoff           bool
 	WaitForDetach                bool
+	CheckDiskCountForBatching    bool
 }
 
 // ExtendedLocation contains additional info about the location of resources.
@@ -217,9 +219,47 @@ func (c *controllerCommon) AttachDisk(ctx context.Context, diskName, diskURI str
 		time.Sleep(time.Duration(c.AttachDetachInitialDelayInMs) * time.Millisecond)
 	}
 
+	numDisksAllowed := math.MaxInt
+	if c.CheckDiskCountForBatching {
+		_, instanceType, err := getNodeInfoFromLabels(ctx, string(nodeName), c.cloud.KubeClient)
+		if err != nil {
+			klog.Errorf("failed to get node info from labels: %v", err)
+		} else if instanceType != "" {
+			maxNumDisks, instanceExists := getMaxDataDiskCount(instanceType)
+			if instanceExists {
+				attachedDisks, _, err := c.GetNodeDataDisks(ctx, nodeName, azcache.CacheReadTypeDefault)
+				if err != nil {
+					return -1, err
+				}
+				numDisksAttached := len(attachedDisks)
+				if int(maxNumDisks) > numDisksAttached {
+					numDisksAllowed = int(maxNumDisks) - numDisksAttached
+				} else {
+					numDisksAllowed = 0
+				}
+			}
+		}
+	}
+
 	diskMap, err := c.cleanAttachDiskRequests(node)
 	if err != nil {
 		return -1, err
+	}
+
+	// Remove some disks from the batch if the number is more than the max number of disks allowed
+	removeDisks := len(diskMap) - numDisksAllowed
+	if removeDisks > 0 {
+		klog.V(2).Infof("too many disks to attach, remove %d disks from the request", removeDisks)
+		for diskURI, options := range diskMap {
+			if removeDisks == 0 {
+				break
+			}
+			if options != nil {
+				klog.V(2).Infof("remove disk(%s) from attach request", diskURI)
+				delete(diskMap, diskURI)
+			}
+			removeDisks--
+		}
 	}
 
 	lun, err := c.SetDiskLun(ctx, nodeName, diskuri, diskMap, occupiedLuns)
