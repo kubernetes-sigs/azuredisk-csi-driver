@@ -23,6 +23,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/to"
@@ -36,6 +37,7 @@ import (
 
 	azureconsts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
+	azcache "sigs.k8s.io/cloud-provider-azure/pkg/cache"
 	"sigs.k8s.io/cloud-provider-azure/pkg/consts"
 	"sigs.k8s.io/cloud-provider-azure/pkg/provider"
 )
@@ -52,6 +54,8 @@ func NewManagedDiskController(provider *provider.Cloud) *ManagedDiskController {
 		AttachDetachInitialDelayInMs: defaultAttachDetachInitialDelayInMs,
 		clientFactory:                provider.ComputeClientFactory,
 	}
+	getter := func(_ context.Context, _ string) (interface{}, error) { return nil, nil }
+	common.hitMaxDataDiskCountCache, _ = azcache.NewTimedCache(5*time.Minute, getter, false)
 
 	return &ManagedDiskController{common}
 }
