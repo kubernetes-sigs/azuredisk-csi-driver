@@ -124,6 +124,7 @@ type DriverCore struct {
 	enableOtelTracing            bool
 	shouldWaitForSnapshotReady   bool
 	checkDiskLUNCollision        bool
+	checkDiskCountForBatching    bool
 	forceDetachBackoff           bool
 	waitForDetach                bool
 	endpoint                     string
@@ -181,6 +182,7 @@ func newDriverV1(options *DriverOptions) *Driver {
 	driver.enableOtelTracing = options.EnableOtelTracing
 	driver.shouldWaitForSnapshotReady = options.WaitForSnapshotReady
 	driver.checkDiskLUNCollision = options.CheckDiskLUNCollision
+	driver.checkDiskCountForBatching = options.CheckDiskCountForBatching
 	driver.forceDetachBackoff = options.ForceDetachBackoff
 	driver.waitForDetach = options.WaitForDetach
 	driver.endpoint = options.Endpoint
@@ -191,6 +193,7 @@ func newDriverV1(options *DriverOptions) *Driver {
 	driver.volumeLocks = volumehelper.NewVolumeLocks()
 	driver.ioHandler = azureutils.NewOSIOHandler()
 	driver.hostUtil = hostutil.NewHostUtil()
+
 	if driver.NodeID == "" {
 		// nodeid is not needed in controller component
 		klog.Warning("nodeid is empty")
@@ -264,6 +267,7 @@ func newDriverV1(options *DriverOptions) *Driver {
 		driver.diskController.AttachDetachInitialDelayInMs = int(driver.attachDetachInitialDelayInMs)
 		driver.diskController.ForceDetachBackoff = driver.forceDetachBackoff
 		driver.diskController.WaitForDetach = driver.waitForDetach
+		driver.diskController.CheckDiskCountForBatching = driver.checkDiskCountForBatching
 	}
 
 	driver.deviceHelper = optimization.NewSafeDeviceHelper()
