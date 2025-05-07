@@ -38,6 +38,7 @@ import (
 	"k8s.io/utils/ptr"
 
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
+	"sigs.k8s.io/azuredisk-csi-driver/pkg/util"
 	"sigs.k8s.io/cloud-provider-azure/pkg/azclient"
 	azcache "sigs.k8s.io/cloud-provider-azure/pkg/cache"
 	"sigs.k8s.io/cloud-provider-azure/pkg/consts"
@@ -100,6 +101,8 @@ type controllerCommon struct {
 	ForceDetachBackoff           bool
 	WaitForDetach                bool
 	CheckDiskCountForBatching    bool
+	// a timed cache for disk attach hitting max data disk count, <nodeName, "">
+	hitMaxDataDiskCountCache azcache.Resource
 }
 
 // ExtendedLocation contains additional info about the location of resources.
@@ -193,7 +196,7 @@ func (c *controllerCommon) AttachDisk(ctx context.Context, diskName, diskURI str
 	}
 
 	var waitForDetachHappened bool
-	if c.WaitForDetach {
+	if c.WaitForDetach && c.isMaxDataDiskCountExceeded(ctx, string(nodeName)) {
 		// wait for disk detach to finish first on the same node
 		if err = wait.PollUntilContextTimeout(ctx, 2*time.Second, 30*time.Second, true, func(context.Context) (bool, error) {
 			detachDiskReqeustNum, err := c.getDetachDiskRequestNum(node)
@@ -296,7 +299,11 @@ func (c *controllerCommon) AttachDisk(ctx context.Context, diskName, diskURI str
 
 	err = vmset.AttachDisk(ctx, nodeName, diskMap)
 	if err != nil {
-		if IsOperationPreempted(err) {
+		if strings.Contains(err.Error(), util.MaximumDataDiskExceededMsg) {
+			klog.Warningf("hit max data disk count when attaching disk %s, set cache for node(%s)", diskName, nodeName)
+			c.hitMaxDataDiskCountCache.Set(node, "")
+		}
+		if strings.Contains(err.Error(), "OperationPreempted") {
 			klog.Errorf("Retry VM Update on node (%s) due to error (%v)", nodeName, err)
 			err = vmset.UpdateVM(ctx, nodeName)
 		}
@@ -618,8 +625,14 @@ func (c *controllerCommon) SetDiskLun(ctx context.Context, nodeName types.NodeNa
 	return lun, nil
 }
 
-func IsOperationPreempted(err error) bool {
-	return strings.Contains(err.Error(), "OperationPreempted")
+// isMaxDataDiskCountExceeded checks if the max data disk count is exceeded
+func (c *controllerCommon) isMaxDataDiskCountExceeded(ctx context.Context, nodeName string) bool {
+	_, err := c.hitMaxDataDiskCountCache.Get(ctx, nodeName, azcache.CacheReadTypeDefault)
+	if err != nil {
+		klog.Warningf("isMaxDataDiskCountExceeded(%s) return with error: %s", nodeName, err)
+		return false
+	}
+	return true
 }
 
 func getValidCreationData(subscriptionID, resourceGroup string, options *ManagedDiskOptions) (armcompute.CreationData, error) {
