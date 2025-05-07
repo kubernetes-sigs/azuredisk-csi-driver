@@ -28,8 +28,9 @@ import (
 )
 
 const (
-	GiB                  = 1024 * 1024 * 1024
-	TagKeyValueDelimiter = "="
+	GiB                        = 1024 * 1024 * 1024
+	TagKeyValueDelimiter       = "="
+	MaximumDataDiskExceededMsg = "attached to a VM of this size is"
 )
 
 // IsWindowsOS decides whether the driver is running on windows OS.
