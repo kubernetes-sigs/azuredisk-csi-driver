@@ -133,12 +133,13 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 		}
 		localDiskController = &ManagedDiskController{
 			controllerCommon: &controllerCommon{
-				cloud:               localCloud,
-				lockMap:             newLockMap(),
-				DisableDiskLunCheck: true,
-				clientFactory:       localCloud.ComputeClientFactory,
-				ForceDetachBackoff:  d.forceDetachBackoff,
-				WaitForDetach:       d.waitForDetach,
+				cloud:                     localCloud,
+				lockMap:                   newLockMap(),
+				DisableDiskLunCheck:       true,
+				clientFactory:             localCloud.ComputeClientFactory,
+				ForceDetachBackoff:        d.forceDetachBackoff,
+				WaitForDetach:             d.waitForDetach,
+				CheckDiskCountForBatching: d.checkDiskCountForBatching,
 			},
 		}
 		localDiskController.DisableUpdateCache = d.disableUpdateCache
