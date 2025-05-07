@@ -45,6 +45,7 @@ import (
 	"sigs.k8s.io/cloud-provider-azure/pkg/azclient/diskclient/mock_diskclient"
 	"sigs.k8s.io/cloud-provider-azure/pkg/azclient/mock_azclient"
 	"sigs.k8s.io/cloud-provider-azure/pkg/azureclients/vmclient/mockvmclient"
+	azcache "sigs.k8s.io/cloud-provider-azure/pkg/cache"
 	"sigs.k8s.io/cloud-provider-azure/pkg/consts"
 	"sigs.k8s.io/cloud-provider-azure/pkg/provider"
 	"sigs.k8s.io/cloud-provider-azure/pkg/retry"
@@ -257,6 +258,8 @@ func TestCommonAttachDisk(t *testing.T) {
 				DisableDiskLunCheck: true,
 				WaitForDetach:       true,
 			}
+			getter := func(_ context.Context, _ string) (interface{}, error) { return nil, nil }
+			testdiskController.hitMaxDataDiskCountCache, _ = azcache.NewTimedCache(5*time.Minute, getter, false)
 			lun, err := testdiskController.AttachDisk(ctx, test.diskName, diskURI, tt.nodeName, armcompute.CachingTypesReadOnly, tt.existedDisk, nil)
 
 			assert.Equal(t, tt.expectedLun, lun, "TestCase[%d]: %s", i, tt.desc)
