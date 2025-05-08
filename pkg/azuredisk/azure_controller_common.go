@@ -258,7 +258,7 @@ func (c *controllerCommon) AttachDisk(ctx context.Context, diskName, diskURI str
 				break
 			}
 			if options != nil {
-				klog.V(2).Infof("remove disk(%s) from attach request", diskURI)
+				klog.V(2).Infof("remove disk(%s) from attach request from node(%s)", diskURI, nodeName)
 				delete(diskMap, diskURI)
 			}
 			removeDisks--
