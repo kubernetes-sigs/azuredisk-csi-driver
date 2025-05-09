@@ -31,6 +31,7 @@ import (
 	"github.com/onsi/gomega"
 
 	apps "k8s.io/api/apps/v1"
+	batchv1 "k8s.io/api/batch/v1"
 	v1 "k8s.io/api/core/v1"
 	storagev1 "k8s.io/api/storage/v1"
 	apierrs "k8s.io/apimachinery/pkg/api/errors"
@@ -371,7 +372,7 @@ func (t *TestPersistentVolumeClaim) Cleanup(ctx context.Context) {
 		framework.ExpectNoError(err)
 	}
 	// Wait for the PVC to be deleted
-	err = waitForPersistentVolumeClaimDeleted(ctx, t.client, t.persistentVolumeClaim.Name, t.namespace.Name, 5*time.Second, 5*time.Minute)
+	err = waitForPersistentVolumeClaimDeleted(ctx, t.client, t.namespace.Name, t.persistentVolumeClaim.Name, 5*time.Second, 5*time.Minute)
 	framework.ExpectNoError(err)
 }
 
@@ -766,6 +767,141 @@ func waitForStatefulSetComplete(ctx context.Context, cs clientset.Interface, ns 
 	})
 
 	return err
+}
+
+type TestJob struct {
+	client    clientset.Interface
+	job       *batchv1.Job
+	namespace *v1.Namespace
+}
+
+func NewTestJob(c clientset.Interface, ns *v1.Namespace, ttlSecondsAfterFinished *int32, command string, pvc *v1.PersistentVolumeClaim, volumeName, mountPath string, readOnly, isWindows, useCMD, useAntiAffinity bool, winServerVer string) *TestJob {
+	generateName := "azuredisk-volume-tester-"
+	selectorValue := fmt.Sprintf("%s%d", generateName, rand.Int())
+
+	volumeMounts := make([]v1.VolumeMount, 0)
+	volumeDevices := make([]v1.VolumeDevice, 0)
+
+	if pvc.Spec.VolumeMode == nil || *pvc.Spec.VolumeMode == v1.PersistentVolumeFilesystem {
+		volumeMounts = []v1.VolumeMount{
+			{
+				Name:      volumeName,
+				MountPath: mountPath,
+				ReadOnly:  readOnly,
+			},
+		}
+	} else {
+		volumeDevices = []v1.VolumeDevice{
+			{
+				Name:       volumeName,
+				DevicePath: mountPath,
+			},
+		}
+	}
+
+	testJob := &TestJob{
+		client:    c,
+		namespace: ns,
+		job: &batchv1.Job{
+			ObjectMeta: metav1.ObjectMeta{
+				GenerateName: generateName,
+			},
+			Spec: batchv1.JobSpec{
+				Template: v1.PodTemplateSpec{
+					ObjectMeta: metav1.ObjectMeta{
+						Labels: map[string]string{"app": selectorValue},
+					},
+					Spec: v1.PodSpec{
+						NodeSelector: map[string]string{"kubernetes.io/os": "linux"},
+						Containers: []v1.Container{
+							{
+								Name:          "volume-tester",
+								Image:         imageutils.GetE2EImage(imageutils.BusyBox),
+								Command:       []string{"/bin/sh"},
+								Args:          []string{"-c", command},
+								VolumeMounts:  volumeMounts,
+								VolumeDevices: volumeDevices,
+							},
+						},
+						RestartPolicy: v1.RestartPolicyNever,
+						Volumes: []v1.Volume{
+							{
+								Name: volumeName,
+								VolumeSource: v1.VolumeSource{
+									PersistentVolumeClaim: &v1.PersistentVolumeClaimVolumeSource{
+										ClaimName: pvc.Name,
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	if ttlSecondsAfterFinished != nil {
+		testJob.job.Spec.TTLSecondsAfterFinished = ttlSecondsAfterFinished
+	}
+
+	if useAntiAffinity {
+		affinity := &v1.Affinity{
+			PodAntiAffinity: &v1.PodAntiAffinity{
+				RequiredDuringSchedulingIgnoredDuringExecution: []v1.PodAffinityTerm{
+					{
+						LabelSelector: &metav1.LabelSelector{
+							MatchLabels: map[string]string{"app": selectorValue},
+						},
+						TopologyKey: driver.TopologyKey,
+					},
+				},
+			},
+		}
+		testJob.job.Spec.Template.Spec.Affinity = affinity
+	}
+
+	if isWindows {
+		testJob.job.Spec.Template.Spec.NodeSelector = map[string]string{
+			"kubernetes.io/os": "windows",
+		}
+		testJob.job.Spec.Template.Spec.Containers[0].Image = "mcr.microsoft.com/windows/servercore:" + getWinImageTag(winServerVer)
+		if useCMD {
+			testJob.job.Spec.Template.Spec.Containers[0].Command = []string{"cmd"}
+			testJob.job.Spec.Template.Spec.Containers[0].Args = []string{"/c", command}
+		} else {
+			testJob.job.Spec.Template.Spec.Containers[0].Command = []string{"powershell.exe"}
+			testJob.job.Spec.Template.Spec.Containers[0].Args = []string{"-Command", command}
+		}
+	}
+
+	return testJob
+}
+
+func (t *TestJob) Create(ctx context.Context) {
+	var err error
+	t.job, err = t.client.BatchV1().Jobs(t.namespace.Name).Create(ctx, t.job, metav1.CreateOptions{})
+	framework.ExpectNoError(err)
+}
+
+func (t *TestJob) WaitForAttachBatchCheck(ctx context.Context) error {
+	selector, err := metav1.LabelSelectorAsSelector(t.job.Spec.Selector)
+	framework.ExpectNoError(err)
+	jobPods, err := e2epod.WaitForPodsWithLabel(ctx, t.client, t.namespace.Name, selector)
+	framework.ExpectNoError(err)
+
+	err = e2epod.WaitForPodEvent(ctx, t.client, &jobPods.Items[0], "The maximum number of data disks allowed to be attached to a VM of this size is", 3*time.Minute)
+	if err == nil {
+		return fmt.Errorf("pod %q hit MaximumDataDisksExceeded issue during attaching", jobPods.Items[0].Name)
+	}
+	return nil
+}
+
+func (t *TestJob) Cleanup(ctx context.Context) {
+	err := t.client.BatchV1().Jobs(t.namespace.Name).Delete(ctx, t.job.Name, metav1.DeleteOptions{})
+	if !apierrs.IsNotFound(err) {
+		framework.Logf("deleting Job %q/%q", t.namespace.Name, t.job.Name)
+		framework.ExpectNoError(err)
+	}
 }
 
 type TestPod struct {

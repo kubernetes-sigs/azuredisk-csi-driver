@@ -348,7 +348,7 @@ func (d *Driver) NodeGetInfo(ctx context.Context, _ *csi.NodeGetInfoRequest) (*c
 	if d.supportZone {
 		var zone cloudprovider.Zone
 		if d.getNodeInfoFromLabels {
-			failureDomainFromLabels, instanceTypeFromLabels, err = getNodeInfoFromLabels(ctx, d.NodeID, d.cloud.KubeClient)
+			failureDomainFromLabels, instanceTypeFromLabels, err = GetNodeInfoFromLabels(ctx, d.NodeID, d.cloud.KubeClient)
 		} else {
 			if runtime.GOOS == "windows" && (!d.cloud.UseInstanceMetadata || d.cloud.Metadata == nil) {
 				zone, err = d.cloud.VMSet.GetZoneByNodeName(ctx, d.NodeID)
@@ -357,7 +357,7 @@ func (d *Driver) NodeGetInfo(ctx context.Context, _ *csi.NodeGetInfoRequest) (*c
 			}
 			if err != nil {
 				klog.Warningf("get zone(%s) failed with: %v, fall back to get zone from node labels", d.NodeID, err)
-				failureDomainFromLabels, instanceTypeFromLabels, err = getNodeInfoFromLabels(ctx, d.NodeID, d.cloud.KubeClient)
+				failureDomainFromLabels, instanceTypeFromLabels, err = GetNodeInfoFromLabels(ctx, d.NodeID, d.cloud.KubeClient)
 			}
 		}
 		if err != nil {
@@ -380,7 +380,7 @@ func (d *Driver) NodeGetInfo(ctx context.Context, _ *csi.NodeGetInfoRequest) (*c
 		var err error
 		if d.getNodeInfoFromLabels {
 			if instanceTypeFromLabels == "" {
-				_, instanceTypeFromLabels, err = getNodeInfoFromLabels(ctx, d.NodeID, d.cloud.KubeClient)
+				_, instanceTypeFromLabels, err = GetNodeInfoFromLabels(ctx, d.NodeID, d.cloud.KubeClient)
 			}
 		} else {
 			if runtime.GOOS == "windows" && d.cloud.UseInstanceMetadata && d.cloud.Metadata != nil {
@@ -403,7 +403,7 @@ func (d *Driver) NodeGetInfo(ctx context.Context, _ *csi.NodeGetInfoRequest) (*c
 			}
 			if instanceType == "" && instanceTypeFromLabels == "" {
 				klog.Warningf("fall back to get instance type from node labels")
-				_, instanceTypeFromLabels, err = getNodeInfoFromLabels(ctx, d.NodeID, d.cloud.KubeClient)
+				_, instanceTypeFromLabels, err = GetNodeInfoFromLabels(ctx, d.NodeID, d.cloud.KubeClient)
 			}
 		}
 		if err != nil {
@@ -412,7 +412,7 @@ func (d *Driver) NodeGetInfo(ctx context.Context, _ *csi.NodeGetInfoRequest) (*c
 		if instanceType == "" {
 			instanceType = instanceTypeFromLabels
 		}
-		totalDiskDataCount, _ := getMaxDataDiskCount(instanceType)
+		totalDiskDataCount, _ := GetMaxDataDiskCount(instanceType)
 		maxDataDiskCount = totalDiskDataCount - d.ReservedDataDiskSlotNum
 	}
 
@@ -445,7 +445,7 @@ func (d *Driver) NodeGetInfo(ctx context.Context, _ *csi.NodeGetInfoRequest) (*c
 	}, nil
 }
 
-func getMaxDataDiskCount(instanceType string) (int64, bool) {
+func GetMaxDataDiskCount(instanceType string) (int64, bool) {
 	vmsize := strings.ToUpper(instanceType)
 	maxDataDiskCount, exists := maxDataDiskCountMap[vmsize]
 	if exists {

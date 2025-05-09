@@ -608,7 +608,7 @@ func (d *DriverCore) getUsedLunsFromNode(ctx context.Context, nodeName types.Nod
 }
 
 // getNodeInfoFromLabels get zone, instanceType from node labels
-func getNodeInfoFromLabels(ctx context.Context, nodeName string, kubeClient clientset.Interface) (string, string, error) {
+func GetNodeInfoFromLabels(ctx context.Context, nodeName string, kubeClient clientset.Interface) (string, string, error) {
 	if kubeClient == nil || kubeClient.CoreV1() == nil {
 		return "", "", fmt.Errorf("kubeClient is nil")
 	}

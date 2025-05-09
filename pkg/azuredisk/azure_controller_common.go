@@ -224,11 +224,11 @@ func (c *controllerCommon) AttachDisk(ctx context.Context, diskName, diskURI str
 
 	numDisksAllowed := math.MaxInt
 	if c.CheckDiskCountForBatching {
-		_, instanceType, err := getNodeInfoFromLabels(ctx, string(nodeName), c.cloud.KubeClient)
+		_, instanceType, err := GetNodeInfoFromLabels(ctx, string(nodeName), c.cloud.KubeClient)
 		if err != nil {
 			klog.Errorf("failed to get node info from labels: %v", err)
 		} else if instanceType != "" {
-			maxNumDisks, instanceExists := getMaxDataDiskCount(instanceType)
+			maxNumDisks, instanceExists := GetMaxDataDiskCount(instanceType)
 			if instanceExists {
 				attachedDisks, _, err := c.GetNodeDataDisks(ctx, nodeName, azcache.CacheReadTypeDefault)
 				if err != nil {
