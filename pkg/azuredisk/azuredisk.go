@@ -138,6 +138,7 @@ type DriverCore struct {
 	volStatsCache           azcache.Resource
 	maxConcurrentFormat     int64
 	concurrentFormatTimeout int64
+	enableMinimumRetryAfter bool
 }
 
 // Driver is the v1 implementation of the Azure Disk CSI Driver.
@@ -193,6 +194,7 @@ func newDriverV1(options *DriverOptions) *Driver {
 	driver.removeNotReadyTaint = options.RemoveNotReadyTaint
 	driver.maxConcurrentFormat = options.MaxConcurrentFormat
 	driver.concurrentFormatTimeout = options.ConcurrentFormatTimeout
+	driver.enableMinimumRetryAfter = options.EnableMinimumRetryAfter
 	driver.volumeLocks = volumehelper.NewVolumeLocks()
 	driver.ioHandler = azureutils.NewOSIOHandler()
 	driver.hostUtil = hostutil.NewHostUtil()
@@ -229,7 +231,7 @@ func newDriverV1(options *DriverOptions) *Driver {
 	driver.kubeClient = kubeClient
 
 	cloud, err := azureutils.GetCloudProviderFromClient(context.Background(), kubeClient, driver.cloudConfigSecretName, driver.cloudConfigSecretNamespace,
-		userAgent, driver.allowEmptyCloudConfig, driver.enableTrafficManager, driver.trafficManagerPort)
+		userAgent, driver.allowEmptyCloudConfig, driver.enableTrafficManager, driver.enableMinimumRetryAfter, driver.trafficManagerPort)
 	if err != nil {
 		klog.Fatalf("failed to get Azure Cloud Provider, error: %v", err)
 	}
