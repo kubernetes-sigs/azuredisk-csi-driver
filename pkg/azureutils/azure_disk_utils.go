@@ -151,7 +151,7 @@ func GetAttachDiskInitialDelay(attributes map[string]string) int {
 
 // GetCloudProviderFromClient get Azure Cloud Provider
 func GetCloudProviderFromClient(ctx context.Context, kubeClient clientset.Interface, secretName, secretNamespace, userAgent string,
-	allowEmptyCloudConfig bool, enableTrafficMgr bool, trafficMgrPort int64) (*azure.Cloud, error) {
+	allowEmptyCloudConfig bool, enableTrafficMgr bool, enableMinimumRetryAfter bool, trafficMgrPort int64) (*azure.Cloud, error) {
 	var config *azureconfig.Config
 	var fromSecret bool
 	var err error
@@ -234,6 +234,9 @@ func GetCloudProviderFromClient(ctx context.Context, kubeClient clientset.Interf
 			// Watch the certificate for changes; if the certificate changes, the pod will be restarted
 			err = filewatcher.WatchFileForChanges(config.AADClientCertPath)
 			klog.Warningf("Failed to watch certificate file for changes: %v", err)
+		}
+		if enableMinimumRetryAfter {
+			config.EnableMinimumRetryAfter = enableMinimumRetryAfter
 		}
 		if err = az.InitializeCloudFromConfig(ctx, config, fromSecret, false); err != nil {
 			klog.Warningf("InitializeCloudFromConfig failed with error: %v", err)
