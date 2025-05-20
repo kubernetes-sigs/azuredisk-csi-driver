@@ -26,6 +26,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/timestamppb"
+	"k8s.io/klog/v2"
 	volumehelper "sigs.k8s.io/azuredisk-csi-driver/pkg/util"
 )
 
@@ -45,6 +46,27 @@ func GenerateCSISnapshot(sourceVolumeID string, snapshot *armcompute.Snapshot) (
 	ready, _ := isCSISnapshotReady(*snapshot.Properties.ProvisioningState)
 	if sourceVolumeID == "" {
 		sourceVolumeID = GetSourceVolumeID(snapshot)
+	}
+
+	// The provisioningState represents the state of resource provisioning which indicates whether the snapshot
+	// is created successfully or not. However the snapshot may not be ready to use immediately after creation.
+	// We need to check the CompletionPercent if exists to determine if the snapshot is ready to use.
+	// This is needed because of Premium V2 disks & Ultra disks, which take some time to be ready to use after creation.
+	// In case of Premium V1 disks, the snapshot is ready to use immediately after creation and so we won't have that
+	// completionPercent field in the properties. Hence we will treat it 100% if CompletionPercent is nil.
+	if ready {
+		completionPercent := float32(0.0)
+		if snapshot.Properties.CompletionPercent == nil {
+			// If CompletionPercent is nil, it means the snapshot is complete
+			completionPercent = float32(100.0)
+		} else {
+			completionPercent = *snapshot.Properties.CompletionPercent
+		}
+
+		if completionPercent < float32(100.0) {
+			klog.V(2).Infof("snapshot(%s) in progress, completion percent: %f", *snapshot.Name, completionPercent)
+			ready = false
+		}
 	}
 
 	return &csi.Snapshot{
