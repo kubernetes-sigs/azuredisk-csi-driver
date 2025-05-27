@@ -19,6 +19,19 @@ Microsoft.Compute/locations/operations/read
 Microsoft.Compute/locations/DiskOperations/read
 Microsoft.Resources/subscriptions/resourceGroups/Microsoft.Compute/read
 Microsoft.Resources/subscriptions/resourceGroups/Microsoft.Compute/*/read
+# Those are needed only when the virtualMachine or virtualMachineScaleSets have these additional resources configured:
+Microsoft.Compute/disks/beginGetAccess/action
+Microsoft.KeyVault/vaults/deploy/action
+Microsoft.ManagedIdentity/userAssignedIdentities/assign/action
+Microsoft.Network/applicationGateways/backendAddressPools/join/action
+Microsoft.Network/applicationSecurityGroups/joinIpConfiguration/action
+Microsoft.Network/loadBalancers/backendAddressPools/join/action
+Microsoft.Network/loadBalancers/inboundNatPools/join/action
+Microsoft.Network/loadBalancers/probes/join/action
+Microsoft.Network/networkInterfaces/join/action
+Microsoft.Network/networkSecurityGroups/join/action
+Microsoft.Network/publicIPPrefixes/join/action
+Microsoft.Network/virtualNetworks/subnets/join/action
 </pre>
 </details>
 
