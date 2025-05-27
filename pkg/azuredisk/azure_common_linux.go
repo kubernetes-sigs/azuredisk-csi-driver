@@ -124,6 +124,10 @@ func formatAndMount(source, target, fstype string, options []string, m *mount.Sa
 		klog.V(2).Infof("formatAndMount - skip format for %s, old options: %v, new options: %v", target, options, newOptions)
 		return m.Mount(source, target, fstype, newOptions)
 	}
+	if fstype == "xfs" {
+		klog.V(2).Infof("use crc=0 rmapbt=0 option for xfs filesystem on %s", target)
+		return m.FormatAndMountSensitiveWithFormatOptions(source, target, fstype, options, nil, []string{"-m", "crc=0,rmapbt=0"})
+	}
 	return m.FormatAndMount(source, target, fstype, options)
 }
 
