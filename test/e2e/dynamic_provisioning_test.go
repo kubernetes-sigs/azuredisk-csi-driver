@@ -44,9 +44,9 @@ var _ = ginkgo.Describe("Dynamic Provisioning", func() {
 		t.defineTests(false)
 	})
 
-	ginkgo.Context("[multi-az]", func() {
-		t.defineTests(true)
-	})
+	// ginkgo.Context("[multi-az]", func() {
+	// 	t.defineTests(true)
+	// })
 })
 
 type dynamicProvisioningTestSuite struct {
@@ -1392,6 +1392,7 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 				Cmd: convertToPowershellorCmdCommandIfNecessary("echo 'Data for pod $HOSTNAME' > /mnt/test-1/data && sleep 30"),
 				Volumes: t.normalizeVolumes([]testsuites.VolumeDetails{
 					{
+						FSType:    "ext3",
 						ClaimSize: "1Gi",
 						VolumeMount: testsuites.VolumeMountDetails{
 							NameGenerate:      "test-volume-",

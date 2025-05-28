@@ -30,7 +30,6 @@ import (
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute/v6"
 
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/apimachinery/pkg/util/wait"
 	kwait "k8s.io/apimachinery/pkg/util/wait"
 	cloudprovider "k8s.io/cloud-provider"
 	volerr "k8s.io/cloud-provider/volume/errors"
@@ -198,7 +197,7 @@ func (c *controllerCommon) AttachDisk(ctx context.Context, diskName, diskURI str
 	var waitForDetachHappened bool
 	if c.WaitForDetach && c.isMaxDataDiskCountExceeded(ctx, string(nodeName)) {
 		// wait for disk detach to finish first on the same node
-		if err = wait.PollUntilContextTimeout(ctx, 2*time.Second, 30*time.Second, true, func(context.Context) (bool, error) {
+		if err = kwait.PollUntilContextTimeout(ctx, 2*time.Second, 30*time.Second, true, func(context.Context) (bool, error) {
 			detachDiskReqeustNum, err := c.getDetachDiskRequestNum(node)
 			if err != nil {
 				return false, err

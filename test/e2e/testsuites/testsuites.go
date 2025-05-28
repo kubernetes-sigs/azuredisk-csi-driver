@@ -18,6 +18,7 @@ package testsuites
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"math/rand"
 	"strings"
@@ -889,11 +890,36 @@ func (t *TestJob) WaitForAttachBatchCheck(ctx context.Context) error {
 	jobPods, err := e2epod.WaitForPodsWithLabel(ctx, t.client, t.namespace.Name, selector)
 	framework.ExpectNoError(err)
 
-	err = e2epod.WaitForPodEvent(ctx, t.client, &jobPods.Items[0], "The maximum number of data disks allowed to be attached to a VM of this size is", 3*time.Minute)
+	err = waitForPodEvent(ctx, t.client, &jobPods.Items[0], "The maximum number of data disks allowed to be attached to a VM of this size is", 3*time.Minute)
 	if err == nil {
 		return fmt.Errorf("pod %q hit MaximumDataDisksExceeded issue during attaching", jobPods.Items[0].Name)
 	}
 	return nil
+}
+
+// waitForPodEvent waits for a pod event with the given message to be emitted.
+func waitForPodEvent(ctx context.Context, c clientset.Interface, pod *v1.Pod, meg string, timeout time.Duration) error {
+	conditionDesc := fmt.Sprintf("failed with pod event: %s", meg)
+	return e2epod.WaitForPodCondition(ctx, c, pod.Namespace, pod.Name, conditionDesc, timeout, func(pod *v1.Pod) (bool, error) {
+		switch pod.Status.Phase {
+		case v1.PodRunning, v1.PodFailed, v1.PodSucceeded:
+			return true, errors.New("pod running, failed or succeeded")
+		case v1.PodPending:
+			podEvents, err := c.CoreV1().Events(pod.Namespace).List(ctx, metav1.ListOptions{
+				FieldSelector: fields.OneTermEqualSelector("involvedObject.name", pod.Name).String(),
+			})
+			if err != nil {
+				return true, fmt.Errorf("failed to list events for pod %s: %w", pod.Name, err)
+			}
+
+			for _, event := range podEvents.Items {
+				if strings.Contains(event.Message, meg) {
+					return true, nil
+				}
+			}
+		}
+		return false, nil
+	})
 }
 
 func (t *TestJob) Cleanup(ctx context.Context) {

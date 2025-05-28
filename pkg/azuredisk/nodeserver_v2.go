@@ -387,7 +387,7 @@ func (d *DriverV2) NodeGetInfo(ctx context.Context, req *csi.NodeGetInfoRequest)
 		if instanceType == "" {
 			instanceType = instanceTypeFromLabels
 		}
-		maxDataDiskCount, _ = getMaxDataDiskCount(instanceType)
+		maxDataDiskCount, _ = GetMaxDataDiskCount(instanceType)
 	}
 
 	return &csi.NodeGetInfoResponse{

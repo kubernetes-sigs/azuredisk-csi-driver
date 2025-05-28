@@ -40,7 +40,6 @@ import (
 	"k8s.io/kubernetes/test/e2e/framework"
 	testutils "k8s.io/kubernetes/test/utils"
 	"k8s.io/kubernetes/test/utils/format"
-	"k8s.io/apimachinery/pkg/fields"
 )
 
 const (
@@ -834,31 +833,6 @@ func WaitForPodFailedReason(ctx context.Context, c clientset.Interface, pod *v1.
 				return true, nil
 			} else {
 				return true, fmt.Errorf("pod failed with reason %s", pod.Status.Reason)
-			}
-		}
-		return false, nil
-	})
-}
-
-// WaitForPodEvent waits for a pod event with the given message to be emitted.
-func WaitForPodEvent(ctx context.Context, c clientset.Interface, pod *v1.Pod, meg string, timeout time.Duration) error {
-	conditionDesc := fmt.Sprintf("failed with pod event: %s", meg)
-	return WaitForPodCondition(ctx, c, pod.Namespace, pod.Name, conditionDesc, timeout, func(pod *v1.Pod) (bool, error) {
-		switch pod.Status.Phase {
-		case v1.PodRunning, v1.PodFailed, v1.PodSucceeded:
-			return true, errors.New("pod running, failed or succeeded unexpectedly")
-		case v1.PodPending:
-			podEvents, err := c.CoreV1().Events(pod.Namespace).List(ctx, metav1.ListOptions{
-				FieldSelector: fields.OneTermEqualSelector("involvedObject.name", pod.Name).String(),
-			})
-			if err != nil {
-				return true, fmt.Errorf("failed to list events for pod %s: %w", pod.Name, err)
-			}
-
-			for _, event := range podEvents.Items {
-				if strings.Contains(event.Message, meg) {
-					return true, nil
-				}
 			}
 		}
 		return false, nil
