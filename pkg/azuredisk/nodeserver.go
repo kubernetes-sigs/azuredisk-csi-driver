@@ -361,7 +361,7 @@ func (d *Driver) NodeGetInfo(ctx context.Context, _ *csi.NodeGetInfoRequest) (*c
 			}
 		}
 		if err != nil {
-			return nil, status.Error(codes.Internal, fmt.Sprintf("getNodeInfoFromLabels on node(%s) failed with %v", d.NodeID, err))
+			return nil, status.Error(codes.Internal, fmt.Sprintf("GetNodeInfoFromLabels on node(%s) failed with %v", d.NodeID, err))
 		}
 		if zone.FailureDomain == "" {
 			zone.FailureDomain = failureDomainFromLabels
@@ -407,7 +407,7 @@ func (d *Driver) NodeGetInfo(ctx context.Context, _ *csi.NodeGetInfoRequest) (*c
 			}
 		}
 		if err != nil {
-			klog.Warningf("getNodeInfoFromLabels on node(%s) failed with %v", d.NodeID, err)
+			klog.Warningf("GetNodeInfoFromLabels on node(%s) failed with %v", d.NodeID, err)
 		}
 		if instanceType == "" {
 			instanceType = instanceTypeFromLabels

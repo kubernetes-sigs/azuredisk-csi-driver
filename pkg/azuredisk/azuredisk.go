@@ -38,10 +38,8 @@ import (
 	grpcprom "github.com/grpc-ecosystem/go-grpc-middleware/providers/prometheus"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/types"
 	k8stypes "k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/wait"
-	"k8s.io/client-go/kubernetes"
 	clientset "k8s.io/client-go/kubernetes"
 	"k8s.io/klog/v2"
 	"k8s.io/kubernetes/pkg/volume/util/hostutil"
@@ -133,7 +131,7 @@ type DriverCore struct {
 	endpoint                     string
 	disableAVSetNodes            bool
 	removeNotReadyTaint          bool
-	kubeClient                   kubernetes.Interface
+	kubeClient                   clientset.Interface
 	// a timed cache storing volume stats <volumeID, volumeStats>
 	volStatsCache           azcache.Resource
 	maxConcurrentFormat     int64
@@ -588,7 +586,7 @@ func (d *DriverCore) getUsedLunsFromVolumeAttachments(ctx context.Context, nodeN
 }
 
 // getUsedLunsFromNode returns a list of sorted used luns from Node
-func (d *DriverCore) getUsedLunsFromNode(ctx context.Context, nodeName types.NodeName) ([]int, error) {
+func (d *DriverCore) getUsedLunsFromNode(ctx context.Context, nodeName k8stypes.NodeName) ([]int, error) {
 	disks, _, err := d.diskController.GetNodeDataDisks(ctx, nodeName, azcache.CacheReadTypeDefault)
 	if err != nil {
 		klog.Errorf("error of getting data disks for node %s: %v", nodeName, err)
@@ -678,7 +676,7 @@ type JSONPatch struct {
 }
 
 // removeTaintInBackground is a goroutine that retries removeNotReadyTaint with exponential backoff
-func removeTaintInBackground(k8sClient kubernetes.Interface, nodeName, driverName string, backoff wait.Backoff, removalFunc func(kubernetes.Interface, string, string) error) {
+func removeTaintInBackground(k8sClient clientset.Interface, nodeName, driverName string, backoff wait.Backoff, removalFunc func(clientset.Interface, string, string) error) {
 	backoffErr := wait.ExponentialBackoff(backoff, func() (bool, error) {
 		err := removalFunc(k8sClient, nodeName, driverName)
 		if err != nil {
@@ -696,7 +694,7 @@ func removeTaintInBackground(k8sClient kubernetes.Interface, nodeName, driverNam
 // removeNotReadyTaint removes the taint disk.csi.azure.com/agent-not-ready from the local node
 // This taint can be optionally applied by users to prevent startup race conditions such as
 // https://github.com/kubernetes/kubernetes/issues/95911
-func removeNotReadyTaint(clientset kubernetes.Interface, nodeName, driverName string) error {
+func removeNotReadyTaint(clientset clientset.Interface, nodeName, driverName string) error {
 	ctx := context.Background()
 	node, err := clientset.CoreV1().Nodes().Get(ctx, nodeName, metav1.GetOptions{})
 	if err != nil {
@@ -750,7 +748,7 @@ func removeNotReadyTaint(clientset kubernetes.Interface, nodeName, driverName st
 	return nil
 }
 
-func checkAllocatable(ctx context.Context, clientset kubernetes.Interface, nodeName, driverName string) error {
+func checkAllocatable(ctx context.Context, clientset clientset.Interface, nodeName, driverName string) error {
 	csiNode, err := clientset.StorageV1().CSINodes().Get(ctx, nodeName, metav1.GetOptions{})
 	if err != nil {
 		return fmt.Errorf("isAllocatableSet: failed to get CSINode for %s: %w", nodeName, err)
