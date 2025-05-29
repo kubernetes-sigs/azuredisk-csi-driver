@@ -425,11 +425,8 @@ func (d *Driver) NodeGetInfo(ctx context.Context, _ *csi.NodeGetInfoRequest) (*c
 				if metadata.Compute.VMScaleSetName != "" {
 					id, err := getVMSSInstanceName(metadata.Compute.Name)
 					if err != nil {
-						klog.Errorf("getVMSSInstanceName failed with %v", err)
-						if nodeID == "" {
-							klog.V(2).Infof("NodeGetInfo: NodeID is empty, use metadata.Compute.Name(%s)", metadata.Compute.Name)
-							nodeID = metadata.Compute.Name
-						}
+						klog.Errorf("getVMSSInstanceName failed with %v, use metadata.Compute.Name(%s)", err, metadata.Compute.Name)
+						nodeID = metadata.Compute.Name
 					} else {
 						nodeID = id
 					}
