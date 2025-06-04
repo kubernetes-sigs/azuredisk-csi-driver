@@ -1793,6 +1793,7 @@ var maxDataDiskCountMap = map[string]int64{
 	"STANDARD_L16S_V2":                            32,
 	"STANDARD_L16S_V3":                            32,
 	"STANDARD_L16S_V4":                            48,
+	"STANDARD_L192IS_V4":                          64,
 	"STANDARD_L2S_V4":                             8,
 	"STANDARD_L32AS_V3":                           32,
 	"STANDARD_L32S":                               64,
