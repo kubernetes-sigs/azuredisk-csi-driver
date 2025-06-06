@@ -41,6 +41,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	k8stypes "k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/wait"
+	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes"
 	clientset "k8s.io/client-go/kubernetes"
 	"k8s.io/klog/v2"
@@ -273,6 +274,9 @@ func newDriverV1(options *DriverOptions) *Driver {
 		driver.diskController.ForceDetachBackoff = driver.forceDetachBackoff
 		driver.diskController.WaitForDetach = driver.waitForDetach
 		driver.diskController.CheckDiskCountForBatching = driver.checkDiskCountForBatching
+
+		kubeInformerFactory := informers.NewSharedInformerFactory(driver.kubeClient, time.Duration(30)*time.Second)
+		driver.cloud.SetInformers(kubeInformerFactory)
 	}
 
 	driver.deviceHelper = optimization.NewSafeDeviceHelper()
