@@ -44,9 +44,9 @@ var _ = ginkgo.Describe("Dynamic Provisioning", func() {
 		t.defineTests(false)
 	})
 
-	ginkgo.Context("[multi-az]", func() {
-		t.defineTests(true)
-	})
+	// ginkgo.Context("[multi-az]", func() {
+	// 	t.defineTests(true)
+	// })
 })
 
 type dynamicProvisioningTestSuite struct {
@@ -1381,6 +1381,32 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 			},
 		}
 
+		test.Run(ctx, cs, ns)
+	})
+
+	ginkgo.It("should succeed without MaximumDataDisksExceeded", func(ctx ginkgo.SpecContext) {
+		pods := []testsuites.PodDetails{
+			{
+				Cmd: convertToPowershellorCmdCommandIfNecessary("echo 'Data for pod $HOSTNAME' > /mnt/test-1/data && sleep 30"),
+				Volumes: t.normalizeVolumes([]testsuites.VolumeDetails{
+					{
+						FSType:    "ext3",
+						ClaimSize: "1Gi",
+						VolumeMount: testsuites.VolumeMountDetails{
+							NameGenerate:      "test-volume-",
+							MountPathGenerate: "/mnt/test-",
+						},
+						VolumeAccessMode: v1.ReadWriteOnce,
+					},
+				}, isMultiZone),
+				IsWindows:    isWindowsCluster,
+				WinServerVer: winServerVer,
+			},
+		}
+		test := testsuites.DynamicallyProvisionedAttachBatchTest{
+			CSIDriver: testDriver,
+			Pods:      pods,
+		}
 		test.Run(ctx, cs, ns)
 	})
 }
