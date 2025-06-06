@@ -34,7 +34,7 @@ require (
 	golang.org/x/net v0.40.0
 	golang.org/x/sync v0.14.0
 	golang.org/x/sys v0.33.0
-	google.golang.org/grpc v1.72.2
+	google.golang.org/grpc v1.73.0
 	google.golang.org/protobuf v1.36.6
 	k8s.io/api v0.32.3
 	k8s.io/apimachinery v0.32.3
@@ -53,7 +53,7 @@ require (
 )
 
 require (
-	cel.dev/expr v0.20.0 // indirect
+	cel.dev/expr v0.23.0 // indirect
 	github.com/Azure/azure-sdk-for-go/sdk/azidentity v1.9.0 // indirect
 	github.com/Azure/azure-sdk-for-go/sdk/internal v1.11.1 // indirect
 	github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/authorization/armauthorization/v2 v2.2.0 // indirect
@@ -157,7 +157,7 @@ require (
 	go.uber.org/zap v1.27.0 // indirect
 	golang.org/x/crypto v0.38.0 // indirect
 	golang.org/x/exp v0.0.0-20250506013437-ce4c2cf36ca6 // indirect
-	golang.org/x/oauth2 v0.27.0 // indirect
+	golang.org/x/oauth2 v0.28.0 // indirect
 	golang.org/x/term v0.32.0 // indirect
 	golang.org/x/text v0.25.0 // indirect
 	golang.org/x/time v0.11.0 // indirect
