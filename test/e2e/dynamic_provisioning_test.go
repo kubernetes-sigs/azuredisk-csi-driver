@@ -1387,6 +1387,8 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 	})
 
 	ginkgo.It("should succeed without MaximumDataDisksExceeded", func(ctx ginkgo.SpecContext) {
+		// there's cleanup issue of PVs with this test in the Windows with hostprocess, skip it for now
+		skipIfTestingInWindowsCluster()
 		pods := []testsuites.PodDetails{
 			{
 				Cmd: convertToPowershellorCmdCommandIfNecessary("echo 'Data for pod $HOSTNAME' > /mnt/test-1/data && sleep 30"),
