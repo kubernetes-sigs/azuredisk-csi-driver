@@ -447,9 +447,9 @@ func IsValidVolumeCapabilities(volCaps []*csi.VolumeCapability, maxShares int) e
 }
 
 func IsValidAccessModes(volCaps []*csi.VolumeCapability) bool {
-	hasSupport := func(cap *csi.VolumeCapability) bool {
+	hasSupport := func(capability *csi.VolumeCapability) bool {
 		for _, c := range volumeCaps {
-			if c.GetMode() == cap.AccessMode.GetMode() {
+			if c.GetMode() == capability.AccessMode.GetMode() {
 				return true
 			}
 		}
