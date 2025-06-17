@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-FROM alpine:3.18.11
+FROM alpine:3.20.6
 RUN apk upgrade --available --no-cache && \
     apk add --no-cache util-linux e2fsprogs e2fsprogs-extra ca-certificates udev xfsprogs xfsprogs-extra btrfs-progs btrfs-progs-extra
 
@@ -23,4 +23,5 @@ ARG ARCH=amd64
 ARG PLUGIN_NAME=azurediskplugin
 ARG binary=./_output/${ARCH}/${PLUGIN_NAME}
 COPY ${binary} /azurediskplugin
+
 ENTRYPOINT ["/azurediskplugin"]
