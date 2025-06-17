@@ -44,9 +44,9 @@ var _ = ginkgo.Describe("Dynamic Provisioning", func() {
 		t.defineTests(false)
 	})
 
-	// ginkgo.Context("[multi-az]", func() {
-	// 	t.defineTests(true)
-	// })
+	ginkgo.Context("[multi-az]", func() {
+		t.defineTests(true)
+	})
 })
 
 type dynamicProvisioningTestSuite struct {
@@ -1389,6 +1389,8 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 	ginkgo.It("should succeed without MaximumDataDisksExceeded", func(ctx ginkgo.SpecContext) {
 		// there's cleanup issue of PVs with this test in the Windows with hostprocess, skip it for now
 		skipIfTestingInWindowsCluster()
+		skipIfOnAzureStackCloud()
+		skipIfUsingInTreeVolumePlugin()
 		pods := []testsuites.PodDetails{
 			{
 				Cmd: convertToPowershellorCmdCommandIfNecessary("echo 'Data for pod $HOSTNAME' > /mnt/test-1/data && sleep 30"),
