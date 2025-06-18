@@ -272,6 +272,9 @@ func (t *TestPersistentVolumeClaim) Create(ctx context.Context) {
 func (t *TestPersistentVolumeClaim) ValidateProvisionedPersistentVolume(ctx context.Context) {
 	var err error
 
+	// Make sure the persistentVolumeClaim.Spec.VolumeName isn't empty
+	t.persistentVolumeClaim, err = t.client.CoreV1().PersistentVolumeClaims(t.namespace.Name).Get(ctx, t.persistentVolumeClaim.Name, metav1.GetOptions{})
+	framework.ExpectNoError(err)
 	// Get the bound PersistentVolume
 	ginkgo.By("validating provisioned PV")
 	t.persistentVolume, err = t.client.CoreV1().PersistentVolumes().Get(ctx, t.persistentVolumeClaim.Spec.VolumeName, metav1.GetOptions{})
