@@ -1114,24 +1114,19 @@ func (d *Driver) CreateSnapshot(ctx context.Context, req *csi.CreateSnapshotRequ
 		return nil, status.Error(codes.Internal, fmt.Sprintf("create snapshot error: %v", err.Error()))
 	}
 
-	completionPercent, err := d.getSnapshotCompletionPercent(ctx, subsID, resourceGroup, snapshotName)
-	if err != nil {
-		return nil, status.Error(codes.Internal, fmt.Sprintf("getSnapshotCompletionPercent(%s, %s, %s) failed with %v", subsID, resourceGroup, snapshotName, err))
+	if d.shouldWaitForSnapshotReady {
+		if err := d.waitForSnapshotReady(ctx, subsID, resourceGroup, snapshotName, waitForSnapshotReadyInterval, waitForSnapshotReadyTimeout); err != nil {
+			return nil, status.Error(codes.Internal, fmt.Sprintf("waitForSnapshotReady(%s, %s, %s) failed with %v", subsID, resourceGroup, snapshotName, err))
+		}
 	}
-
-	if completionPercent >= float32(100.0) {
-		klog.V(2).Infof("create snapshot(%s) under rg(%s) region(%s) successfully", snapshotName, resourceGroup)
-	} else {
-		klog.V(2).Infof("create snapshot(%s) under rg(%s) region(%s) in progress, completion percent: %f", snapshotName, resourceGroup, d.cloud.Location, completionPercent)
-		isOperationInProgress = true
-	}
+	klog.V(2).Infof("create snapshot(%s) under rg(%s) region(%s) successfully", snapshotName, resourceGroup, d.cloud.Location)
 
 	csiSnapshot, err := d.getSnapshotByID(ctx, subsID, resourceGroup, snapshotName, sourceVolumeID)
 	if err != nil {
 		return nil, err
 	}
 
-	if !isOperationInProgress && crossRegionSnapshotName != "" {
+	if csiSnapshot.ReadyToUse && crossRegionSnapshotName != "" {
 		copySnapshot := snapshot
 		if copySnapshot.Properties == nil {
 			copySnapshot.Properties = &armcompute.SnapshotProperties{}
@@ -1154,20 +1149,18 @@ func (d *Driver) CreateSnapshot(ctx context.Context, req *csi.CreateSnapshotRequ
 		}
 		klog.V(2).Infof("create snapshot(%s) under rg(%s) region(%s) successfully", crossRegionSnapshotName, resourceGroup, location)
 
-		completionPercent, err := d.getSnapshotCompletionPercent(ctx, subsID, resourceGroup, crossRegionSnapshotName)
-		if err != nil {
-			return nil, status.Error(codes.Internal, fmt.Sprintf("getSnapshotCompletionPercent(%s, %s, %s) cross-region failed with %v", subsID, resourceGroup, crossRegionSnapshotName, err))
-		}
+		if d.shouldWaitForSnapshotReady {
+			if err := d.waitForSnapshotReady(ctx, subsID, resourceGroup, crossRegionSnapshotName, waitForSnapshotReadyInterval, waitForSnapshotReadyTimeout); err != nil {
+				return nil, status.Error(codes.Internal, fmt.Sprintf("waitForSnapshotReady(%s, %s, %s) failed with %v", subsID, resourceGroup, crossRegionSnapshotName, err))
+			}
 
-		if completionPercent >= float32(100.0) {
-			klog.V(2).Infof("create snapshot(%s) under rg(%s) cross-region(%s) successfully", crossRegionSnapshotName, resourceGroup, d.cloud.Location)
+			klog.V(2).Infof("begin to delete snapshot(%s) under rg(%s) region(%s)", snapshotName, resourceGroup, d.cloud.Location)
 			if err = snapshotClient.Delete(ctx, resourceGroup, snapshotName); err != nil {
 				klog.Errorf("delete snapshot error: %v", err)
 				azureutils.SleepIfThrottled(err, consts.SnapshotOpThrottlingSleepSec)
+			} else {
+				klog.V(2).Infof("delete snapshot(%s) under rg(%s) region(%s) successfully", snapshotName, resourceGroup, d.cloud.Location)
 			}
-		} else {
-			klog.V(2).Infof("create snapshot(%s) under rg(%s) cross-region(%s) in progress, completion percent: %f", crossRegionSnapshotName, resourceGroup, d.cloud.Location, completionPercent)
-			isOperationInProgress = true
 		}
 
 		csiSnapshot, err = d.getSnapshotByID(ctx, subsID, resourceGroup, crossRegionSnapshotName, sourceVolumeID)
@@ -1176,8 +1169,8 @@ func (d *Driver) CreateSnapshot(ctx context.Context, req *csi.CreateSnapshotRequ
 		}
 	}
 
-	if completionPercent < float32(100.0) {
-		csiSnapshot.ReadyToUse = false
+	if csiSnapshot.ReadyToUse == false {
+		isOperationInProgress = true
 	}
 	createResp := &csi.CreateSnapshotResponse{
 		Snapshot: csiSnapshot,

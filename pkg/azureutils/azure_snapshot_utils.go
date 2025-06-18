@@ -26,6 +26,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/timestamppb"
+	"k8s.io/klog/v2"
 	volumehelper "sigs.k8s.io/azuredisk-csi-driver/pkg/util"
 )
 
@@ -45,6 +46,21 @@ func GenerateCSISnapshot(sourceVolumeID string, snapshot *armcompute.Snapshot) (
 	ready, _ := isCSISnapshotReady(*snapshot.Properties.ProvisioningState)
 	if sourceVolumeID == "" {
 		sourceVolumeID = GetSourceVolumeID(snapshot)
+	}
+
+	if ready {
+		completionPercent := float32(0.0)
+		if snapshot.Properties == nil || snapshot.Properties.CompletionPercent == nil {
+			// If CompletionPercent is nil, it means the snapshot is complete
+			completionPercent = float32(100.0)
+		} else {
+			completionPercent = *snapshot.Properties.CompletionPercent
+		}
+
+		if completionPercent < float32(100.0) {
+			klog.V(2).Infof("snapshot(%s) in progress, completion percent: %f", *snapshot.Name, completionPercent)
+			ready = false
+		}
 	}
 
 	return &csi.Snapshot{
