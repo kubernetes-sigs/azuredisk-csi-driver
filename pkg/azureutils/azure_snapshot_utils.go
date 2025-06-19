@@ -48,9 +48,15 @@ func GenerateCSISnapshot(sourceVolumeID string, snapshot *armcompute.Snapshot) (
 		sourceVolumeID = GetSourceVolumeID(snapshot)
 	}
 
+	// The provisioningState represents the state of resource provisioning which indicates whether the snapshot
+	// is created successfully or not. However the snapshot may not be ready to use immediately after creation.
+	// We need to check the CompletionPercent if exists to determine if the snapshot is ready to use.
+	// This is needed because of Premium V2 disks & Ultra disks, which take some time to be ready to use after creation.
+	// In case of Premium V1 disks, the snapshot is ready to use immediately after creation and so we wont have that
+	// completionPercent field in the properties. Hence we will treat it 100% if CompletionPercent is nil.
 	if ready {
 		completionPercent := float32(0.0)
-		if snapshot.Properties == nil || snapshot.Properties.CompletionPercent == nil {
+		if snapshot.Properties.CompletionPercent == nil {
 			// If CompletionPercent is nil, it means the snapshot is complete
 			completionPercent = float32(100.0)
 		} else {

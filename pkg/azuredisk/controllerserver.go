@@ -1105,13 +1105,17 @@ func (d *Driver) CreateSnapshot(ctx context.Context, req *csi.CreateSnapshotRequ
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "could not get snapshot client for subscription(%s) with error(%v)", subsID, err)
 	}
-	if _, err := snapshotClient.CreateOrUpdate(ctx, resourceGroup, snapshotName, snapshot); err != nil {
-		if strings.Contains(err.Error(), "existing disk") {
-			return nil, status.Error(codes.AlreadyExists, fmt.Sprintf("request snapshot(%s) under rg(%s) already exists, but the SourceVolumeId is different, error details: %v", snapshotName, resourceGroup, err))
-		}
 
-		azureutils.SleepIfThrottled(err, consts.SnapshotOpThrottlingSleepSec)
-		return nil, status.Error(codes.Internal, fmt.Sprintf("create snapshot error: %v", err.Error()))
+	csiSnapshot, _ := d.getSnapshotByID(ctx, subsID, resourceGroup, snapshotName, sourceVolumeID)
+	if csiSnapshot == nil {
+		if _, err := snapshotClient.CreateOrUpdate(ctx, resourceGroup, snapshotName, snapshot); err != nil {
+			if strings.Contains(err.Error(), "existing disk") {
+				return nil, status.Error(codes.AlreadyExists, fmt.Sprintf("request snapshot(%s) under rg(%s) already exists, but the SourceVolumeId is different, error details: %v", snapshotName, resourceGroup, err))
+			}
+
+			azureutils.SleepIfThrottled(err, consts.SnapshotOpThrottlingSleepSec)
+			return nil, status.Error(codes.Internal, fmt.Sprintf("create snapshot error: %v", err.Error()))
+		}
 	}
 
 	if d.shouldWaitForSnapshotReady {
@@ -1121,33 +1125,36 @@ func (d *Driver) CreateSnapshot(ctx context.Context, req *csi.CreateSnapshotRequ
 	}
 	klog.V(2).Infof("create snapshot(%s) under rg(%s) region(%s) successfully", snapshotName, resourceGroup, d.cloud.Location)
 
-	csiSnapshot, err := d.getSnapshotByID(ctx, subsID, resourceGroup, snapshotName, sourceVolumeID)
+	csiSnapshot, err = d.getSnapshotByID(ctx, subsID, resourceGroup, snapshotName, sourceVolumeID)
 	if err != nil {
 		return nil, err
 	}
 
 	if csiSnapshot.ReadyToUse && crossRegionSnapshotName != "" {
-		copySnapshot := snapshot
-		if copySnapshot.Properties == nil {
-			copySnapshot.Properties = &armcompute.SnapshotProperties{}
-		}
-		if copySnapshot.Properties.CreationData == nil {
-			copySnapshot.Properties.CreationData = &armcompute.CreationData{}
-		}
-		copySnapshot.Properties.CreationData.SourceResourceID = &csiSnapshot.SnapshotId
-		copySnapshot.Properties.CreationData.CreateOption = to.Ptr(armcompute.DiskCreateOptionCopyStart)
-		copySnapshot.Location = &location
-
-		klog.V(2).Infof("begin to create snapshot(%s, incremental: %v) under rg(%s) region(%s)", crossRegionSnapshotName, incremental, resourceGroup, location)
-		if _, err := snapshotClient.CreateOrUpdate(ctx, resourceGroup, crossRegionSnapshotName, copySnapshot); err != nil {
-			if strings.Contains(err.Error(), "existing disk") {
-				return nil, status.Error(codes.AlreadyExists, fmt.Sprintf("request snapshot(%s) under rg(%s) already exists, but the SourceVolumeId is different, error details: %v", crossRegionSnapshotName, resourceGroup, err))
+		csiSnapshot, _ := d.getSnapshotByID(ctx, subsID, resourceGroup, crossRegionSnapshotName, sourceVolumeID)
+		if csiSnapshot == nil {
+			copySnapshot := snapshot
+			if copySnapshot.Properties == nil {
+				copySnapshot.Properties = &armcompute.SnapshotProperties{}
 			}
+			if copySnapshot.Properties.CreationData == nil {
+				copySnapshot.Properties.CreationData = &armcompute.CreationData{}
+			}
+			copySnapshot.Properties.CreationData.SourceResourceID = &csiSnapshot.SnapshotId
+			copySnapshot.Properties.CreationData.CreateOption = to.Ptr(armcompute.DiskCreateOptionCopyStart)
+			copySnapshot.Location = &location
 
-			azureutils.SleepIfThrottled(err, consts.SnapshotOpThrottlingSleepSec)
-			return nil, status.Error(codes.Internal, fmt.Sprintf("create snapshot error: %v", err))
+			klog.V(2).Infof("begin to create snapshot(%s, incremental: %v) under rg(%s) region(%s)", crossRegionSnapshotName, incremental, resourceGroup, location)
+			if _, err := snapshotClient.CreateOrUpdate(ctx, resourceGroup, crossRegionSnapshotName, copySnapshot); err != nil {
+				if strings.Contains(err.Error(), "existing disk") {
+					return nil, status.Error(codes.AlreadyExists, fmt.Sprintf("request snapshot(%s) under rg(%s) already exists, but the SourceVolumeId is different, error details: %v", crossRegionSnapshotName, resourceGroup, err))
+				}
+
+				azureutils.SleepIfThrottled(err, consts.SnapshotOpThrottlingSleepSec)
+				return nil, status.Error(codes.Internal, fmt.Sprintf("create snapshot error: %v", err))
+			}
+			klog.V(2).Infof("create snapshot(%s) under rg(%s) region(%s) successfully", crossRegionSnapshotName, resourceGroup, location)
 		}
-		klog.V(2).Infof("create snapshot(%s) under rg(%s) region(%s) successfully", crossRegionSnapshotName, resourceGroup, location)
 
 		if d.shouldWaitForSnapshotReady {
 			if err := d.waitForSnapshotReady(ctx, subsID, resourceGroup, crossRegionSnapshotName, waitForSnapshotReadyInterval, waitForSnapshotReadyTimeout); err != nil {
@@ -1169,9 +1176,8 @@ func (d *Driver) CreateSnapshot(ctx context.Context, req *csi.CreateSnapshotRequ
 		}
 	}
 
-	if csiSnapshot.ReadyToUse == false {
-		isOperationInProgress = true
-	}
+	isOperationInProgress = !csiSnapshot.ReadyToUse
+
 	createResp := &csi.CreateSnapshotResponse{
 		Snapshot: csiSnapshot,
 	}
