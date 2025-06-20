@@ -17,16 +17,9 @@ GIT_COMMIT ?= $(shell git rev-parse HEAD)
 REGISTRY ?= andyzhangx
 REGISTRY_NAME ?= $(shell echo $(REGISTRY) | sed "s/.azurecr.io//g")
 IMAGE_NAME ?= azuredisk-csi
-ifneq ($(BUILD_V2), true)
 PLUGIN_NAME = azurediskplugin
 IMAGE_VERSION ?= v1.34.0
 CHART_VERSION ?= latest
-else
-PLUGIN_NAME = azurediskpluginv2
-IMAGE_VERSION ?= latest-v2
-CHART_VERSION ?= latest-v2
-GOTAGS += -tags azurediskv2
-endif
 CLOUD ?= AzurePublicCloud
 # Use a custom version for E2E tests if we are testing in CI
 ifdef CI
@@ -93,15 +86,11 @@ verify: unit-test
 	go build -o _output/${ARCH}/gen-disk-skus-map ./pkg/tool/
 
 .PHONY: unit-test
-unit-test: unit-test-v1 unit-test-v2
+unit-test: unit-test unit-test-v2
 
-.PHONY: unit-test-v1
-unit-test-v1:
+.PHONY: unit-test
+unit-test:
 	go test -v -cover ./pkg/... ./test/utils/credentials
-
-.PHONY: unit-test-v2
-unit-test-v2:
-	go test -v -cover -tags azurediskv2 ./pkg/azuredisk --temp-use-driver-v2
 
 .PHONY: sanity-test
 sanity-test: azuredisk
@@ -148,17 +137,10 @@ e2e-teardown:
 azuredisk:
 	CGO_ENABLED=0 GOOS=linux GOARCH=$(ARCH) go build -a -ldflags ${LDFLAGS} -mod vendor -o _output/${ARCH}/${PLUGIN_NAME} ./pkg/azurediskplugin
 
-.PHONY: azuredisk-v2
-azuredisk-v2:
-	BUILD_V2=true $(MAKE) azuredisk
 
 .PHONY: azuredisk-windows
 azuredisk-windows:
 	CGO_ENABLED=0 GOOS=windows go build -a -ldflags ${LDFLAGS} -mod vendor -o _output/${ARCH}/${PLUGIN_NAME}.exe ./pkg/azurediskplugin
-
-.PHONY: azuredisk-windows-v2
-azuredisk-windows-v2:
-	BUILD_V2=true $(MAKE) azuredisk
 
 .PHONY: azuredisk-darwin
 azuredisk-darwin:
