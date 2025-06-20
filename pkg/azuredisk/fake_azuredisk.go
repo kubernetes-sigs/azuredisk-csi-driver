@@ -63,7 +63,7 @@ var (
 	}
 )
 
-// FakeDriver defines an interface unit tests use to test either the v1 or v2 implementation of the Azure Disk CSI Driver.
+// FakeDriver defines an interface unit tests use to test the implementation of the Azure Disk CSI Driver.
 type FakeDriver interface {
 	CSIDriver
 
@@ -98,12 +98,13 @@ type FakeDriver interface {
 	getUsedLunsFromNode(context.Context, types.NodeName) ([]int, error)
 }
 
-type fakeDriverV1 struct {
+type fakeDriver struct {
 	Driver
 }
 
-func newFakeDriverV1(ctrl *gomock.Controller) (*fakeDriverV1, error) {
-	driver := fakeDriverV1{}
+// NewFakeDriver returns a driver implementation suitable for use in unit tests.
+func NewFakeDriver(ctrl *gomock.Controller) (FakeDriver, error) {
+	driver := fakeDriver{}
 	driver.Name = fakeDriverName
 	driver.Version = fakeDriverVersion
 	driver.NodeID = fakeNodeID
@@ -162,14 +163,14 @@ func newFakeDriverV1(ctrl *gomock.Controller) (*fakeDriverV1, error) {
 	return &driver, nil
 }
 
-func (d *fakeDriverV1) setNextCommandOutputScripts(scripts ...testingexec.FakeAction) {
+func (d *fakeDriver) setNextCommandOutputScripts(scripts ...testingexec.FakeAction) {
 	d.mounter.Exec.(*mounter.FakeSafeMounter).SetNextCommandOutputScripts(scripts...)
 }
 
-func (d *fakeDriverV1) setThrottlingCache(key string, value string) {
+func (d *fakeDriver) setThrottlingCache(key string, value string) {
 	d.throttlingCache.Set(key, value)
 }
-func (d *fakeDriverV1) getClientFactory() azclient.ClientFactory {
+func (d *fakeDriver) getClientFactory() azclient.ClientFactory {
 	return d.clientFactory
 }
 
