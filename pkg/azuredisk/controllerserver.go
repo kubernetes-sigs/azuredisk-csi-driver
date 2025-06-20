@@ -1106,8 +1106,8 @@ func (d *Driver) CreateSnapshot(ctx context.Context, req *csi.CreateSnapshotRequ
 		return nil, status.Errorf(codes.Internal, "could not get snapshot client for subscription(%s) with error(%v)", subsID, err)
 	}
 
-	csiSnapshot, _ := d.getSnapshotByID(ctx, subsID, resourceGroup, snapshotName, sourceVolumeID)
-	if csiSnapshot == nil {
+	csiSnapshot, _ := d.getSnapshotByID(ctx, subsID, resourceGroup, snapshotName, "")
+	if csiSnapshot == nil || sourceVolumeID != csiSnapshot.SourceVolumeId {
 		if _, err := snapshotClient.CreateOrUpdate(ctx, resourceGroup, snapshotName, snapshot); err != nil {
 			if strings.Contains(err.Error(), "existing disk") {
 				return nil, status.Error(codes.AlreadyExists, fmt.Sprintf("request snapshot(%s) under rg(%s) already exists, but the SourceVolumeId is different, error details: %v", snapshotName, resourceGroup, err))

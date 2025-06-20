@@ -1483,7 +1483,7 @@ func TestCreateSnapshot(t *testing.T) {
 			},
 		},
 		{
-			name: "create snapshot already exist & completed",
+			name: "create snapshot already exist ",
 			testFunc: func(t *testing.T) {
 				parameter := make(map[string]string)
 				parameter["tags"] = "unit=test"
@@ -1499,21 +1499,13 @@ func TestCreateSnapshot(t *testing.T) {
 				ctrl := gomock.NewController(t)
 				defer ctrl.Finish()
 				mockSnapshotClient := mock_snapshotclient.NewMockInterface(ctrl)
+				mockSnapshotClient.EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, nil).Times(1)
 				d.getClientFactory().(*mock_azclient.MockClientFactory).EXPECT().GetSnapshotClientForSub(gomock.Any()).Return(mockSnapshotClient, nil).AnyTimes()
-				completedSnapshot := &armcompute.Snapshot{
-					Properties: &armcompute.SnapshotProperties{
-						TimeCreated:       ptr.To(time.Now()),
-						DiskSizeGB:        ptr.To[int32](5),
-						ProvisioningState: ptr.To("Succeeded"),
-					},
-					ID: ptr.To("subscriptions/subscription/resourceGroups/rg/providers/Microsoft.Compute/snapshots/snapname"),
-				}
-				mockSnapshotClient.EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any()).Return(completedSnapshot, nil).Times(3)
-				resp, err := d.CreateSnapshot(context.Background(), req)
-				if !reflect.DeepEqual(err, nil) {
-					t.Errorf("actualErr: (%v), expectedErr: nil", err)
-				} else if !resp.Snapshot.ReadyToUse {
-					t.Errorf("Snapshot not ready to use, expected: true, got: %v", resp.Snapshot.ReadyToUse)
+				mockSnapshotClient.EXPECT().CreateOrUpdate(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, fmt.Errorf("existing disk")).AnyTimes()
+				_, err := d.CreateSnapshot(context.Background(), req)
+				expectedErr := status.Errorf(codes.AlreadyExists, "request snapshot(snapname) under rg(rg) already exists, but the SourceVolumeId is different, error details: existing disk")
+				if !reflect.DeepEqual(err, expectedErr) {
+					t.Errorf("actualErr: (%v), expectedErr: (%v)", err, expectedErr)
 				}
 			},
 		},
@@ -1537,6 +1529,7 @@ func TestCreateSnapshot(t *testing.T) {
 
 				snapshotNotProvisioned := &armcompute.Snapshot{
 					Properties: &armcompute.SnapshotProperties{
+						CreationData:      &armcompute.CreationData{SourceResourceID: &req.SourceVolumeId},
 						TimeCreated:       ptr.To(time.Now()),
 						DiskSizeGB:        ptr.To[int32](5),
 						ProvisioningState: ptr.To("Updating"),
@@ -1546,12 +1539,14 @@ func TestCreateSnapshot(t *testing.T) {
 				}
 				snapshotProvisioned := &armcompute.Snapshot{
 					Properties: &armcompute.SnapshotProperties{
+						CreationData:      &armcompute.CreationData{SourceResourceID: &req.SourceVolumeId},
 						CompletionPercent: ptr.To[float32](0),
 						ProvisioningState: ptr.To("succeeded"),
 					},
 				}
 				snapshotComplete := &armcompute.Snapshot{
 					Properties: &armcompute.SnapshotProperties{
+						CreationData:      &armcompute.CreationData{SourceResourceID: &req.SourceVolumeId},
 						CompletionPercent: ptr.To[float32](100),
 						ProvisioningState: ptr.To("succeeded"),
 						TimeCreated:       ptr.To(time.Now()),
