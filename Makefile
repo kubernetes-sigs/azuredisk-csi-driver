@@ -86,7 +86,7 @@ verify: unit-test
 	go build -o _output/${ARCH}/gen-disk-skus-map ./pkg/tool/
 
 .PHONY: unit-test
-unit-test: unit-test unit-test-v2
+unit-test: unit-test
 
 .PHONY: unit-test
 unit-test:
@@ -95,10 +95,6 @@ unit-test:
 .PHONY: sanity-test
 sanity-test: azuredisk
 	go test -v -timeout=30m ./test/sanity
-
-.PHONY: sanity-test-v2
-sanity-test-v2: azuredisk-v2
-	go test -v -timeout=30m ./test/sanity --temp-use-driver-v2
 
 .PHONY: e2e-bootstrap
 e2e-bootstrap: install-helm
