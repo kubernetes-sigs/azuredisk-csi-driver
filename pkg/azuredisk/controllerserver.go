@@ -1128,11 +1128,14 @@ func (d *Driver) CreateSnapshot(ctx context.Context, req *csi.CreateSnapshotRequ
 	csiSnapshot, err = d.getSnapshotByID(ctx, subsID, resourceGroup, snapshotName, sourceVolumeID)
 	if err != nil {
 		return nil, err
+	} else if csiSnapshot == nil {
+		klog.Errorf("getSnapshotByID(%s, %s, %s) did not return a valid snapshot", subsID, resourceGroup, snapshotName)
+		return nil, status.Error(codes.Internal, fmt.Sprintf("getSnapshotByID(%s, %s, %s) did not return a valid snapshot", subsID, resourceGroup, snapshotName))
 	}
 
 	if csiSnapshot.ReadyToUse && crossRegionSnapshotName != "" {
-		csiSnapshot, _ := d.getSnapshotByID(ctx, subsID, resourceGroup, crossRegionSnapshotName, sourceVolumeID)
-		if csiSnapshot == nil {
+		crossRegionSnapshot, _ := d.getSnapshotByID(ctx, subsID, resourceGroup, crossRegionSnapshotName, sourceVolumeID)
+		if crossRegionSnapshot == nil {
 			copySnapshot := snapshot
 			if copySnapshot.Properties == nil {
 				copySnapshot.Properties = &armcompute.SnapshotProperties{}

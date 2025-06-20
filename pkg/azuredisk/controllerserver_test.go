@@ -1472,6 +1472,7 @@ func TestCreateSnapshot(t *testing.T) {
 				defer ctrl.Finish()
 				mockSnapshotClient := mock_snapshotclient.NewMockInterface(ctrl)
 				d.getClientFactory().(*mock_azclient.MockClientFactory).EXPECT().GetSnapshotClientForSub(gomock.Any()).Return(mockSnapshotClient, nil).AnyTimes()
+				mockSnapshotClient.EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, fmt.Errorf("test")).AnyTimes()
 				mockSnapshotClient.EXPECT().CreateOrUpdate(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, fmt.Errorf("test")).AnyTimes()
 
 				_, err := d.CreateSnapshot(context.Background(), req)
@@ -1482,7 +1483,7 @@ func TestCreateSnapshot(t *testing.T) {
 			},
 		},
 		{
-			name: "create snapshot already exist ",
+			name: "create snapshot already exist & completed",
 			testFunc: func(t *testing.T) {
 				parameter := make(map[string]string)
 				parameter["tags"] = "unit=test"
@@ -1499,11 +1500,75 @@ func TestCreateSnapshot(t *testing.T) {
 				defer ctrl.Finish()
 				mockSnapshotClient := mock_snapshotclient.NewMockInterface(ctrl)
 				d.getClientFactory().(*mock_azclient.MockClientFactory).EXPECT().GetSnapshotClientForSub(gomock.Any()).Return(mockSnapshotClient, nil).AnyTimes()
-				mockSnapshotClient.EXPECT().CreateOrUpdate(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, fmt.Errorf("existing disk")).AnyTimes()
-				_, err := d.CreateSnapshot(context.Background(), req)
-				expectedErr := status.Errorf(codes.AlreadyExists, "request snapshot(snapname) under rg(rg) already exists, but the SourceVolumeId is different, error details: existing disk")
-				if !reflect.DeepEqual(err, expectedErr) {
-					t.Errorf("actualErr: (%v), expectedErr: (%v)", err, expectedErr)
+				completedSnapshot := &armcompute.Snapshot{
+					Properties: &armcompute.SnapshotProperties{
+						TimeCreated:       ptr.To(time.Now()),
+						DiskSizeGB:        ptr.To[int32](5),
+						ProvisioningState: ptr.To("Succeeded"),
+					},
+					ID: ptr.To("subscriptions/subscription/resourceGroups/rg/providers/Microsoft.Compute/snapshots/snapname"),
+				}
+				mockSnapshotClient.EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any()).Return(completedSnapshot, nil).Times(3)
+				resp, err := d.CreateSnapshot(context.Background(), req)
+				if !reflect.DeepEqual(err, nil) {
+					t.Errorf("actualErr: (%v), expectedErr: nil", err)
+				} else if !resp.Snapshot.ReadyToUse {
+					t.Errorf("Snapshot not ready to use, expected: true, got: %v", resp.Snapshot.ReadyToUse)
+				}
+			},
+		},
+		{
+			name: "create snapshot already exist - waits for snapshot ready",
+			testFunc: func(t *testing.T) {
+				parameter := make(map[string]string)
+				parameter["tags"] = "unit=test"
+				req := &csi.CreateSnapshotRequest{
+					SourceVolumeId: testVolumeID,
+					Name:           "snapname",
+					Parameters:     parameter,
+				}
+				cntl := gomock.NewController(t)
+				defer cntl.Finish()
+				d, _ := NewFakeDriver(cntl)
+				d.setCloud(&azure.Cloud{})
+				ctrl := gomock.NewController(t)
+				defer ctrl.Finish()
+				mockSnapshotClient := mock_snapshotclient.NewMockInterface(ctrl)
+
+				snapshotNotProvisioned := &armcompute.Snapshot{
+					Properties: &armcompute.SnapshotProperties{
+						TimeCreated:       ptr.To(time.Now()),
+						DiskSizeGB:        ptr.To[int32](5),
+						ProvisioningState: ptr.To("Updating"),
+						CompletionPercent: ptr.To[float32](0),
+					},
+					ID: ptr.To("subscriptions/subscription/resourceGroups/rg/providers/Microsoft.Compute/snapshots/snapname"),
+				}
+				snapshotProvisioned := &armcompute.Snapshot{
+					Properties: &armcompute.SnapshotProperties{
+						CompletionPercent: ptr.To[float32](0),
+						ProvisioningState: ptr.To("succeeded"),
+					},
+				}
+				snapshotComplete := &armcompute.Snapshot{
+					Properties: &armcompute.SnapshotProperties{
+						CompletionPercent: ptr.To[float32](100),
+						ProvisioningState: ptr.To("succeeded"),
+						TimeCreated:       ptr.To(time.Now()),
+						DiskSizeGB:        ptr.To[int32](5),
+					},
+					ID: ptr.To("subscriptions/subscription/resourceGroups/rg/providers/Microsoft.Compute/snapshots/snapname"),
+				}
+
+				d.getClientFactory().(*mock_azclient.MockClientFactory).EXPECT().GetSnapshotClientForSub(gomock.Any()).Return(mockSnapshotClient, nil).AnyTimes()
+				mockSnapshotClient.EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any()).Return(snapshotNotProvisioned, nil).Times(3)
+				mockSnapshotClient.EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any()).Return(snapshotProvisioned, nil).Times(2)
+				mockSnapshotClient.EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any()).Return(snapshotComplete, nil).Times(2)
+				resp, err := d.CreateSnapshot(context.Background(), req)
+				if !reflect.DeepEqual(err, nil) {
+					t.Errorf("actualErr: (%v), expectedErr: nil", err)
+				} else if !resp.Snapshot.ReadyToUse {
+					t.Errorf("Snapshot not ready to use, expected: true, got: %v", resp.Snapshot.ReadyToUse)
 				}
 			},
 		},
@@ -1569,6 +1634,7 @@ func TestCreateSnapshot(t *testing.T) {
 					},
 					ID: &snapshotID,
 				}
+				mockSnapshotClient.EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, nil).Times(1)
 				mockSnapshotClient.EXPECT().CreateOrUpdate(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, nil).AnyTimes()
 				gomock.InOrder(
 					mockSnapshotClient.EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any()).Return(snapshot, nil).Times(1),
@@ -1604,10 +1670,6 @@ func TestCreateSnapshot(t *testing.T) {
 				defer ctrl.Finish()
 				mockSnapshotClient := mock_snapshotclient.NewMockInterface(ctrl)
 				d.getClientFactory().(*mock_azclient.MockClientFactory).EXPECT().GetSnapshotClientForSub(gomock.Any()).Return(mockSnapshotClient, nil).AnyTimes()
-				gomock.InOrder(
-					mockSnapshotClient.EXPECT().CreateOrUpdate(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, nil).Times(1),
-					mockSnapshotClient.EXPECT().CreateOrUpdate(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, fmt.Errorf("test")).Times(1),
-				)
 				provisioningState := "succeeded"
 				DiskSize := int32(10)
 				snapshotID := "test"
@@ -1619,8 +1681,13 @@ func TestCreateSnapshot(t *testing.T) {
 					},
 					ID: &snapshotID,
 				}
-				mockSnapshotClient.EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any()).Return(snapshot, nil).AnyTimes()
-
+				gomock.InOrder(
+					mockSnapshotClient.EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, nil).Times(1),
+					mockSnapshotClient.EXPECT().CreateOrUpdate(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, nil).Times(1),
+					mockSnapshotClient.EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any()).Return(snapshot, nil).Times(2),
+					mockSnapshotClient.EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, nil).Times(1),
+					mockSnapshotClient.EXPECT().CreateOrUpdate(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, fmt.Errorf("test")).Times(1),
+				)
 				_, err := d.CreateSnapshot(context.Background(), req)
 				expectedErr := status.Errorf(codes.Internal, "create snapshot error: test")
 				if !reflect.DeepEqual(err, expectedErr) {
@@ -1651,10 +1718,6 @@ func TestCreateSnapshot(t *testing.T) {
 				defer ctrl.Finish()
 				mockSnapshotClient := mock_snapshotclient.NewMockInterface(ctrl)
 				d.getClientFactory().(*mock_azclient.MockClientFactory).EXPECT().GetSnapshotClientForSub(gomock.Any()).Return(mockSnapshotClient, nil).AnyTimes()
-				gomock.InOrder(
-					mockSnapshotClient.EXPECT().CreateOrUpdate(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, nil).Times(1),
-					mockSnapshotClient.EXPECT().CreateOrUpdate(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, fmt.Errorf("existing disk")).Times(1),
-				)
 				provisioningState := "succeeded"
 				DiskSize := int32(10)
 				snapshotID := "test"
@@ -1666,7 +1729,13 @@ func TestCreateSnapshot(t *testing.T) {
 					},
 					ID: &snapshotID,
 				}
-				mockSnapshotClient.EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any()).Return(snapshot, nil).AnyTimes()
+				gomock.InOrder(
+					mockSnapshotClient.EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, nil).Times(1),
+					mockSnapshotClient.EXPECT().CreateOrUpdate(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, nil).Times(1),
+					mockSnapshotClient.EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any()).Return(snapshot, nil).Times(2),
+					mockSnapshotClient.EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, nil).Times(1),
+					mockSnapshotClient.EXPECT().CreateOrUpdate(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, fmt.Errorf("existing disk")).Times(1),
+				)
 				_, err := d.CreateSnapshot(context.Background(), req)
 				expectedErr := status.Errorf(codes.AlreadyExists, "request snapshot(snapname) under rg(rg) already exists, but the SourceVolumeId is different, error details: existing disk")
 				if !reflect.DeepEqual(err, expectedErr) {
@@ -1709,6 +1778,7 @@ func TestCreateSnapshot(t *testing.T) {
 					},
 					ID: &snapshotID,
 				}
+				mockSnapshotClient.EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, nil).Times(1)
 				mockSnapshotClient.EXPECT().CreateOrUpdate(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, nil).AnyTimes()
 				gomock.InOrder(
 					mockSnapshotClient.EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any()).Return(snapshot, nil).Times(2),
@@ -1756,9 +1826,12 @@ func TestCreateSnapshot(t *testing.T) {
 					},
 					ID: &snapshotID,
 				}
+				mockSnapshotClient.EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, nil).Times(1)
 				mockSnapshotClient.EXPECT().CreateOrUpdate(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, nil).AnyTimes()
 				gomock.InOrder(
-					mockSnapshotClient.EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any()).Return(snapshot, nil).Times(3),
+					mockSnapshotClient.EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any()).Return(snapshot, nil).Times(2),
+					mockSnapshotClient.EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, nil).Times(1),
+					mockSnapshotClient.EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any()).Return(snapshot, nil).Times(1),
 					mockSnapshotClient.EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, fmt.Errorf("get snapshot error")).AnyTimes(),
 				)
 				mockSnapshotClient.EXPECT().Delete(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
