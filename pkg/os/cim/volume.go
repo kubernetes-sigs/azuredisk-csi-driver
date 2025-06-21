@@ -25,7 +25,6 @@ import (
 
 	"github.com/microsoft/wmi/pkg/base/query"
 	"github.com/microsoft/wmi/pkg/errors"
-	cim "github.com/microsoft/wmi/pkg/wmiinstance"
 	"github.com/microsoft/wmi/server2019/root/microsoft/windows/storage"
 )
 
@@ -145,131 +144,84 @@ func ListPartitionsWithFilters(selectorList []string, filters ...*query.WmiQuery
 	return partitions, nil
 }
 
-// ListPartitionToVolumeMappings builds a mapping between partition and volume with partition Object ID as the key.
-//
-// The equivalent WMI query is:
-//
-//		SELECT [selectors] FROM MSFT_PartitionToVolume
-//
-//	 Partition                                                               | Volume
-//	 ---------                                                               | ------
-//	 MSFT_Partition (ObjectId = "{1}\\WIN-8E2EVAQ9QSB\ROOT/Microsoft/Win...) | MSFT_Volume (ObjectId = "{1}\\WIN-8E2EVAQ9QS...
-//
-// Refer to https://learn.microsoft.com/en-us/windows-hardware/drivers/storage/msft-partitiontovolume
-// for the WMI class definition.
-func ListPartitionToVolumeMappings() (map[string]string, error) {
-	return ListWMIInstanceMappings(WMINamespaceStorage, "MSFT_PartitionToVolume", nil,
-		mappingObjectRefIndexer("Partition", "MSFT_Partition", "ObjectId"),
-		mappingObjectRefIndexer("Volume", "MSFT_Volume", "ObjectId"),
-	)
-}
-
-// ListVolumeToPartitionMappings builds a mapping between volume and partition with volume Object ID as the key.
-//
-// The equivalent WMI query is:
-//
-//		SELECT [selectors] FROM MSFT_PartitionToVolume
-//
-//	 Partition                                                               | Volume
-//	 ---------                                                               | ------
-//	 MSFT_Partition (ObjectId = "{1}\\WIN-8E2EVAQ9QSB\ROOT/Microsoft/Win...) | MSFT_Volume (ObjectId = "{1}\\WIN-8E2EVAQ9QS...
-//
-// Refer to https://learn.microsoft.com/en-us/windows-hardware/drivers/storage/msft-partitiontovolume
-// for the WMI class definition.
-func ListVolumeToPartitionMappings() (map[string]string, error) {
-	return ListWMIInstanceMappings(WMINamespaceStorage, "MSFT_PartitionToVolume", nil,
-		mappingObjectRefIndexer("Volume", "MSFT_Volume", "ObjectId"),
-		mappingObjectRefIndexer("Partition", "MSFT_Partition", "ObjectId"),
-	)
-}
-
 // FindPartitionsByVolume finds all partitions associated with the given volumes
-// using partition-to-volume mapping.
-func FindPartitionsByVolume(partitions []*storage.MSFT_Partition, volumes []*storage.MSFT_Volume) ([]*storage.MSFT_Partition, error) {
-	var partitionInstances []*cim.WmiInstance
-	for _, part := range partitions {
-		partitionInstances = append(partitionInstances, part.WmiInstance)
-	}
-
-	var volumeInstances []*cim.WmiInstance
-	for _, volume := range volumes {
-		volumeInstances = append(volumeInstances, volume.WmiInstance)
-	}
-
-	partitionToVolumeMappings, err := ListPartitionToVolumeMappings()
-	if err != nil {
-		return nil, err
-	}
-
-	filtered, err := FindInstancesByObjectIDMapping(partitionInstances, volumeInstances, partitionToVolumeMappings)
-	if err != nil {
-		return nil, err
-	}
-
+// using MSFT_PartitionToVolume association.
+//
+// WMI association MSFT_PartitionToVolume:
+//
+//	Partition                                                               | Volume
+//	---------                                                               | ------
+//	MSFT_Partition (ObjectId = "{1}\\WIN-8E2EVAQ9QSB\ROOT/Microsoft/Win...) | MSFT_Volume (ObjectId = "{1}\\WIN-8E2EVAQ9QS...
+//
+// Refer to https://learn.microsoft.com/en-us/windows-hardware/drivers/storage/msft-partitiontovolume
+// for the WMI class definition.
+func FindPartitionsByVolume(volumes []*storage.MSFT_Volume) ([]*storage.MSFT_Partition, error) {
 	var result []*storage.MSFT_Partition
-	for _, instance := range filtered {
-		part, err := storage.NewMSFT_PartitionEx1(instance)
+	for _, vol := range volumes {
+		collection, err := vol.GetAssociated("MSFT_PartitionToVolume", "MSFT_Partition", "Partition", "Volume")
 		if err != nil {
-			return nil, fmt.Errorf("failed to query partition %v. error: %v", instance, err)
+			return nil, fmt.Errorf("failed to query associated partition for %v. error: %v", vol, err)
 		}
 
-		result = append(result, part)
+		for _, instance := range collection {
+			part, err := storage.NewMSFT_PartitionEx1(instance)
+			if err != nil {
+				return nil, fmt.Errorf("failed to query partition %v. error: %v", instance, err)
+			}
+
+			result = append(result, part)
+		}
 	}
 
 	return result, nil
 }
 
 // FindVolumesByPartition finds all volumes associated with the given partitions
-// using volume-to-partition mapping.
-func FindVolumesByPartition(volumes []*storage.MSFT_Volume, partitions []*storage.MSFT_Partition) ([]*storage.MSFT_Volume, error) {
-	var volumeInstances []*cim.WmiInstance
-	for _, volume := range volumes {
-		volumeInstances = append(volumeInstances, volume.WmiInstance)
-	}
-
-	var partitionInstances []*cim.WmiInstance
-	for _, part := range partitions {
-		partitionInstances = append(partitionInstances, part.WmiInstance)
-	}
-
-	volumeToPartitionMappings, err := ListVolumeToPartitionMappings()
-	if err != nil {
-		return nil, err
-	}
-
-	filtered, err := FindInstancesByObjectIDMapping(volumeInstances, partitionInstances, volumeToPartitionMappings)
-	if err != nil {
-		return nil, err
-	}
-
+// using MSFT_PartitionToVolume association.
+//
+// WMI association MSFT_PartitionToVolume:
+//
+//	Partition                                                               | Volume
+//	---------                                                               | ------
+//	MSFT_Partition (ObjectId = "{1}\\WIN-8E2EVAQ9QSB\ROOT/Microsoft/Win...) | MSFT_Volume (ObjectId = "{1}\\WIN-8E2EVAQ9QS...
+//
+// Refer to https://learn.microsoft.com/en-us/windows-hardware/drivers/storage/msft-partitiontovolume
+// for the WMI class definition.
+func FindVolumesByPartition(partitions []*storage.MSFT_Partition) ([]*storage.MSFT_Volume, error) {
 	var result []*storage.MSFT_Volume
-	for _, instance := range filtered {
-		volume, err := storage.NewMSFT_VolumeEx1(instance)
+	for _, part := range partitions {
+		collection, err := part.GetAssociated("MSFT_PartitionToVolume", "MSFT_Volume", "Volume", "Partition")
 		if err != nil {
-			return nil, fmt.Errorf("failed to query volume %v. error: %v", instance, err)
+			return nil, fmt.Errorf("failed to query associated volumes for %v. error: %v", part, err)
 		}
 
-		result = append(result, volume)
+		for _, instance := range collection {
+			volume, err := storage.NewMSFT_VolumeEx1(instance)
+			if err != nil {
+				return nil, fmt.Errorf("failed to query volume %v. error: %v", instance, err)
+			}
+
+			result = append(result, volume)
+		}
 	}
 
 	return result, nil
 }
 
 // GetPartitionByVolumeUniqueID retrieves a specific partition from a volume identified by its unique ID.
-func GetPartitionByVolumeUniqueID(volumeID string, partitionSelectorList []string) (*storage.MSFT_Partition, error) {
+func GetPartitionByVolumeUniqueID(volumeID string) (*storage.MSFT_Partition, error) {
 	volume, err := QueryVolumeByUniqueID(volumeID, []string{"ObjectId"})
 	if err != nil {
 		return nil, err
 	}
 
-	partitions, err := ListPartitionsWithFilters(partitionSelectorList)
+	result, err := FindPartitionsByVolume([]*storage.MSFT_Volume{volume})
 	if err != nil {
 		return nil, err
 	}
 
-	result, err := FindPartitionsByVolume(partitions, []*storage.MSFT_Volume{volume})
-	if err != nil {
-		return nil, err
+	if len(result) == 0 {
+		return nil, errors.NotFound
 	}
 
 	return result[0], nil
@@ -285,12 +237,7 @@ func GetVolumeByDriveLetter(driveLetter string, partitionSelectorList []string) 
 		return nil, err
 	}
 
-	volumes, err := ListVolumes(partitionSelectorList)
-	if err != nil {
-		return nil, err
-	}
-
-	result, err := FindVolumesByPartition(volumes, partitions)
+	result, err := FindVolumesByPartition(partitions)
 	if err != nil {
 		return nil, err
 	}
