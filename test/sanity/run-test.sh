@@ -36,11 +36,7 @@ if [[ "${ARCH}" == "x86_64" || ${ARCH} == "unknown" ]]; then
   ARCH="amd64"
 fi
 
-if [[ "$#" -lt 2 || "$2" != "v2" ]]; then
-  _output/${ARCH}/azurediskplugin --endpoint "$endpoint" --nodeid "$nodeid" -v=5 -support-zone=false -enable-disk-capacity-check=true &
-else
-  _output/${ARCH}/azurediskpluginv2 --endpoint "$endpoint" --nodeid "$nodeid" -v=5 -support-zone=false -enable-disk-capacity-check=true &
-fi
+_output/${ARCH}/azurediskplugin --endpoint "$endpoint" --nodeid "$nodeid" -v=5 -support-zone=false -enable-disk-capacity-check=true &
 
 # sleep a while waiting for azurediskplugin start up
 sleep 1
