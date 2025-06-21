@@ -21,7 +21,6 @@ import (
 	"errors"
 	"fmt"
 	"math"
-	"regexp"
 	"strings"
 	"sync"
 	"time"
@@ -37,6 +36,7 @@ import (
 	"k8s.io/klog/v2"
 	"k8s.io/utils/ptr"
 
+	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/util"
 	"sigs.k8s.io/cloud-provider-azure/pkg/azclient"
@@ -79,11 +79,6 @@ var defaultBackOff = kwait.Backoff{
 	Factor:   1.5,
 	Jitter:   0.0,
 }
-
-var (
-	managedDiskPathRE  = regexp.MustCompile(`.*/subscriptions/(?:.*)/resourceGroups/(?:.*)/providers/Microsoft.Compute/disks/(.+)`)
-	diskSnapshotPathRE = regexp.MustCompile(`.*/subscriptions/(?:.*)/resourceGroups/(?:.*)/providers/Microsoft.Compute/snapshots/(.+)`)
-)
 
 type controllerCommon struct {
 	diskStateMap  sync.Map // <diskURI, attaching/detaching state>
@@ -646,12 +641,12 @@ func getValidCreationData(subscriptionID, resourceGroup string, options *Managed
 	sourceResourceID := options.SourceResourceID
 	switch options.SourceType {
 	case sourceSnapshot:
-		if match := diskSnapshotPathRE.FindString(sourceResourceID); match == "" {
+		if match := azureconstants.DiskSnapshotPathRE.FindString(sourceResourceID); match == "" {
 			sourceResourceID = fmt.Sprintf(diskSnapshotPath, subscriptionID, resourceGroup, sourceResourceID)
 		}
 
 	case sourceVolume:
-		if match := managedDiskPathRE.FindString(sourceResourceID); match == "" {
+		if match := azureconstants.ManagedDiskPathRE.FindString(sourceResourceID); match == "" {
 			sourceResourceID = fmt.Sprintf(managedDiskPath, subscriptionID, resourceGroup, sourceResourceID)
 		}
 	default:
@@ -664,9 +659,9 @@ func getValidCreationData(subscriptionID, resourceGroup string, options *Managed
 	splits := strings.Split(sourceResourceID, "/")
 	if len(splits) > 9 {
 		if options.SourceType == sourceSnapshot {
-			return armcompute.CreationData{}, fmt.Errorf("sourceResourceID(%s) is invalid, correct format: %s", sourceResourceID, diskSnapshotPathRE)
+			return armcompute.CreationData{}, fmt.Errorf("sourceResourceID(%s) is invalid, correct format: %s", sourceResourceID, azureconstants.DiskSnapshotPathRE)
 		}
-		return armcompute.CreationData{}, fmt.Errorf("sourceResourceID(%s) is invalid, correct format: %s", sourceResourceID, managedDiskPathRE)
+		return armcompute.CreationData{}, fmt.Errorf("sourceResourceID(%s) is invalid, correct format: %s", sourceResourceID, azureconstants.ManagedDiskPathRE)
 	}
 	return armcompute.CreationData{
 		CreateOption:     to.Ptr(armcompute.DiskCreateOptionCopy),
