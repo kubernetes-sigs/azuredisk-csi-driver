@@ -884,13 +884,18 @@ func (d *DriverV2) CreateSnapshot(ctx context.Context, req *csi.CreateSnapshotRe
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "could not get snapshot client for subscription(%s) with error(%v)", subsID, err)
 	}
-	if _, err := snapshotClient.CreateOrUpdate(ctx, resourceGroup, snapshotName, snapshot); err != nil {
-		if strings.Contains(err.Error(), "existing disk") {
-			return nil, status.Error(codes.AlreadyExists, fmt.Sprintf("request snapshot(%s) under rg(%s) already exists, but the SourceVolumeId is different, error details: %v", snapshotName, resourceGroup, err))
+
+	csiSnap, _ := d.getSnapshotByID(ctx, subsID, resourceGroup, snapshotName, "")
+	if csiSnap == nil || sourceVolumeID != csiSnap.SourceVolumeId {
+		if _, err := snapshotClient.CreateOrUpdate(ctx, resourceGroup, snapshotName, snapshot); err != nil {
+			if strings.Contains(err.Error(), "existing disk") {
+				return nil, status.Error(codes.AlreadyExists, fmt.Sprintf("request snapshot(%s) under rg(%s) already exists, but the SourceVolumeId is different, error details: %v", snapshotName, resourceGroup, err))
+			}
+			azureutils.SleepIfThrottled(err, consts.SnapshotOpThrottlingSleepSec)
+			return nil, status.Error(codes.Internal, fmt.Sprintf("create snapshot error: %v", err))
 		}
-		azureutils.SleepIfThrottled(err, consts.SnapshotOpThrottlingSleepSec)
-		return nil, status.Error(codes.Internal, fmt.Sprintf("create snapshot error: %v", err))
 	}
+
 	if err := d.waitForSnapshotReady(ctx, subsID, resourceGroup, snapshotName, waitForSnapshotReadyInterval, waitForSnapshotReadyTimeout); err != nil {
 		return nil, status.Error(codes.Internal, fmt.Sprintf("waitForSnapshotReady(%s, %s, %s) failed with %v", subsID, resourceGroup, snapshotName, err))
 	}
