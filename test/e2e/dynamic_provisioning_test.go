@@ -1383,6 +1383,36 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 
 		test.Run(ctx, cs, ns)
 	})
+
+	ginkgo.It("should succeed without MaximumDataDisksExceeded", func(ctx ginkgo.SpecContext) {
+		// there's cleanup issue of PVs with this test in the Windows with hostprocess, skip it for now
+		skipIfTestingInWindowsCluster()
+		skipIfOnAzureStackCloud()
+		skipIfUsingInTreeVolumePlugin()
+		pods := []testsuites.PodDetails{
+			{
+				Cmd: convertToPowershellorCmdCommandIfNecessary("echo 'Data for pod $HOSTNAME' > /mnt/test-1/data && sleep 30"),
+				Volumes: t.normalizeVolumes([]testsuites.VolumeDetails{
+					{
+						FSType:    "ext3",
+						ClaimSize: "1Gi",
+						VolumeMount: testsuites.VolumeMountDetails{
+							NameGenerate:      "test-volume-",
+							MountPathGenerate: "/mnt/test-",
+						},
+						VolumeAccessMode: v1.ReadWriteOnce,
+					},
+				}, isMultiZone),
+				IsWindows:    isWindowsCluster,
+				WinServerVer: winServerVer,
+			},
+		}
+		test := testsuites.DynamicallyProvisionedAttachBatchTest{
+			CSIDriver: testDriver,
+			Pods:      pods,
+		}
+		test.Run(ctx, cs, ns)
+	})
 }
 
 // Normalize volumes by adding allowed topology values and WaitForFirstConsumer binding mode if we are testing in a multi-az cluster
