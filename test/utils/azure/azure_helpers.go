@@ -23,7 +23,6 @@ import (
 	"time"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/to"
-	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute/v6"
 	compute "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute/v6"
 	network "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/network/armnetwork/v6"
 	resources "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/resources/armresources"
@@ -91,7 +90,7 @@ func (az *Client) GetAzureDisksClient() (diskclient.Interface, error) {
 }
 
 func (az *Client) EnsureSSHPublicKey(ctx context.Context, resourceGroupName, location, keyName string) (publicKey string, err error) {
-	_, err = az.sshPublicKeysClient.Create(ctx, resourceGroupName, keyName, armcompute.SSHPublicKeyResource{Location: &location})
+	_, err = az.sshPublicKeysClient.Create(ctx, resourceGroupName, keyName, compute.SSHPublicKeyResource{Location: &location})
 	if err != nil {
 		return "", err
 	}
@@ -145,12 +144,12 @@ func (az *Client) DeleteResourceGroup(ctx context.Context, groupName string) err
 func (az *Client) EnsureVirtualMachine(ctx context.Context, groupName, location, vmName string) (compute.VirtualMachine, error) {
 	nic, err := az.EnsureNIC(ctx, groupName, location, vmName+"-nic", vmName+"-vnet", vmName+"-subnet")
 	if err != nil {
-		return armcompute.VirtualMachine{}, err
+		return compute.VirtualMachine{}, err
 	}
 
 	publicKey, err := az.EnsureSSHPublicKey(ctx, groupName, location, "test-key")
 	if err != nil {
-		return armcompute.VirtualMachine{}, err
+		return compute.VirtualMachine{}, err
 	}
 
 	resp, err := az.vmClient.CreateOrUpdate(
@@ -159,25 +158,25 @@ func (az *Client) EnsureVirtualMachine(ctx context.Context, groupName, location,
 		vmName,
 		compute.VirtualMachine{
 			Location: to.Ptr(location),
-			Properties: &armcompute.VirtualMachineProperties{
-				HardwareProfile: &armcompute.HardwareProfile{
+			Properties: &compute.VirtualMachineProperties{
+				HardwareProfile: &compute.HardwareProfile{
 					VMSize: to.Ptr(compute.VirtualMachineSizeTypesStandardDS2V2),
 				},
-				StorageProfile: &armcompute.StorageProfile{
-					ImageReference: &armcompute.ImageReference{
+				StorageProfile: &compute.StorageProfile{
+					ImageReference: &compute.ImageReference{
 						Publisher: to.Ptr("Canonical"),
 						Offer:     to.Ptr("UbuntuServer"),
 						SKU:       to.Ptr("16.04.0-LTS"),
 						Version:   to.Ptr("latest"),
 					},
 				},
-				OSProfile: &armcompute.OSProfile{
+				OSProfile: &compute.OSProfile{
 					ComputerName:  to.Ptr(vmName),
 					AdminUsername: to.Ptr("azureuser"),
 					AdminPassword: to.Ptr("Azureuser1234"),
-					LinuxConfiguration: &armcompute.LinuxConfiguration{
+					LinuxConfiguration: &compute.LinuxConfiguration{
 						DisablePasswordAuthentication: to.Ptr(true),
-						SSH: &armcompute.SSHConfiguration{
+						SSH: &compute.SSHConfiguration{
 							PublicKeys: []*compute.SSHPublicKey{
 								{
 									Path:    to.Ptr("/home/azureuser/.ssh/authorized_keys"),
@@ -187,11 +186,11 @@ func (az *Client) EnsureVirtualMachine(ctx context.Context, groupName, location,
 						},
 					},
 				},
-				NetworkProfile: &armcompute.NetworkProfile{
+				NetworkProfile: &compute.NetworkProfile{
 					NetworkInterfaces: []*compute.NetworkInterfaceReference{
 						{
 							ID: nic.ID,
-							Properties: &armcompute.NetworkInterfaceReferenceProperties{
+							Properties: &compute.NetworkInterfaceReferenceProperties{
 								Primary: to.Ptr(true),
 							},
 						},
@@ -201,7 +200,7 @@ func (az *Client) EnsureVirtualMachine(ctx context.Context, groupName, location,
 		},
 	)
 	if err != nil {
-		return armcompute.VirtualMachine{}, fmt.Errorf("cannot create vm: %v", err)
+		return compute.VirtualMachine{}, fmt.Errorf("cannot create vm: %v", err)
 	}
 
 	return *resp, nil

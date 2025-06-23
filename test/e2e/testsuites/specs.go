@@ -199,6 +199,25 @@ func (pod *PodDetails) SetupDeployment(ctx context.Context, client clientset.Int
 	return tDeployment, cleanupFuncs
 }
 
+func (pod *PodDetails) SetupJob(ctx context.Context, client clientset.Interface, namespace *v1.Namespace, sc *storagev1.StorageClass) (*TestJob, []func(context.Context)) {
+	cleanupFuncs := make([]func(context.Context), 0)
+	volume := pod.Volumes[0]
+
+	ginkgo.By("setting up the PVC")
+	tpvc := NewTestPersistentVolumeClaim(client, namespace, volume.ClaimSize, volume.VolumeMode, volume.VolumeAccessMode, sc)
+	tpvc.Create(ctx)
+	if volume.VolumeBindingMode == nil || *volume.VolumeBindingMode == storagev1.VolumeBindingImmediate {
+		tpvc.WaitForBound(ctx)
+		tpvc.ValidateProvisionedPersistentVolume(ctx)
+	}
+	cleanupFuncs = append(cleanupFuncs, tpvc.Cleanup)
+	ginkgo.By("setting up the Job")
+	ttlSecondsAfterFinished := int32(5)
+	tJob := NewTestJob(client, namespace, &ttlSecondsAfterFinished, pod.Cmd, tpvc.persistentVolumeClaim, fmt.Sprintf("%s%d", volume.VolumeMount.NameGenerate, 1), fmt.Sprintf("%s%d", volume.VolumeMount.MountPathGenerate, 1), volume.VolumeMount.ReadOnly, pod.IsWindows, pod.UseCMD, pod.UseAntiAffinity, pod.WinServerVer)
+
+	return tJob, cleanupFuncs
+}
+
 func (pod *PodDetails) SetupDeploymentWithPreProvisionedVolumes(ctx context.Context, client clientset.Interface, namespace *v1.Namespace, csiDriver driver.PreProvisionedVolumeTestDriver, volumeContext map[string]string) (*TestDeployment, []func(context.Context)) {
 	cleanupFuncs := make([]func(context.Context), 0)
 	volume := pod.Volumes[0]
