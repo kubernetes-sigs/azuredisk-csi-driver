@@ -41,8 +41,8 @@ import (
 	azure "sigs.k8s.io/cloud-provider-azure/pkg/provider"
 )
 
-func TestNewDriverV1(t *testing.T) {
-	d := newDriverV1(&DriverOptions{
+func TestNewDriver(t *testing.T) {
+	d := NewDriver(&DriverOptions{
 		NodeID:                 os.Getenv("nodeid"),
 		DriverName:             consts.DefaultDriverName,
 		VolumeAttachLimit:      16,
@@ -76,6 +76,27 @@ func TestCheckDiskCapacity(t *testing.T) {
 	assert.Equal(t, flag, false)
 	expectedErr := status.Errorf(6, "the request volume already exists, but its capacity(10) is different from (11)")
 	assert.Equal(t, err, expectedErr)
+}
+
+func TestCheckDiskCapacityWithThrottling(t *testing.T) {
+	cntl := gomock.NewController(t)
+	defer cntl.Finish()
+	d, _ := NewFakeDriver(cntl)
+	size := int32(10)
+	diskName := "unit-test"
+	resourceGroup := "unit-test"
+	disk := &armcompute.Disk{
+		Properties: &armcompute.DiskProperties{
+			DiskSizeGB: &size,
+		},
+	}
+	diskClient := mock_diskclient.NewMockInterface(cntl)
+	d.getClientFactory().(*mock_azclient.MockClientFactory).EXPECT().GetDiskClientForSub("").Return(diskClient, nil).AnyTimes()
+	diskClient.EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any()).Return(disk, nil).AnyTimes()
+
+	d.setThrottlingCache(consts.GetDiskThrottlingKey, "")
+	flag, _ := d.checkDiskCapacity(context.TODO(), "", resourceGroup, diskName, 11)
+	assert.Equal(t, flag, true)
 }
 
 func TestRun(t *testing.T) {
@@ -182,7 +203,7 @@ func TestRun(t *testing.T) {
 
 				t.Setenv(consts.DefaultAzureCredentialFileEnv, fakeCredFile)
 
-				d := newDriverV1(&DriverOptions{
+				d := NewDriver(&DriverOptions{
 					NodeID:                 "",
 					DriverName:             consts.DefaultDriverName,
 					EnableListVolumes:      true,
@@ -220,7 +241,7 @@ func TestRun(t *testing.T) {
 				t.Setenv("AZURE_CLIENT_ID", "123456")
 				t.Setenv("AZURE_FEDERATED_TOKEN_FILE", "fake-token-file")
 
-				d := newDriverV1(&DriverOptions{
+				d := NewDriver(&DriverOptions{
 					NodeID:                 "",
 					DriverName:             consts.DefaultDriverName,
 					EnableListVolumes:      true,
@@ -258,6 +279,15 @@ func TestDriver_checkDiskExists(t *testing.T) {
 	d, _ := NewFakeDriver(cntl)
 	_, err := d.checkDiskExists(context.TODO(), "testurl/subscriptions/12/providers/Microsoft.Compute/disks/name")
 	assert.NotEqual(t, err, nil)
+}
+
+func TestDriver_CheckDiskExists_Success(t *testing.T) {
+	cntl := gomock.NewController(t)
+	defer cntl.Finish()
+	d, _ := NewFakeDriver(cntl)
+	d.setThrottlingCache(consts.GetDiskThrottlingKey, "")
+	_, err := d.checkDiskExists(context.TODO(), "testurl/subscriptions/12/resourceGroups/23/providers/Microsoft.Compute/disks/name")
+	assert.Equal(t, err, nil)
 }
 
 func TestGetNodeInfoFromLabels(t *testing.T) {
