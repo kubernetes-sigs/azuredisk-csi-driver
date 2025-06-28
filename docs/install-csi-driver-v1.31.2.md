@@ -44,5 +44,5 @@ curl -skSL https://raw.githubusercontent.com/kubernetes-sigs/azuredisk-csi-drive
 git clone https://github.com/kubernetes-sigs/azuredisk-csi-driver.git
 cd azuredisk-csi-driver
 git checkout v1.31.2
-./deploy/install-driver.sh v1.31.2 local
+./deploy/uninstall-driver.sh v1.31.2 local
 ```
