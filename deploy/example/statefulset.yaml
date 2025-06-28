@@ -2,12 +2,12 @@
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
-  name: statefulset-azuredisk
+  name: statefulset-azuredisk2
   labels:
     app: nginx
 spec:
   podManagementPolicy: Parallel  # default is OrderedReady
-  serviceName: statefulset-azuredisk
+  serviceName: statefulset-azuredisk2
   replicas: 1
   template:
     metadata:
