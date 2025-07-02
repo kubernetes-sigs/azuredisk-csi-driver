@@ -17,7 +17,7 @@ You could specify the following parameters in `VolumeAttributesClass`:
 - `DiskIOPSReadWrite`: disk IOPS
 - `DiskMBpsReadWrite`: disk throughput
 - `skuName`:  disk type
-> Changing the `skuName` to or from UltraSSD_LRS or PremiumV2_LRS is not permitted. For additional information, please consult the following resource [Change the disk type of an Azure managed disk](https://learn.microsoft.com/en-us/azure/virtual-machines/disks-convert-types?tabs=azure-powershell)
+> Changing the `skuName` to or from UltraSSD_LRS is not permitted. For additional information, please consult the following resource [Change the disk type of an Azure managed disk](https://learn.microsoft.com/en-us/azure/virtual-machines/disks-convert-types?tabs=azure-powershell)
 
 here is an example to update disk IOPS and throughput:
 
