@@ -1382,9 +1382,6 @@ func TestCreateSnapshot(t *testing.T) {
 		{
 			name: "invalid data access auth mode ",
 			testFunc: func(t *testing.T) {
-				if *useDriverV2 {
-					t.Skip("Skip the test for driver v2")
-				}
 				parameter := make(map[string]string)
 				parameter["dataaccessauthmode"] = "Invalid"
 				req := &csi.CreateSnapshotRequest{
@@ -1407,9 +1404,6 @@ func TestCreateSnapshot(t *testing.T) {
 		{
 			name: "cross region non-incremental error ",
 			testFunc: func(t *testing.T) {
-				if *useDriverV2 {
-					t.Skip("Skip the test for driver v2")
-				}
 				parameter := make(map[string]string)
 				parameter["location"] = "eastus"
 				parameter["incremental"] = "false"
@@ -1432,9 +1426,6 @@ func TestCreateSnapshot(t *testing.T) {
 		{
 			name: "get snapshot client error ",
 			testFunc: func(t *testing.T) {
-				if *useDriverV2 {
-					t.Skip("Skip the test for driver v2")
-				}
 				parameter := make(map[string]string)
 				parameter["SubscriptionID"] = "1"
 				req := &csi.CreateSnapshotRequest{
@@ -1539,9 +1530,6 @@ func TestCreateSnapshot(t *testing.T) {
 		{
 			name: "Get snapshot ID error ",
 			testFunc: func(t *testing.T) {
-				if *useDriverV2 {
-					t.Skip("Skip the test for driver v2")
-				}
 				parameter := make(map[string]string)
 				parameter["tags"] = "unit=test"
 				req := &csi.CreateSnapshotRequest{
@@ -1584,9 +1572,6 @@ func TestCreateSnapshot(t *testing.T) {
 		{
 			name: "create snapshot error - cross region",
 			testFunc: func(t *testing.T) {
-				if *useDriverV2 {
-					t.Skip("Skip the test for driver v2")
-				}
 				parameter := make(map[string]string)
 				parameter["tags"] = "unit=test"
 				parameter["location"] = "eastus"
@@ -1631,9 +1616,6 @@ func TestCreateSnapshot(t *testing.T) {
 		{
 			name: "create snapshot already exist - cross region",
 			testFunc: func(t *testing.T) {
-				if *useDriverV2 {
-					t.Skip("Skip the test for driver v2")
-				}
 				parameter := make(map[string]string)
 				parameter["tags"] = "unit=test"
 				parameter["location"] = "eastus"
@@ -1677,9 +1659,6 @@ func TestCreateSnapshot(t *testing.T) {
 		{
 			name: "Wait snapshot ready error - cross region",
 			testFunc: func(t *testing.T) {
-				if *useDriverV2 {
-					t.Skip("Skip the test for driver v2")
-				}
 				parameter := make(map[string]string)
 				parameter["tags"] = "unit=test"
 				parameter["location"] = "eastus"
@@ -1724,9 +1703,6 @@ func TestCreateSnapshot(t *testing.T) {
 		{
 			name: "Get snapshot ID error - cross region",
 			testFunc: func(t *testing.T) {
-				if *useDriverV2 {
-					t.Skip("Skip the test for driver v2")
-				}
 				parameter := make(map[string]string)
 				parameter["tags"] = "unit=test"
 				parameter["location"] = "eastus"
@@ -1823,9 +1799,6 @@ func TestCreateSnapshot(t *testing.T) {
 		{
 			name: "valid request - set optional parameter",
 			testFunc: func(t *testing.T) {
-				if *useDriverV2 {
-					t.Skip("Skip the test for driver v2")
-				}
 				parameter := make(map[string]string)
 				parameter["tags"] = "unit=test"
 				parameter["dataaccessauthmode"] = "None"
@@ -1882,9 +1855,6 @@ func TestCreateSnapshot(t *testing.T) {
 		{
 			name: "valid request - azure stack",
 			testFunc: func(t *testing.T) {
-				if *useDriverV2 {
-					t.Skip("Skip the test for driver v2")
-				}
 				parameter := make(map[string]string)
 				req := &csi.CreateSnapshotRequest{
 					SourceVolumeId: testVolumeID,
@@ -1937,9 +1907,6 @@ func TestCreateSnapshot(t *testing.T) {
 		{
 			name: "valid request - cross region",
 			testFunc: func(t *testing.T) {
-				if *useDriverV2 {
-					t.Skip("Skip the test for driver v2")
-				}
 				parameter := make(map[string]string)
 				parameter["location"] = "eastus"
 				parameter["incremental"] = "true"
@@ -1992,9 +1959,6 @@ func TestCreateSnapshot(t *testing.T) {
 		{
 			name: "valid request - cross region with delete error still success",
 			testFunc: func(t *testing.T) {
-				if *useDriverV2 {
-					t.Skip("Skip the test for driver v2")
-				}
 				parameter := make(map[string]string)
 				parameter["tags"] = "unit=test"
 				parameter["location"] = "eastus"
