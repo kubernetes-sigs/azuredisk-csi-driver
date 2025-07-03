@@ -54,20 +54,20 @@ func GetWmiInstanceManagerFromCred(hostname, namespaceName string, cred *credent
 	return GetWmiInstanceManager(hostname, namespaceName, cred.UserName, cred.Password, cred.Domain)
 }
 func GetWmiInstanceManager(hostname, namespaceName, userName, password, domainName string) (*WmiInstanceManager, error) {
+	mutex.Lock()
+	defer mutex.Unlock()
+
 	mapId := strings.Join([]string{hostname, namespaceName, domainName}, "_")
 	if val, ok := instanceManagerMap[mapId]; ok {
 		return val, nil
 	}
 
-	mutex.Lock()
-	defer mutex.Unlock()
 	var err error
 	instanceManagerMap[mapId], err = newWmiInstanceManager(hostname, namespaceName, userName, password, domainName)
 	if err != nil {
 		return nil, err
 	}
 	return instanceManagerMap[mapId], nil
-
 }
 
 func (im *WmiInstanceManager) CreateInstance(className string) (*wmi.WmiInstance, error) {
