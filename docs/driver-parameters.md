@@ -17,8 +17,8 @@ Microsoft.Compute/virtualMachineScaleSets/virtualMachines/read
 Microsoft.Compute/virtualMachineScaleSets/read
 Microsoft.Compute/locations/operations/read
 Microsoft.Compute/locations/DiskOperations/read
-Microsoft.Resources/subscriptions/resourceGroups/Microsoft.Compute/read
-Microsoft.Resources/subscriptions/resourceGroups/Microsoft.Compute/*/read
+Microsoft.Resources/subscriptions/resourceGroups/read
+Microsoft.Resources/subscriptions/resourceGroups/*/read
 # Those are needed only when the virtualMachine or virtualMachineScaleSets have these additional resources configured:
 Microsoft.Compute/disks/beginGetAccess/action
 Microsoft.KeyVault/vaults/deploy/action
