@@ -68,6 +68,8 @@ type FakeDriver interface {
 	CSIDriver
 
 	GetSourceDiskSize(ctx context.Context, subsID, resourceGroup, diskName string, curDepth, maxDepth int) (*int32, *armcompute.Disk, error)
+	SetWaitForSnapshotReady(bool)
+	GetWaitForSnapshotReady() bool
 
 	setNextCommandOutputScripts(scripts ...testingexec.FakeAction)
 
@@ -189,4 +191,12 @@ func createVolumeCapability(accessMode csi.VolumeCapability_AccessMode_Mode) *cs
 			Mode: accessMode,
 		},
 	}
+}
+
+func (d *fakeDriver) SetWaitForSnapshotReady(shouldWait bool) {
+	d.shouldWaitForSnapshotReady = shouldWait
+}
+
+func (d *fakeDriver) GetWaitForSnapshotReady() bool {
+	return d.shouldWaitForSnapshotReady
 }
