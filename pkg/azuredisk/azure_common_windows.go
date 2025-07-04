@@ -130,7 +130,7 @@ func rescanAllVolumes(io azureutils.IOHandler) error {
 	return nil
 }
 
-func (d *DriverCore) GetVolumeStats(ctx context.Context, m *mount.SafeFormatAndMount, volumeID, target string, hostutil hostUtil) ([]*csi.VolumeUsage, error) {
+func (d *Driver) GetVolumeStats(ctx context.Context, m *mount.SafeFormatAndMount, volumeID, target string, hostutil hostUtil) ([]*csi.VolumeUsage, error) {
 	// check if the volume stats is cached
 	cache, err := d.volStatsCache.Get(ctx, volumeID, azcache.CacheReadTypeDefault)
 	if err != nil {

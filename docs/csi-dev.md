@@ -13,16 +13,6 @@ $ cd $GOPATH/src/sigs.k8s.io/azuredisk-csi-driver
 $ make azuredisk
 ```
 
- - Build CSI driver v2
-
-Development of the V2 driver is currently ongoing in the `main_v2` branch.
-
-```console
-$ cd $GOPATH/src/sigs.k8s.io/azuredisk-csi-driver
-$ git checkout main_v2
-$ BUILD_V2=true make azuredisk
-```
-
  - Run verification before sending PR
 ```console
 $ make verify
@@ -138,22 +128,6 @@ make container-all
 # create a manifest list for the images above
 make push-manifest
 ```
- - For the V2 driver, set the BUILD_V2 environment variable before building the images. You will also need to build the scheduler extender image as well.
-```console
-export REGISTRY=<dockerhub-alias>
-export IMAGE_VERSION=latest-v2
-export BUILD_V2=true
-# checkout the V2 development branch
-git checkout main_v2
-# build linux, windows images
-make container-all
-# create a manifest list for the images above
-make push-manifest
-# build scheduler extender image
-make azdiskschedulerextender-all
-# create a manifest list for the scheduler extender images
-make push-manifest-azdiskschedulerextender
-```
 
  - Install your private build using Helm.
 ```console
@@ -163,19 +137,6 @@ helm install azuredisk-csi-driver charts/latest/azuredisk-csi-driver \
   --set image.azuredisk.repository=$REGISTRY/azuredisk-csi-driver \
   --set image.azuredisk.tag=$IMAGE_VERSION \
   --set image.azuredisk.pullPolicy=Always
-```
-
- - Install your private build of the V2 driver using Helm.
-```console
-curl https://raw.githubusercontent.com/helm/helm/master/scripts/get-helm-3 | bash
-helm install azuredisk-csi-driver charts/latest-v2/azuredisk-csi-driver \
-  --namespace kube-system \
-  --set image.azuredisk.repository=$REGISTRY/azuredisk-csi-driver \
-  --set image.azuredisk.tag=$IMAGE_VERSION \
-  --set image.azuredisk.pullPolicy=Always \
-  --set image.schedulerExtender.repository=$REGISTRY/azuredisk-csi-driver \
-  --set image.schedulerExtender.tag=$IMAGE_VERSION \
-  --set image.schedulerExtender.pullPolicy=Always
 ```
 
 ### How to update Azure cloud provider library
