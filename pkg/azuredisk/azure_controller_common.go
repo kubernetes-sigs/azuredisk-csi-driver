@@ -302,7 +302,14 @@ func (c *controllerCommon) AttachDisk(ctx context.Context, diskName, diskURI str
 			err = vmset.UpdateVM(ctx, nodeName)
 		}
 		if err != nil {
-			return -1, err
+			// re-check if attach fails, some other disks might fail in the batch but the attach for the disk could be successful
+			// to avoid delay for the k8s retry
+			diskLun, _, errGetLun := c.GetDiskLun(ctx, diskName, diskURI, nodeName)
+			if errGetLun != nil {
+				return -1, err
+			}
+			klog.Errorf("attaching batch to node %s failed, diskMap len:%d, %+v, error: %v", nodeName, len(diskMap), diskMap, err)
+			return diskLun, nil
 		}
 	}
 
@@ -417,6 +424,12 @@ func (c *controllerCommon) DetachDisk(ctx context.Context, diskName, diskURI str
 	}
 
 	if err != nil {
+		// re-check if detach fails, some other disks might fail in the batch but the detach for the disk could be successful
+		_, _, errGetLun := c.GetDiskLun(ctx, diskName, diskURI, nodeName)
+		if errGetLun != nil && strings.Contains(errGetLun.Error(), consts.CannotFindDiskLUN) {
+			klog.Errorf("detaching batch to node %s failed, diskMap len:%d, %+v, error: %v", nodeName, len(diskMap), diskMap, err)
+			return nil
+		}
 		klog.Errorf("azureDisk - detach disk(%s, %s) failed, err: %v", diskName, diskURI, err)
 		return err
 	}
