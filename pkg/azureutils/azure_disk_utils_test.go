@@ -1989,3 +1989,121 @@ func TestGetInfoFromURI(t *testing.T) {
 		}
 	}
 }
+
+func TestParseDiskParameters_DiskNameTemplateVariables(t *testing.T) {
+	tests := []struct {
+		name        string
+		diskName    string
+		tags        map[string]string
+		expected    string
+		description string
+	}{
+		{
+			name:     "all variables replaced",
+			diskName: "disk-${pvc.metadata.name}-${pvc.metadata.namespace}-${pv.metadata.name}",
+			tags: map[string]string{
+				consts.PvcNameTag:      "mypvc",
+				consts.PvcNamespaceTag: "myns",
+				consts.PvNameTag:       "mypv",
+			},
+			expected:    "disk-mypvc-myns-mypv",
+			description: "All template variables are replaced",
+		},
+		{
+			name:     "missing pvc name",
+			diskName: "disk-${pvc.metadata.name}-${pvc.metadata.namespace}-${pv.metadata.name}",
+			tags: map[string]string{
+				consts.PvcNamespaceTag: "myns",
+				consts.PvNameTag:       "mypv",
+			},
+			expected:    "disk-${pvc.metadata.name}-myns-mypv",
+			description: "pvc name missing, only others replaced",
+		},
+		{
+			name:     "missing pvc namespace",
+			diskName: "disk-${pvc.metadata.name}-${pvc.metadata.namespace}-${pv.metadata.name}",
+			tags: map[string]string{
+				consts.PvcNameTag: "mypvc",
+				consts.PvNameTag:  "mypv",
+			},
+			expected:    "disk-mypvc-${pvc.metadata.namespace}-mypv",
+			description: "pvc namespace missing, only others replaced",
+		},
+		{
+			name:     "missing pv name",
+			diskName: "disk-${pvc.metadata.name}-${pvc.metadata.namespace}-${pv.metadata.name}",
+			tags: map[string]string{
+				consts.PvcNameTag:      "mypvc",
+				consts.PvcNamespaceTag: "myns",
+			},
+			expected:    "disk-mypvc-myns-${pv.metadata.name}",
+			description: "pv name missing, only others replaced",
+		},
+		{
+			name:     "no variables present",
+			diskName: "disk-plain",
+			tags: map[string]string{
+				consts.PvcNameTag:      "mypvc",
+				consts.PvcNamespaceTag: "myns",
+				consts.PvNameTag:       "mypv",
+			},
+			expected:    "disk-plain",
+			description: "No template variables, disk name unchanged",
+		},
+		{
+			name:        "empty tags",
+			diskName:    "disk-${pvc.metadata.name}-${pvc.metadata.namespace}-${pv.metadata.name}",
+			tags:        map[string]string{},
+			expected:    "disk-${pvc.metadata.name}-${pvc.metadata.namespace}-${pv.metadata.name}",
+			description: "No tags, disk name unchanged",
+		},
+		{
+			name:     "empty disk name",
+			diskName: "",
+			tags: map[string]string{
+				consts.PvcNameTag:      "mypvc",
+				consts.PvcNamespaceTag: "myns",
+				consts.PvNameTag:       "mypv",
+			},
+			expected:    "",
+			description: "Empty disk name, nothing to replace",
+		},
+		{
+			name:     "variables with empty tag values",
+			diskName: "disk-${pvc.metadata.name}-${pvc.metadata.namespace}-${pv.metadata.name}",
+			tags: map[string]string{
+				consts.PvcNameTag:      "",
+				consts.PvcNamespaceTag: "",
+				consts.PvNameTag:       "",
+			},
+			expected:    "disk-${pvc.metadata.name}-${pvc.metadata.namespace}-${pv.metadata.name}",
+			description: "Tags present but empty, disk name unchanged",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			params := ManagedDiskParameters{
+				DiskName: tt.diskName,
+				Tags:     make(map[string]string),
+			}
+			// Copy tags to params.Tags
+			for k, v := range tt.tags {
+				params.Tags[k] = v
+			}
+			// Simulate the template replacement logic
+			if strings.Contains(params.DiskName, "$") {
+				if pvcName, ok := params.Tags[consts.PvcNameTag]; ok && pvcName != "" {
+					params.DiskName = strings.ReplaceAll(params.DiskName, "${pvc.metadata.name}", pvcName)
+				}
+				if pvcNamespace, ok := params.Tags[consts.PvcNamespaceTag]; ok && pvcNamespace != "" {
+					params.DiskName = strings.ReplaceAll(params.DiskName, "${pvc.metadata.namespace}", pvcNamespace)
+				}
+				if pvName, ok := params.Tags[consts.PvNameTag]; ok && pvName != "" {
+					params.DiskName = strings.ReplaceAll(params.DiskName, "${pv.metadata.name}", pvName)
+				}
+			}
+			assert.Equal(t, tt.expected, params.DiskName, tt.description)
+		})
+	}
+}

@@ -153,27 +153,7 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 	}
 
 	if diskParams.DiskName == "" {
-		pvcName, pvcNameOk := diskParams.Tags[consts.PvcNameTag]
-		pvcNamespace, pvcNamespaceOk := diskParams.Tags[consts.PvcNamespaceTag]
-		if val, ok := params["diskName"]; ok && val != "" {
-			// Template substitution for ${pvc.metadata.namespace} and ${pvc.metadata.name}
-			diskName := val
-			if pvcNamespaceOk {
-				diskName = strings.ReplaceAll(diskName, "${pvc.metadata.namespace}", pvcNamespace)
-			}
-			if pvcNameOk {
-				diskName = strings.ReplaceAll(diskName, "${pvc.metadata.name}", pvcName)
-			}
-			if diskName == "-" || diskName == "" {
-				return nil, status.Error(codes.InvalidArgument, "CreateVolume diskName template must resolve to a non-empty value")
-			}
-			diskParams.DiskName = diskName
-			klog.V(2).Infof("Disk name (template) will be: %s, the name length is %d.", diskName, len(diskName))
-		} else {
-			// Fallback to default name (original upstream behavior)
-			diskParams.DiskName = name
-			klog.V(2).Infof("Disk name (default) will be: %s, the name length is %d.", name, len(name))
-		}
+		diskParams.DiskName = name
 	}
 	diskParams.DiskName = azureutils.CreateValidDiskName(diskParams.DiskName)
 
