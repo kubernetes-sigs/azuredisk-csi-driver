@@ -675,6 +675,19 @@ func ParseDiskParameters(parameters map[string]string) (ManagedDiskParameters, e
 		}
 	}
 
+	// support disk name with $ in it, e.g. ${pvc.metadata.name}
+	if strings.Contains(diskParams.DiskName, "$") {
+		if pvcName, ok := diskParams.Tags[consts.PvcNameTag]; ok && pvcName != "" {
+			diskParams.DiskName = strings.ReplaceAll(diskParams.DiskName, "${pvc.metadata.name}", pvcName)
+		}
+		if pvcNamespace, ok := diskParams.Tags[consts.PvcNamespaceTag]; ok && pvcNamespace != "" {
+			diskParams.DiskName = strings.ReplaceAll(diskParams.DiskName, "${pvc.metadata.namespace}", pvcNamespace)
+		}
+		if pvName, ok := diskParams.Tags[consts.PvNameTag]; ok && pvName != "" {
+			diskParams.DiskName = strings.ReplaceAll(diskParams.DiskName, "${pv.metadata.name}", pvName)
+		}
+	}
+
 	return diskParams, nil
 }
 
