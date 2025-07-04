@@ -10,9 +10,6 @@
 # testing against CSI Driver by default
 make e2e-test
 
-# run e2e tests against CSI Driver v2
-BUILD_V2=1 make e2e-test
-
 # Run Windows e2e tests
 export TEST_WINDOWS="true"
 make e2e-test

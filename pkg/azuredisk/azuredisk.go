@@ -37,7 +37,6 @@ import (
 	grpcprom "github.com/grpc-ecosystem/go-grpc-middleware/providers/prometheus"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/types"
 	k8stypes "k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/kubernetes"
@@ -81,8 +80,8 @@ type hostUtil interface {
 	PathIsDevice(string) (bool, error)
 }
 
-// DriverCore contains fields common to both the V1 and V2 driver, and implements all interfaces of CSI drivers
-type DriverCore struct {
+// Driver is the implementation of the Azure Disk CSI Driver.
+type Driver struct {
 	csicommon.CSIDriver
 	// Embed UnimplementedXXXServer to ensure the driver returns Unimplemented for any
 	// new RPC methods that might be introduced in future versions of the spec.
@@ -136,21 +135,16 @@ type DriverCore struct {
 	maxConcurrentFormat     int64
 	concurrentFormatTimeout int64
 	enableMinimumRetryAfter bool
-}
-
-// Driver is the v1 implementation of the Azure Disk CSI Driver.
-type Driver struct {
-	DriverCore
-	volumeLocks *volumehelper.VolumeLocks
+	volumeLocks             *volumehelper.VolumeLocks
 	// a timed cache for throttling
 	throttlingCache azcache.Resource
 	// a timed cache for disk lun collision check throttling
 	checkDiskLunThrottlingCache azcache.Resource
 }
 
-// newDriverV1 Creates a NewCSIDriver object. Assumes vendor version is equal to driver version &
+// NewDriver Creates a NewCSIDriver object. Assumes vendor version is equal to driver version &
 // does not support optional driver plugin info manifest field. Refer to CSI spec for more details.
-func newDriverV1(options *DriverOptions) *Driver {
+func NewDriver(options *DriverOptions) *Driver {
 	driver := Driver{}
 	driver.Name = options.DriverName
 	driver.Version = driverVersion
@@ -442,76 +436,76 @@ func (d *Driver) getVolumeLocks() *volumehelper.VolumeLocks {
 }
 
 // setControllerCapabilities sets the controller capabilities field. It is intended for use with unit tests.
-func (d *DriverCore) setControllerCapabilities(caps []*csi.ControllerServiceCapability) {
+func (d *Driver) setControllerCapabilities(caps []*csi.ControllerServiceCapability) {
 	d.Cap = caps
 }
 
 // setNodeCapabilities sets the node capabilities field. It is intended for use with unit tests.
-func (d *DriverCore) setNodeCapabilities(nodeCaps []*csi.NodeServiceCapability) {
+func (d *Driver) setNodeCapabilities(nodeCaps []*csi.NodeServiceCapability) {
 	d.NSCap = nodeCaps
 }
 
 // setName sets the Name field. It is intended for use with unit tests.
-func (d *DriverCore) setName(name string) {
+func (d *Driver) setName(name string) {
 	d.Name = name
 }
 
 // setName sets the NodeId field. It is intended for use with unit tests.
-func (d *DriverCore) setNodeID(nodeID string) {
+func (d *Driver) setNodeID(nodeID string) {
 	d.NodeID = nodeID
 }
 
 // setName sets the Version field. It is intended for use with unit tests.
-func (d *DriverCore) setVersion(version string) {
+func (d *Driver) setVersion(version string) {
 	d.Version = version
 }
 
 // getCloud returns the value of the cloud field. It is intended for use with unit tests.
-func (d *DriverCore) getCloud() *azure.Cloud {
+func (d *Driver) getCloud() *azure.Cloud {
 	return d.cloud
 }
 
 // setCloud sets the cloud field. It is intended for use with unit tests.
-func (d *DriverCore) setCloud(cloud *azure.Cloud) {
+func (d *Driver) setCloud(cloud *azure.Cloud) {
 	d.cloud = cloud
 }
 
 // getMounter returns the value of the mounter field. It is intended for use with unit tests.
-func (d *DriverCore) getMounter() *mount.SafeFormatAndMount {
+func (d *Driver) getMounter() *mount.SafeFormatAndMount {
 	return d.mounter
 }
 
 // setMounter sets the mounter field. It is intended for use with unit tests.
-func (d *DriverCore) setMounter(mounter *mount.SafeFormatAndMount) {
+func (d *Driver) setMounter(mounter *mount.SafeFormatAndMount) {
 	d.mounter = mounter
 }
 
 // getPerfOptimizationEnabled returns the value of the perfOptimizationEnabled field. It is intended for use with unit tests.
-func (d *DriverCore) getPerfOptimizationEnabled() bool {
+func (d *Driver) getPerfOptimizationEnabled() bool {
 	return d.perfOptimizationEnabled
 }
 
 // setPerfOptimizationEnabled sets the value of the perfOptimizationEnabled field. It is intended for use with unit tests.
-func (d *DriverCore) setPerfOptimizationEnabled(enabled bool) {
+func (d *Driver) setPerfOptimizationEnabled(enabled bool) {
 	d.perfOptimizationEnabled = enabled
 }
 
 // getDeviceHelper returns the value of the deviceHelper field. It is intended for use with unit tests.
-func (d *DriverCore) getDeviceHelper() optimization.Interface {
+func (d *Driver) getDeviceHelper() optimization.Interface {
 	return d.deviceHelper
 }
 
 // getNodeInfo returns the value of the nodeInfo field. It is intended for use with unit tests.
-func (d *DriverCore) getNodeInfo() *optimization.NodeInfo {
+func (d *Driver) getNodeInfo() *optimization.NodeInfo {
 	return d.nodeInfo
 }
 
-func (d *DriverCore) getHostUtil() hostUtil {
+func (d *Driver) getHostUtil() hostUtil {
 	return d.hostUtil
 }
 
 // getSnapshotCompletionPercent returns the completion percent of snapshot
-func (d *DriverCore) getSnapshotCompletionPercent(ctx context.Context, subsID, resourceGroup, snapshotName string) (float32, error) {
+func (d *Driver) getSnapshotCompletionPercent(ctx context.Context, subsID, resourceGroup, snapshotName string) (float32, error) {
 	snapshotClient, err := d.clientFactory.GetSnapshotClientForSub(subsID)
 	if err != nil {
 		return 0.0, err
@@ -531,7 +525,7 @@ func (d *DriverCore) getSnapshotCompletionPercent(ctx context.Context, subsID, r
 }
 
 // waitForSnapshotReady wait for completionPercent of snapshot is 100.0
-func (d *DriverCore) waitForSnapshotReady(ctx context.Context, subsID, resourceGroup, snapshotName string, intervel, timeout time.Duration) error {
+func (d *Driver) waitForSnapshotReady(ctx context.Context, subsID, resourceGroup, snapshotName string, intervel, timeout time.Duration) error {
 	completionPercent, err := d.getSnapshotCompletionPercent(ctx, subsID, resourceGroup, snapshotName)
 	if err != nil {
 		return err
@@ -564,7 +558,7 @@ func (d *DriverCore) waitForSnapshotReady(ctx context.Context, subsID, resourceG
 }
 
 // getUsedLunsFromVolumeAttachments returns a list of used luns from VolumeAttachments
-func (d *DriverCore) getUsedLunsFromVolumeAttachments(ctx context.Context, nodeName string) ([]int, error) {
+func (d *Driver) getUsedLunsFromVolumeAttachments(ctx context.Context, nodeName string) ([]int, error) {
 	kubeClient := d.cloud.KubeClient
 	if kubeClient == nil || kubeClient.StorageV1() == nil || kubeClient.StorageV1().VolumeAttachments() == nil {
 		return nil, fmt.Errorf("kubeClient or kubeClient.StorageV1() or kubeClient.StorageV1().VolumeAttachments() is nil")
@@ -601,7 +595,7 @@ func (d *DriverCore) getUsedLunsFromVolumeAttachments(ctx context.Context, nodeN
 }
 
 // getUsedLunsFromNode returns a list of sorted used luns from Node
-func (d *DriverCore) getUsedLunsFromNode(ctx context.Context, nodeName types.NodeName) ([]int, error) {
+func (d *Driver) getUsedLunsFromNode(ctx context.Context, nodeName k8stypes.NodeName) ([]int, error) {
 	disks, _, err := d.diskController.GetNodeDataDisks(ctx, nodeName, azcache.CacheReadTypeDefault)
 	if err != nil {
 		klog.Errorf("error of getting data disks for node %s: %v", nodeName, err)
