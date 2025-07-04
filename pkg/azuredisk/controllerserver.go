@@ -153,7 +153,14 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 	}
 
 	if diskParams.DiskName == "" {
-		diskParams.DiskName = name
+		// Custom PVC naming logic: use pvcNamespace-pvcName if both tags are present, else fallback to default name
+		pvcName, pvcNameOk := diskParams.Tags[consts.PvcNameTag]
+		pvcNamespace, pvcNamespaceOk := diskParams.Tags[consts.PvcNamespaceTag]
+		if pvcNameOk && pvcNamespaceOk && pvcName != "" && pvcNamespace != "" {
+			diskParams.DiskName = pvcNamespace + "-" + pvcName
+		} else {
+			diskParams.DiskName = name
+		}
 	}
 	diskParams.DiskName = azureutils.CreateValidDiskName(diskParams.DiskName)
 
