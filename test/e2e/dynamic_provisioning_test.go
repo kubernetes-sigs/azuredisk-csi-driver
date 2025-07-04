@@ -215,6 +215,7 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 				"userAgent":             "azuredisk-e2e-test",
 				"enableAsyncAttach":     "false",
 				"enablePerformancePlus": "true",
+				"diskName":              "${pvc.metadata.namespace}-${pvc.metadata.name}-${pv.metadata.name}",
 			},
 		}
 		test.Run(ctx, cs, ns)
