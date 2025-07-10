@@ -278,7 +278,10 @@ func (fs *FlexScaleSet) GetDataDisks(ctx context.Context, nodeName types.NodeNam
 		return nil, nil, err
 	}
 
-	if vm.Properties.StorageProfile.DataDisks == nil {
+	if vm == nil {
+		return nil, nil, nil
+	}
+	if vm.Properties == nil || vm.Properties.StorageProfile == nil || vm.Properties.StorageProfile.DataDisks == nil {
 		return nil, nil, nil
 	}
 	return vm.Properties.StorageProfile.DataDisks, vm.Properties.ProvisioningState, nil

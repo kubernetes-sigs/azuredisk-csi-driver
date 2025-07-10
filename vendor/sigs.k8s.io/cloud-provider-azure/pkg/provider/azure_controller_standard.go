@@ -259,7 +259,10 @@ func (as *availabilitySet) GetDataDisks(ctx context.Context, nodeName types.Node
 		return nil, nil, err
 	}
 
-	if vm == nil || vm.Properties.StorageProfile.DataDisks == nil {
+	if vm == nil {
+		return nil, nil, nil
+	}
+	if vm.Properties == nil || vm.Properties.StorageProfile == nil || vm.Properties.StorageProfile.DataDisks == nil {
 		return nil, nil, nil
 	}
 	return vm.Properties.StorageProfile.DataDisks, vm.Properties.ProvisioningState, nil
