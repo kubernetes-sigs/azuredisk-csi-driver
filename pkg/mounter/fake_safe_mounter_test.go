@@ -221,3 +221,45 @@ func TestSetNextCommandOutputScripts(t *testing.T) {
 		}
 	}
 }
+
+func TestIsMountPoint(t *testing.T) {
+	tests := []struct {
+		desc         string
+		file         string
+		expectedResult bool
+		expectedErr  error
+	}{
+		{
+			desc:         "[Success] File that is likely not a mount point",
+			file:         targetTest,
+			expectedResult: false,
+			expectedErr:  nil,
+		},
+		{
+			desc:         "[Success] File that is a mount point",
+			file:         "./false_is_likely_target",
+			expectedResult: true,
+			expectedErr:  nil,
+		},
+		{
+			desc:         "[Error] File with error",
+			file:         "./error_is_likely_target",
+			expectedResult: false,
+			expectedErr:  fmt.Errorf("fake IsLikelyNotMountPoint: fake error"),
+		},
+	}
+
+	fakeMounter := &FakeSafeMounter{}
+
+	for _, test := range tests {
+		t.Run(test.desc, func(t *testing.T) {
+			result, err := fakeMounter.IsMountPoint(test.file)
+			if !reflect.DeepEqual(err, test.expectedErr) {
+				t.Errorf("Unexpected error: %v, expected: %v", err, test.expectedErr)
+			}
+			if result != test.expectedResult {
+				t.Errorf("Unexpected result: %v, expected: %v", result, test.expectedResult)
+			}
+		})
+	}
+}

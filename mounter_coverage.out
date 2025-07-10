@@ -1,0 +1,27 @@
+mode: set
+sigs.k8s.io/azuredisk-csi-driver/pkg/mounter/fake_safe_mounter.go:37.62,38.31 1 1
+sigs.k8s.io/azuredisk-csi-driver/pkg/mounter/fake_safe_mounter.go:38.31,40.3 1 0
+sigs.k8s.io/azuredisk-csi-driver/pkg/mounter/fake_safe_mounter.go:42.2,48.8 3 1
+sigs.k8s.io/azuredisk-csi-driver/pkg/mounter/fake_safe_mounter.go:52.77,53.45 1 1
+sigs.k8s.io/azuredisk-csi-driver/pkg/mounter/fake_safe_mounter.go:53.45,55.3 1 1
+sigs.k8s.io/azuredisk-csi-driver/pkg/mounter/fake_safe_mounter.go:55.8,55.52 1 1
+sigs.k8s.io/azuredisk-csi-driver/pkg/mounter/fake_safe_mounter.go:55.52,57.3 1 1
+sigs.k8s.io/azuredisk-csi-driver/pkg/mounter/fake_safe_mounter.go:59.2,59.12 1 1
+sigs.k8s.io/azuredisk-csi-driver/pkg/mounter/fake_safe_mounter.go:63.89,64.50 1 1
+sigs.k8s.io/azuredisk-csi-driver/pkg/mounter/fake_safe_mounter.go:64.50,66.3 1 1
+sigs.k8s.io/azuredisk-csi-driver/pkg/mounter/fake_safe_mounter.go:66.8,66.57 1 1
+sigs.k8s.io/azuredisk-csi-driver/pkg/mounter/fake_safe_mounter.go:66.57,68.3 1 1
+sigs.k8s.io/azuredisk-csi-driver/pkg/mounter/fake_safe_mounter.go:70.2,70.12 1 1
+sigs.k8s.io/azuredisk-csi-driver/pkg/mounter/fake_safe_mounter.go:74.76,75.47 1 1
+sigs.k8s.io/azuredisk-csi-driver/pkg/mounter/fake_safe_mounter.go:75.47,77.3 1 1
+sigs.k8s.io/azuredisk-csi-driver/pkg/mounter/fake_safe_mounter.go:78.2,78.47 1 1
+sigs.k8s.io/azuredisk-csi-driver/pkg/mounter/fake_safe_mounter.go:78.47,80.3 1 1
+sigs.k8s.io/azuredisk-csi-driver/pkg/mounter/fake_safe_mounter.go:81.2,81.18 1 1
+sigs.k8s.io/azuredisk-csi-driver/pkg/mounter/fake_safe_mounter.go:85.67,87.16 2 0
+sigs.k8s.io/azuredisk-csi-driver/pkg/mounter/fake_safe_mounter.go:87.16,89.3 1 0
+sigs.k8s.io/azuredisk-csi-driver/pkg/mounter/fake_safe_mounter.go:90.2,90.21 1 0
+sigs.k8s.io/azuredisk-csi-driver/pkg/mounter/fake_safe_mounter.go:94.90,95.33 1 1
+sigs.k8s.io/azuredisk-csi-driver/pkg/mounter/fake_safe_mounter.go:95.33,97.62 2 1
+sigs.k8s.io/azuredisk-csi-driver/pkg/mounter/fake_safe_mounter.go:97.62,104.4 5 1
+sigs.k8s.io/azuredisk-csi-driver/pkg/mounter/fake_safe_mounter.go:106.3,106.59 1 1
+sigs.k8s.io/azuredisk-csi-driver/pkg/mounter/safe_mounter_unix.go:29.134,32.2 2 1
