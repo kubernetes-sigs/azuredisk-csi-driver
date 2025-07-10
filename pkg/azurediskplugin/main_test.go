@@ -80,3 +80,31 @@ func TestTrapClosedConnErr(t *testing.T) {
 		}
 	}
 }
+
+func TestExportMetrics(t *testing.T) {
+	tests := []struct {
+		name           string
+		metricsAddr    string
+	}{
+		{
+			name:        "empty metrics address",
+			metricsAddr: "",
+		},
+		{
+			name:        "invalid metrics address",
+			metricsAddr: "invalid:address:port",
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			// Store original value
+			original := *metricsAddress
+			*metricsAddress = test.metricsAddr
+			defer func() { *metricsAddress = original }()
+
+			// exportMetrics should not panic and should handle invalid addresses gracefully
+			exportMetrics()
+		})
+	}
+}
