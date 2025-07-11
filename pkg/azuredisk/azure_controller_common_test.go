@@ -23,6 +23,8 @@ import (
 	"net/http"
 	"reflect"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -33,6 +35,7 @@ import (
 	"go.uber.org/mock/gomock"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/wait"
+	"k8s.io/klog/v2"
 	"k8s.io/utils/ptr"
 
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
@@ -453,7 +456,7 @@ func TestGetValidCreationData(t *testing.T) {
 	sourceResourceSnapshotID := "/subscriptions/xxx/resourceGroups/xxx/providers/Microsoft.Compute/snapshots/xxx"
 	sourceResourceVolumeID := "/subscriptions/xxx/resourceGroups/xxx/providers/Microsoft.Compute/disks/xxx"
 	upperSourceResourceSnapshotID := strings.ToUpper(sourceResourceSnapshotID)
-	upperSourceResouceVolumeID := strings.ToUpper(sourceResourceVolumeID)
+	upperSourceResourceVolumeID := strings.ToUpper(sourceResourceVolumeID)
 
 	tests := []struct {
 		subscriptionID   string
@@ -562,11 +565,11 @@ func TestGetValidCreationData(t *testing.T) {
 		{
 			subscriptionID:   "",
 			resourceGroup:    "",
-			sourceResourceID: upperSourceResouceVolumeID,
+			sourceResourceID: upperSourceResourceVolumeID,
 			sourceType:       sourceVolume,
 			expected1: armcompute.CreationData{
 				CreateOption:     to.Ptr(armcompute.DiskCreateOptionCopy),
-				SourceResourceID: &upperSourceResouceVolumeID,
+				SourceResourceID: &upperSourceResourceVolumeID,
 			},
 			expected2: nil,
 		},
@@ -690,15 +693,16 @@ func TestAttachDiskRequest(t *testing.T) {
 			diskURI := fmt.Sprintf("%s%d", test.diskURI, i)
 			diskName := fmt.Sprintf("%s%d", test.diskName, i)
 			ops := &provider.AttachDiskOptions{DiskName: diskName}
-			_, err := common.insertAttachDiskRequest(diskURI, test.nodeName, ops)
+			_, err := common.batchAttachDiskRequest(diskURI, test.nodeName, ops)
 			assert.Equal(t, test.expectedErr, err != nil, "TestCase[%d]: %s", i, test.desc)
 			if test.duplicateDiskRequest {
-				_, err := common.insertAttachDiskRequest(diskURI, test.nodeName, ops)
+				_, err := common.batchAttachDiskRequest(diskURI, test.nodeName, ops)
 				assert.Equal(t, test.expectedErr, err != nil, "TestCase[%d]: %s", i, test.desc)
 			}
 		}
 
-		diskMap, err := common.cleanAttachDiskRequests(test.nodeName)
+		diskURI := fmt.Sprintf("%s%d", test.diskURI, test.diskNum)
+		diskMap, err := common.retrieveAttachBatchedDiskRequests(test.nodeName, diskURI)
 		assert.Equal(t, test.expectedErr, err != nil, "TestCase[%d]: %s", i, test.desc)
 		assert.Equal(t, test.diskNum, len(diskMap), "TestCase[%d]: %s", i, test.desc)
 		for diskURI, opt := range diskMap {
@@ -762,18 +766,19 @@ func TestDetachDiskRequest(t *testing.T) {
 			cloud:   testCloud,
 			lockMap: newLockMap(),
 		}
+		diskURI := ""
 		for i := 1; i <= test.diskNum; i++ {
-			diskURI := fmt.Sprintf("%s%d", test.diskURI, i)
+			diskURI = fmt.Sprintf("%s%d", test.diskURI, i)
 			diskName := fmt.Sprintf("%s%d", test.diskName, i)
-			_, err := common.insertDetachDiskRequest(diskName, diskURI, test.nodeName)
+			_, err := common.batchDetachDiskRequest(diskName, diskURI, test.nodeName)
 			assert.Equal(t, test.expectedErr, err != nil, "TestCase[%d]: %s", i, test.desc)
 			if test.duplicateDiskRequest {
-				_, err := common.insertDetachDiskRequest(diskName, diskURI, test.nodeName)
+				_, err := common.batchDetachDiskRequest(diskName, diskURI, test.nodeName)
 				assert.Equal(t, test.expectedErr, err != nil, "TestCase[%d]: %s", i, test.desc)
 			}
 		}
 
-		diskMap, err := common.cleanDetachDiskRequests(test.nodeName)
+		diskMap, err := common.retrieveDetachBatchedDiskRequests(test.nodeName, diskURI)
 		assert.Equal(t, test.expectedErr, err != nil, "TestCase[%d]: %s", i, test.desc)
 		assert.Equal(t, test.diskNum, len(diskMap), "TestCase[%d]: %s", i, test.desc)
 		for diskURI, diskName := range diskMap {
@@ -840,10 +845,10 @@ func TestGetDetachDiskRequestNum(t *testing.T) {
 		for i := 1; i <= test.diskNum; i++ {
 			diskURI := fmt.Sprintf("%s%d", test.diskURI, i)
 			diskName := fmt.Sprintf("%s%d", test.diskName, i)
-			_, err := common.insertDetachDiskRequest(diskName, diskURI, test.nodeName)
+			_, err := common.batchDetachDiskRequest(diskName, diskURI, test.nodeName)
 			assert.Equal(t, test.expectedErr, err != nil, "TestCase[%d]: %s", i, test.desc)
 			if test.duplicateDiskRequest {
-				_, err := common.insertDetachDiskRequest(diskName, diskURI, test.nodeName)
+				_, err := common.batchDetachDiskRequest(diskName, diskURI, test.nodeName)
 				assert.Equal(t, test.expectedErr, err != nil, "TestCase[%d]: %s", i, test.desc)
 			}
 		}
@@ -852,6 +857,253 @@ func TestGetDetachDiskRequestNum(t *testing.T) {
 		assert.Equal(t, test.expectedErr, err != nil, "TestCase[%d]: %s", i, test.desc)
 		assert.Equal(t, test.diskNum, detachDiskReqeustNum, "TestCase[%d]: %s", i, test.desc)
 	}
+}
+
+func TestVerifyAttach(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	tests := []struct {
+		name           string
+		diskName       string
+		diskURI        string
+		nodeName       types.NodeName
+		expectedVM     map[string]string
+		expectDisk     bool
+		wantLun        int32
+		wantErr        bool
+		wantErrContent string
+	}{
+		{
+			name:       "successfully finds disk lun",
+			diskName:   "disk1",
+			diskURI:    "diskuri1",
+			nodeName:   "node1",
+			expectedVM: map[string]string{"node1": "PowerState/Running"},
+			expectDisk: true,
+			wantLun:    2,
+			wantErr:    false,
+		},
+		{
+			name:           "returns error when disk not found",
+			diskName:       "diskNotFound",
+			diskURI:        "diskuri2",
+			nodeName:       "node2",
+			expectedVM:     map[string]string{"node2": "PowerState/Stopped"},
+			wantLun:        -1,
+			wantErr:        true,
+			wantErrContent: "could not be found",
+		},
+		{
+			name:           "returns error with vm not found",
+			diskName:       "disk1",
+			diskURI:        "diskuri3",
+			nodeName:       "node3",
+			expectedVM:     nil,
+			wantLun:        -1,
+			wantErr:        true,
+			wantErrContent: "could not be found",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			testCloud := provider.GetTestCloud(ctrl)
+			mockVMClient := testCloud.ComputeClientFactory.GetVirtualMachineClient().(*mockvmclient.MockInterface)
+			common := &controllerCommon{
+				cloud:   testCloud,
+				lockMap: newLockMap(),
+			}
+			if tt.expectedVM == nil {
+				mockVMClient.EXPECT().Get(gomock.Any(), testCloud.ResourceGroup, gomock.Any(), gomock.Any()).Return(&armcompute.VirtualMachine{}, errors.New("could not be found")).AnyTimes()
+			} else {
+
+				expectedVMs := setTestVirtualMachines(testCloud, tt.expectedVM, false)
+				for _, vm := range expectedVMs {
+					if tt.expectDisk {
+						vm.Properties.StorageProfile.DataDisks = []*armcompute.DataDisk{
+							{
+								Lun:  ptr.To(int32(tt.wantLun)),
+								Name: ptr.To(tt.diskName),
+							},
+						}
+					}
+					mockVMClient.EXPECT().Get(gomock.Any(), testCloud.ResourceGroup, *vm.Name, gomock.Any()).Return(&vm, nil).AnyTimes()
+				}
+			}
+
+			lun, err := common.verifyAttach(context.Background(), tt.diskName, tt.diskURI, tt.nodeName)
+			assert.Equal(t, tt.wantLun, lun)
+			if tt.wantErr {
+				assert.Error(t, err)
+				if tt.wantErrContent != "" {
+					assert.Contains(t, err.Error(), tt.wantErrContent)
+				}
+			} else {
+				assert.NoError(t, err)
+			}
+		})
+	}
+}
+
+func TestVerifyDetach(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	tests := []struct {
+		name           string
+		diskName       string
+		diskURI        string
+		nodeName       types.NodeName
+		expectedVM     map[string]string
+		expectDisk     bool
+		wantLun        int32
+		expectedErr    bool
+		expectedErrMsg string
+	}{
+		{
+			name:        "successfully detached - error contains CannotFindDiskLUN",
+			diskName:    "diskNotFound",
+			diskURI:     "diskuri1",
+			nodeName:    "node1",
+			expectedVM:  map[string]string{"node1": "PowerState/Running"},
+			expectedErr: false,
+		},
+		{
+			name:           "error returned from GetDiskLun for VM does not exist",
+			diskName:       "disk2",
+			diskURI:        "diskuri2",
+			nodeName:       "node2",
+			expectedVM:     nil,
+			expectedErr:    true,
+			expectedErrMsg: "could not be found",
+		},
+		{
+			name:           "disk still attached",
+			expectDisk:     true,
+			diskName:       "disk1",
+			diskURI:        "diskuri",
+			wantLun:        2,
+			nodeName:       "node3",
+			expectedErr:    true,
+			expectedVM:     map[string]string{"node3": "PowerState/Running"},
+			expectedErrMsg: "disk(diskuri) is still attached to node(node3) on lun(2), vmState: Succeeded",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			testCloud := provider.GetTestCloud(ctrl)
+			mockVMClient := testCloud.ComputeClientFactory.GetVirtualMachineClient().(*mockvmclient.MockInterface)
+			common := &controllerCommon{
+				cloud:   testCloud,
+				lockMap: newLockMap(),
+			}
+			if tt.expectedVM == nil {
+				mockVMClient.EXPECT().Get(gomock.Any(), testCloud.ResourceGroup, gomock.Any(), gomock.Any()).Return(&armcompute.VirtualMachine{}, errors.New("could not be found")).AnyTimes()
+			} else {
+
+				expectedVMs := setTestVirtualMachines(testCloud, tt.expectedVM, false)
+				for _, vm := range expectedVMs {
+					if tt.expectDisk {
+						vm.Properties.StorageProfile.DataDisks = []*armcompute.DataDisk{
+							{
+								Lun:  ptr.To(int32(tt.wantLun)),
+								Name: ptr.To(tt.diskName),
+							},
+						}
+					}
+					mockVMClient.EXPECT().Get(gomock.Any(), testCloud.ResourceGroup, *vm.Name, gomock.Any()).Return(&vm, nil).AnyTimes()
+				}
+			}
+
+			err := common.verifyDetach(context.Background(), tt.diskName, tt.diskURI, tt.nodeName)
+			if tt.expectedErr {
+				assert.Error(t, err)
+				klog.Info("Expected error occurred", "error", err)
+				if tt.expectedErrMsg != "" {
+					assert.Contains(t, err.Error(), tt.expectedErrMsg)
+				}
+			} else {
+				assert.NoError(t, err)
+			}
+		})
+	}
+}
+
+func TestConcurrentDetachDisk(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	testCloud := provider.GetTestCloud(ctrl)
+	common := &controllerCommon{
+		cloud:                        testCloud,
+		lockMap:                      newLockMap(),
+		ForceDetachBackoff:           true,
+		AttachDetachInitialDelayInMs: 1000,
+		DisableDiskLunCheck:          true,
+	}
+	expectedVM := setTestVirtualMachines(testCloud, map[string]string{"vm1": "PowerState/Running"}, false)
+	mockVMClient := testCloud.ComputeClientFactory.GetVirtualMachineClient().(*mockvmclient.MockInterface)
+
+	// Mock Get to always return the expected VM
+	mockVMClient.EXPECT().
+		Get(gomock.Any(), testCloud.ResourceGroup, *expectedVM[0].Name, gomock.Any()).
+		Return(&expectedVM[0], nil).
+		AnyTimes()
+
+	// Use a counter to simulate different return values for CreateOrUpdate
+	// First call should succeed, subsequent calls should fail
+	callCount := int32(0)
+	mockVMClient.EXPECT().
+		CreateOrUpdate(gomock.Any(), testCloud.ResourceGroup, gomock.Any(), gomock.Any()).
+		DoAndReturn(
+			func(_ context.Context, _ string, name string, params armcompute.VirtualMachine) (*armcompute.VirtualMachine, error) {
+				if atomic.AddInt32(&callCount, 1) == 1 {
+					klog.Info("First call to CreateOrUpdate succeeded", "VM Name:", name, "Params:", params)
+					time.Sleep(100 * time.Millisecond) // Simulate some processing time to hold the node lock while the 3rd detach request is made
+					return nil, nil                    // First call succeeds
+				}
+				return nil, errors.New("internal error") // Subsequent calls fail
+			}).
+		AnyTimes()
+
+	// Simulate concurrent detach requests that would be batched
+	wg := &sync.WaitGroup{}
+	errorChan := make(chan error, 1)
+	for i := 0; i < 2; i++ {
+		diskURI := fmt.Sprintf("/subscriptions/%s/resourceGroups/%s/providers/Microsoft.Compute/disks/%s",
+			testCloud.SubscriptionID, testCloud.ResourceGroup, fmt.Sprintf("disk-batched-%d", i))
+		go func() {
+			wg.Add(1)
+			defer wg.Done()
+			err := common.DetachDisk(ctx, fmt.Sprintf("disk-batched-%d", i), diskURI, "vm1")
+			if err != nil {
+				errorChan <- err
+			}
+		}()
+	}
+
+	time.Sleep(1005 * time.Millisecond) // Wait for the batching timeout
+	diskURI := fmt.Sprintf("/subscriptions/%s/resourceGroups/%s/providers/Microsoft.Compute/disks/%s",
+		testCloud.SubscriptionID, testCloud.ResourceGroup, "disk-not-batched")
+	klog.Info("Calling DetachDisk for non-batched disk detach", expectedVM)
+	// This should trigger a second CreateOrUpdate call that fails
+	err := common.DetachDisk(ctx, "disk-not-batched", diskURI, "vm1")
+
+	wg.Wait()
+	select {
+	case err := <-errorChan:
+		// Will only fail if it triggered the second CreateOrUpdate call which could only be for the wrong disk - "disk-not-batched"
+		// because the first CreateOrUpdate call was successful for the batched disks
+		assert.NoError(t, err, "DetachDisk should not return an error for the batched disk detach")
+	default:
+		klog.Info("No error received from detach disk requests")
+	}
+	// Should fail due to the second CreateOrUpdate call returning an error
+	assert.Error(t, err, "DetachDisk should return an error for the non-batched disk detach")
 }
 
 // setTestVirtualMachines sets test virtual machine with powerstate.
