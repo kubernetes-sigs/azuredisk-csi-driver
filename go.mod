@@ -30,7 +30,7 @@ require (
 	go.opentelemetry.io/otel/sdk v1.36.0
 	go.uber.org/mock v0.5.2
 	golang.org/x/net v0.41.0
-	golang.org/x/sync v0.15.0
+	golang.org/x/sync v0.16.0
 	golang.org/x/sys v0.34.0
 	google.golang.org/grpc v1.73.0
 	google.golang.org/protobuf v1.36.6
