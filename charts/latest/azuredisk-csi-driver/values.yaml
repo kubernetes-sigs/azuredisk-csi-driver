@@ -79,6 +79,20 @@ controller:
   podAnnotations: {}
   nodeSelector: {}
   affinity: {}
+  # Additional volumes to be added to the controller pod
+  extraVolumes: []
+  # Additional volume mounts to be added to specific containers in the controller pod
+  # Format: 
+  # extraVolumeMounts:
+  #   azuredisk:
+  #     - name: custom-ca-certs
+  #       mountPath: /etc/ssl/certs/custom
+  #       readOnly: true
+  #   csiProvisioner:
+  #     - name: custom-ca-certs
+  #       mountPath: /etc/ssl/certs/custom
+  #       readOnly: true
+  extraVolumeMounts: {}
   resources:
     csiProvisioner:
       limits:
@@ -210,6 +224,20 @@ linux:
               operator: NotIn
               values:
                 - virtual-kubelet
+  # Additional volumes to be added to the Linux node daemonset
+  extraVolumes: []
+  # Additional volume mounts to be added to specific containers in the Linux node daemonset
+  # Format: 
+  # extraVolumeMounts:
+  #   azuredisk:
+  #     - name: custom-ca-certs
+  #       mountPath: /etc/ssl/certs/custom
+  #       readOnly: true
+  #   livenessProbe:
+  #     - name: custom-ca-certs
+  #       mountPath: /etc/ssl/certs/custom
+  #       readOnly: true
+  extraVolumeMounts: {}
   resources:
     livenessProbe:
       limits:
@@ -259,6 +287,20 @@ windows:
               operator: NotIn
               values:
                 - virtual-kubelet
+  # Additional volumes to be added to the Windows node daemonset
+  extraVolumes: []
+  # Additional volume mounts to be added to specific containers in the Windows node daemonset
+  # Format: 
+  # extraVolumeMounts:
+  #   azuredisk:
+  #     - name: custom-ca-certs
+  #       mountPath: C:\etc\ssl\certs\custom
+  #       readOnly: true
+  #   livenessProbe:
+  #     - name: custom-ca-certs
+  #       mountPath: C:\etc\ssl\certs\custom
+  #       readOnly: true
+  extraVolumeMounts: {}
   resources:
     livenessProbe:
       limits:
