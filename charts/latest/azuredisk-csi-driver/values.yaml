@@ -81,18 +81,13 @@ controller:
   affinity: {}
   # Additional volumes to be added to the controller pod
   extraVolumes: []
-  # Additional volume mounts to be added to specific containers in the controller pod
+  # Additional volume mounts to be added to the azuredisk container in the controller pod
   # Format: 
   # extraVolumeMounts:
-  #   azuredisk:
-  #     - name: custom-ca-certs
-  #       mountPath: /etc/ssl/certs/custom
-  #       readOnly: true
-  #   csiProvisioner:
-  #     - name: custom-ca-certs
-  #       mountPath: /etc/ssl/certs/custom
-  #       readOnly: true
-  extraVolumeMounts: {}
+  #   - name: custom-ca-certs
+  #     mountPath: /etc/ssl/certs/custom
+  #     readOnly: true
+  extraVolumeMounts: []
   resources:
     csiProvisioner:
       limits:
@@ -226,18 +221,13 @@ linux:
                 - virtual-kubelet
   # Additional volumes to be added to the Linux node daemonset
   extraVolumes: []
-  # Additional volume mounts to be added to specific containers in the Linux node daemonset
+  # Additional volume mounts to be added to the azuredisk container in the Linux node daemonset
   # Format: 
   # extraVolumeMounts:
-  #   azuredisk:
-  #     - name: custom-ca-certs
-  #       mountPath: /etc/ssl/certs/custom
-  #       readOnly: true
-  #   livenessProbe:
-  #     - name: custom-ca-certs
-  #       mountPath: /etc/ssl/certs/custom
-  #       readOnly: true
-  extraVolumeMounts: {}
+  #   - name: custom-ca-certs
+  #     mountPath: /etc/ssl/certs/custom
+  #     readOnly: true
+  extraVolumeMounts: []
   resources:
     livenessProbe:
       limits:
@@ -289,18 +279,13 @@ windows:
                 - virtual-kubelet
   # Additional volumes to be added to the Windows node daemonset
   extraVolumes: []
-  # Additional volume mounts to be added to specific containers in the Windows node daemonset
+  # Additional volume mounts to be added to the azuredisk container in the Windows node daemonset
   # Format: 
   # extraVolumeMounts:
-  #   azuredisk:
-  #     - name: custom-ca-certs
-  #       mountPath: C:\etc\ssl\certs\custom
-  #       readOnly: true
-  #   livenessProbe:
-  #     - name: custom-ca-certs
-  #       mountPath: C:\etc\ssl\certs\custom
-  #       readOnly: true
-  extraVolumeMounts: {}
+  #   - name: custom-ca-certs
+  #     mountPath: C:\etc\ssl\certs\custom
+  #     readOnly: true
+  extraVolumeMounts: []
   resources:
     livenessProbe:
       limits:

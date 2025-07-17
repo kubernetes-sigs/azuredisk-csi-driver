@@ -63,9 +63,6 @@ spec:
           volumeMounts:
             - mountPath: /csi
               name: socket-dir
-            {{- with .Values.linux.extraVolumeMounts.livenessProbe }}
-{{ toYaml . | indent 12 }}
-            {{- end }}
 {{- if hasPrefix "/" .Values.image.livenessProbe.repository }}
           image: "{{ .Values.image.baseRepo }}{{ .Values.image.livenessProbe.repository }}:{{ .Values.image.livenessProbe.tag }}"
 {{- else }}
@@ -105,9 +102,6 @@ spec:
               mountPath: /csi
             - name: registration-dir
               mountPath: /registration
-            {{- with .Values.linux.extraVolumeMounts.nodeDriverRegistrar }}
-{{ toYaml . | indent 12 }}
-            {{- end }}
           resources: {{- toYaml .Values.linux.resources.nodeDriverRegistrar | nindent 12 }}
           securityContext:
             capabilities:
@@ -232,7 +226,7 @@ spec:
               mountPath: /etc/pki/ca-trust/extracted
               readOnly: true
             {{- end }}
-            {{- with .Values.linux.extraVolumeMounts.azuredisk }}
+            {{- with .Values.linux.extraVolumeMounts }}
 {{ toYaml . | indent 12 }}
             {{- end }}
           resources: {{- toYaml .Values.linux.resources.azuredisk | nindent 12 }}

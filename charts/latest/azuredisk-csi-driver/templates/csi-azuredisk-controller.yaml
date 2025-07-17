@@ -94,9 +94,6 @@ spec:
           volumeMounts:
             - mountPath: /csi
               name: socket-dir
-            {{- with .Values.controller.extraVolumeMounts.csiProvisioner }}
-{{ toYaml . | indent 12 }}
-            {{- end }}
           resources: {{- toYaml .Values.controller.resources.csiProvisioner | nindent 12 }}
           securityContext:
             capabilities:
@@ -123,9 +120,6 @@ spec:
           volumeMounts:
           - mountPath: /csi
             name: socket-dir
-          {{- with .Values.controller.extraVolumeMounts.csiAttacher }}
-{{ toYaml . | indent 10 }}
-          {{- end }}
           resources: {{- toYaml .Values.controller.resources.csiAttacher | nindent 12 }}
           securityContext:
             capabilities:
@@ -152,9 +146,6 @@ spec:
           volumeMounts:
             - name: socket-dir
               mountPath: /csi
-            {{- with .Values.controller.extraVolumeMounts.csiSnapshotter }}
-{{ toYaml . | indent 12 }}
-            {{- end }}
           resources: {{- toYaml .Values.controller.resources.csiSnapshotter | nindent 12 }}
           securityContext:
             capabilities:
@@ -181,9 +172,6 @@ spec:
           volumeMounts:
             - name: socket-dir
               mountPath: /csi
-            {{- with .Values.controller.extraVolumeMounts.csiResizer }}
-{{ toYaml . | indent 12 }}
-            {{- end }}
           resources: {{- toYaml .Values.controller.resources.csiResizer | nindent 12 }}
           securityContext:
             capabilities:
@@ -207,9 +195,6 @@ spec:
           volumeMounts:
             - name: socket-dir
               mountPath: /csi
-            {{- with .Values.controller.extraVolumeMounts.livenessProbe }}
-{{ toYaml . | indent 12 }}
-            {{- end }}
           resources: {{- toYaml .Values.controller.resources.livenessProbe | nindent 12 }}
           securityContext:
             capabilities:
@@ -328,7 +313,7 @@ spec:
               mountPath: /etc/pki/ca-trust/extracted
               readOnly: true
             {{- end }}
-            {{- with .Values.controller.extraVolumeMounts.azuredisk }}
+            {{- with .Values.controller.extraVolumeMounts }}
 {{ toYaml . | indent 12 }}
             {{- end }}
           resources: {{- toYaml .Values.controller.resources.azuredisk | nindent 12 }}
