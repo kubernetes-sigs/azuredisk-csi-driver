@@ -348,7 +348,7 @@ func (c *controllerCommon) retrieveAttachBatchedDiskRequests(nodeName, diskURI s
 		return diskMap, fmt.Errorf("convert attachDiskMap failure on node(%s)", nodeName)
 	}
 	if _, ok = diskMap[diskURI]; !ok {
-		klog.V(2).Infof("azureDisk - no attach disk(%s) request on node(%s). Request was already processed.", diskURI, nodeName)
+		klog.V(2).Infof("no attach disk(%s) request on node(%s), diskMap len:%d, %+v", diskURI, nodeName, len(diskMap), diskMap)
 		return nil, nil
 	}
 	c.attachDiskMap.Store(nodeName, make(map[string]*provider.AttachDiskOptions))
@@ -519,7 +519,7 @@ func (c *controllerCommon) retrieveDetachBatchedDiskRequests(nodeName, diskURI s
 		return nil, fmt.Errorf("convert detachDiskMap failure on node(%s)", nodeName)
 	}
 	if _, ok = diskMap[diskURI]; !ok {
-		klog.V(2).Infof("azureDisk - no detach disk(%s) request on node(%s). Request was already processed.", diskURI, nodeName)
+		klog.V(2).Infof("no detach disk(%s) request on node(%s), diskMap len:%d, %+v", diskURI, nodeName, len(diskMap), diskMap)
 		return nil, nil
 	}
 	// clean up the detach disk requests for the node as they are being processed
