@@ -424,6 +424,19 @@ func (d *Driver) ControllerModifyVolume(ctx context.Context, req *csi.Controller
 		skuName = ""
 	}
 
+	// Get current disk state before modification
+	currentDisk, err := d.checkDiskExists(ctx, diskURI)
+	if err != nil {
+		return nil, status.Error(codes.NotFound, fmt.Sprintf("Volume not found, failed with error: %v", err))
+	}
+	// Check if this is a SKU migration
+	var fromSKU armcompute.DiskStorageAccountTypes
+	var monitorSKUMigration bool
+	if currentDisk != nil && currentDisk.SKU != nil && currentDisk.SKU.Name != nil {
+		fromSKU = *currentDisk.SKU.Name
+		monitorSKUMigration = skuName == armcompute.DiskStorageAccountTypesPremiumV2LRS && fromSKU == armcompute.DiskStorageAccountTypesPremiumLRS
+	}
+
 	klog.V(2).Infof("begin to modify azure disk(%s) account type(%s) rg(%s) location(%s)",
 		diskParams.DiskName, skuName, diskParams.ResourceGroup, diskParams.Location)
 
@@ -451,6 +464,27 @@ func (d *Driver) ControllerModifyVolume(ctx context.Context, req *csi.Controller
 	}
 
 	isOperationSucceeded = true
+
+	// Start migration monitoring if this is a SKU change
+	if monitorSKUMigration && d.migrationMonitor != nil {
+		pvName := diskParams.DiskName
+		if pvName == "" {
+			// Extract disk name from URI if not provided
+			_, _, diskName, parseErr := azureutils.GetInfoFromURI(diskURI)
+			if parseErr != nil {
+				klog.Warningf("Failed to extract disk name from URI %s: %v", diskURI, parseErr)
+			} else {
+				pvName = diskName
+			}
+		}
+
+		if pvName != "" {
+			if monitorErr := d.migrationMonitor.StartMigrationMonitoring(ctx, diskURI, pvName, fromSKU, skuName); monitorErr != nil {
+				klog.Warningf("Failed to start migration monitoring for disk %s: %v", diskURI, monitorErr)
+			}
+		}
+	}
+
 	klog.V(2).Infof("modify azure disk(%s) account type(%s) rg(%s) location(%s) successfully", diskParams.DiskName, skuName, diskParams.ResourceGroup, diskParams.Location)
 
 	return &csi.ControllerModifyVolumeResponse{}, err

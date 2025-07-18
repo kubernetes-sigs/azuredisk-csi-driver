@@ -70,6 +70,10 @@ type FakeDriver interface {
 	GetSourceDiskSize(ctx context.Context, subsID, resourceGroup, diskName string, curDepth, maxDepth int) (*int32, *armcompute.Disk, error)
 	SetWaitForSnapshotReady(bool)
 	GetWaitForSnapshotReady() bool
+	GetDiskController() *ManagedDiskController
+	GetMigrationMonitor() *MigrationProgressMonitor
+	SetMigrationMonitor(*MigrationProgressMonitor)
+	RecoverMigrationMonitor(ctx context.Context) error
 
 	setNextCommandOutputScripts(scripts ...testingexec.FakeAction)
 
@@ -199,4 +203,30 @@ func (d *fakeDriver) SetWaitForSnapshotReady(shouldWait bool) {
 
 func (d *fakeDriver) GetWaitForSnapshotReady() bool {
 	return d.shouldWaitForSnapshotReady
+}
+
+func (d *fakeDriver) GetDiskController() *ManagedDiskController {
+	if d.diskController == nil {
+		d.diskController = NewManagedDiskController(d.cloud)
+	}
+	return d.diskController
+}
+
+func (d *fakeDriver) GetMigrationMonitor() *MigrationProgressMonitor {
+	if d.migrationMonitor == nil {
+		d.migrationMonitor = NewMigrationProgressMonitor(d.kubeClient, d.eventRecorder, d.GetDiskController())
+	}
+	return d.migrationMonitor
+}
+
+func (d *fakeDriver) SetMigrationMonitor(monitor *MigrationProgressMonitor) {
+	if monitor == nil {
+		d.migrationMonitor = NewMigrationProgressMonitor(d.kubeClient, d.eventRecorder, d.GetDiskController())
+	} else {
+		d.migrationMonitor = monitor
+	}
+}
+
+func (d *fakeDriver) RecoverMigrationMonitor(ctx context.Context) error {
+	return d.recoverMigrationMonitorsFromAnnotations(ctx)
 }

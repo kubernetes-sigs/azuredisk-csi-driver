@@ -169,6 +169,7 @@ snapshot:
 
 feature:
   enableFSGroupPolicy: true
+  modifyVolume: false
 
 driver:
   name: disk.csi.azure.com
