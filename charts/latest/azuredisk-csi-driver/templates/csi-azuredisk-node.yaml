@@ -210,6 +210,10 @@ spec:
               name: mountpoint-dir
             - mountPath: /etc/kubernetes/
               name: azure-cred
+            - mountPath: /host
+              name: host-dir
+            - mountPath: /usr/local/sbin/mkfs.xfs
+              name: chroot-xfs
             - mountPath: /dev
               name: device-dir
             - mountPath: /sys/bus/scsi/devices
@@ -244,6 +248,14 @@ spec:
             path: /etc/kubernetes/
             type: DirectoryOrCreate
           name: azure-cred
+        - hostPath:
+            path: /
+            type: Directory
+          name: host-root
+        - name: chroot-xfs
+          configMap:
+            defaultMode: 0555
+            name: host-xfs
         - hostPath:
             path: /dev
             type: Directory
