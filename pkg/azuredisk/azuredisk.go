@@ -128,6 +128,7 @@ type Driver struct {
 	endpoint                     string
 	disableAVSetNodes            bool
 	removeNotReadyTaint          bool
+	neverStopTaintRemoval        bool
 	kubeClient                   clientset.Interface
 	// a timed cache storing volume stats <volumeID, volumeStats>
 	volStatsCache           azcache.Resource
@@ -182,6 +183,7 @@ func NewDriver(options *DriverOptions) *Driver {
 	driver.endpoint = options.Endpoint
 	driver.disableAVSetNodes = options.DisableAVSetNodes
 	driver.removeNotReadyTaint = options.RemoveNotReadyTaint
+	driver.neverStopTaintRemoval = options.NeverStopTaintRemoval
 	driver.maxConcurrentFormat = options.MaxConcurrentFormat
 	driver.concurrentFormatTimeout = options.ConcurrentFormatTimeout
 	driver.enableMinimumRetryAfter = options.EnableMinimumRetryAfter
@@ -314,7 +316,7 @@ func NewDriver(options *DriverOptions) *Driver {
 		// Remove taint from node to indicate driver startup success
 		// This is done at the last possible moment to prevent race conditions or false positive removals
 		time.AfterFunc(time.Duration(options.TaintRemovalInitialDelayInSeconds)*time.Second, func() {
-			removeTaintInBackground(kubeClient, driver.NodeID, driver.Name, taintRemovalBackoff, removeNotReadyTaint)
+			removeTaintInBackground(kubeClient, driver.NodeID, driver.Name, taintRemovalBackoff, driver.neverStopTaintRemoval, removeNotReadyTaint)
 		})
 	}
 	return &driver
@@ -670,18 +672,26 @@ type JSONPatch struct {
 }
 
 // removeTaintInBackground is a goroutine that retries removeNotReadyTaint with exponential backoff
-func removeTaintInBackground(k8sClient clientset.Interface, nodeName, driverName string, backoff wait.Backoff, removalFunc func(clientset.Interface, string, string) error) {
+func removeTaintInBackground(k8sClient clientset.Interface, nodeName, driverName string, backoff wait.Backoff, neverStop bool, removalFunc func(clientset.Interface, string, string) error) {
 	backoffErr := wait.ExponentialBackoff(backoff, func() (bool, error) {
-		err := removalFunc(k8sClient, nodeName, driverName)
-		if err != nil {
-			klog.ErrorS(err, "Unexpected failure when attempting to remove node taint(s)")
+		if err := removalFunc(k8sClient, nodeName, driverName); err != nil {
+			klog.Errorf("taint removal returned with error: %v", err)
 			return false, nil
 		}
 		return true, nil
 	})
 
-	if backoffErr != nil {
-		klog.ErrorS(backoffErr, "Retries exhausted, giving up attempting to remove node taint(s)")
+	klog.Errorf("taint removal returned with error: %v", backoffErr)
+	if neverStop {
+		klog.V(2).Infof("Starting taint removal loop, will retry indefinitely")
+		for {
+			klog.V(6).Infof("Waiting for around 5 minutes before retrying taint removal")
+			time.Sleep(4*time.Minute + wait.Jitter(time.Minute, 1.0))
+			if err := removalFunc(k8sClient, nodeName, driverName); err != nil {
+				klog.Errorf("taint removal returned with error: %v", err)
+				return
+			}
+		}
 	}
 }
 
@@ -700,10 +710,10 @@ func removeNotReadyTaint(clientset clientset.Interface, nodeName, driverName str
 	}
 
 	taintKeyToRemove := driverName + consts.AgentNotReadyNodeTaintKeySuffix
-	klog.V(2).Infof("removing taint with key %s from local node %s", taintKeyToRemove, nodeName)
+	klog.V(6).Infof("removing taint with key %s from local node %s", taintKeyToRemove, nodeName)
 	var taintsToKeep []corev1.Taint
 	for _, taint := range node.Spec.Taints {
-		klog.V(5).Infof("checking taint key %s, value %s, effect %s", taint.Key, taint.Value, taint.Effect)
+		klog.V(6).Infof("checking taint key %s, value %s, effect %s", taint.Key, taint.Value, taint.Effect)
 		if taint.Key != taintKeyToRemove {
 			taintsToKeep = append(taintsToKeep, taint)
 		} else {
@@ -712,7 +722,7 @@ func removeNotReadyTaint(clientset clientset.Interface, nodeName, driverName str
 	}
 
 	if len(taintsToKeep) == len(node.Spec.Taints) {
-		klog.V(2).Infof("No taints to remove on node, skipping taint removal")
+		klog.V(6).Infof("No taints to remove on node, skipping taint removal")
 		return nil
 	}
 
@@ -751,7 +761,7 @@ func checkAllocatable(ctx context.Context, clientset clientset.Interface, nodeNa
 	for _, driver := range csiNode.Spec.Drivers {
 		if driver.Name == driverName {
 			if driver.Allocatable != nil && driver.Allocatable.Count != nil {
-				klog.V(2).Infof("CSINode Allocatable value is set for driver on node %s, count %d", nodeName, *driver.Allocatable.Count)
+				klog.V(6).Infof("CSINode Allocatable value is set for driver on node %s, count %d", nodeName, *driver.Allocatable.Count)
 				return nil
 			}
 			return fmt.Errorf("isAllocatableSet: allocatable value not set for driver on node %s", nodeName)
