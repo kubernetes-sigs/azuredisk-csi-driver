@@ -40,6 +40,9 @@ import (
 	k8stypes "k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/wait"
 	clientset "k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/kubernetes/scheme"
+	clientcorev1 "k8s.io/client-go/kubernetes/typed/core/v1"
+	"k8s.io/client-go/tools/record"
 	"k8s.io/klog/v2"
 	"k8s.io/kubernetes/pkg/volume/util/hostutil"
 	"k8s.io/mount-utils"
@@ -96,6 +99,8 @@ type Driver struct {
 	cloud                        *azure.Cloud
 	clientFactory                azclient.ClientFactory
 	diskController               *ManagedDiskController
+	eventRecorder                record.EventRecorder
+	migrationMonitor             *MigrationProgressMonitor
 	mounter                      *mount.SafeFormatAndMount
 	deviceHelper                 optimization.Interface
 	nodeInfo                     *optimization.NodeInfo
@@ -265,6 +270,27 @@ func NewDriver(options *DriverOptions) *Driver {
 		driver.diskController.ForceDetachBackoff = driver.forceDetachBackoff
 		driver.diskController.WaitForDetach = driver.waitForDetach
 		driver.diskController.CheckDiskCountForBatching = driver.checkDiskCountForBatching
+
+		if kubeClient != nil {
+			eventBroadcaster := record.NewBroadcaster()
+			eventBroadcaster.StartStructuredLogging(0)
+			eventBroadcaster.StartRecordingToSink(&clientcorev1.EventSinkImpl{
+				Interface: kubeClient.CoreV1().Events(""),
+			})
+			eventRecorder := eventBroadcaster.NewRecorder(scheme.Scheme, corev1.EventSource{
+				Component: driver.Name,
+			})
+			driver.eventRecorder = eventRecorder
+			driver.migrationMonitor = NewMigrationProgressMonitor(kubeClient, eventRecorder, driver.diskController)
+
+			// Recover any ongoing migrations after restart
+			go func() {
+				time.Sleep(30 * time.Second) // Wait for controller to fully start
+				if err := driver.recoverMigrationMonitorsFromAnnotations(context.Background()); err != nil {
+					klog.Errorf("Failed to recover migration monitors: %v", err)
+				}
+			}()
+		}
 	}
 
 	driver.deviceHelper = optimization.NewSafeDeviceHelper()
@@ -358,6 +384,12 @@ func (d *Driver) Run(ctx context.Context) error {
 	go func() {
 		//graceful shutdown
 		<-ctx.Done()
+
+		// Stop migration monitor if it exists
+		if d.migrationMonitor != nil {
+			d.migrationMonitor.Stop()
+		}
+
 		s.GracefulStop()
 	}()
 	// Driver d act as IdentityServer, ControllerServer and NodeServer

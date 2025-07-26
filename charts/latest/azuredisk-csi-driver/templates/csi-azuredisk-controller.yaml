@@ -76,7 +76,11 @@ spec:
           image: "{{ .Values.image.csiProvisioner.repository }}:{{ .Values.image.csiProvisioner.tag }}"
 {{- end }}
           args:
+{{- if .Values.feature.modifyVolume }}
+            - "--feature-gates=Topology=true,HonorPVReclaimPolicy=true,VolumeAttributesClass=true"
+{{- else }}
             - "--feature-gates=Topology=true,HonorPVReclaimPolicy=true"
+{{- end }}
             - "--csi-address=$(ADDRESS)"
             - "--v=2"
             - "--timeout=30s"
@@ -163,7 +167,11 @@ spec:
             - "-leader-election"
             - "--leader-election-namespace={{ .Release.Namespace }}"
             - '-handle-volume-inuse-error=false'
-            - '-feature-gates=RecoverVolumeExpansionFailure=true'
+{{- if .Values.feature.modifyVolume }}
+            - "-feature-gates=RecoverVolumeExpansionFailure=true,VolumeAttributesClass=true"
+{{- else }}
+            - "-feature-gates=RecoverVolumeExpansionFailure=true"
+{{- end }}
             - "-timeout=240s"
             - "--retry-interval-max=30m"
           env:
