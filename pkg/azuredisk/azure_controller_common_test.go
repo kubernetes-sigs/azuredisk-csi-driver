@@ -22,6 +22,7 @@ import (
 	"fmt"
 	"net/http"
 	"reflect"
+	"runtime"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -1032,6 +1033,9 @@ func TestVerifyDetach(t *testing.T) {
 }
 
 func TestConcurrentDetachDisk(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Skip test case on Windows")
+	}
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
