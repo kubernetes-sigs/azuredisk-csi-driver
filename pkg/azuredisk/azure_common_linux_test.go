@@ -32,3 +32,34 @@ func TestRescanAllVolumes(t *testing.T) {
 		t.Errorf("rescanAllVolumes failed with error: %v", err)
 	}
 }
+
+func TestRescanVolume(t *testing.T) {
+	if runtime.GOOS == "darwin" {
+		t.Skipf("skip test on GOOS=%s", runtime.GOOS)
+	}
+
+	tests := []struct {
+		name       string
+		devicePath string
+	}{
+		{
+			name:       "rescan sdc device",
+			devicePath: "/dev/sdc",
+		},
+		{
+			name:       "rescan sdd device",
+			devicePath: "/dev/sdd",
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			mockIO := azureutils.NewFakeIOHandler()
+			err := rescanVolume(mockIO, test.devicePath)
+			// FakeIOHandler always returns nil for WriteFile, so we expect no error
+			if err != nil {
+				t.Errorf("test(%s): unexpected error: %v", test.name, err)
+			}
+		})
+	}
+}
