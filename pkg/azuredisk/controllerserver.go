@@ -406,7 +406,9 @@ func (d *Driver) ControllerModifyVolume(ctx context.Context, req *csi.Controller
 		return nil, status.Errorf(codes.Internal, "invalid modify volume req: %v", req)
 	}
 	diskURI := volumeID
-	if _, err := d.checkDiskExists(ctx, diskURI); err != nil {
+	var currentDisk *armcompute.Disk
+	var err error
+	if currentDisk, err = d.checkDiskExists(ctx, diskURI); err != nil {
 		return nil, status.Error(codes.NotFound, fmt.Sprintf("Volume not found, failed with error: %v", err))
 	}
 
@@ -424,11 +426,6 @@ func (d *Driver) ControllerModifyVolume(ctx context.Context, req *csi.Controller
 		skuName = ""
 	}
 
-	// Get current disk state before modification
-	currentDisk, err := d.checkDiskExists(ctx, diskURI)
-	if err != nil {
-		return nil, status.Error(codes.NotFound, fmt.Sprintf("Volume not found, failed with error: %v", err))
-	}
 	// Check if this is a SKU migration
 	var fromSKU armcompute.DiskStorageAccountTypes
 	var monitorSKUMigration bool

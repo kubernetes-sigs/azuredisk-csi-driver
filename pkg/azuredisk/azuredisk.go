@@ -271,7 +271,7 @@ func NewDriver(options *DriverOptions) *Driver {
 		driver.diskController.WaitForDetach = driver.waitForDetach
 		driver.diskController.CheckDiskCountForBatching = driver.checkDiskCountForBatching
 
-		if kubeClient != nil {
+		if kubeClient != nil && driver.NodeID == "" {
 			eventBroadcaster := record.NewBroadcaster()
 			eventBroadcaster.StartStructuredLogging(0)
 			eventBroadcaster.StartRecordingToSink(&clientcorev1.EventSinkImpl{
@@ -286,7 +286,7 @@ func NewDriver(options *DriverOptions) *Driver {
 			// Recover any ongoing migrations after restart
 			go func() {
 				time.Sleep(30 * time.Second) // Wait for controller to fully start
-				if err := driver.recoverMigrationMonitorsFromAnnotations(context.Background()); err != nil {
+				if err := driver.recoverMigrationMonitorsFromLabels(context.Background()); err != nil {
 					klog.Errorf("Failed to recover migration monitors: %v", err)
 				}
 			}()

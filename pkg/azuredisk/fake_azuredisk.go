@@ -228,5 +228,5 @@ func (d *fakeDriver) SetMigrationMonitor(monitor *MigrationProgressMonitor) {
 }
 
 func (d *fakeDriver) RecoverMigrationMonitor(ctx context.Context) error {
-	return d.recoverMigrationMonitorsFromAnnotations(ctx)
+	return d.recoverMigrationMonitorsFromLabels(ctx)
 }
