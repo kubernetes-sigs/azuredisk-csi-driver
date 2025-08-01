@@ -646,32 +646,45 @@ func TestAttachDiskRequest(t *testing.T) {
 		nodeName             string
 		diskName             string
 		diskNum              int
+		numDisksAllowed      int
 		duplicateDiskRequest bool
 		expectedErr          bool
 	}{
 		{
-			desc:        "one disk request in queue",
-			diskURI:     "diskURI",
-			nodeName:    "nodeName",
-			diskName:    "diskName",
-			diskNum:     1,
-			expectedErr: false,
+			desc:            "one disk request in queue",
+			diskURI:         "diskURI",
+			nodeName:        "nodeName",
+			diskName:        "diskName",
+			diskNum:         1,
+			numDisksAllowed: 8,
+			expectedErr:     false,
 		},
 		{
-			desc:        "multiple disk requests in queue",
-			diskURI:     "diskURI",
-			nodeName:    "nodeName",
-			diskName:    "diskName",
-			diskNum:     10,
-			expectedErr: false,
+			desc:            "multiple disk requests in queue",
+			diskURI:         "diskURI",
+			nodeName:        "nodeName",
+			diskName:        "diskName",
+			diskNum:         10,
+			numDisksAllowed: 16,
+			expectedErr:     false,
 		},
 		{
-			desc:        "zero disk request in queue",
-			diskURI:     "diskURI",
-			nodeName:    "nodeName",
-			diskName:    "diskName",
-			diskNum:     0,
-			expectedErr: false,
+			desc:            "multiple disk requests in queue but exceeds node limit",
+			diskURI:         "diskURI",
+			nodeName:        "nodeName",
+			diskName:        "diskName",
+			diskNum:         10,
+			numDisksAllowed: 8,
+			expectedErr:     false,
+		},
+		{
+			desc:            "zero disk request in queue",
+			diskURI:         "diskURI",
+			nodeName:        "nodeName",
+			diskName:        "diskName",
+			diskNum:         0,
+			numDisksAllowed: 8,
+			expectedErr:     false,
 		},
 		{
 			desc:                 "multiple disk requests in queue",
@@ -680,6 +693,7 @@ func TestAttachDiskRequest(t *testing.T) {
 			diskName:             "diskName",
 			duplicateDiskRequest: true,
 			diskNum:              10,
+			numDisksAllowed:      16,
 			expectedErr:          false,
 		},
 	}
@@ -703,9 +717,13 @@ func TestAttachDiskRequest(t *testing.T) {
 		}
 
 		diskURI := fmt.Sprintf("%s%d", test.diskURI, test.diskNum)
-		diskMap, err := common.retrieveAttachBatchedDiskRequests(test.nodeName, diskURI)
+		diskMap, err := common.retrieveAttachBatchedDiskRequests(test.nodeName, diskURI, test.numDisksAllowed)
 		assert.Equal(t, test.expectedErr, err != nil, "TestCase[%d]: %s", i, test.desc)
-		assert.Equal(t, test.diskNum, len(diskMap), "TestCase[%d]: %s", i, test.desc)
+		if test.diskNum > test.numDisksAllowed {
+			assert.Equal(t, test.numDisksAllowed, len(diskMap), "TestCase[%d]: %s", i, test.desc)
+		} else {
+			assert.Equal(t, test.diskNum, len(diskMap), "TestCase[%d]: %s", i, test.desc)
+		}
 		for diskURI, opt := range diskMap {
 			assert.Equal(t, strings.Contains(diskURI, test.diskURI), true, "TestCase[%d]: %s", i, test.desc)
 			assert.Equal(t, strings.Contains(opt.DiskName, test.diskName), true, "TestCase[%d]: %s", i, test.desc)
@@ -1067,8 +1085,8 @@ func TestConcurrentDetachDisk(t *testing.T) {
 			func(_ context.Context, _ string, name string, params armcompute.VirtualMachine) (*armcompute.VirtualMachine, error) {
 				if atomic.AddInt32(&callCount, 1) == 1 {
 					klog.Info("First call to CreateOrUpdate succeeded", "VM Name:", name, "Params:", params)
-					time.Sleep(100 * time.Millisecond) // Simulate some processing time to hold the node lock while the 3rd detach request is made
-					return nil, nil                    // First call succeeds
+					time.Sleep(1000 * time.Millisecond) // Simulate some processing time to hold the node lock while the 3rd detach request is made
+					return nil, nil                     // First call succeeds
 				}
 				return nil, errors.New("internal error") // Subsequent calls fail
 			}).
@@ -1090,7 +1108,7 @@ func TestConcurrentDetachDisk(t *testing.T) {
 		}()
 	}
 
-	time.Sleep(1005 * time.Millisecond) // Wait for the batching timeout
+	time.Sleep(1100 * time.Millisecond) // Wait for the batching timeout
 	diskURI := fmt.Sprintf("/subscriptions/%s/resourceGroups/%s/providers/Microsoft.Compute/disks/%s",
 		testCloud.SubscriptionID, testCloud.ResourceGroup, "disk-not-batched")
 	klog.Info("Calling DetachDisk for non-batched disk detach", expectedVM)

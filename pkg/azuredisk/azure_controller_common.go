@@ -232,13 +232,13 @@ func (c *controllerCommon) AttachDisk(ctx context.Context, diskName, diskURI str
 				if int(maxNumDisks) > numDisksAttached {
 					numDisksAllowed = int(maxNumDisks) - numDisksAttached
 				} else {
-					numDisksAllowed = 0
+					return -1, fmt.Errorf("Maximum number of disks %s %d", util.MaximumDataDiskExceededMsg, maxNumDisks)
 				}
 			}
 		}
 	}
 
-	diskMap, err := c.retrieveAttachBatchedDiskRequests(node, diskuri)
+	diskMap, err := c.retrieveAttachBatchedDiskRequests(node, diskuri, numDisksAllowed)
 	if err != nil {
 		return -1, err
 	}
@@ -246,22 +246,6 @@ func (c *controllerCommon) AttachDisk(ctx context.Context, diskName, diskURI str
 	if len(diskMap) == 0 {
 		// disk was already processed in the batch, return the result
 		return c.verifyAttach(ctx, diskName, diskURI, nodeName)
-	}
-
-	// Remove some disks from the batch if the number is more than the max number of disks allowed
-	removeDisks := len(diskMap) - numDisksAllowed
-	if removeDisks > 0 {
-		klog.V(2).Infof("too many disks to attach, remove %d disks from the request", removeDisks)
-		for diskURI, options := range diskMap {
-			if removeDisks == 0 {
-				break
-			}
-			if options != nil {
-				klog.V(2).Infof("remove disk(%s) from attach request from node(%s)", diskURI, nodeName)
-				delete(diskMap, diskURI)
-			}
-			removeDisks--
-		}
 	}
 
 	lun, setLunErr := c.SetDiskLun(ctx, nodeName, diskuri, diskMap, occupiedLuns)
@@ -333,7 +317,7 @@ func (c *controllerCommon) batchAttachDiskRequest(diskURI, nodeName string, opti
 
 // clean up attach disk requests
 // return original attach disk requests
-func (c *controllerCommon) retrieveAttachBatchedDiskRequests(nodeName, diskURI string) (map[string]*provider.AttachDiskOptions, error) {
+func (c *controllerCommon) retrieveAttachBatchedDiskRequests(nodeName, diskURI string, numDisksAllowed int) (map[string]*provider.AttachDiskOptions, error) {
 	var diskMap map[string]*provider.AttachDiskOptions
 
 	attachDiskMapKey := nodeName + attachDiskMapKeySuffix
@@ -350,7 +334,26 @@ func (c *controllerCommon) retrieveAttachBatchedDiskRequests(nodeName, diskURI s
 		klog.V(2).Infof("no attach disk(%s) request on node(%s), diskMap len:%d, %+v", diskURI, nodeName, len(diskMap), diskMap)
 		return nil, nil
 	}
-	c.attachDiskMap.Store(nodeName, make(map[string]*provider.AttachDiskOptions))
+
+	// Remove disks from the batch if the number is more than the number of disks node can support
+	disksToKeepInQueue := make(map[string]*provider.AttachDiskOptions)
+	removeDisks := len(diskMap) - numDisksAllowed
+	if removeDisks > 0 {
+		klog.V(2).Infof("too many disks to attach, remove %d disks from the request", removeDisks)
+		for currDiskURI, options := range diskMap {
+			if removeDisks == 0 {
+				break
+			}
+			if options != nil && currDiskURI != diskURI {
+				klog.V(2).Infof("remove disk(%s) from current batch request from node(%s) but requeue", currDiskURI, nodeName)
+				disksToKeepInQueue[currDiskURI] = options
+				delete(diskMap, currDiskURI)
+				removeDisks--
+			}
+		}
+	}
+
+	c.attachDiskMap.Store(nodeName, disksToKeepInQueue)
 	return diskMap, nil
 }
 
