@@ -717,7 +717,7 @@ func TestAttachDiskRequest(t *testing.T) {
 		}
 
 		diskURI := fmt.Sprintf("%s%d", test.diskURI, test.diskNum)
-		diskMap, err := common.retrieveAttachBatchedDiskRequests(test.nodeName, diskURI, test.numDisksAllowed)
+		diskMap, err := common.retrieveBatchedAttachDiskRequests(test.nodeName, diskURI, test.numDisksAllowed)
 		assert.Equal(t, test.expectedErr, err != nil, "TestCase[%d]: %s", i, test.desc)
 		if test.diskNum > test.numDisksAllowed {
 			assert.Equal(t, test.numDisksAllowed, len(diskMap), "TestCase[%d]: %s", i, test.desc)
@@ -797,7 +797,7 @@ func TestDetachDiskRequest(t *testing.T) {
 			}
 		}
 
-		diskMap, err := common.retrieveDetachBatchedDiskRequests(test.nodeName, diskURI)
+		diskMap, err := common.retrieveBatchedDetachDiskRequests(test.nodeName, diskURI)
 		assert.Equal(t, test.expectedErr, err != nil, "TestCase[%d]: %s", i, test.desc)
 		assert.Equal(t, test.diskNum, len(diskMap), "TestCase[%d]: %s", i, test.desc)
 		for diskURI, diskName := range diskMap {
@@ -1006,7 +1006,7 @@ func TestVerifyDetach(t *testing.T) {
 			nodeName:       "node3",
 			expectedErr:    true,
 			expectedVM:     map[string]string{"node3": "PowerState/Running"},
-			expectedErrMsg: "disk(diskuri) is still attached to node(node3) on lun(2), vmState: Succeeded",
+			expectedErrMsg: "disk is still attached to node(node3) on lun(2), vmState: Succeeded",
 		},
 	}
 
@@ -1126,6 +1126,38 @@ func TestConcurrentDetachDisk(t *testing.T) {
 	}
 	// Should fail due to the second CreateOrUpdate call returning an error
 	assert.Error(t, err, "DetachDisk should return an error for the non-batched disk detach")
+}
+
+func TestClearAttachDiskRequests(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	testCloud := provider.GetTestCloud(ctrl)
+	common := &controllerCommon{
+		cloud:   testCloud,
+		lockMap: newLockMap(),
+	}
+
+	nodeName := "testnode"
+	// Prepare attachDiskMap with some entries
+	diskMap := map[string]*provider.AttachDiskOptions{
+		"diskURI1": {DiskName: "disk1"},
+		"diskURI2": {DiskName: "disk2"},
+	}
+	common.attachDiskMap.Store(nodeName, diskMap)
+
+	// Ensure attachDiskMap has entries before clearing
+	if v, ok := common.attachDiskMap.Load(nodeName); !ok || v == nil {
+		t.Fatalf("attachDiskMap should have entries before clear")
+	}
+
+	// Call clearAttachDiskRequests
+	common.clearAttachDiskRequests(nodeName)
+
+	// After clearing, attachDiskMap should have an empty map for the nodeName
+	v, ok := common.attachDiskMap.Load(nodeName)
+	assert.True(t, ok, "attachDiskMap should have an empty map for nodeName after clearAttachDiskRequests")
+	assert.Empty(t, v, "attachDiskMap should be empty for nodeName after clearAttachDiskRequests")
 }
 
 // setTestVirtualMachines sets test virtual machine with powerstate.

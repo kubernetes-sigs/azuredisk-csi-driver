@@ -222,23 +222,25 @@ func (c *controllerCommon) AttachDisk(ctx context.Context, diskName, diskURI str
 		if err != nil {
 			klog.Errorf("failed to get node info from labels: %v", err)
 		} else if instanceType != "" {
-			maxNumDisks, instanceExists := GetMaxDataDiskCount(instanceType)
+			maxNodeDisks, instanceExists := GetMaxDataDiskCount(instanceType)
 			if instanceExists {
 				attachedDisks, _, err := c.GetNodeDataDisks(ctx, nodeName, azcache.CacheReadTypeDefault)
 				if err != nil {
 					return -1, err
 				}
-				numDisksAttached := len(attachedDisks)
-				if int(maxNumDisks) > numDisksAttached {
-					numDisksAllowed = int(maxNumDisks) - numDisksAttached
-				} else {
-					return -1, fmt.Errorf("Maximum number of disks %s %d", util.MaximumDataDiskExceededMsg, maxNumDisks)
+				currentNodeDisks := len(attachedDisks)
+				maxNodeDisks := int(maxNodeDisks)
+				if currentNodeDisks > maxNodeDisks {
+					// if node already has max number of disks, clear the attach disk requests and return an early error
+					c.clearAttachDiskRequests(node)
+					return -1, fmt.Errorf("Maximum number of disks %s %d", util.MaximumDataDiskExceededMsg, maxNodeDisks)
 				}
+				numDisksAllowed = maxNodeDisks - currentNodeDisks
 			}
 		}
 	}
 
-	diskMap, err := c.retrieveAttachBatchedDiskRequests(node, diskuri, numDisksAllowed)
+	diskMap, err := c.retrieveBatchedAttachDiskRequests(node, diskuri, numDisksAllowed)
 	if err != nil {
 		return -1, err
 	}
@@ -290,7 +292,7 @@ func (c *controllerCommon) AttachDisk(ctx context.Context, diskName, diskURI str
 	return lun, nil
 }
 
-// insertAttachDiskRequest return (attachDiskRequestQueueLength, error)
+// batchAttachDiskRequest batches the attach disk requests for the node.
 func (c *controllerCommon) batchAttachDiskRequest(diskURI, nodeName string, options *provider.AttachDiskOptions) (int, error) {
 	var diskMap map[string]*provider.AttachDiskOptions
 	attachDiskMapKey := nodeName + attachDiskMapKeySuffix
@@ -315,9 +317,12 @@ func (c *controllerCommon) batchAttachDiskRequest(diskURI, nodeName string, opti
 	return len(diskMap), nil
 }
 
-// clean up attach disk requests
-// return original attach disk requests
-func (c *controllerCommon) retrieveAttachBatchedDiskRequests(nodeName, diskURI string, numDisksAllowed int) (map[string]*provider.AttachDiskOptions, error) {
+// retrieveBatchedAttachDiskRequests removes the current attach disk requests for the node
+// and returns it for processing. If the number of disks in the batch exceeds
+// the number of disks the node can support, it will remove the extra disks from the batch
+// and return the remaining disks for processing. The requested diskURI will always be returned in the batch if it exists.
+// The batch will be empty after this call.
+func (c *controllerCommon) retrieveBatchedAttachDiskRequests(nodeName, diskURI string, numDisksAllowed int) (map[string]*provider.AttachDiskOptions, error) {
 	var diskMap map[string]*provider.AttachDiskOptions
 
 	attachDiskMapKey := nodeName + attachDiskMapKeySuffix
@@ -336,7 +341,6 @@ func (c *controllerCommon) retrieveAttachBatchedDiskRequests(nodeName, diskURI s
 	}
 
 	// Remove disks from the batch if the number is more than the number of disks node can support
-	disksToKeepInQueue := make(map[string]*provider.AttachDiskOptions)
 	removeDisks := len(diskMap) - numDisksAllowed
 	if removeDisks > 0 {
 		klog.V(2).Infof("too many disks to attach, remove %d disks from the request", removeDisks)
@@ -346,15 +350,22 @@ func (c *controllerCommon) retrieveAttachBatchedDiskRequests(nodeName, diskURI s
 			}
 			if options != nil && currDiskURI != diskURI {
 				klog.V(2).Infof("remove disk(%s) from current batch request from node(%s) but requeue", currDiskURI, nodeName)
-				disksToKeepInQueue[currDiskURI] = options
 				delete(diskMap, currDiskURI)
 				removeDisks--
 			}
 		}
 	}
 
-	c.attachDiskMap.Store(nodeName, disksToKeepInQueue)
+	c.attachDiskMap.Store(nodeName, make(map[string]*provider.AttachDiskOptions))
 	return diskMap, nil
+}
+
+// clearAttachDiskRequests clears the attach disk requests for the node.
+func (c *controllerCommon) clearAttachDiskRequests(nodeName string) {
+	attachDiskMapKey := nodeName + attachDiskMapKeySuffix
+	c.lockMap.LockEntry(attachDiskMapKey)
+	defer c.lockMap.UnlockEntry(attachDiskMapKey)
+	c.attachDiskMap.Store(nodeName, make(map[string]*provider.AttachDiskOptions))
 }
 
 // DetachDisk detaches a disk from VM
@@ -390,7 +401,7 @@ func (c *controllerCommon) DetachDisk(ctx context.Context, diskName, diskURI str
 		time.Sleep(time.Duration(c.AttachDetachInitialDelayInMs) * time.Millisecond)
 	}
 
-	diskMap, err := c.retrieveDetachBatchedDiskRequests(node, formattedDiskURI)
+	diskMap, err := c.retrieveBatchedDetachDiskRequests(node, formattedDiskURI)
 	if err != nil {
 		return err
 	}
@@ -455,23 +466,23 @@ func (c *controllerCommon) verifyDetach(ctx context.Context, diskName, diskURI s
 	lun, vmState, errGetLun := c.GetDiskLun(ctx, diskName, diskURI, nodeName)
 	if errGetLun != nil {
 		if strings.Contains(errGetLun.Error(), consts.CannotFindDiskLUN) {
-			klog.V(2).Infof("azureDisk - detach disk(%s, %s) succeeded", diskName, diskURI)
+			klog.V(2).Infof("detach disk(%s, %s) succeeded", diskName, diskURI)
 			return nil
 		}
-		klog.Errorf("azureDisk - detach disk(%s, %s) failed, error: %v", diskName, diskURI, errGetLun)
+		klog.Errorf("detach disk(%s, %s) failed, error: %v", diskName, diskURI, errGetLun)
 		return errGetLun
 	}
 
-	return fmt.Errorf("disk(%s) is still attached to node(%s) on lun(%d), vmState: %s", diskURI, nodeName, lun, ptr.Deref(vmState, ""))
+	return fmt.Errorf("detach disk(%s) failed, disk is still attached to node(%s) on lun(%d), vmState: %s", diskURI, nodeName, lun, ptr.Deref(vmState, ""))
 }
 
 // verifyAttach verifies if the disk is attached to the node by checking the disk lun.
 func (c *controllerCommon) verifyAttach(ctx context.Context, diskName, diskURI string, nodeName types.NodeName) (int32, error) {
 	lun, vmState, errGetLun := c.GetDiskLun(ctx, diskName, diskURI, nodeName)
 	if errGetLun != nil {
-		return -1, fmt.Errorf("disk(%s) could not be found on node(%s), vmState: %s, error: %w", diskURI, nodeName, ptr.Deref(vmState, ""), errGetLun)
+		return -1, fmt.Errorf("attach disk(%s) failed, disk could not be found on node(%s), vmState: %s, error: %w", diskURI, nodeName, ptr.Deref(vmState, ""), errGetLun)
 	}
-	klog.V(2).Infof("azureDisk - verify attach disk(%s, %s) succeeded on lun(%d)", diskName, diskURI, lun)
+	klog.V(2).Infof("attach disk(%s, %s) succeeded on lun(%d)", diskName, diskURI, lun)
 	return lun, nil
 }
 
@@ -503,9 +514,9 @@ func (c *controllerCommon) batchDetachDiskRequest(diskName, diskURI, nodeName st
 	return len(diskMap), nil
 }
 
-// retrieveDetachBatchedDiskRequests removes the current detach disk requests for the node
-// and returns it for processing
-func (c *controllerCommon) retrieveDetachBatchedDiskRequests(nodeName, diskURI string) (map[string]string, error) {
+// retrieveBatchedDetachDiskRequests removes the current detach disk requests for the node
+// and returns it for processing.
+func (c *controllerCommon) retrieveBatchedDetachDiskRequests(nodeName, diskURI string) (map[string]string, error) {
 	var diskMap map[string]string
 
 	detachDiskMapKey := nodeName + detachDiskMapKeySuffix
