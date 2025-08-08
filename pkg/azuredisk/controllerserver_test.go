@@ -18,6 +18,7 @@ package azuredisk
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"reflect"
 	"strings"
@@ -33,11 +34,16 @@ import (
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/timestamppb"
 	v1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/resource"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/tools/record"
+	"k8s.io/klog/v2"
 	"k8s.io/utils/ptr"
 	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azuredisk/mockcorev1"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azuredisk/mockkubeclient"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azuredisk/mockpersistentvolume"
+	"sigs.k8s.io/azuredisk-csi-driver/pkg/azuredisk/mockpersistentvolumeclaim"
 	volumehelper "sigs.k8s.io/azuredisk-csi-driver/pkg/util"
 	"sigs.k8s.io/cloud-provider-azure/pkg/azclient/diskclient/mock_diskclient"
 	"sigs.k8s.io/cloud-provider-azure/pkg/azclient/mock_azclient"
@@ -678,21 +684,21 @@ func TestControllerGetVolume(t *testing.T) {
 }
 
 func TestControllerModifyVolume(t *testing.T) {
-	cntl := gomock.NewController(t)
-	defer cntl.Finish()
-	d, err := NewFakeDriver(cntl)
-	if err != nil {
-		t.Fatalf("Error getting driver: %v", err)
-	}
-	storageAccountTypeUltraSSDLRS := armcompute.DiskStorageAccountTypesUltraSSDLRS
-
 	tests := []struct {
-		desc            string
-		req             *csi.ControllerModifyVolumeRequest
-		oldSKU          *armcompute.DiskStorageAccountTypes
-		expectedResp    *csi.ControllerModifyVolumeResponse
-		expectedErrCode codes.Code
-		expectedErrmsg  string
+		desc                                    string
+		req                                     *csi.ControllerModifyVolumeRequest
+		oldSKU                                  *armcompute.DiskStorageAccountTypes
+		expectedResp                            *csi.ControllerModifyVolumeResponse
+		expectedErrCode                         codes.Code
+		expectedErrmsg                          string
+		expectMigrationStarted                  bool
+		setupPVCMocks                           bool
+		simulateRestart                         bool
+		pvcExists                               bool
+		pvHasMigrationLabels                    bool
+		multipleMigrationsToRecover             bool
+		simulateMigrationCompletion             bool
+		simulateMigrationCompletionAfterRestart bool
 	}{
 		{
 			desc: "success standard",
@@ -703,32 +709,36 @@ func TestControllerModifyVolume(t *testing.T) {
 					consts.DiskMBPSReadWriteField: "100",
 				},
 			},
-			oldSKU:       &storageAccountTypeUltraSSDLRS,
-			expectedResp: &csi.ControllerModifyVolumeResponse{},
+			oldSKU:                 to.Ptr(armcompute.DiskStorageAccountTypesUltraSSDLRS),
+			expectedResp:           &csi.ControllerModifyVolumeResponse{},
+			expectMigrationStarted: false,
 		},
 		{
 			desc: "fail with no volume id",
 			req: &csi.ControllerModifyVolumeRequest{
 				VolumeId: "",
 			},
-			expectedResp:    nil,
-			expectedErrCode: codes.InvalidArgument,
+			expectedResp:           nil,
+			expectedErrCode:        codes.InvalidArgument,
+			expectMigrationStarted: false,
 		},
 		{
 			desc: "fail with the invalid diskURI",
 			req: &csi.ControllerModifyVolumeRequest{
 				VolumeId: "123",
 			},
-			expectedResp:    nil,
-			expectedErrCode: codes.NotFound,
+			expectedResp:           nil,
+			expectedErrCode:        codes.NotFound,
+			expectMigrationStarted: false,
 		},
 		{
 			desc: "fail with wrong disk name",
 			req: &csi.ControllerModifyVolumeRequest{
 				VolumeId: "/subscriptions/123",
 			},
-			expectedResp:    nil,
-			expectedErrCode: codes.NotFound,
+			expectedResp:           nil,
+			expectedErrCode:        codes.NotFound,
+			expectMigrationStarted: false,
 		},
 		{
 			desc: "fail with wrong sku name",
@@ -738,8 +748,9 @@ func TestControllerModifyVolume(t *testing.T) {
 					consts.SkuNameField: "ut",
 				},
 			},
-			expectedResp:    nil,
-			expectedErrCode: codes.InvalidArgument,
+			expectedResp:           nil,
+			expectedErrCode:        codes.InvalidArgument,
+			expectMigrationStarted: false,
 		},
 		{
 			desc: "fail with error parse parameter",
@@ -749,8 +760,9 @@ func TestControllerModifyVolume(t *testing.T) {
 					consts.DiskIOPSReadWriteField: "ut",
 				},
 			},
-			expectedResp:    nil,
-			expectedErrCode: codes.InvalidArgument,
+			expectedResp:           nil,
+			expectedErrCode:        codes.InvalidArgument,
+			expectMigrationStarted: false,
 		},
 		{
 			desc: "fail with unsupported sku",
@@ -761,12 +773,114 @@ func TestControllerModifyVolume(t *testing.T) {
 					consts.DiskIOPSReadWriteField: "100",
 				},
 			},
-			expectedResp:    nil,
-			expectedErrCode: codes.Internal,
+			expectedResp:           nil,
+			expectedErrCode:        codes.Internal,
+			expectMigrationStarted: false,
+		},
+		{
+			desc: "success SKU migration from Premium_LRS to PremiumV2_LRS",
+			req: &csi.ControllerModifyVolumeRequest{
+				VolumeId: testVolumeID,
+				MutableParameters: map[string]string{
+					consts.SkuNameField: string(armcompute.DiskStorageAccountTypesPremiumV2LRS),
+				},
+			},
+			oldSKU:                 to.Ptr(armcompute.DiskStorageAccountTypesPremiumLRS),
+			expectedResp:           &csi.ControllerModifyVolumeResponse{},
+			expectMigrationStarted: true,
+			pvcExists:              true,
+			setupPVCMocks:          true,
+		},
+		{
+			desc: "Migration monitor not triggered for Standard_LRS to Premium_LRS",
+			req: &csi.ControllerModifyVolumeRequest{
+				VolumeId: testVolumeID,
+				MutableParameters: map[string]string{
+					consts.SkuNameField: string(armcompute.DiskStorageAccountTypesPremiumLRS),
+				},
+			},
+			oldSKU:                 to.Ptr(armcompute.DiskStorageAccountTypesStandardLRS),
+			expectedResp:           &csi.ControllerModifyVolumeResponse{},
+			expectMigrationStarted: false,
+			setupPVCMocks:          true,
+		},
+		{
+			desc: "no migration for same SKU",
+			req: &csi.ControllerModifyVolumeRequest{
+				VolumeId: testVolumeID,
+				MutableParameters: map[string]string{
+					consts.SkuNameField: string(armcompute.DiskStorageAccountTypesPremiumLRS),
+				},
+			},
+			oldSKU:                 to.Ptr(armcompute.DiskStorageAccountTypesPremiumLRS),
+			expectedResp:           &csi.ControllerModifyVolumeResponse{},
+			expectMigrationStarted: false,
+		},
+		{
+			desc: "controller restart - recover ongoing migration from annotations",
+			req: &csi.ControllerModifyVolumeRequest{
+				VolumeId: testVolumeID,
+				MutableParameters: map[string]string{
+					consts.SkuNameField: string(armcompute.DiskStorageAccountTypesPremiumV2LRS),
+				},
+			},
+			oldSKU:                 to.Ptr(armcompute.DiskStorageAccountTypesPremiumLRS),
+			expectedResp:           &csi.ControllerModifyVolumeResponse{},
+			expectMigrationStarted: true,
+			setupPVCMocks:          true,
+			pvcExists:              true,
+			simulateRestart:        true,
+			pvHasMigrationLabels:   true,
+		},
+		{
+			desc: "controller restart - no migration to recover",
+			req: &csi.ControllerModifyVolumeRequest{
+				VolumeId: testVolumeID,
+				MutableParameters: map[string]string{
+					consts.DiskIOPSReadWriteField: "3000",
+				},
+			},
+			oldSKU:                 to.Ptr(armcompute.DiskStorageAccountTypesUltraSSDLRS),
+			expectedResp:           &csi.ControllerModifyVolumeResponse{},
+			expectMigrationStarted: false,
+			setupPVCMocks:          true,
+			pvcExists:              true,
+			simulateRestart:        true,
+			pvHasMigrationLabels:   false,
+		},
+		{
+			desc: "controller restart - recover multiple ongoing migrations and cleanup on completion",
+			req: &csi.ControllerModifyVolumeRequest{
+				VolumeId: testVolumeID,
+				MutableParameters: map[string]string{
+					consts.SkuNameField: string(armcompute.DiskStorageAccountTypesPremiumV2LRS),
+				},
+			},
+			oldSKU:                                  to.Ptr(armcompute.DiskStorageAccountTypesPremiumLRS),
+			expectedResp:                            &csi.ControllerModifyVolumeResponse{},
+			expectMigrationStarted:                  true,
+			setupPVCMocks:                           true,
+			pvcExists:                               true,
+			simulateRestart:                         true,
+			pvHasMigrationLabels:                    true,
+			multipleMigrationsToRecover:             true,
+			simulateMigrationCompletion:             true,
+			simulateMigrationCompletionAfterRestart: true,
 		},
 	}
 
 	for _, test := range tests {
+		klog.Infof("Running test: %s", test.desc)
+
+		//Cancel all existing mocking call expectations
+		cntl := gomock.NewController(t)
+		defer cntl.Finish()
+		d := getFakeDriverWithKubeClient(cntl)
+
+		// Initialize migration monitor with the fake driver's kube client
+		mockEventRecorder := record.NewFakeRecorder(100)
+		d.SetMigrationMonitor(NewMigrationProgressMonitor(d.getCloud().KubeClient, mockEventRecorder, d.GetDiskController()))
+
 		ctx, cancel := context.WithCancel(context.TODO())
 		defer cancel()
 		id := test.req.VolumeId
@@ -777,10 +891,121 @@ func TestControllerModifyVolume(t *testing.T) {
 			},
 			Properties: &armcompute.DiskProperties{},
 		}
+
+		// Simulate disk migration completion if needed
+		if test.simulateMigrationCompletion {
+			disk.Properties.CompletionPercent = to.Ptr(float32(100))
+		}
+
+		// Setup disk client mocks
 		diskClient := mock_diskclient.NewMockInterface(cntl)
 		d.getClientFactory().(*mock_azclient.MockClientFactory).EXPECT().GetDiskClientForSub(gomock.Any()).Return(diskClient, nil).AnyTimes()
 		diskClient.EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any()).Return(disk, nil).AnyTimes()
-		diskClient.EXPECT().Patch(gomock.Eq(ctx), gomock.Any(), gomock.Any(), gomock.Any()).Return(disk, nil).AnyTimes()
+		diskClient.EXPECT().Patch(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(disk, nil).AnyTimes()
+
+		// Setup PVC mocks for migration monitoring if needed
+		var testPVCs []*v1.PersistentVolumeClaim
+		if test.setupPVCMocks {
+			// Create primary test PVC
+			testPVC := &v1.PersistentVolumeClaim{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-pvc-0",
+					Namespace: "default",
+				},
+				Spec: v1.PersistentVolumeClaimSpec{
+					AccessModes: []v1.PersistentVolumeAccessMode{
+						v1.PersistentVolumeAccessMode("ReadWriteOnce"),
+					},
+					Resources: v1.VolumeResourceRequirements{
+						Requests: v1.ResourceList{
+							v1.ResourceName("storage"): *resource.NewQuantity(10*1024*1024*1024, resource.BinarySI), // 10GiB
+						},
+					},
+					VolumeName: "unit-test-volume",
+				},
+			}
+
+			testPVCs = append(testPVCs, testPVC)
+
+			// Create additional PVCs for multiple migration recovery test
+			if test.multipleMigrationsToRecover {
+				for i := 1; i <= 2; i++ {
+					additionalPVC := &v1.PersistentVolumeClaim{
+						ObjectMeta: metav1.ObjectMeta{
+							Name:      fmt.Sprintf("test-pvc-%d", i),
+							Namespace: "default",
+						},
+						Spec: v1.PersistentVolumeClaimSpec{
+							AccessModes: []v1.PersistentVolumeAccessMode{
+								v1.PersistentVolumeAccessMode("ReadWriteOnce"),
+							},
+							Resources: v1.VolumeResourceRequirements{
+								Requests: v1.ResourceList{
+									v1.ResourceName("storage"): *resource.NewQuantity(10*1024*1024*1024, resource.BinarySI), // 10GiB
+								},
+							},
+							VolumeName: fmt.Sprintf("test-pv-%d", i),
+						},
+					}
+					testPVCs = append(testPVCs, additionalPVC)
+				}
+			}
+
+			// Setup mock expectations for PVC/PV operations
+			pvcInterface := mockpersistentvolumeclaim.NewMockPersistentVolumeClaimInterface(cntl)
+			mockCoreV1 := d.getCloud().KubeClient.CoreV1()
+
+			// Mock List call for recovery scenarios
+			pvcList := &v1.PersistentVolumeClaimList{Items: []v1.PersistentVolumeClaim{}}
+			for _, pvc := range testPVCs {
+				pvcList.Items = append(pvcList.Items, *pvc)
+			}
+			mockCoreV1.(*mockcorev1.MockInterface).EXPECT().PersistentVolumeClaims(gomock.Any()).Return(pvcInterface).AnyTimes()
+			pvcInterface.EXPECT().List(gomock.Any(), gomock.Any()).Return(pvcList, nil).AnyTimes()
+
+			// Mock Get and Update calls
+			for _, pvc := range testPVCs {
+				if test.pvcExists {
+					pvcInterface.EXPECT().Get(gomock.Any(), pvc.Name, gomock.Any()).
+						Return(pvc, nil).AnyTimes()
+
+					pvcInterface.EXPECT().Update(gomock.Any(), gomock.Any(), gomock.Any()).
+						Return(pvc, nil).AnyTimes()
+
+					volumeHandle := fmt.Sprintf(consts.ManagedDiskPath, "subs", "rg", pvc.Spec.VolumeName)
+
+					d.getCloud().KubeClient.CoreV1().PersistentVolumes().(*mockpersistentvolume.MockInterface).EXPECT().Get(gomock.Any(), pvc.Spec.VolumeName, gomock.Any()).DoAndReturn(func(_ context.Context, name string, _ metav1.GetOptions) (*v1.PersistentVolume, error) {
+						return &v1.PersistentVolume{
+							ObjectMeta: metav1.ObjectMeta{
+								Name: name,
+							},
+							Spec: v1.PersistentVolumeSpec{
+								PersistentVolumeReclaimPolicy: v1.PersistentVolumeReclaimDelete,
+								AccessModes: []v1.PersistentVolumeAccessMode{
+									v1.ReadWriteOnce,
+								},
+								Capacity: v1.ResourceList{
+									v1.ResourceName("storage"): *resource.NewQuantity(10*1024*1024*1024, resource.BinarySI), // 10GiB
+								},
+								ClaimRef: &v1.ObjectReference{
+									Namespace: pvc.Namespace,
+									Name:      pvc.Name,
+								},
+								PersistentVolumeSource: v1.PersistentVolumeSource{
+									CSI: &v1.CSIPersistentVolumeSource{
+										Driver:       "disk.csi.azure.com",
+										VolumeHandle: volumeHandle,
+									},
+								},
+							},
+						}, nil
+					}).AnyTimes()
+				} else {
+					pvcInterface.EXPECT().Get(gomock.Any(), pvc.Name, gomock.Any()).
+						Return(nil, errors.New("not found")).AnyTimes()
+				}
+			}
+		}
 
 		result, err := d.ControllerModifyVolume(ctx, test.req)
 		if err != nil {
@@ -788,6 +1013,190 @@ func TestControllerModifyVolume(t *testing.T) {
 		}
 		if !reflect.DeepEqual(result, test.expectedResp) {
 			t.Errorf("input request: %v, ControllerModifyVolume result: %v, expected: %v", test.req, result, test.expectedResp)
+		}
+
+		// Verify migration monitoring state
+		if test.expectMigrationStarted {
+			assert.True(t, d.GetMigrationMonitor().IsMigrationActive(test.req.VolumeId),
+				"Migration should be active for test: %s", test.desc)
+
+			activeMigrations := d.GetMigrationMonitor().GetActiveMigrations()
+			assert.Equal(t, 1, len(activeMigrations),
+				"Should have one active migration for test: %s", test.desc)
+
+			migration, exists := activeMigrations[test.req.VolumeId]
+			assert.True(t, exists, "Migration should exist for volume ID: %s", test.req.VolumeId)
+			assert.Equal(t, test.req.VolumeId, migration.DiskURI)
+			assert.Equal(t, testVolumeName, migration.PVName)
+
+			// Verify SKU change details if this is a migration test
+			if newSKU, exists := test.req.MutableParameters[consts.SkuNameField]; exists && test.oldSKU != nil {
+				assert.Equal(t, armcompute.DiskStorageAccountTypes(newSKU), migration.ToSKU)
+				assert.Equal(t, *test.oldSKU, migration.FromSKU)
+			}
+
+			// Verify migration started event was emitted for successful cases
+			if test.expectedErrCode == codes.OK && test.setupPVCMocks {
+				select {
+				case event := <-mockEventRecorder.Events:
+					assert.Contains(t, event, "Normal", "Event should be Normal type")
+					assert.Contains(t, event, ReasonSKUMigrationStarted, "Event should contain migration started reason")
+					assert.Contains(t, event, testVolumeName, "Event should contain PV name")
+					if test.oldSKU != nil {
+						assert.Contains(t, event, string(*test.oldSKU), "Event should contain source SKU")
+					}
+					if newSKU, exists := test.req.MutableParameters[consts.SkuNameField]; exists {
+						assert.Contains(t, event, newSKU, "Event should contain target SKU")
+					}
+				default:
+					t.Errorf("Expected migration started event was not recorded for test: %s", test.desc)
+				}
+			}
+		} else {
+			assert.False(t, d.GetMigrationMonitor().IsMigrationActive(test.req.VolumeId),
+				"Migration should NOT be active for test: %s", test.desc)
+
+			activeMigrations := d.GetMigrationMonitor().GetActiveMigrations()
+			assert.Equal(t, 0, len(activeMigrations),
+				"Should have no active migrations for test: %s", test.desc)
+
+			// Verify no events were emitted for non-migration cases
+			select {
+			case event := <-mockEventRecorder.Events:
+				// Only error if this is not a migration case or if it's an error case
+				if !test.expectMigrationStarted && test.expectedErrCode == codes.OK {
+					t.Errorf("Unexpected event recorded for test %s: %s", test.desc, event)
+				}
+			default:
+				// Expected - no events should be recorded for non-migration cases
+			}
+		}
+
+		// Simulate controller restart scenario
+		if test.simulateRestart {
+
+			if test.pvHasMigrationLabels {
+				for _, testPVC := range testPVCs {
+					if testPVC.Labels == nil {
+						testPVC.Labels = make(map[string]string)
+					}
+					testPVC.Labels["disk.csi.azure.com/migration-in-progress"] = "true"
+				}
+			}
+
+			if test.simulateMigrationCompletionAfterRestart {
+				disk = &armcompute.Disk{
+					ID: &id,
+					SKU: &armcompute.DiskSKU{
+						Name: test.oldSKU,
+					},
+					Properties: &armcompute.DiskProperties{},
+				}
+				disk.Properties.CompletionPercent = to.Ptr(float32(100))
+			}
+
+			cntlForRestart := gomock.NewController(t)
+			defer cntlForRestart.Finish()
+			drestart := getFakeDriverWithKubeClient(cntlForRestart)
+
+			// Setup mock expectations for PV operations
+			pvcInterface := mockpersistentvolumeclaim.NewMockPersistentVolumeClaimInterface(cntl)
+			mockCoreV1 := drestart.getCloud().KubeClient.CoreV1()
+
+			// Mock List call for recovery scenarios
+			pvcList := &v1.PersistentVolumeClaimList{Items: []v1.PersistentVolumeClaim{}}
+			for _, pvc := range testPVCs {
+				pvcList.Items = append(pvcList.Items, *pvc)
+			}
+			mockCoreV1.(*mockcorev1.MockInterface).EXPECT().PersistentVolumeClaims(gomock.Any()).Return(pvcInterface).AnyTimes()
+			pvcInterface.EXPECT().List(gomock.Any(), gomock.Any()).Return(pvcList, nil).AnyTimes()
+			// Mock Get and Update calls
+			for _, pvc := range testPVCs {
+				if test.pvcExists {
+					pvcInterface.EXPECT().Get(gomock.Any(), pvc.Name, gomock.Any()).
+						Return(pvc, nil).AnyTimes()
+
+					pvcInterface.EXPECT().Update(gomock.Any(), gomock.Any(), gomock.Any()).
+						Return(pvc, nil).AnyTimes()
+
+					volumeHandle := fmt.Sprintf(consts.ManagedDiskPath, "subs", "rg", pvc.Spec.VolumeName)
+
+					drestart.getCloud().KubeClient.CoreV1().PersistentVolumes().(*mockpersistentvolume.MockInterface).EXPECT().Get(gomock.Any(), pvc.Spec.VolumeName, gomock.Any()).DoAndReturn(func(_ context.Context, name string, _ metav1.GetOptions) (*v1.PersistentVolume, error) {
+						return &v1.PersistentVolume{
+							ObjectMeta: metav1.ObjectMeta{
+								Name: name,
+							},
+							Spec: v1.PersistentVolumeSpec{
+								PersistentVolumeReclaimPolicy: v1.PersistentVolumeReclaimDelete,
+								AccessModes: []v1.PersistentVolumeAccessMode{
+									v1.ReadWriteOnce,
+								},
+								Capacity: v1.ResourceList{
+									v1.ResourceName("storage"): *resource.NewQuantity(10*1024*1024*1024, resource.BinarySI), // 10GiB
+								},
+								ClaimRef: &v1.ObjectReference{
+									Namespace: pvc.Namespace,
+									Name:      pvc.Name,
+								},
+								PersistentVolumeSource: v1.PersistentVolumeSource{
+									CSI: &v1.CSIPersistentVolumeSource{
+										Driver:       "disk.csi.azure.com",
+										VolumeHandle: volumeHandle,
+									},
+								},
+							},
+						}, nil
+					}).AnyTimes()
+				} else {
+					pvcInterface.EXPECT().Get(gomock.Any(), pvc.Name, gomock.Any()).
+						Return(nil, errors.New("not found")).AnyTimes()
+				}
+			}
+
+			// Setup disk client mocks
+			diskclientForRestart := mock_diskclient.NewMockInterface(cntlForRestart)
+			drestart.getClientFactory().(*mock_azclient.MockClientFactory).EXPECT().GetDiskClientForSub(gomock.Any()).Return(diskclientForRestart, nil).AnyTimes()
+			diskclientForRestart.EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any()).Return(disk, nil).AnyTimes()
+			diskclientForRestart.EXPECT().Patch(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(disk, nil).AnyTimes()
+
+			// Simulate controller restart by resetting migration monitor
+			drestart.SetMigrationMonitor(nil)
+
+			// Create new migration monitor (simulating controller restart)
+			drestart.SetMigrationMonitor(NewMigrationProgressMonitor(drestart.getCloud().KubeClient, mockEventRecorder, drestart.GetDiskController()))
+
+			// Simulate recovery process that would happen on controller startup
+			if test.pvHasMigrationLabels {
+				// Call recovery function that would be called during controller initialization
+				err := drestart.RecoverMigrationMonitor(ctx)
+				assert.NoError(t, err, "Recovery should succeed for test: %s", test.desc)
+
+				activeMigrations := drestart.GetMigrationMonitor().GetActiveMigrations()
+				assert.GreaterOrEqual(t, len(activeMigrations), 1, "At least one migration should be recovered")
+				assert.True(t, drestart.GetMigrationMonitor().IsMigrationActive(testVolumeID), "Migration should be recovered for test: %s", test.desc)
+
+				if test.multipleMigrationsToRecover {
+					activeMigrations := drestart.GetMigrationMonitor().GetActiveMigrations()
+					assert.Equal(t, 3, len(activeMigrations), "Should recover 3 migrations for test: %s", test.desc)
+				}
+			}
+
+			result, err := drestart.ControllerModifyVolume(ctx, test.req)
+			if err != nil {
+				checkTestError(t, test.expectedErrCode, err)
+			}
+			if !reflect.DeepEqual(result, test.expectedResp) {
+				t.Errorf("input request: %v, ControllerModifyVolume result: %v, expected: %v", test.req, result, test.expectedResp)
+			}
+
+			if drestart.GetMigrationMonitor() != nil {
+				drestart.GetMigrationMonitor().Stop()
+			}
+		}
+
+		// Clean up migration monitor
+		if d.GetMigrationMonitor() != nil {
+			d.GetMigrationMonitor().Stop()
 		}
 	}
 }
