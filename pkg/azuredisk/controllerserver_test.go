@@ -33,6 +33,7 @@ import (
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/timestamppb"
 	v1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/utils/ptr"
 	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azuredisk/mockcorev1"
@@ -3164,4 +3165,63 @@ func getFakeDriverWithKubeClient(ctrl *gomock.Controller) FakeDriver {
 	d.getCloud().KubeClient.(*mockkubeclient.MockInterface).EXPECT().CoreV1().Return(corev1).AnyTimes()
 	d.getCloud().KubeClient.CoreV1().(*mockcorev1.MockInterface).EXPECT().PersistentVolumes().Return(persistentvolume).AnyTimes()
 	return d
+}
+
+func TestGetOccupiedLunsFromNode(t *testing.T) {
+	cntl := gomock.NewController(t)
+	defer cntl.Finish()
+
+	d, _ := NewFakeDriver(cntl)
+	fakeD := d.(*fakeDriver)
+
+	tests := []struct {
+		name                string
+		checkDiskLUNEnabled bool
+		throttled          bool
+		expectedLunsLen    int
+	}{
+		{
+			name:                "checkDiskLUNCollision disabled",
+			checkDiskLUNEnabled: false,
+			throttled:          false,
+			expectedLunsLen:    0,
+		},
+		{
+			name:                "checkDiskLUNCollision enabled but throttled",
+			checkDiskLUNEnabled: true,
+			throttled:          true,
+			expectedLunsLen:    0,
+		},
+		{
+			name:                "checkDiskLUNCollision enabled and not throttled",
+			checkDiskLUNEnabled: true,
+			throttled:          false,
+			expectedLunsLen:    0, // will be 0 because mock methods return empty
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			// Setup
+			fakeD.checkDiskLUNCollision = test.checkDiskLUNEnabled
+			if test.throttled {
+				fakeD.checkDiskLunThrottlingCache.Set(consts.CheckDiskLunThrottlingKey, "throttled")
+			} else {
+				fakeD.checkDiskLunThrottlingCache.Delete(consts.CheckDiskLunThrottlingKey)
+			}
+
+			ctx := context.Background()
+			nodeName := types.NodeName("test-node")
+			diskURI := "/subscriptions/sub/resourceGroups/rg/providers/Microsoft.Compute/disks/test-disk"
+
+			luns := fakeD.getOccupiedLunsFromNode(ctx, nodeName, diskURI)
+
+			if len(luns) != test.expectedLunsLen {
+				t.Errorf("test(%s): len(luns)=%d, expected=%d", test.name, len(luns), test.expectedLunsLen)
+			}
+
+			// Cleanup
+			fakeD.checkDiskLunThrottlingCache.Delete(consts.CheckDiskLunThrottlingKey)
+		})
+	}
 }
