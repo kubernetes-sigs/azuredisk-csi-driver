@@ -235,6 +235,7 @@ spec:
             - "--user-agent-suffix={{ .Values.driver.userAgentSuffix }}"
             - "--allow-empty-cloud-config={{ .Values.controller.allowEmptyCloudConfig }}"
             - "--vmss-cache-ttl-seconds={{ .Values.controller.vmssCacheTTLInSeconds }}"
+            - "--vmss-cache-with-instance-view={{ .Values.controller.vmssCacheWithInstanceView }}"
             - "--enable-traffic-manager={{ .Values.controller.enableTrafficManager }}"
             - "--traffic-manager-port={{ .Values.controller.trafficManagerPort }}"
             - "--enable-otel-tracing={{ .Values.controller.otelTracing.enabled }}"

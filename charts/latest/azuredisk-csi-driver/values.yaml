@@ -53,6 +53,7 @@ controller:
   provisionerWorkerThreads: 100
   attacherWorkerThreads: 1000
   vmssCacheTTLInSeconds: -1
+  vmssCacheWithInstanceView: false
   logLevel: 5
   extraArgs: []
   otelTracing:
