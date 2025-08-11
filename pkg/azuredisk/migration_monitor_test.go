@@ -26,6 +26,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Azure/azure-sdk-for-go/sdk/azcore/to"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute/v6"
 	"github.com/stretchr/testify/assert"
 	"go.uber.org/mock/gomock"
@@ -43,7 +44,6 @@ import (
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azuredisk/mockpersistentvolumeclaim"
 	"sigs.k8s.io/cloud-provider-azure/pkg/azclient/diskclient/mock_diskclient"
 	"sigs.k8s.io/cloud-provider-azure/pkg/azclient/mock_azclient"
-	azure "sigs.k8s.io/cloud-provider-azure/pkg/provider"
 )
 
 func TestNewMigrationProgressMonitor(t *testing.T) {
@@ -92,12 +92,16 @@ func TestStartMigrationMonitoring(t *testing.T) {
 			ctrl := gomock.NewController(t)
 			defer ctrl.Finish()
 
-			mockKubeClient := mockkubeclient.NewMockInterface(ctrl)
+			d := getFakeDriverWithKubeClientForMigration(ctrl)
+			mockEventRecorder := record.NewFakeRecorder(10)
+			d.SetMigrationMonitor(NewMigrationProgressMonitor(d.getCloud().KubeClient, mockEventRecorder, d.GetDiskController()))
+			diskClient := mock_diskclient.NewMockInterface(ctrl)
+			mockKubeClient := d.getCloud().KubeClient.(*mockkubeclient.MockInterface)
 			mockCoreV1 := mockcorev1.NewMockInterface(ctrl)
 			mockPVInterface := mockpersistentvolume.NewMockInterface(ctrl)
 			mockPVCInterface := mockpersistentvolumeclaim.NewMockPersistentVolumeClaimInterface(ctrl)
-			mockEventRecorder := record.NewFakeRecorder(10)
-			mockDiskController := &ManagedDiskController{}
+			mockDiskController := d.GetDiskController()
+			d.getClientFactory().(*mock_azclient.MockClientFactory).EXPECT().GetDiskClientForSub(gomock.Any()).Return(diskClient, nil).AnyTimes()
 
 			// Create test PV with ClaimRef
 			testPV := &v1.PersistentVolume{
@@ -126,22 +130,30 @@ func TestStartMigrationMonitoring(t *testing.T) {
 				},
 			}
 
+			disk := &armcompute.Disk{
+				ID: to.Ptr("/subscriptions/test/resourceGroups/rg/providers/Microsoft.Compute/disks/test-disk"),
+				SKU: &armcompute.DiskSKU{
+					Name: to.Ptr(armcompute.DiskStorageAccountTypesPremiumLRS),
+				},
+				Properties: &armcompute.DiskProperties{},
+			}
+
 			// Set up mock expectations
 			mockKubeClient.EXPECT().CoreV1().Return(mockCoreV1).AnyTimes()
 			mockCoreV1.EXPECT().PersistentVolumes().Return(mockPVInterface).AnyTimes()
 			mockCoreV1.EXPECT().PersistentVolumeClaims(tt.pvcNamespace).Return(mockPVCInterface).AnyTimes()
-
+			diskClient.EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any()).Return(disk, nil).AnyTimes()
 			// Expect PV Get call for ClaimRef lookup
-			mockPVInterface.EXPECT().Get(gomock.Any(), tt.pvName, gomock.Any()).Return(testPV, nil).Times(1)
+			mockPVInterface.EXPECT().Get(gomock.Any(), tt.pvName, gomock.Any()).Return(testPV, nil).AnyTimes()
+			mockPVInterface.EXPECT().Update(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
+				func(_ context.Context, pv *v1.PersistentVolume, _ metav1.UpdateOptions) (*v1.PersistentVolume, error) {
+					// Verify label was added correctly
+					assert.Equal(t, "true", pv.Labels[LabelMigrationInProgress])
+					return pv, nil
+				}).Times(1)
 
 			// Expect PVC operations for addMigrationLabelIfNotExists and event emission
 			mockPVCInterface.EXPECT().Get(gomock.Any(), tt.pvcName, gomock.Any()).Return(testPVC, nil).AnyTimes()
-			mockPVCInterface.EXPECT().Update(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
-				func(_ context.Context, pvc *v1.PersistentVolumeClaim, _ metav1.UpdateOptions) (*v1.PersistentVolumeClaim, error) {
-					// Verify label was added correctly
-					assert.Equal(t, "true", pvc.Labels[LabelMigrationInProgress])
-					return pvc, nil
-				}).Times(1)
 
 			monitor := NewMigrationProgressMonitor(mockKubeClient, mockEventRecorder, mockDiskController)
 
@@ -305,11 +317,12 @@ func TestIsMigrationActive(t *testing.T) {
 
 	// Add the missing Update expectation for addMigrationLabelIfNotExists
 	mockPVCInterface.EXPECT().Get(gomock.Any(), "test-pvc", gomock.Any()).Return(testPVC, nil).AnyTimes()
-	mockPVCInterface.EXPECT().Update(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, pvc *v1.PersistentVolumeClaim, _ metav1.UpdateOptions) (*v1.PersistentVolumeClaim, error) {
+
+	mockPVInterface.EXPECT().Update(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
+		func(_ context.Context, pv *v1.PersistentVolume, _ metav1.UpdateOptions) (*v1.PersistentVolume, error) {
 			// Verify label was added correctly
-			assert.Equal(t, "true", pvc.Labels[LabelMigrationInProgress])
-			return pvc, nil
+			assert.Equal(t, "true", pv.Labels[LabelMigrationInProgress])
+			return pv, nil
 		}).Times(1)
 
 	monitor := NewMigrationProgressMonitor(mockKubeClient, mockEventRecorder, d.GetDiskController())
@@ -477,12 +490,15 @@ func TestMigrationStop(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
-	mockKubeClient := mockkubeclient.NewMockInterface(ctrl)
+	d := getFakeDriverWithKubeClientForMigration(ctrl)
+	mockEventRecorder := record.NewFakeRecorder(10)
+	d.SetMigrationMonitor(NewMigrationProgressMonitor(d.getCloud().KubeClient, mockEventRecorder, d.GetDiskController()))
+	diskClient := mock_diskclient.NewMockInterface(ctrl)
+	mockKubeClient := d.getCloud().KubeClient.(*mockkubeclient.MockInterface)
 	mockCoreV1 := mockcorev1.NewMockInterface(ctrl)
 	mockPVInterface := mockpersistentvolume.NewMockInterface(ctrl)
 	mockPVCInterface := mockpersistentvolumeclaim.NewMockPersistentVolumeClaimInterface(ctrl)
-	mockEventRecorder := record.NewFakeRecorder(10)
-	mockDiskController := &ManagedDiskController{}
+	mockDiskController := d.GetDiskController()
 
 	// Create test PVs with ClaimRefs
 	testPVs := []*v1.PersistentVolume{
@@ -522,6 +538,20 @@ func TestMigrationStop(t *testing.T) {
 		{ObjectMeta: metav1.ObjectMeta{Name: "pvc-3", Namespace: "default"}, Spec: v1.PersistentVolumeClaimSpec{VolumeName: "pv-3"}},
 	}
 
+	// Create a disk
+	disk := &armcompute.Disk{
+		ID: to.Ptr("/subscriptions/test/resourceGroups/rg/providers/Microsoft.Compute/disks/test-disk"),
+		SKU: &armcompute.DiskSKU{
+			Name: to.Ptr(armcompute.DiskStorageAccountTypesPremiumLRS),
+		},
+		Properties: &armcompute.DiskProperties{},
+	}
+
+	// Setup disk client mocks
+
+	d.getClientFactory().(*mock_azclient.MockClientFactory).EXPECT().GetDiskClientForSub(gomock.Any()).Return(diskClient, nil).AnyTimes()
+	diskClient.EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any()).Return(disk, nil).AnyTimes()
+
 	// Set up mock expectations for PVC operations
 	mockKubeClient.EXPECT().CoreV1().Return(mockCoreV1).AnyTimes()
 	mockCoreV1.EXPECT().PersistentVolumes().Return(mockPVInterface).AnyTimes()
@@ -540,11 +570,11 @@ func TestMigrationStop(t *testing.T) {
 	}
 
 	// Add Update expectations for addMigrationLabelIfNotExists (3 calls for 3 migrations)
-	mockPVCInterface.EXPECT().Update(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, pvc *v1.PersistentVolumeClaim, _ metav1.UpdateOptions) (*v1.PersistentVolumeClaim, error) {
+	mockPVInterface.EXPECT().Update(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
+		func(_ context.Context, pv *v1.PersistentVolume, _ metav1.UpdateOptions) (*v1.PersistentVolume, error) {
 			// Verify label was added correctly
-			assert.Equal(t, "true", pvc.Labels[LabelMigrationInProgress])
-			return pvc, nil
+			assert.Equal(t, "true", pv.Labels[LabelMigrationInProgress])
+			return pv, nil
 		}).Times(3)
 
 	monitor := NewMigrationProgressMonitor(mockKubeClient, mockEventRecorder, mockDiskController)
@@ -568,11 +598,12 @@ func TestMigrationStop(t *testing.T) {
 	activeTasks := monitor.GetActiveMigrations()
 	assert.Equal(t, 3, len(activeTasks))
 
+	time.Sleep(100 * time.Millisecond) // Allow some time for goroutines to start
+
+	klog.Infof("Stopping migrations...")
 	// Stop all migrations
 	monitor.Stop()
-
-	// Allow some time for goroutines to finish
-	time.Sleep(100 * time.Millisecond)
+	klog.Infof("All migrations stopped.")
 
 	// Verify all migrations are stopped
 	for _, diskURI := range diskURIs {
@@ -598,9 +629,6 @@ func TestRecoverMigrationMonitorsFromLabels(t *testing.T) {
 					ObjectMeta: metav1.ObjectMeta{
 						Name:      "pvc-with-migration",
 						Namespace: "default",
-						Labels: map[string]string{
-							LabelMigrationInProgress: "true",
-						},
 					},
 					Spec: v1.PersistentVolumeClaimSpec{
 						VolumeName: "pv-with-migration",
@@ -611,6 +639,9 @@ func TestRecoverMigrationMonitorsFromLabels(t *testing.T) {
 				{
 					ObjectMeta: metav1.ObjectMeta{
 						Name: "pv-with-migration",
+						Labels: map[string]string{
+							LabelMigrationInProgress: "true",
+						},
 					},
 					Spec: v1.PersistentVolumeSpec{
 						PersistentVolumeSource: v1.PersistentVolumeSource{
@@ -710,56 +741,70 @@ func TestRecoverMigrationMonitorsFromLabels(t *testing.T) {
 			ctrl := gomock.NewController(t)
 			defer ctrl.Finish()
 
+			// Create a disk
+			disk := &armcompute.Disk{
+				ID: to.Ptr("/subscriptions/test/resourceGroups/rg/providers/Microsoft.Compute/disks/test-disk"),
+				SKU: &armcompute.DiskSKU{
+					Name: to.Ptr(armcompute.DiskStorageAccountTypesPremiumLRS),
+				},
+				Properties: &armcompute.DiskProperties{},
+			}
+
 			// Setup mocks
-			mockKubeClient := mockkubeclient.NewMockInterface(ctrl)
+			driver := getFakeDriverWithKubeClientForMigration(ctrl)
+			diskClient := mock_diskclient.NewMockInterface(ctrl)
+			mockKubeClient := driver.getCloud().KubeClient.(*mockkubeclient.MockInterface)
 			mockCoreV1 := mockcorev1.NewMockInterface(ctrl)
 			mockPVInterface := mockpersistentvolume.NewMockInterface(ctrl)
 			mockPVCInterface := mockpersistentvolumeclaim.NewMockPersistentVolumeClaimInterface(ctrl)
 			mockEventRecorder := record.NewFakeRecorder(10)
 
 			// Create Driver using the proper initialization pattern
-			driver := &Driver{}
-			driver.Name = "disk.csi.azure.com"
-			driver.cloud = &azure.Cloud{
-				KubeClient: mockKubeClient,
-			}
-			driver.migrationMonitor = NewMigrationProgressMonitor(mockKubeClient, mockEventRecorder, &ManagedDiskController{})
+			monitor := NewMigrationProgressMonitor(
+				mockKubeClient, mockEventRecorder, driver.GetDiskController(),
+			)
+			driver.SetMigrationMonitor(monitor)
 
-			// Setup mock expectations for listing PVCs
-			pvcList := &v1.PersistentVolumeClaimList{Items: make([]v1.PersistentVolumeClaim, 0)}
-			for _, pvc := range tt.existingPVCs {
-				if pvc.Labels != nil && pvc.Labels[LabelMigrationInProgress] == "true" {
-					pvcList.Items = append(pvcList.Items, *pvc)
+			// Setup mock expectations for listing PVs
+			pvList := &v1.PersistentVolumeList{Items: make([]v1.PersistentVolume, 0)}
+			for _, pv := range tt.existingPVs {
+				if pv.Labels != nil && pv.Labels[LabelMigrationInProgress] == "true" {
+					pvList.Items = append(pvList.Items, *pv)
 				}
 			}
 
 			mockKubeClient.EXPECT().CoreV1().Return(mockCoreV1).AnyTimes()
 			mockCoreV1.EXPECT().PersistentVolumes().Return(mockPVInterface).AnyTimes()
 			mockCoreV1.EXPECT().PersistentVolumeClaims("").Return(mockPVCInterface).AnyTimes()
-			mockCoreV1.EXPECT().PersistentVolumeClaims("default").Return(mockPVCInterface).AnyTimes()
-			mockPVCInterface.EXPECT().List(gomock.Any(), gomock.Any()).Return(pvcList, nil)
+			mockPVInterface.EXPECT().List(gomock.Any(), gomock.Any()).Return(pvList, nil)
 
-			// Setup expectations for each PVC that should be recovered
+			// Mock expectations for starting migration (adds labels)
+			driver.getClientFactory().(*mock_azclient.MockClientFactory).EXPECT().GetDiskClientForSub(gomock.Any()).Return(diskClient, nil).AnyTimes()
+			diskClient.EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
+				func(_ context.Context, _ string, _ string) (*armcompute.Disk, error) {
+					return disk, nil
+				},
+			).AnyTimes()
+
+			// Setup expectations for each PV that should be recovered
 			for _, pvc := range tt.existingPVCs {
-				if pvc.Labels != nil && pvc.Labels[LabelMigrationInProgress] == "true" {
-					if pvc.Spec.VolumeName != "" {
-						// Find corresponding PV
-						for _, pv := range tt.existingPVs {
-							if pv.Name == pvc.Spec.VolumeName {
-								// This PVC should be recovered - setup Get expectation for StartMigrationMonitoring
-								mockPVInterface.EXPECT().Get(gomock.Any(), pv.Name, gomock.Any()).Return(pv, nil).AnyTimes()
+				if pvc.Name != "" {
+					// Find corresponding PV
+					for _, pv := range tt.existingPVs {
+						if pv.Name == pvc.Spec.VolumeName {
+							// This PVC should be recovered - setup Get expectation for StartMigrationMonitoring
+							mockPVInterface.EXPECT().Get(gomock.Any(), pv.Name, gomock.Any()).Return(pv, nil).AnyTimes()
+							mockPVInterface.EXPECT().Update(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
+								func(_ context.Context, updatedPV *v1.PersistentVolume, _ metav1.UpdateOptions) (*v1.PersistentVolume, error) {
+									// Just return the updated PV - the label is already set
+									return updatedPV, nil
+								}).AnyTimes()
 
-								if pv.Spec.CSI != nil && pv.Spec.CSI.Driver == "disk.csi.azure.com" {
-									// StartMigrationMonitoring calls addMigrationLabelIfNotExists which needs Update expectation
-									mockPVCInterface.EXPECT().Get(gomock.Any(), pvc.Name, gomock.Any()).Return(pvc, nil).AnyTimes()
-									mockPVCInterface.EXPECT().Update(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
-										func(_ context.Context, updatedPVC *v1.PersistentVolumeClaim, _ metav1.UpdateOptions) (*v1.PersistentVolumeClaim, error) {
-											// Just return the updated PVC - the label is already set
-											return updatedPVC, nil
-										}).AnyTimes()
-								}
-								break
+							if pv.Spec.CSI != nil && pv.Spec.CSI.Driver == "disk.csi.azure.com" {
+								// StartMigrationMonitoring calls addMigrationLabelIfNotExists which needs Update expectation
+								mockPVCInterface.EXPECT().Get(gomock.Any(), pvc.Name, gomock.Any()).Return(pvc, nil).AnyTimes()
 							}
+							break
 						}
 					}
 				}
@@ -767,7 +812,8 @@ func TestRecoverMigrationMonitorsFromLabels(t *testing.T) {
 
 			// Execute recovery
 			ctx := context.Background()
-			err := driver.recoverMigrationMonitorsFromLabels(ctx)
+			err := driver.RecoverMigrationMonitor(ctx)
+			time.Sleep(100 * time.Millisecond) // Allow some time for migration go routine to begin
 
 			// Verify results
 			if tt.expectError {
@@ -776,7 +822,7 @@ func TestRecoverMigrationMonitorsFromLabels(t *testing.T) {
 				assert.NoError(t, err)
 
 				// Verify correct number of migrations were recovered
-				activeTasks := driver.migrationMonitor.GetActiveMigrations()
+				activeTasks := monitor.GetActiveMigrations()
 				assert.Equal(t, tt.expectedCount, len(activeTasks))
 
 				// Verify each recovered migration is properly configured
@@ -786,7 +832,7 @@ func TestRecoverMigrationMonitorsFromLabels(t *testing.T) {
 							for _, pv := range tt.existingPVs {
 								if pv.Name == pvc.Spec.VolumeName && pv.Spec.CSI != nil && pv.Spec.CSI.Driver == "disk.csi.azure.com" {
 									diskURI := pv.Spec.CSI.VolumeHandle
-									assert.True(t, driver.migrationMonitor.IsMigrationActive(diskURI))
+									assert.True(t, monitor.IsMigrationActive(diskURI))
 
 									task, exists := activeTasks[diskURI]
 									assert.True(t, exists)
@@ -802,7 +848,7 @@ func TestRecoverMigrationMonitorsFromLabels(t *testing.T) {
 			}
 
 			// Cleanup
-			driver.migrationMonitor.Stop()
+			monitor.Stop()
 		})
 	}
 }
@@ -813,34 +859,33 @@ func TestAddMigrationLabelIfNotExists(t *testing.T) {
 
 	mockKubeClient := mockkubeclient.NewMockInterface(ctrl)
 	mockCoreV1 := mockcorev1.NewMockInterface(ctrl)
-	mockPVCInterface := mockpersistentvolumeclaim.NewMockPersistentVolumeClaimInterface(ctrl)
+	mockPVInterface := mockpersistentvolume.NewMockInterface(ctrl)
 	mockEventRecorder := record.NewFakeRecorder(10)
 	mockDiskController := &ManagedDiskController{}
 
 	monitor := NewMigrationProgressMonitor(mockKubeClient, mockEventRecorder, mockDiskController)
 
-	// Create test PVC without labels
-	testPVC := &v1.PersistentVolumeClaim{
+	// Create test PV without labels
+	testPV := &v1.PersistentVolume{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      "test-pvc",
-			Namespace: "default",
+			Name: "test-pv",
 		},
 	}
 
 	// Setup mock expectations
 	mockKubeClient.EXPECT().CoreV1().Return(mockCoreV1).AnyTimes()
-	mockCoreV1.EXPECT().PersistentVolumeClaims("default").Return(mockPVCInterface).AnyTimes()
-	mockPVCInterface.EXPECT().Get(gomock.Any(), "test-pvc", gomock.Any()).Return(testPVC, nil)
-	mockPVCInterface.EXPECT().Update(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, pvc *v1.PersistentVolumeClaim, _ metav1.UpdateOptions) (*v1.PersistentVolumeClaim, error) {
+	mockCoreV1.EXPECT().PersistentVolumes().Return(mockPVInterface).AnyTimes()
+	mockPVInterface.EXPECT().Get(gomock.Any(), "test-pv", gomock.Any()).Return(testPV, nil)
+	mockPVInterface.EXPECT().Update(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
+		func(_ context.Context, pv *v1.PersistentVolume, _ metav1.UpdateOptions) (*v1.PersistentVolume, error) {
 			// Verify label was added correctly
-			assert.Equal(t, "true", pvc.Labels[LabelMigrationInProgress])
-			return pvc, nil
+			assert.Equal(t, "true", pv.Labels[LabelMigrationInProgress])
+			return pv, nil
 		})
 
 	// Execute
 	ctx := context.Background()
-	existed, err := monitor.addMigrationLabelIfNotExists(ctx, "test-pvc", "default",
+	existed, err := monitor.addMigrationLabelIfNotExists(ctx, "test-pv",
 		armcompute.DiskStorageAccountTypesPremiumLRS,
 		armcompute.DiskStorageAccountTypesPremiumV2LRS)
 
@@ -852,19 +897,18 @@ func TestRemoveMigrationLabel(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
-	mockKubeClient := mockkubeclient.NewMockInterface(ctrl)
+	d := getFakeDriverWithKubeClientForMigration(ctrl)
+	mockKubeClient := d.getCloud().KubeClient.(*mockkubeclient.MockInterface)
 	mockCoreV1 := mockcorev1.NewMockInterface(ctrl)
-	mockPVCInterface := mockpersistentvolumeclaim.NewMockPersistentVolumeClaimInterface(ctrl)
+	mockPVInterface := mockpersistentvolume.NewMockInterface(ctrl)
 	mockEventRecorder := record.NewFakeRecorder(10)
-	mockDiskController := &ManagedDiskController{}
 
-	monitor := NewMigrationProgressMonitor(mockKubeClient, mockEventRecorder, mockDiskController)
+	monitor := NewMigrationProgressMonitor(mockKubeClient, mockEventRecorder, d.GetDiskController())
 
-	// Create test PVC with migration label
-	testPVC := &v1.PersistentVolumeClaim{
+	// Create test PV with migration label
+	testPVC := &v1.PersistentVolume{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      "test-pvc",
-			Namespace: "default",
+			Name: "test-pv",
 			Labels: map[string]string{
 				LabelMigrationInProgress: "true",
 				"other.label":            "should-remain",
@@ -874,20 +918,20 @@ func TestRemoveMigrationLabel(t *testing.T) {
 
 	// Setup mock expectations
 	mockKubeClient.EXPECT().CoreV1().Return(mockCoreV1).AnyTimes()
-	mockCoreV1.EXPECT().PersistentVolumeClaims("default").Return(mockPVCInterface).AnyTimes()
-	mockPVCInterface.EXPECT().Get(gomock.Any(), "test-pvc", gomock.Any()).Return(testPVC, nil)
-	mockPVCInterface.EXPECT().Update(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, pvc *v1.PersistentVolumeClaim, _ metav1.UpdateOptions) (*v1.PersistentVolumeClaim, error) {
+	mockCoreV1.EXPECT().PersistentVolumes().Return(mockPVInterface).AnyTimes()
+	mockPVInterface.EXPECT().Get(gomock.Any(), "test-pv", gomock.Any()).Return(testPVC, nil)
+	mockPVInterface.EXPECT().Update(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
+		func(_ context.Context, pv *v1.PersistentVolume, _ metav1.UpdateOptions) (*v1.PersistentVolume, error) {
 			// Verify migration label was removed but others remain
-			assert.NotContains(t, pvc.Labels, LabelMigrationInProgress)
-			assert.Contains(t, pvc.Labels, "other.label")
-			assert.Equal(t, "should-remain", pvc.Labels["other.label"])
-			return pvc, nil
+			assert.NotContains(t, pv.Labels, LabelMigrationInProgress)
+			assert.Contains(t, pv.Labels, "other.label")
+			assert.Equal(t, "should-remain", pv.Labels["other.label"])
+			return pv, nil
 		})
 
 	// Execute
 	ctx := context.Background()
-	err := monitor.removeMigrationLabel(ctx, "test-pvc", "default")
+	err := monitor.removeMigrationLabel(ctx, "test-pv")
 
 	assert.NoError(t, err)
 }
@@ -896,17 +940,28 @@ func TestMigrationMonitorControllerRestart_EndToEnd(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
-	mockKubeClient := mockkubeclient.NewMockInterface(ctrl)
+	d := getFakeDriverWithKubeClientForMigration(ctrl)
+	mockKubeClient := d.getCloud().KubeClient.(*mockkubeclient.MockInterface)
+	diskClient := mock_diskclient.NewMockInterface(ctrl)
 	mockCoreV1 := mockcorev1.NewMockInterface(ctrl)
 	mockPVInterface := mockpersistentvolume.NewMockInterface(ctrl)
 	mockPVCInterface := mockpersistentvolumeclaim.NewMockPersistentVolumeClaimInterface(ctrl)
 	mockEventRecorder := record.NewFakeRecorder(10)
-	mockDiskController := &ManagedDiskController{}
+
+	ctrlRestart := gomock.NewController(t)
+	defer ctrl.Finish()
+	dRestart := getFakeDriverWithKubeClientForMigration(ctrlRestart)
+	mockKubeClientRestart := dRestart.getCloud().KubeClient.(*mockkubeclient.MockInterface)
+	diskClientRestart := mock_diskclient.NewMockInterface(ctrlRestart)
+	mockCoreV1Restart := mockcorev1.NewMockInterface(ctrlRestart)
+	mockPVInterfaceRestart := mockpersistentvolume.NewMockInterface(ctrlRestart)
+	mockPVCInterfaceRestart := mockpersistentvolumeclaim.NewMockPersistentVolumeClaimInterface(ctrlRestart)
+	mockEventRecorderRestart := record.NewFakeRecorder(10)
 
 	// Simulate controller restart scenario
 	t.Run("full controller restart recovery scenario", func(t *testing.T) {
 		// Phase 1: Create initial monitor and start migration
-		monitor1 := NewMigrationProgressMonitor(mockKubeClient, mockEventRecorder, mockDiskController)
+		monitor1 := NewMigrationProgressMonitor(mockKubeClient, mockEventRecorder, d.GetDiskController())
 
 		testPV := &v1.PersistentVolume{
 			ObjectMeta: metav1.ObjectMeta{
@@ -939,21 +994,59 @@ func TestMigrationMonitorControllerRestart_EndToEnd(t *testing.T) {
 			},
 		}
 
+		// Create a disk
+		disk := &armcompute.Disk{
+			ID: to.Ptr("/subscriptions/test/resourceGroups/rg/providers/Microsoft.Compute/disks/test-disk"),
+			SKU: &armcompute.DiskSKU{
+				Name: to.Ptr(armcompute.DiskStorageAccountTypesPremiumLRS),
+			},
+			Properties: &armcompute.DiskProperties{},
+		}
+
 		// Mock expectations for starting migration (adds labels)
+		d.getClientFactory().(*mock_azclient.MockClientFactory).EXPECT().GetDiskClientForSub(gomock.Any()).Return(diskClient, nil).AnyTimes()
+		diskClient.EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any()).Return(disk, nil).AnyTimes()
 		mockKubeClient.EXPECT().CoreV1().Return(mockCoreV1).AnyTimes()
 		mockCoreV1.EXPECT().PersistentVolumes().Return(mockPVInterface).AnyTimes()
 		mockCoreV1.EXPECT().PersistentVolumeClaims("default").Return(mockPVCInterface).AnyTimes()
 		mockCoreV1.EXPECT().PersistentVolumeClaims("").Return(mockPVCInterface).AnyTimes()
 		mockPVInterface.EXPECT().Get(gomock.Any(), "test-pv", gomock.Any()).Return(testPV, nil).AnyTimes()
 		mockPVCInterface.EXPECT().Get(gomock.Any(), "test-pvc", gomock.Any()).Return(testPVC, nil).AnyTimes()
-		mockPVCInterface.EXPECT().Update(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
-			func(_ context.Context, pvc *v1.PersistentVolumeClaim, _ metav1.UpdateOptions) (*v1.PersistentVolumeClaim, error) {
+		mockPVInterface.EXPECT().Update(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
+			func(_ context.Context, pv *v1.PersistentVolume, _ metav1.UpdateOptions) (*v1.PersistentVolume, error) {
 				// Simulate labels being added
-				if pvc.Labels == nil {
-					pvc.Labels = make(map[string]string)
+				if pv.Labels == nil {
+					pv.Labels = make(map[string]string)
 				}
-				pvc.Labels[LabelMigrationInProgress] = "true"
-				return pvc, nil
+				pv.Labels[LabelMigrationInProgress] = "true"
+				return pv, nil
+			}).AnyTimes()
+		dRestart.getClientFactory().(*mock_azclient.MockClientFactory).EXPECT().GetDiskClientForSub(gomock.Any()).Return(diskClientRestart, nil).AnyTimes()
+		diskClientRestart.EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any()).Return(disk, nil).AnyTimes()
+		mockKubeClientRestart.EXPECT().CoreV1().Return(mockCoreV1Restart).AnyTimes()
+		mockCoreV1Restart.EXPECT().PersistentVolumeClaims("default").Return(mockPVCInterfaceRestart).AnyTimes()
+		mockCoreV1Restart.EXPECT().PersistentVolumeClaims("").Return(mockPVCInterfaceRestart).AnyTimes()
+		mockPVCInterfaceRestart.EXPECT().Get(gomock.Any(), "test-pvc", gomock.Any()).Return(testPVC, nil).AnyTimes()
+		mockCoreV1Restart.EXPECT().PersistentVolumes().Return(mockPVInterfaceRestart).AnyTimes()
+		mockPVInterfaceRestart.EXPECT().Get(gomock.Any(), "test-pv", gomock.Any()).Return(testPV, nil).AnyTimes()
+		mockPVInterfaceRestart.EXPECT().List(gomock.Any(), gomock.Any()).DoAndReturn(
+			func(_ context.Context, _ metav1.ListOptions) (*v1.PersistentVolumeList, error) {
+				testPVWithLabel := testPV.DeepCopy()
+				testPVWithLabel.Labels = map[string]string{
+					LabelMigrationInProgress: "true",
+				}
+				return &v1.PersistentVolumeList{
+					Items: []v1.PersistentVolume{*testPVWithLabel},
+				}, nil
+			}).AnyTimes()
+		mockPVInterfaceRestart.EXPECT().Update(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
+			func(_ context.Context, pv *v1.PersistentVolume, _ metav1.UpdateOptions) (*v1.PersistentVolume, error) {
+				// Simulate labels being added
+				if pv.Labels == nil {
+					pv.Labels = make(map[string]string)
+				}
+				pv.Labels[LabelMigrationInProgress] = "true"
+				return pv, nil
 			}).AnyTimes()
 
 		// Start migration
@@ -969,30 +1062,13 @@ func TestMigrationMonitorControllerRestart_EndToEnd(t *testing.T) {
 		monitor1.Stop() // Old monitor stops
 
 		// Create new monitor (simulating restart)
-		monitor2 := NewMigrationProgressMonitor(mockKubeClient, mockEventRecorder, mockDiskController)
-
-		driver := &Driver{}
-		driver.Name = "disk.csi.azure.com"
-		driver.cloud = &azure.Cloud{
-			KubeClient: mockKubeClient,
-		}
-		driver.migrationMonitor = monitor2
-
-		// Update testPVC to have the migration label (simulating persistence)
-		testPVCWithLabel := testPVC.DeepCopy()
-		testPVCWithLabel.Labels = map[string]string{
-			LabelMigrationInProgress: "true",
-		}
-
-		// Mock expectations for recovery
-		pvcList := &v1.PersistentVolumeClaimList{
-			Items: []v1.PersistentVolumeClaim{*testPVCWithLabel},
-		}
-		mockPVCInterface.EXPECT().List(gomock.Any(), gomock.Any()).Return(pvcList, nil)
+		monitor2 := NewMigrationProgressMonitor(mockKubeClientRestart, mockEventRecorderRestart, dRestart.GetDiskController())
+		dRestart.SetMigrationMonitor(monitor2)
 
 		// Phase 3: Recover migrations
-		err = driver.recoverMigrationMonitorsFromLabels(ctx)
+		err = dRestart.RecoverMigrationMonitor(ctx)
 		assert.NoError(t, err)
+		time.Sleep(100 * time.Millisecond) // Allow some time for migration go routine to begin
 
 		// Verify migration was recovered
 		assert.True(t, monitor2.IsMigrationActive(diskURI))
@@ -1028,8 +1104,8 @@ func TestInitializeMigrationTimeouts(t *testing.T) {
 			migrationTimeoutsEnv:   "",
 			maxMigrationTimeoutEnv: "",
 			expectedTimeouts: map[int64]time.Duration{
-				volumeSize2TB: migrationTimeoutSmall,
-				volumeSize4TB: migrationTimeoutMedium,
+				volumeSize2TB: migrationTimeoutBelowTwoTB,
+				volumeSize4TB: migrationTimeoutBelowFourTB,
 			},
 			expectedSlabArray:  []int64{volumeSize2TB, volumeSize4TB},
 			expectedMaxTimeout: 24 * time.Hour,
@@ -1040,8 +1116,8 @@ func TestInitializeMigrationTimeouts(t *testing.T) {
 			migrationTimeoutsEnv:   "1Ti=2h,3Ti=4h",
 			maxMigrationTimeoutEnv: "",
 			expectedTimeouts: map[int64]time.Duration{
-				volumeSize2TB:                 migrationTimeoutSmall,
-				volumeSize4TB:                 migrationTimeoutMedium,
+				volumeSize2TB:                 migrationTimeoutBelowTwoTB,
+				volumeSize4TB:                 migrationTimeoutBelowFourTB,
 				1024 * 1024 * 1024 * 1024:     2 * time.Hour, // 1TiB
 				3 * 1024 * 1024 * 1024 * 1024: 4 * time.Hour, // 3TiB
 			},
@@ -1054,8 +1130,8 @@ func TestInitializeMigrationTimeouts(t *testing.T) {
 			migrationTimeoutsEnv:   "",
 			maxMigrationTimeoutEnv: "12h",
 			expectedTimeouts: map[int64]time.Duration{
-				volumeSize2TB: migrationTimeoutSmall,
-				volumeSize4TB: migrationTimeoutMedium,
+				volumeSize2TB: migrationTimeoutBelowTwoTB,
+				volumeSize4TB: migrationTimeoutBelowFourTB,
 			},
 			expectedSlabArray:  []int64{volumeSize2TB, volumeSize4TB},
 			expectedMaxTimeout: 12 * time.Hour,
@@ -1066,8 +1142,8 @@ func TestInitializeMigrationTimeouts(t *testing.T) {
 			migrationTimeoutsEnv:   "500Gi=1h,1Ti=3h",
 			maxMigrationTimeoutEnv: "8h",
 			expectedTimeouts: map[int64]time.Duration{
-				volumeSize2TB:             migrationTimeoutSmall,
-				volumeSize4TB:             migrationTimeoutMedium,
+				volumeSize2TB:             migrationTimeoutBelowTwoTB,
+				volumeSize4TB:             migrationTimeoutBelowFourTB,
 				500 * 1024 * 1024 * 1024:  1 * time.Hour, // 500GiB
 				1024 * 1024 * 1024 * 1024: 3 * time.Hour, // 1TiB
 			},
@@ -1080,8 +1156,8 @@ func TestInitializeMigrationTimeouts(t *testing.T) {
 			migrationTimeoutsEnv:   "1Ti=2h=extra,3Ti",
 			maxMigrationTimeoutEnv: "",
 			expectedTimeouts: map[int64]time.Duration{
-				volumeSize2TB: migrationTimeoutSmall,
-				volumeSize4TB: migrationTimeoutMedium,
+				volumeSize2TB: migrationTimeoutBelowTwoTB,
+				volumeSize4TB: migrationTimeoutBelowFourTB,
 			},
 			expectedSlabArray:  []int64{volumeSize2TB, volumeSize4TB},
 			expectedMaxTimeout: 24 * time.Hour,
@@ -1093,8 +1169,8 @@ func TestInitializeMigrationTimeouts(t *testing.T) {
 			migrationTimeoutsEnv:   "invalidSize=2h,1Ti=3h",
 			maxMigrationTimeoutEnv: "",
 			expectedTimeouts: map[int64]time.Duration{
-				volumeSize2TB:             migrationTimeoutSmall,
-				volumeSize4TB:             migrationTimeoutMedium,
+				volumeSize2TB:             migrationTimeoutBelowTwoTB,
+				volumeSize4TB:             migrationTimeoutBelowFourTB,
 				1024 * 1024 * 1024 * 1024: 3 * time.Hour, // 1Ti
 			},
 			expectedSlabArray:  []int64{1024 * 1024 * 1024 * 1024, volumeSize2TB, volumeSize4TB},
@@ -1107,7 +1183,7 @@ func TestInitializeMigrationTimeouts(t *testing.T) {
 			migrationTimeoutsEnv:   "1Ti=invalidDuration,2Ti=4h",
 			maxMigrationTimeoutEnv: "",
 			expectedTimeouts: map[int64]time.Duration{
-				volumeSize4TB:                 migrationTimeoutMedium,
+				volumeSize4TB:                 migrationTimeoutBelowFourTB,
 				2 * 1024 * 1024 * 1024 * 1024: 4 * time.Hour, // 2Ti
 			},
 			expectedSlabArray:  []int64{volumeSize2TB, 2 * 1024 * 1024 * 1024 * 1024, volumeSize4TB},
@@ -1120,8 +1196,8 @@ func TestInitializeMigrationTimeouts(t *testing.T) {
 			migrationTimeoutsEnv:   "",
 			maxMigrationTimeoutEnv: "invalidDuration",
 			expectedTimeouts: map[int64]time.Duration{
-				volumeSize2TB: migrationTimeoutSmall,
-				volumeSize4TB: migrationTimeoutMedium,
+				volumeSize2TB: migrationTimeoutBelowTwoTB,
+				volumeSize4TB: migrationTimeoutBelowFourTB,
 			},
 			expectedSlabArray:  []int64{volumeSize2TB, volumeSize4TB},
 			expectedMaxTimeout: 24 * time.Hour, // Should remain default
@@ -1133,8 +1209,8 @@ func TestInitializeMigrationTimeouts(t *testing.T) {
 			maxMigrationTimeoutEnv: "10h",
 			expectedTimeouts: map[int64]time.Duration{
 				// Default values that remain
-				volumeSize2TB: migrationTimeoutSmall,  // 2Ti = 5h (default)
-				volumeSize4TB: migrationTimeoutMedium, // 4Ti = 9h (default)
+				volumeSize2TB: migrationTimeoutBelowTwoTB,  // 2Ti = 5h (default)
+				volumeSize4TB: migrationTimeoutBelowFourTB, // 4Ti = 9h (default)
 				// Valid entries from env that get appended
 				1024 * 1024 * 1024 * 1024:     2 * time.Hour, // 1Ti=2h (valid from env)
 				3 * 1024 * 1024 * 1024 * 1024: 6 * time.Hour, // 3Ti=6h (valid from env)
@@ -1149,8 +1225,8 @@ func TestInitializeMigrationTimeouts(t *testing.T) {
 			migrationTimeoutsEnv:   "1Ti=2h,,3Ti=4h,",
 			maxMigrationTimeoutEnv: "",
 			expectedTimeouts: map[int64]time.Duration{
-				volumeSize2TB:                 migrationTimeoutSmall,
-				volumeSize4TB:                 migrationTimeoutMedium,
+				volumeSize2TB:                 migrationTimeoutBelowTwoTB,
+				volumeSize4TB:                 migrationTimeoutBelowFourTB,
 				1024 * 1024 * 1024 * 1024:     2 * time.Hour, // 1Ti
 				3 * 1024 * 1024 * 1024 * 1024: 4 * time.Hour, // 3Ti
 			},
@@ -1196,8 +1272,8 @@ func TestInitializeMigrationTimeouts(t *testing.T) {
 
 			// Reset to default values before test
 			migrationTimeouts = map[int64]time.Duration{
-				volumeSize2TB: migrationTimeoutSmall,
-				volumeSize4TB: migrationTimeoutMedium,
+				volumeSize2TB: migrationTimeoutBelowTwoTB,
+				volumeSize4TB: migrationTimeoutBelowFourTB,
 			}
 			sortedMigrationSlabArray = []int64{volumeSize2TB, volumeSize4TB}
 			maxMigrationTimeout = 24 * time.Hour
@@ -1274,42 +1350,42 @@ func TestGetMigrationTimeout(t *testing.T) {
 		{
 			name: "volume size less than 2TB",
 			customTimeouts: map[int64]time.Duration{
-				volumeSize2TB: migrationTimeoutSmall,
-				volumeSize4TB: migrationTimeoutMedium,
+				volumeSize2TB: migrationTimeoutBelowTwoTB,
+				volumeSize4TB: migrationTimeoutBelowFourTB,
 			},
 			customSlabArray: []int64{volumeSize2TB, volumeSize4TB},
 			volumeSize:      1024 * 1024 * 1024 * 1024, // 1TB
-			expectedTimeout: migrationTimeoutSmall,
+			expectedTimeout: migrationTimeoutBelowTwoTB,
 		},
 		{
 			name: "volume size equal to 2TB",
 			customTimeouts: map[int64]time.Duration{
-				volumeSize2TB: migrationTimeoutSmall,
-				volumeSize4TB: migrationTimeoutMedium,
+				volumeSize2TB: migrationTimeoutBelowTwoTB,
+				volumeSize4TB: migrationTimeoutBelowFourTB,
 			},
 			customSlabArray: []int64{volumeSize2TB, volumeSize4TB},
 			volumeSize:      volumeSize2TB,
-			expectedTimeout: migrationTimeoutMedium, // Falls into next slab
+			expectedTimeout: migrationTimeoutBelowFourTB, // Falls into next slab
 		},
 		{
 			name: "volume size between 2TB and 4TB",
 			customTimeouts: map[int64]time.Duration{
-				volumeSize2TB: migrationTimeoutSmall,
-				volumeSize4TB: migrationTimeoutMedium,
+				volumeSize2TB: migrationTimeoutBelowTwoTB,
+				volumeSize4TB: migrationTimeoutBelowFourTB,
 			},
 			customSlabArray: []int64{volumeSize2TB, volumeSize4TB},
 			volumeSize:      3 * 1024 * 1024 * 1024 * 1024, // 3TB
-			expectedTimeout: migrationTimeoutMedium,
+			expectedTimeout: migrationTimeoutBelowFourTB,
 		},
 		{
 			name: "volume size greater than 4TB",
 			customTimeouts: map[int64]time.Duration{
-				volumeSize2TB: migrationTimeoutSmall,
-				volumeSize4TB: migrationTimeoutMedium,
+				volumeSize2TB: migrationTimeoutBelowTwoTB,
+				volumeSize4TB: migrationTimeoutBelowFourTB,
 			},
 			customSlabArray: []int64{volumeSize2TB, volumeSize4TB},
 			volumeSize:      5 * 1024 * 1024 * 1024 * 1024, // 5TB
-			expectedTimeout: migrationTimeoutLarge,
+			expectedTimeout: migrationTimeoutBelowSixteenTB,
 		},
 		{
 			name: "custom timeout configuration",
@@ -1329,14 +1405,14 @@ func TestGetMigrationTimeout(t *testing.T) {
 			},
 			customSlabArray: []int64{1024 * 1024 * 1024 * 1024},
 			volumeSize:      5 * 1024 * 1024 * 1024 * 1024, // 5TB
-			expectedTimeout: migrationTimeoutLarge,
+			expectedTimeout: migrationTimeoutBelowSixteenTB,
 		},
 		{
 			name:            "empty timeout configuration",
 			customTimeouts:  map[int64]time.Duration{},
 			customSlabArray: []int64{},
 			volumeSize:      1024 * 1024 * 1024 * 1024, // 1TB
-			expectedTimeout: migrationTimeoutLarge,
+			expectedTimeout: migrationTimeoutBelowSixteenTB,
 		},
 	}
 
@@ -1428,7 +1504,7 @@ func TestInitializeTimeoutsWithRandomOrderAndGetMigrationTimeout(t *testing.T) {
 				},
 				{
 					volumeSize:      10 * 1024 * 1024 * 1024 * 1024, // 10Ti - larger than 8Ti
-					expectedTimeout: migrationTimeoutLarge,          // Should use default large timeout
+					expectedTimeout: migrationTimeoutBelowSixteenTB, // Should use default large timeout
 					description:     "volume larger than all slabs",
 				},
 			},
@@ -1468,7 +1544,7 @@ func TestInitializeTimeoutsWithRandomOrderAndGetMigrationTimeout(t *testing.T) {
 				},
 				{
 					volumeSize:      20 * 1024 * 1024 * 1024 * 1024, // 20Ti - larger than 16Ti
-					expectedTimeout: migrationTimeoutLarge,          // Should use default large timeout
+					expectedTimeout: migrationTimeoutBelowSixteenTB, // Should use default large timeout
 					description:     "volume larger than all slabs",
 				},
 			},
@@ -1492,8 +1568,8 @@ func TestInitializeTimeoutsWithRandomOrderAndGetMigrationTimeout(t *testing.T) {
 					description:     "volume exactly at 2Ti boundary",
 				},
 				{
-					volumeSize:      4 * 1024 * 1024 * 1024 * 1024, // Exactly 4Ti
-					expectedTimeout: migrationTimeoutLarge,         // Should use default large timeout
+					volumeSize:      4 * 1024 * 1024 * 1024 * 1024,  // Exactly 4Ti
+					expectedTimeout: migrationTimeoutBelowSixteenTB, // Should use default large timeout
 					description:     "volume exactly at 4Ti boundary",
 				},
 			},
@@ -1615,14 +1691,14 @@ func TestGetMigrationTimeoutLogic(t *testing.T) {
 			expectedTimeout time.Duration
 			description     string
 		}{
-			{500, 1 * time.Hour, "volume smaller than first slab"},        // 500 < 1000 -> use 1000's timeout
-			{999, 1 * time.Hour, "volume just under first slab"},          // 999 < 1000 -> use 1000's timeout
-			{1000, 2 * time.Hour, "volume exactly at first slab"},         // 1000 < 2000 -> use 2000's timeout
-			{1500, 2 * time.Hour, "volume between first and second slab"}, // 1500 < 2000 -> use 2000's timeout
-			{2000, 3 * time.Hour, "volume exactly at second slab"},        // 2000 < 3000 -> use 3000's timeout
-			{2500, 3 * time.Hour, "volume between second and third slab"}, // 2500 < 3000 -> use 3000's timeout
-			{3000, migrationTimeoutLarge, "volume exactly at third slab"}, // 3000 >= 3000 -> use large timeout
-			{4000, migrationTimeoutLarge, "volume larger than all slabs"}, // 4000 > all -> use large timeout
+			{500, 1 * time.Hour, "volume smaller than first slab"},                 // 500 < 1000 -> use 1000's timeout
+			{999, 1 * time.Hour, "volume just under first slab"},                   // 999 < 1000 -> use 1000's timeout
+			{1000, 2 * time.Hour, "volume exactly at first slab"},                  // 1000 < 2000 -> use 2000's timeout
+			{1500, 2 * time.Hour, "volume between first and second slab"},          // 1500 < 2000 -> use 2000's timeout
+			{2000, 3 * time.Hour, "volume exactly at second slab"},                 // 2000 < 3000 -> use 3000's timeout
+			{2500, 3 * time.Hour, "volume between second and third slab"},          // 2500 < 3000 -> use 3000's timeout
+			{3000, migrationTimeoutBelowSixteenTB, "volume exactly at third slab"}, // 3000 >= 3000 -> use large timeout
+			{4000, migrationTimeoutBelowSixteenTB, "volume larger than all slabs"}, // 4000 > all -> use large timeout
 		}
 
 		for _, tc := range testCases {
@@ -1679,14 +1755,14 @@ func TestInitializeMigrationTimeoutsWithValidFormats(t *testing.T) {
 				volumeSize4TB,             // default
 			},
 			expectedTimeouts: []time.Duration{
-				5 * time.Minute,        // 1Ki
-				10 * time.Minute,       // 1000000
-				2 * time.Hour,          // 1000M
-				4 * time.Hour,          // 1000G
-				1 * time.Hour,          // 1Gi
-				3 * time.Hour,          // 1Ti
-				migrationTimeoutSmall,  // default 2TB
-				migrationTimeoutMedium, // default 4TB
+				5 * time.Minute,             // 1Ki
+				10 * time.Minute,            // 1000000
+				2 * time.Hour,               // 1000M
+				4 * time.Hour,               // 1000G
+				1 * time.Hour,               // 1Gi
+				3 * time.Hour,               // 1Ti
+				migrationTimeoutBelowTwoTB,  // default 2TB
+				migrationTimeoutBelowFourTB, // default 4TB
 			},
 		},
 	}
@@ -1695,8 +1771,8 @@ func TestInitializeMigrationTimeoutsWithValidFormats(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			// Reset to default values
 			migrationTimeouts = map[int64]time.Duration{
-				volumeSize2TB: migrationTimeoutSmall,
-				volumeSize4TB: migrationTimeoutMedium,
+				volumeSize2TB: migrationTimeoutBelowTwoTB,
+				volumeSize4TB: migrationTimeoutBelowFourTB,
 			}
 			sortedMigrationSlabArray = []int64{volumeSize2TB, volumeSize4TB}
 
@@ -1756,8 +1832,8 @@ func TestInitializeMigrationTimeoutsWithDuplicatesAndOverrides(t *testing.T) {
 	t.Run("test with duplicate sizes - last one wins", func(t *testing.T) {
 		// Reset to default values
 		migrationTimeouts = map[int64]time.Duration{
-			volumeSize2TB: migrationTimeoutSmall,
-			volumeSize4TB: migrationTimeoutMedium,
+			volumeSize2TB: migrationTimeoutBelowTwoTB,
+			volumeSize4TB: migrationTimeoutBelowFourTB,
 		}
 		sortedMigrationSlabArray = []int64{volumeSize2TB, volumeSize4TB}
 
@@ -1783,8 +1859,8 @@ func TestInitializeMigrationTimeoutsWithDuplicatesAndOverrides(t *testing.T) {
 	t.Run("test sorting with various size formats", func(t *testing.T) {
 		// Reset to default values
 		migrationTimeouts = map[int64]time.Duration{
-			volumeSize2TB: migrationTimeoutSmall,
-			volumeSize4TB: migrationTimeoutMedium,
+			volumeSize2TB: migrationTimeoutBelowTwoTB,
+			volumeSize4TB: migrationTimeoutBelowFourTB,
 		}
 		sortedMigrationSlabArray = []int64{volumeSize2TB, volumeSize4TB}
 
@@ -1867,12 +1943,13 @@ func TestMigrationTimeoutScenarios(t *testing.T) {
 		// Reset global variables and reinitialize
 		initializeTimeouts()
 
+		// Set very fast check interval for testing
+		migrationCheckInterval = 20 * time.Millisecond
+
 		klog.Infof("Timeouts initialized: %v", migrationTimeouts)
 		klog.Infof("Sorted slab array: %v", sortedMigrationSlabArray)
 		klog.Infof("Max migration timeout: %v", maxMigrationTimeout)
-
-		// Set very fast check interval for testing
-		migrationCheckInterval = 20 * time.Millisecond
+		klog.Infof("Migration check interval: %v", migrationCheckInterval)
 
 		// Create mocks
 		d := getFakeDriverWithKubeClientForMigration(ctrl)
@@ -1914,17 +1991,17 @@ func TestMigrationTimeoutScenarios(t *testing.T) {
 		mockCoreV1.EXPECT().PersistentVolumes().Return(mockPVInterface).AnyTimes()
 		mockCoreV1.EXPECT().PersistentVolumeClaims("default").Return(mockPVCInterface).AnyTimes()
 		mockPVInterface.EXPECT().Get(gomock.Any(), "test-pv", gomock.Any()).Return(testPV, nil).AnyTimes()
+		mockPVInterface.EXPECT().Update(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
+			func(_ context.Context, pv *v1.PersistentVolume, _ metav1.UpdateOptions) (*v1.PersistentVolume, error) {
+				if pv.Labels == nil {
+					pv.Labels = make(map[string]string)
+				}
+				pv.Labels[LabelMigrationInProgress] = "true"
+				return pv, nil
+			}).AnyTimes()
 
 		// PVC operations
 		mockPVCInterface.EXPECT().Get(gomock.Any(), "test-pvc", gomock.Any()).Return(testPVC, nil).AnyTimes()
-		mockPVCInterface.EXPECT().Update(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
-			func(_ context.Context, pvc *v1.PersistentVolumeClaim, _ metav1.UpdateOptions) (*v1.PersistentVolumeClaim, error) {
-				if pvc.Labels == nil {
-					pvc.Labels = make(map[string]string)
-				}
-				pvc.Labels[LabelMigrationInProgress] = "true"
-				return pvc, nil
-			}).AnyTimes()
 
 		// GetDiskByURI returns disk with changing completion percentage
 		diskClient.EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
@@ -2005,8 +2082,7 @@ func TestMigrationTimeoutScenarios(t *testing.T) {
 				"Unexpected max timeout event found: %s", event)
 		}
 
-		// Stop and verify cleanup
-		monitor.Stop()
+		// Sleep and verify cleanup
 		time.Sleep(100 * time.Millisecond)
 		assert.False(t, monitor.IsMigrationActive(diskURI))
 		assert.Equal(t, 0, len(monitor.GetActiveMigrations()))
@@ -2099,17 +2175,17 @@ func TestMigrationTimeoutScenarios(t *testing.T) {
 		mockCoreV1.EXPECT().PersistentVolumes().Return(mockPVInterface).AnyTimes()
 		mockCoreV1.EXPECT().PersistentVolumeClaims("default").Return(mockPVCInterface).AnyTimes()
 		mockPVInterface.EXPECT().Get(gomock.Any(), "test-pv", gomock.Any()).Return(testPV, nil).AnyTimes()
+		mockPVInterface.EXPECT().Update(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
+			func(_ context.Context, pv *v1.PersistentVolume, _ metav1.UpdateOptions) (*v1.PersistentVolume, error) {
+				if pv.Labels == nil {
+					pv.Labels = make(map[string]string)
+				}
+				pv.Labels[LabelMigrationInProgress] = "true"
+				return pv, nil
+			}).AnyTimes()
 
 		// PVC operations
 		mockPVCInterface.EXPECT().Get(gomock.Any(), "test-pvc", gomock.Any()).Return(testPVC, nil).AnyTimes()
-		mockPVCInterface.EXPECT().Update(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
-			func(_ context.Context, pvc *v1.PersistentVolumeClaim, _ metav1.UpdateOptions) (*v1.PersistentVolumeClaim, error) {
-				if pvc.Labels == nil {
-					pvc.Labels = make(map[string]string)
-				}
-				pvc.Labels[LabelMigrationInProgress] = "true"
-				return pvc, nil
-			}).AnyTimes()
 
 		// GetDiskByURI always returns the same disk (never completes)
 		diskClient.EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any()).Return(disk, nil).AnyTimes()

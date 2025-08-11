@@ -23,6 +23,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute/v6"
@@ -30,6 +31,7 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/record"
 	"k8s.io/klog/v2"
@@ -48,13 +50,16 @@ const (
 	LabelMigrationInProgress = "disk.csi.azure.com/migration-in-progress"
 
 	// Volume size thresholds (in bytes)
-	volumeSize2TB = 2 * 1024 * 1024 * 1024 * 1024 // 2TB
-	volumeSize4TB = 4 * 1024 * 1024 * 1024 * 1024 // 4TB
+	volumeSize2TB  = 2 * 1024 * 1024 * 1024 * 1024  // 2TB
+	volumeSize4TB  = 4 * 1024 * 1024 * 1024 * 1024  // 4TB
+	volumeSize16TB = 16 * 1024 * 1024 * 1024 * 1024 // 16TB
+	volumeSize64TB = 64 * 1024 * 1024 * 1024 * 1024 // 64TB
 
 	// Timeout durations based on volume size
-	migrationTimeoutSmall  = 5 * time.Hour  // Below 2TB
-	migrationTimeoutMedium = 9 * time.Hour  // 2TB to 4TB
-	migrationTimeoutLarge  = 10 * time.Hour // Above 4TB
+	migrationTimeoutBelowTwoTB       = 10 * time.Hour // Below 2TB
+	migrationTimeoutBelowFourTB      = 12 * time.Hour // 2TB to 4TB
+	migrationTimeoutBelowSixteenTB   = 16 * time.Hour // 4TB to 16TB
+	migrationTimeoutBelowSixtyFourTB = 19 * time.Hour // 16TB to 64TB
 )
 
 var (
@@ -64,14 +69,18 @@ var (
 	// It is initialized in init() function
 	// This allows for testing and flexibility in production environments
 	migrationTimeouts = map[int64]time.Duration{
-		volumeSize2TB: migrationTimeoutSmall,
-		volumeSize4TB: migrationTimeoutMedium,
+		volumeSize2TB:  migrationTimeoutBelowTwoTB,
+		volumeSize4TB:  migrationTimeoutBelowFourTB,
+		volumeSize16TB: migrationTimeoutBelowSixteenTB,
+		volumeSize64TB: migrationTimeoutBelowSixtyFourTB,
 	}
 
 	// timeout array for small, medium and large volumes
 	sortedMigrationSlabArray = []int64{
-		volumeSize2TB, // 2TB
-		volumeSize4TB, // 4TB
+		volumeSize2TB,  // 2TB
+		volumeSize4TB,  // 4TB
+		volumeSize16TB, // 16TB
+		volumeSize64TB, // 64TB
 	}
 
 	// Maximum migration timeout
@@ -88,7 +97,7 @@ func getMigrationTimeout(volumeSize int64) time.Duration {
 			break // No more slabs to check
 		}
 	}
-	return migrationTimeoutLarge
+	return migrationTimeoutBelowSixteenTB
 }
 
 func initializeTimeouts() {
@@ -158,6 +167,7 @@ type MigrationTask struct {
 	VolumeSize           int64         // Volume size in bytes
 	MigrationTimeout     time.Duration // Calculated timeout based on volume size
 	Timedout             bool          // Indicates if the task has timed out
+	Cancelled            atomic.Bool   // Indicates if the task was cancelled
 }
 
 // MigrationProgressMonitor monitors disk migration progress
@@ -208,9 +218,8 @@ func (m *MigrationProgressMonitor) StartMigrationMonitoring(ctx context.Context,
 	// Get volume size from PV capacity
 	var volumeSize int64
 	// Use the resource.Quantity methods explicitly to avoid import not recognized by linter/ide/goimports
-	var storageQuantity resource.Quantity
-	var exists bool
-	if storageQuantity, exists = pv.Spec.Capacity[corev1.ResourceStorage]; exists {
+	storageQuantity, exists := pv.Spec.Capacity[corev1.ResourceStorage]
+	if exists {
 		volumeSize = storageQuantity.Value()
 	} else {
 		return fmt.Errorf("PV %s does not have storage capacity defined", pvName)
@@ -243,9 +252,9 @@ func (m *MigrationProgressMonitor) StartMigrationMonitoring(ctx context.Context,
 	go m.monitorMigrationProgress(task)
 
 	// Add label to PVC to track migration state and check if it was already present
-	labelExisted, err := m.addMigrationLabelIfNotExists(ctx, pvcName, pvcNamespace, fromSKU, toSKU)
+	labelExisted, err := m.addMigrationLabelIfNotExists(ctx, pvName, fromSKU, toSKU)
 	if err != nil {
-		klog.Warningf("Failed to add migration label to PVC %s/%s: %v", pvcNamespace, pvcName, err)
+		klog.Warningf("Failed to add migration label to PV %s: %v", pvName, err)
 	}
 
 	// Log the timeout being used
@@ -263,75 +272,95 @@ func (m *MigrationProgressMonitor) StartMigrationMonitoring(ctx context.Context,
 	return nil
 }
 
-// monitorMigrationProgress monitors the progress of a disk migration
+// monitorMigrationProgress monitors the progress of a disk migration using PollUntilContextTimeout
 func (m *MigrationProgressMonitor) monitorMigrationProgress(task *MigrationTask) {
-	defer func() {
-		m.mutex.Lock()
-		delete(m.activeTasks, task.DiskURI)
-		m.mutex.Unlock()
-		task.CancelFunc()
-	}()
 
-	ticker := time.NewTicker(migrationCheckInterval)
-	defer ticker.Stop()
+	// Poll condition function
+	pollCondition := func(_ context.Context) (bool, error) {
+		if task.Cancelled.Load() {
+			klog.Infof("Migration monitoring for disk %s cancelled", task.DiskURI)
+			return true, nil // Stop polling if cancelled
+		}
 
-	for {
-		select {
-		case <-task.Context.Done():
-			if task.Context.Err() == context.Canceled {
-				klog.Infof("Migration monitoring for disk %s cancelled", task.DiskURI)
-				return
+		// Check if we've exceeded max migration timeout
+		if time.Since(task.StartTime) >= maxMigrationTimeout {
+			_ = m.emitMigrationEvent(task, corev1.EventTypeWarning, ReasonSKUMigrationTimeout,
+				fmt.Sprintf("Stopping monitoring the migration for the disk %s after waiting for %vh", task.DiskURI, maxMigrationTimeout.Hours()))
+			klog.Warningf("Migration monitoring for disk %s cancelling after waiting for %vh", task.DiskURI, maxMigrationTimeout.Hours())
+			return true, fmt.Errorf("maximum migration timeout exceeded")
+		}
+
+		// Check migration progress
+		completed, err := m.checkMigrationProgress(task)
+		if err != nil {
+			klog.V(4).Infof("Progress check error for disk %s (will retry): %v", task.DiskURI, err)
+			return false, nil // Continue polling on transient errors
+		}
+
+		if completed {
+			// Migration completed successfully
+			if err := m.emitMigrationEvent(task, corev1.EventTypeNormal, ReasonSKUMigrationCompleted,
+				fmt.Sprintf("Successfully completed SKU migration from %s to %s for volume %s (duration: %v)",
+					task.FromSKU, task.ToSKU, task.PVName, time.Since(task.StartTime))); err != nil {
+				klog.Errorf("Failed to emit completion event for disk %s: %v", task.DiskURI, err)
 			}
+			klog.V(2).Infof("Migration completed for disk %s in %v", task.DiskURI, time.Since(task.StartTime))
 
-			if !task.Timedout && task.Context.Err() == context.DeadlineExceeded {
-				_ = m.emitMigrationEvent(task, corev1.EventTypeWarning, ReasonSKUMigrationTimeout,
-					fmt.Sprintf("Migration taking too long (running %v hours) for volume %s", task.MigrationTimeout.Hours(), task.PVName))
-				klog.Warningf("Migration taking too long (running %v hours) for disk %s", task.MigrationTimeout.Hours(), task.DiskURI)
-				task.Timedout = true
-			} else if time.Since(task.StartTime) >= maxMigrationTimeout {
-				err := m.emitMigrationEvent(task, corev1.EventTypeWarning, ReasonSKUMigrationTimeout,
-					fmt.Sprintf("Stopping monitoring the migration for the disk %s after waiting for %vh", task.DiskURI, maxMigrationTimeout.Hours()))
-				if err != nil {
-					klog.Errorf("Failed to emit timeout event for disk %s: %v", task.DiskURI, err)
+			// Remove label when migration completes
+			if err := m.removeMigrationLabel(task.Context, task.PVName); err != nil {
+				klog.Warningf("Failed to remove migration label from PV %s: %v", task.PVName, err)
+			}
+			return true, nil // Stop polling - migration completed
+		}
+
+		return false, nil // Continue polling
+	}
+
+	// Start polling with the migration timeout
+	pollErr := wait.PollUntilContextTimeout(task.Context, migrationCheckInterval, task.MigrationTimeout, true, pollCondition)
+
+	// Handle different timeout/error scenarios
+	if pollErr != nil {
+
+		// Check if this is the initial migration timeout (not max timeout)
+		if (pollErr == context.DeadlineExceeded ||
+			task.Context.Err() == context.DeadlineExceeded) && !task.Timedout {
+			// Initial migration timeout exceeded, but continue monitoring until max timeout
+			_ = m.emitMigrationEvent(task, corev1.EventTypeWarning, ReasonSKUMigrationTimeout,
+				fmt.Sprintf("Migration taking too long (running %v hours) for volume %s", task.MigrationTimeout.Hours(), task.PVName))
+			klog.Warningf("Migration taking too long (running %v hours) for disk %s", task.MigrationTimeout.Hours(), task.DiskURI)
+			task.Timedout = true
+
+			// Continue monitoring until max timeout with buffer of 5 minutes to ensure the task is not prematurely cancelled
+			remaining := maxMigrationTimeout - time.Since(task.StartTime) + (migrationCheckInterval * 5)
+			if remaining > (migrationCheckInterval * 5) {
+				// Create extended context and continue polling
+				extendedCtx, extendedCancel := context.WithTimeout(context.Background(), remaining)
+				defer extendedCancel()
+
+				task.Context = extendedCtx
+				task.CancelFunc = extendedCancel
+
+				// Continue polling with extended timeout
+				extendedPollErr := wait.PollUntilContextTimeout(extendedCtx, migrationCheckInterval, remaining, true, pollCondition)
+				if extendedPollErr != nil {
+					if wait.Interrupted(extendedPollErr) {
+						klog.Infof("Extended migration monitoring for disk %s cancelled", task.DiskURI)
+					} else {
+						klog.Errorf("Extended migration monitoring for disk %s failed: %v", task.DiskURI, extendedPollErr)
+					}
 				}
-				klog.Warningf("Migration monitoring for disk %s cancelling after waiting for %vh", task.DiskURI, maxMigrationTimeout.Hours())
-				return
 			}
-			task.CancelFunc()
-			// Extend 1 hour deadline to avoid immediate exit
-			// This allows the task to continue running and report progress
-			// even if it has exceeded the initial timeout
-			remaining := maxMigrationTimeout - time.Since(task.StartTime)
-			if remaining <= 0 {
-				// Migration has exceeded max timeout, stop monitoring
-				return
-			}
-			task.Context, task.CancelFunc = context.WithTimeout(context.Background(), remaining)
-			continue
-		case <-ticker.C:
-			completed, err := m.checkMigrationProgress(task)
-			if err != nil {
-				klog.V(4).Infof("Progress check error for disk %s (will retry): %v", task.DiskURI, err)
-				continue
-			}
-
-			if completed {
-				if m.emitMigrationEvent(task, corev1.EventTypeNormal, ReasonSKUMigrationCompleted,
-					fmt.Sprintf("Successfully completed SKU migration from %s to %s for volume %s (duration: %v)",
-						task.FromSKU, task.ToSKU, task.PVName, time.Since(task.StartTime))) != nil {
-					klog.Errorf("Failed to emit completion event for disk %s: %v", task.DiskURI, err)
-					return
-				}
-				klog.V(2).Infof("Migration completed for disk %s in %v", task.DiskURI, time.Since(task.StartTime))
-
-				// Remove label when migration completes
-				if err := m.removeMigrationLabel(task.Context, task.PVCName, task.PVCNamespace); err != nil {
-					klog.Warningf("Failed to remove migration label from PVC %s/%s: %v", task.PVCNamespace, task.PVCName, err)
-				}
-				return
-			}
+		} else {
+			// Other error scenarios
+			klog.Errorf("Migration monitoring for disk %s failed with error: %v", task.DiskURI, pollErr)
 		}
 	}
+
+	m.mutex.Lock()
+	defer m.mutex.Unlock()
+	delete(m.activeTasks, task.DiskURI)
+	task.CancelFunc()
 }
 
 // checkMigrationProgress checks the current progress of a disk migration
@@ -393,46 +422,47 @@ func (m *MigrationProgressMonitor) emitMigrationEvent(task *MigrationTask, event
 	return nil
 }
 
-// addMigrationLabelIfNotExists adds migration label to the PersistentVolumeClaim if it doesn't already exist
+// addMigrationLabelIfNotExists adds migration label to the PersistentVolume if it doesn't already exist
 // Returns true if label already existed, false if it was newly added
-func (m *MigrationProgressMonitor) addMigrationLabelIfNotExists(ctx context.Context, pvcName, pvcNamespace string, fromSKU, toSKU armcompute.DiskStorageAccountTypes) (bool, error) {
-	pvc, err := m.kubeClient.CoreV1().PersistentVolumeClaims(pvcNamespace).Get(ctx, pvcName, metav1.GetOptions{})
+func (m *MigrationProgressMonitor) addMigrationLabelIfNotExists(ctx context.Context, pvName string, fromSKU, toSKU armcompute.DiskStorageAccountTypes) (bool, error) {
+	pv, err := m.kubeClient.CoreV1().PersistentVolumes().Get(ctx, pvName, metav1.GetOptions{})
 	if err != nil {
 		return false, err
 	}
 
 	// Check if migration label already exists
-	if pvc.Labels != nil {
-		if value, exists := pvc.Labels[LabelMigrationInProgress]; exists && value == "true" {
-			klog.V(2).Infof("Migration label already exists for PVC %s/%s (%s -> %s)", pvcNamespace, pvcName, fromSKU, toSKU)
+	if pv.Labels != nil {
+		if value, exists := pv.Labels[LabelMigrationInProgress]; exists && value == "true" {
+			klog.V(2).Infof("Migration label already exists for PV %s (%s -> %s)", pvName, fromSKU, toSKU)
 			return true, nil
 		}
 	}
 
 	// Label doesn't exist, add it
-	if pvc.Labels == nil {
-		pvc.Labels = make(map[string]string)
+	if pv.Labels == nil {
+		pv.Labels = make(map[string]string)
 	}
 
-	pvc.Labels[LabelMigrationInProgress] = "true"
+	pv.Labels[LabelMigrationInProgress] = "true"
 
-	_, err = m.kubeClient.CoreV1().PersistentVolumeClaims(pvcNamespace).Update(ctx, pvc, metav1.UpdateOptions{})
+	_, err = m.kubeClient.CoreV1().PersistentVolumes().Update(ctx, pv, metav1.UpdateOptions{})
 	return false, err
 }
 
-// removeMigrationLabel removes migration label from the PersistentVolumeClaim
-func (m *MigrationProgressMonitor) removeMigrationLabel(ctx context.Context, pvcName, pvcNamespace string) error {
-	pvc, err := m.kubeClient.CoreV1().PersistentVolumeClaims(pvcNamespace).Get(ctx, pvcName, metav1.GetOptions{})
+// removeMigrationLabel removes migration label from the PersistentVolume
+func (m *MigrationProgressMonitor) removeMigrationLabel(ctx context.Context, pvName string) error {
+	pv, err := m.kubeClient.CoreV1().PersistentVolumes().Get(ctx, pvName, metav1.GetOptions{})
 	if err != nil {
 		return err
 	}
 
-	delete(pvc.Labels, LabelMigrationInProgress)
+	delete(pv.Labels, LabelMigrationInProgress)
 
-	_, err = m.kubeClient.CoreV1().PersistentVolumeClaims(pvcNamespace).Update(ctx, pvc, metav1.UpdateOptions{})
+	_, err = m.kubeClient.CoreV1().PersistentVolumes().Update(ctx, pv, metav1.UpdateOptions{})
 	return err
 }
 
+// GetActiveMigrations returns currently active migration tasks
 // GetActiveMigrations returns currently active migration tasks
 func (m *MigrationProgressMonitor) GetActiveMigrations() map[string]*MigrationTask {
 	m.mutex.RLock()
@@ -440,8 +470,25 @@ func (m *MigrationProgressMonitor) GetActiveMigrations() map[string]*MigrationTa
 
 	result := make(map[string]*MigrationTask)
 	for k, v := range m.activeTasks {
-		taskCopy := *v
-		result[k] = &taskCopy
+		// Create a new task with copied values instead of copying the entire struct
+		taskCopy := &MigrationTask{
+			DiskURI:              v.DiskURI,
+			PVName:               v.PVName,
+			PVCName:              v.PVCName,
+			PVCNamespace:         v.PVCNamespace,
+			FromSKU:              v.FromSKU,
+			ToSKU:                v.ToSKU,
+			StartTime:            v.StartTime,
+			LastReportedProgress: v.LastReportedProgress,
+			Context:              v.Context,
+			CancelFunc:           v.CancelFunc,
+			VolumeSize:           v.VolumeSize,
+			MigrationTimeout:     v.MigrationTimeout,
+			Timedout:             v.Timedout,
+			// For atomic.Bool, create a new one with the current value
+		}
+		taskCopy.Cancelled.Store(v.Cancelled.Load())
+		result[k] = taskCopy
 	}
 	return result
 }
@@ -457,23 +504,58 @@ func (m *MigrationProgressMonitor) IsMigrationActive(diskURI string) bool {
 
 // Stop stops all active migration monitoring tasks
 func (m *MigrationProgressMonitor) Stop() {
-	m.mutex.Lock()
-	defer m.mutex.Unlock()
+	func() {
+		m.mutex.Lock()
+		defer m.mutex.Unlock()
+		for _, task := range m.activeTasks {
+			if task.CancelFunc != nil && !task.Cancelled.Load() {
+				task.Cancelled.Store(true) // Mark task as cancelled
+				task.CancelFunc()
+				task.Context.Done() // Ensure context is cancelled
+			}
+		}
+	}()
 
-	for _, task := range m.activeTasks {
-		if task.CancelFunc != nil {
-			task.CancelFunc()
+	// Wait for up to 2 minutes for all tasks to be cleaned up
+	ctx, cancel := context.WithTimeout(context.Background(), 2*migrationCheckInterval)
+	defer cancel()
+
+	err := wait.PollUntilContextTimeout(ctx, 2*time.Second, 2*migrationCheckInterval, true, func(ctx context.Context) (bool, error) {
+		if ctx.Err() != nil {
+			klog.V(2).Infof("Migration monitoring stop cancelled")
+			return true, nil // This WILL stop the polling
+		}
+		m.mutex.RLock()
+		defer m.mutex.RUnlock()
+		tasksRemaining := len(m.activeTasks)
+
+		if tasksRemaining == 0 {
+			klog.V(2).Infof("All migration tasks have been cancelled")
+			return true, nil // This WILL stop the polling
+		}
+
+		klog.V(4).Infof("Still waiting for %d migration tasks to finish", tasksRemaining)
+		return false, nil // Continue polling
+	})
+
+	if err != nil {
+		m.mutex.RLock()
+		defer m.mutex.RUnlock()
+		remaining := len(m.activeTasks)
+
+		if remaining > 0 {
+			klog.Warningf("Stop timeout: %d migration tasks still active", remaining)
 		}
 	}
 
-	klog.V(2).Infof("Migration progress monitor stopped, cancelled %d active tasks", len(m.activeTasks))
+	klog.V(2).Infof("Stopped all active migration monitoring tasks")
 }
 
 // Recovery function using labels
 func (d *Driver) recoverMigrationMonitorsFromLabels(ctx context.Context) error {
 	// List PVCs with migration label
 	labelSelector := fmt.Sprintf("%s=true", LabelMigrationInProgress)
-	pvcList, err := d.cloud.KubeClient.CoreV1().PersistentVolumeClaims("").List(ctx, metav1.ListOptions{
+	pvList, err := d.cloud.KubeClient.CoreV1().PersistentVolumes().List(ctx, metav1.ListOptions{
 		LabelSelector: labelSelector,
 	})
 	if err != nil {
@@ -481,16 +563,10 @@ func (d *Driver) recoverMigrationMonitorsFromLabels(ctx context.Context) error {
 	}
 
 	recoveredCount := 0
-	for _, pvc := range pvcList.Items {
-		// Get the associated PV
-		if pvc.Spec.VolumeName == "" {
-			klog.V(2).Infof("PVC %s/%s has no volume name, skipping recovery", pvc.Namespace, pvc.Name)
-			continue
-		}
-
-		pv, err := d.cloud.KubeClient.CoreV1().PersistentVolumes().Get(ctx, pvc.Spec.VolumeName, metav1.GetOptions{})
-		if err != nil {
-			klog.Errorf("Failed to get PV %s for PVC %s/%s: %v", pvc.Spec.VolumeName, pvc.Namespace, pvc.Name, err)
+	for _, pv := range pvList.Items {
+		// Get the associated PVC
+		if pv.Spec.ClaimRef == nil {
+			klog.V(2).Infof("PV %s has no claim reference, skipping recovery", pv.Name)
 			continue
 		}
 
@@ -499,16 +575,14 @@ func (d *Driver) recoverMigrationMonitorsFromLabels(ctx context.Context) error {
 			diskURI := pv.Spec.CSI.VolumeHandle
 
 			// For recovery, we need to determine fromSKU and toSKU from the disk properties
-			// This is a limitation - we'll use a placeholder approach here
-			// In a real implementation, you might want to store this info in additional labels or get it from the disk
-			klog.V(2).Infof("Recovering migration monitor for PVC %s/%s (PV: %s)", pvc.Namespace, pvc.Name, pv.Name)
+			klog.V(2).Infof("Recovering migration monitor for PV: %s", pv.Name)
 
-			// For now, we'll use placeholders - in practice, you'd need to get this from disk properties or additional labels
-			fromSKU := armcompute.DiskStorageAccountTypesPremiumLRS // This would need to be determined
-			toSKU := armcompute.DiskStorageAccountTypesPremiumV2LRS // This would need to be determined
+			// For now, we'll use placeholders - when more SKUs involve for migration, need to get this from disk properties
+			fromSKU := armcompute.DiskStorageAccountTypesPremiumLRS
+			toSKU := armcompute.DiskStorageAccountTypesPremiumV2LRS
 
 			if err := d.migrationMonitor.StartMigrationMonitoring(ctx, diskURI, pv.Name, fromSKU, toSKU); err != nil {
-				klog.Errorf("Failed to recover migration for PVC %s/%s: %v", pvc.Namespace, pvc.Name, err)
+				klog.Errorf("Failed to recover migration for PV %s: %v", pv.Name, err)
 			} else {
 				recoveredCount++
 			}

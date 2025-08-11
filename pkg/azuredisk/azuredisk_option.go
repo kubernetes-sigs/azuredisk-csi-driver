@@ -70,6 +70,7 @@ type DriverOptions struct {
 	MaxConcurrentFormat               int64
 	ConcurrentFormatTimeout           int64
 	GoMaxProcs                        int64
+	EnableMigrationMonitor            bool
 }
 
 func (o *DriverOptions) AddFlags() *flag.FlagSet {
@@ -121,5 +122,6 @@ func (o *DriverOptions) AddFlags() *flag.FlagSet {
 	fs.Int64Var(&o.MaxConcurrentFormat, "max-concurrent-format", 2, "maximum number of concurrent format exec calls")
 	fs.Int64Var(&o.ConcurrentFormatTimeout, "concurrent-format-timeout", 300, "maximum time in seconds duration of a format operation before its concurrency token is released")
 	fs.Int64Var(&o.GoMaxProcs, "max-procs", 2, "maximum number of CPUs that can be executing simultaneously in golang runtime")
+	fs.BoolVar(&o.EnableMigrationMonitor, "enable-migration-monitor", true, "enable migration monitor for Azure Disk CSI Driver")
 	return fs
 }

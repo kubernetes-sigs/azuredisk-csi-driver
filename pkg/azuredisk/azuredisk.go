@@ -145,6 +145,7 @@ type Driver struct {
 	throttlingCache azcache.Resource
 	// a timed cache for disk lun collision check throttling
 	checkDiskLunThrottlingCache azcache.Resource
+	enableMigrationMonitor      bool
 }
 
 // NewDriver Creates a NewCSIDriver object. Assumes vendor version is equal to driver version &
@@ -195,6 +196,7 @@ func NewDriver(options *DriverOptions) *Driver {
 	driver.volumeLocks = volumehelper.NewVolumeLocks()
 	driver.ioHandler = azureutils.NewOSIOHandler()
 	driver.hostUtil = hostutil.NewHostUtil()
+	driver.enableMigrationMonitor = options.EnableMigrationMonitor
 
 	if driver.NodeID == "" {
 		// nodeid is not needed in controller component
@@ -271,7 +273,7 @@ func NewDriver(options *DriverOptions) *Driver {
 		driver.diskController.WaitForDetach = driver.waitForDetach
 		driver.diskController.CheckDiskCountForBatching = driver.checkDiskCountForBatching
 
-		if kubeClient != nil && driver.NodeID == "" {
+		if kubeClient != nil && driver.NodeID == "" && driver.enableMigrationMonitor {
 			eventBroadcaster := record.NewBroadcaster()
 			eventBroadcaster.StartStructuredLogging(0)
 			eventBroadcaster.StartRecordingToSink(&clientcorev1.EventSinkImpl{

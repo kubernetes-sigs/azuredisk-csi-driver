@@ -22,6 +22,7 @@ import (
 	"fmt"
 	"reflect"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -697,7 +698,6 @@ func TestControllerModifyVolume(t *testing.T) {
 		pvcExists                               bool
 		pvHasMigrationLabels                    bool
 		multipleMigrationsToRecover             bool
-		simulateMigrationCompletion             bool
 		simulateMigrationCompletionAfterRestart bool
 	}{
 		{
@@ -864,7 +864,6 @@ func TestControllerModifyVolume(t *testing.T) {
 			simulateRestart:                         true,
 			pvHasMigrationLabels:                    true,
 			multipleMigrationsToRecover:             true,
-			simulateMigrationCompletion:             true,
 			simulateMigrationCompletionAfterRestart: true,
 		},
 	}
@@ -892,11 +891,6 @@ func TestControllerModifyVolume(t *testing.T) {
 			Properties: &armcompute.DiskProperties{},
 		}
 
-		// Simulate disk migration completion if needed
-		if test.simulateMigrationCompletion {
-			disk.Properties.CompletionPercent = to.Ptr(float32(100))
-		}
-
 		// Setup disk client mocks
 		diskClient := mock_diskclient.NewMockInterface(cntl)
 		d.getClientFactory().(*mock_azclient.MockClientFactory).EXPECT().GetDiskClientForSub(gomock.Any()).Return(diskClient, nil).AnyTimes()
@@ -905,6 +899,8 @@ func TestControllerModifyVolume(t *testing.T) {
 
 		// Setup PVC mocks for migration monitoring if needed
 		var testPVCs []*v1.PersistentVolumeClaim
+		var testPVs []*v1.PersistentVolume
+		var testPVCopies []*v1.PersistentVolume
 		if test.setupPVCMocks {
 			// Create primary test PVC
 			testPVC := &v1.PersistentVolumeClaim{
@@ -921,7 +917,7 @@ func TestControllerModifyVolume(t *testing.T) {
 							v1.ResourceName("storage"): *resource.NewQuantity(10*1024*1024*1024, resource.BinarySI), // 10GiB
 						},
 					},
-					VolumeName: "unit-test-volume",
+					VolumeName: testVolumeName,
 				},
 			}
 
@@ -959,9 +955,43 @@ func TestControllerModifyVolume(t *testing.T) {
 			pvcList := &v1.PersistentVolumeClaimList{Items: []v1.PersistentVolumeClaim{}}
 			for _, pvc := range testPVCs {
 				pvcList.Items = append(pvcList.Items, *pvc)
+
+				volumeHandle := fmt.Sprintf(consts.ManagedDiskPath, "subs", "rg", pvc.Spec.VolumeName)
+				pv := &v1.PersistentVolume{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: pvc.Spec.VolumeName,
+					},
+					Spec: v1.PersistentVolumeSpec{
+						PersistentVolumeReclaimPolicy: v1.PersistentVolumeReclaimDelete,
+						AccessModes: []v1.PersistentVolumeAccessMode{
+							v1.ReadWriteOnce,
+						},
+						Capacity: v1.ResourceList{
+							v1.ResourceName("storage"): *resource.NewQuantity(10*1024*1024*1024, resource.BinarySI), // 10GiB
+						},
+						ClaimRef: &v1.ObjectReference{
+							Namespace: pvc.Namespace,
+							Name:      pvc.Name,
+						},
+						PersistentVolumeSource: v1.PersistentVolumeSource{
+							CSI: &v1.CSIPersistentVolumeSource{
+								Driver:       "disk.csi.azure.com",
+								VolumeHandle: volumeHandle,
+							},
+						},
+					},
+				}
+				pvCopy := pv.DeepCopy()
+				if test.pvHasMigrationLabels {
+					if pvCopy.Labels == nil {
+						pvCopy.Labels = make(map[string]string)
+					}
+					pvCopy.Labels[LabelMigrationInProgress] = "true"
+				}
+				testPVCopies = append(testPVCopies, pvCopy)
+				testPVs = append(testPVs, pv)
 			}
 			mockCoreV1.(*mockcorev1.MockInterface).EXPECT().PersistentVolumeClaims(gomock.Any()).Return(pvcInterface).AnyTimes()
-			pvcInterface.EXPECT().List(gomock.Any(), gomock.Any()).Return(pvcList, nil).AnyTimes()
 
 			// Mock Get and Update calls
 			for _, pvc := range testPVCs {
@@ -969,37 +999,19 @@ func TestControllerModifyVolume(t *testing.T) {
 					pvcInterface.EXPECT().Get(gomock.Any(), pvc.Name, gomock.Any()).
 						Return(pvc, nil).AnyTimes()
 
-					pvcInterface.EXPECT().Update(gomock.Any(), gomock.Any(), gomock.Any()).
-						Return(pvc, nil).AnyTimes()
-
-					volumeHandle := fmt.Sprintf(consts.ManagedDiskPath, "subs", "rg", pvc.Spec.VolumeName)
-
 					d.getCloud().KubeClient.CoreV1().PersistentVolumes().(*mockpersistentvolume.MockInterface).EXPECT().Get(gomock.Any(), pvc.Spec.VolumeName, gomock.Any()).DoAndReturn(func(_ context.Context, name string, _ metav1.GetOptions) (*v1.PersistentVolume, error) {
-						return &v1.PersistentVolume{
-							ObjectMeta: metav1.ObjectMeta{
-								Name: name,
-							},
-							Spec: v1.PersistentVolumeSpec{
-								PersistentVolumeReclaimPolicy: v1.PersistentVolumeReclaimDelete,
-								AccessModes: []v1.PersistentVolumeAccessMode{
-									v1.ReadWriteOnce,
-								},
-								Capacity: v1.ResourceList{
-									v1.ResourceName("storage"): *resource.NewQuantity(10*1024*1024*1024, resource.BinarySI), // 10GiB
-								},
-								ClaimRef: &v1.ObjectReference{
-									Namespace: pvc.Namespace,
-									Name:      pvc.Name,
-								},
-								PersistentVolumeSource: v1.PersistentVolumeSource{
-									CSI: &v1.CSIPersistentVolumeSource{
-										Driver:       "disk.csi.azure.com",
-										VolumeHandle: volumeHandle,
-									},
-								},
-							},
-						}, nil
+						for _, pv := range testPVs {
+							if pv.Name == name {
+								return pv, nil
+							}
+						}
+						return nil, errors.New("not found")
 					}).AnyTimes()
+
+					d.getCloud().KubeClient.CoreV1().PersistentVolumes().(*mockpersistentvolume.MockInterface).EXPECT().Update(gomock.Any(), gomock.Any(), gomock.Any()).
+						DoAndReturn(func(_ context.Context, pv *v1.PersistentVolume, _ metav1.UpdateOptions) (*v1.PersistentVolume, error) {
+							return pv, nil
+						}).AnyTimes()
 				} else {
 					pvcInterface.EXPECT().Get(gomock.Any(), pvc.Name, gomock.Any()).
 						Return(nil, errors.New("not found")).AnyTimes()
@@ -1017,8 +1029,9 @@ func TestControllerModifyVolume(t *testing.T) {
 
 		// Verify migration monitoring state
 		if test.expectMigrationStarted {
+			time.Sleep(100 * time.Millisecond) // Allow some time for migration go routine to begin
 			assert.True(t, d.GetMigrationMonitor().IsMigrationActive(test.req.VolumeId),
-				"Migration should be active for test: %s", test.desc)
+				"Migration for volume %s should be active for test: %s", test.req.VolumeId, test.desc)
 
 			activeMigrations := d.GetMigrationMonitor().GetActiveMigrations()
 			assert.Equal(t, 1, len(activeMigrations),
@@ -1036,7 +1049,10 @@ func TestControllerModifyVolume(t *testing.T) {
 			}
 
 			// Verify migration started event was emitted for successful cases
-			if test.expectedErrCode == codes.OK && test.setupPVCMocks {
+			if test.setupPVCMocks {
+				// wait for events in mockEventRecorder
+				time.Sleep(100 * time.Millisecond)
+
 				select {
 				case event := <-mockEventRecorder.Events:
 					assert.Contains(t, event, "Normal", "Event should be Normal type")
@@ -1075,92 +1091,88 @@ func TestControllerModifyVolume(t *testing.T) {
 		// Simulate controller restart scenario
 		if test.simulateRestart {
 
-			if test.pvHasMigrationLabels {
-				for _, testPVC := range testPVCs {
-					if testPVC.Labels == nil {
-						testPVC.Labels = make(map[string]string)
-					}
-					testPVC.Labels["disk.csi.azure.com/migration-in-progress"] = "true"
-				}
+			disk = &armcompute.Disk{
+				ID: &id,
+				SKU: &armcompute.DiskSKU{
+					Name: test.oldSKU,
+				},
+				Properties: &armcompute.DiskProperties{},
 			}
-
-			if test.simulateMigrationCompletionAfterRestart {
-				disk = &armcompute.Disk{
-					ID: &id,
-					SKU: &armcompute.DiskSKU{
-						Name: test.oldSKU,
-					},
-					Properties: &armcompute.DiskProperties{},
-				}
-				disk.Properties.CompletionPercent = to.Ptr(float32(100))
-			}
+			disk.Properties.CompletionPercent = to.Ptr(float32(0))
 
 			cntlForRestart := gomock.NewController(t)
 			defer cntlForRestart.Finish()
 			drestart := getFakeDriverWithKubeClient(cntlForRestart)
 
-			// Setup mock expectations for PV operations
-			pvcInterface := mockpersistentvolumeclaim.NewMockPersistentVolumeClaimInterface(cntl)
-			mockCoreV1 := drestart.getCloud().KubeClient.CoreV1()
-
 			// Mock List call for recovery scenarios
-			pvcList := &v1.PersistentVolumeClaimList{Items: []v1.PersistentVolumeClaim{}}
-			for _, pvc := range testPVCs {
-				pvcList.Items = append(pvcList.Items, *pvc)
+			pvList := &v1.PersistentVolumeList{Items: []v1.PersistentVolume{}}
+			for _, pv := range testPVCopies {
+				testPvCopy := pv.DeepCopy()
+				testPvCopy.Labels = map[string]string{
+					LabelMigrationInProgress: "true",
+				}
+				pvList.Items = append(pvList.Items, *testPvCopy)
 			}
+
+			// Setup mock expectations for PV operations
+			mockCoreV1 := drestart.getCloud().KubeClient.CoreV1()
+			mockPVInterface := mockCoreV1.PersistentVolumes().(*mockpersistentvolume.MockInterface)
+			mockCoreV1.(*mockcorev1.MockInterface).EXPECT().PersistentVolumes().Return(mockPVInterface).AnyTimes()
+			mockPVInterface.EXPECT().List(gomock.Any(), gomock.Any()).Return(pvList, nil).AnyTimes()
+			pvcInterface := mockpersistentvolumeclaim.NewMockPersistentVolumeClaimInterface(cntlForRestart)
 			mockCoreV1.(*mockcorev1.MockInterface).EXPECT().PersistentVolumeClaims(gomock.Any()).Return(pvcInterface).AnyTimes()
-			pvcInterface.EXPECT().List(gomock.Any(), gomock.Any()).Return(pvcList, nil).AnyTimes()
+			mockPVCInterface := mockCoreV1.PersistentVolumeClaims("default").(*mockpersistentvolumeclaim.MockPersistentVolumeClaimInterface)
+
 			// Mock Get and Update calls
 			for _, pvc := range testPVCs {
 				if test.pvcExists {
-					pvcInterface.EXPECT().Get(gomock.Any(), pvc.Name, gomock.Any()).
+					mockPVCInterface.EXPECT().Get(gomock.Any(), pvc.Name, gomock.Any()).
 						Return(pvc, nil).AnyTimes()
+				}
+			}
+			for _, pv := range testPVCopies {
+				if test.pvcExists {
+					mockPVInterface.EXPECT().Get(gomock.Any(), pv.Name, gomock.Any()).
+						Return(pv.DeepCopy(), nil).AnyTimes()
 
-					pvcInterface.EXPECT().Update(gomock.Any(), gomock.Any(), gomock.Any()).
-						Return(pvc, nil).AnyTimes()
-
-					volumeHandle := fmt.Sprintf(consts.ManagedDiskPath, "subs", "rg", pvc.Spec.VolumeName)
-
-					drestart.getCloud().KubeClient.CoreV1().PersistentVolumes().(*mockpersistentvolume.MockInterface).EXPECT().Get(gomock.Any(), pvc.Spec.VolumeName, gomock.Any()).DoAndReturn(func(_ context.Context, name string, _ metav1.GetOptions) (*v1.PersistentVolume, error) {
-						return &v1.PersistentVolume{
-							ObjectMeta: metav1.ObjectMeta{
-								Name: name,
-							},
-							Spec: v1.PersistentVolumeSpec{
-								PersistentVolumeReclaimPolicy: v1.PersistentVolumeReclaimDelete,
-								AccessModes: []v1.PersistentVolumeAccessMode{
-									v1.ReadWriteOnce,
-								},
-								Capacity: v1.ResourceList{
-									v1.ResourceName("storage"): *resource.NewQuantity(10*1024*1024*1024, resource.BinarySI), // 10GiB
-								},
-								ClaimRef: &v1.ObjectReference{
-									Namespace: pvc.Namespace,
-									Name:      pvc.Name,
-								},
-								PersistentVolumeSource: v1.PersistentVolumeSource{
-									CSI: &v1.CSIPersistentVolumeSource{
-										Driver:       "disk.csi.azure.com",
-										VolumeHandle: volumeHandle,
-									},
-								},
-							},
-						}, nil
-					}).AnyTimes()
+					mockPVInterface.EXPECT().Update(gomock.Any(), gomock.Any(), gomock.Any()).
+						Return(pv.DeepCopy(), nil).AnyTimes()
 				} else {
-					pvcInterface.EXPECT().Get(gomock.Any(), pvc.Name, gomock.Any()).
+					mockPVInterface.EXPECT().Get(gomock.Any(), pv.Name, gomock.Any()).
 						Return(nil, errors.New("not found")).AnyTimes()
 				}
 			}
 
+			diskCompleted := atomic.Bool{}
+			diskCompleted.Store(false)
 			// Setup disk client mocks
 			diskclientForRestart := mock_diskclient.NewMockInterface(cntlForRestart)
 			drestart.getClientFactory().(*mock_azclient.MockClientFactory).EXPECT().GetDiskClientForSub(gomock.Any()).Return(diskclientForRestart, nil).AnyTimes()
-			diskclientForRestart.EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any()).Return(disk, nil).AnyTimes()
+			diskclientForRestart.EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
+				func(_ context.Context, _, _ string) (*armcompute.Disk, error) {
+					diskCopy := &armcompute.Disk{
+						ID: disk.ID,
+						SKU: &armcompute.DiskSKU{
+							Name: disk.SKU.Name,
+						},
+						Properties: &armcompute.DiskProperties{},
+					}
+					if diskCompleted.Load() {
+						diskCopy.Properties.CompletionPercent = to.Ptr(float32(100))
+					}
+					return diskCopy, nil
+				},
+			).AnyTimes()
 			diskclientForRestart.EXPECT().Patch(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(disk, nil).AnyTimes()
 
 			// Simulate controller restart by resetting migration monitor
 			drestart.SetMigrationMonitor(nil)
+
+			migrationCheckIntervalOriginal := migrationCheckInterval
+			defer func() {
+				migrationCheckInterval = migrationCheckIntervalOriginal
+			}()
+			migrationCheckInterval = time.Millisecond * 100 // Speed up migration checks for tests
 
 			// Create new migration monitor (simulating controller restart)
 			drestart.SetMigrationMonitor(NewMigrationProgressMonitor(drestart.getCloud().KubeClient, mockEventRecorder, drestart.GetDiskController()))
@@ -1170,6 +1182,7 @@ func TestControllerModifyVolume(t *testing.T) {
 				// Call recovery function that would be called during controller initialization
 				err := drestart.RecoverMigrationMonitor(ctx)
 				assert.NoError(t, err, "Recovery should succeed for test: %s", test.desc)
+				time.Sleep(100 * time.Millisecond) // Allow some time for migration go routine to begin
 
 				activeMigrations := drestart.GetMigrationMonitor().GetActiveMigrations()
 				assert.GreaterOrEqual(t, len(activeMigrations), 1, "At least one migration should be recovered")
@@ -1181,17 +1194,30 @@ func TestControllerModifyVolume(t *testing.T) {
 				}
 			}
 
-			result, err := drestart.ControllerModifyVolume(ctx, test.req)
-			if err != nil {
-				checkTestError(t, test.expectedErrCode, err)
-			}
-			if !reflect.DeepEqual(result, test.expectedResp) {
-				t.Errorf("input request: %v, ControllerModifyVolume result: %v, expected: %v", test.req, result, test.expectedResp)
-			}
-
-			if drestart.GetMigrationMonitor() != nil {
+			if test.simulateMigrationCompletionAfterRestart {
+				diskCompleted.Store(true)
+			} else {
 				drestart.GetMigrationMonitor().Stop()
 			}
+
+			// Wait for all active migrations to complete and maximum 2 seconds
+			startedTime := time.Now()
+			for {
+				activeMigrations := drestart.GetMigrationMonitor().GetActiveMigrations()
+				if len(activeMigrations) == 0 {
+					break
+				}
+				if time.Since(startedTime) > time.Second*2 {
+					klog.Errorf("Timeout waiting for migrations to complete for test: %s", test.desc)
+					break
+				}
+				time.Sleep(100 * time.Millisecond)
+			}
+
+			activeMigrations := drestart.GetMigrationMonitor().GetActiveMigrations()
+			assert.Equal(t, 0, len(activeMigrations), "All migrations should be completed after restart for test: %s", test.desc)
+
+			drestart.GetMigrationMonitor().Stop()
 		}
 
 		// Clean up migration monitor

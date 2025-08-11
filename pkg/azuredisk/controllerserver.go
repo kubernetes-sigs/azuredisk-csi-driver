@@ -405,10 +405,10 @@ func (d *Driver) ControllerModifyVolume(ctx context.Context, req *csi.Controller
 	if err := d.ValidateControllerServiceRequest(csi.ControllerServiceCapability_RPC_MODIFY_VOLUME); err != nil {
 		return nil, status.Errorf(codes.Internal, "invalid modify volume req: %v", req)
 	}
+
 	diskURI := volumeID
-	var currentDisk *armcompute.Disk
-	var err error
-	if currentDisk, err = d.checkDiskExists(ctx, diskURI); err != nil {
+	currentDisk, err := d.checkDiskExists(ctx, diskURI)
+	if err != nil {
 		return nil, status.Error(codes.NotFound, fmt.Sprintf("Volume not found, failed with error: %v", err))
 	}
 
@@ -464,19 +464,12 @@ func (d *Driver) ControllerModifyVolume(ctx context.Context, req *csi.Controller
 
 	// Start migration monitoring if this is a SKU change
 	if monitorSKUMigration && d.migrationMonitor != nil {
-		pvName := diskParams.DiskName
-		if pvName == "" {
-			// Extract disk name from URI if not provided
-			_, _, diskName, parseErr := azureutils.GetInfoFromURI(diskURI)
-			if parseErr != nil {
-				klog.Warningf("Failed to extract disk name from URI %s: %v", diskURI, parseErr)
-			} else {
-				pvName = diskName
-			}
-		}
-
-		if pvName != "" {
-			if monitorErr := d.migrationMonitor.StartMigrationMonitoring(ctx, diskURI, pvName, fromSKU, skuName); monitorErr != nil {
+		// Extract disk name from URI if not provided
+		_, _, diskName, parseErr := azureutils.GetInfoFromURI(diskURI)
+		if parseErr != nil {
+			klog.Warningf("Skipping monitor, failed to extract disk name from URI %s: %v", diskURI, parseErr)
+		} else {
+			if monitorErr := d.migrationMonitor.StartMigrationMonitoring(ctx, diskURI, diskName, fromSKU, skuName); monitorErr != nil {
 				klog.Warningf("Failed to start migration monitoring for disk %s: %v", diskURI, monitorErr)
 			}
 		}
