@@ -126,6 +126,7 @@ func NewFakeDriver(ctrl *gomock.Controller) (FakeDriver, error) {
 	driver.endpoint = "tcp://127.0.0.1:0"
 	driver.disableAVSetNodes = true
 	driver.kubeClient = fake.NewSimpleClientset()
+	driver.enableMigrationMonitor = true
 
 	driver.cloud = azure.GetTestCloud(ctrl)
 	driver.diskController = NewManagedDiskController(driver.cloud)
