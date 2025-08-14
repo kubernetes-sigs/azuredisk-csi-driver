@@ -72,6 +72,7 @@ import (
 	v1beta113 "k8s.io/client-go/kubernetes/typed/rbac/v1beta1"
 	v1alpha26 "k8s.io/client-go/kubernetes/typed/resource/v1alpha3"
 	v1beta126 "k8s.io/client-go/kubernetes/typed/resource/v1beta1"
+	v1beta226 "k8s.io/client-go/kubernetes/typed/resource/v1beta2"
 	v114 "k8s.io/client-go/kubernetes/typed/scheduling/v1"
 	v1alpha17 "k8s.io/client-go/kubernetes/typed/scheduling/v1alpha1"
 	v1beta114 "k8s.io/client-go/kubernetes/typed/scheduling/v1beta1"
@@ -774,6 +775,20 @@ func (m *MockInterface) ResourceV1beta1() v1beta126.ResourceV1beta1Interface {
 func (mr *MockInterfaceMockRecorder) ResourceV1beta1() *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ResourceV1beta1", reflect.TypeOf((*MockInterface)(nil).ResourceV1beta1))
+}
+
+// ResourceV1beta2 mocks base method.
+func (m *MockInterface) ResourceV1beta2() v1beta226.ResourceV1beta2Interface {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ResourceV1beta2")
+	ret0, _ := ret[0].(v1beta226.ResourceV1beta2Interface)
+	return ret0
+}
+
+// ResourceV1beta2 indicates an expected call of ResourceV1beta2.
+func (mr *MockInterfaceMockRecorder) ResourceV1beta2() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ResourceV1beta2", reflect.TypeOf((*MockInterface)(nil).ResourceV1beta2))
 }
 
 // SchedulingV1 mocks base method.
