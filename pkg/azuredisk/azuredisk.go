@@ -112,7 +112,7 @@ type Driver struct {
 	enableTrafficManager         bool
 	trafficManagerPort           int64
 	vmssCacheTTLInSeconds        int64
-	vmssCacheWithInstanceView    bool
+	listVMSSWithInstanceView     bool
 	volStatsCacheExpireInMinutes int64
 	attachDetachInitialDelayInMs int64
 	getDiskTimeoutInSeconds      int64
@@ -169,7 +169,7 @@ func NewDriver(options *DriverOptions) *Driver {
 	driver.enableTrafficManager = options.EnableTrafficManager
 	driver.trafficManagerPort = options.TrafficManagerPort
 	driver.vmssCacheTTLInSeconds = options.VMSSCacheTTLInSeconds
-	driver.vmssCacheWithInstanceView = options.VMSSCacheWithInstanceView
+	driver.listVMSSWithInstanceView = options.ListVMSSWithInstanceView
 	driver.volStatsCacheExpireInMinutes = options.VolStatsCacheExpireInMinutes
 	driver.getDiskTimeoutInSeconds = options.GetDiskTimeoutInSeconds
 	driver.vmType = options.VMType
@@ -256,9 +256,9 @@ func NewDriver(options *DriverOptions) *Driver {
 			klog.V(2).Infof("cloud: %s, location: %s, rg: %s, VMType: %s, PrimaryScaleSetName: %s, PrimaryAvailabilitySetName: %s, DisableAvailabilitySetNodes: %v", driver.cloud.Cloud, driver.cloud.Location, driver.cloud.ResourceGroup, driver.cloud.VMType, driver.cloud.PrimaryScaleSetName, driver.cloud.PrimaryAvailabilitySetName, driver.cloud.DisableAvailabilitySetNodes)
 		}
 
-		klog.V(2).Infof("vmssCacheTTLInSeconds: %d, vmssCacheWithInstanceView: %v",
-			driver.vmssCacheTTLInSeconds, driver.vmssCacheWithInstanceView)
-		driver.cloud.VmssVirtualMachineCacheInstanceView = driver.vmssCacheWithInstanceView
+		klog.V(2).Infof("vmssCacheTTLInSeconds: %d, listVMSSWithInstanceView: %v",
+			driver.vmssCacheTTLInSeconds, driver.listVMSSWithInstanceView)
+		driver.cloud.ListVmssVirtualMachinesWithoutInstanceView = !driver.listVMSSWithInstanceView
 
 		if driver.vmssCacheTTLInSeconds > 0 {
 			klog.V(2).Infof("reset vmssCacheTTLInSeconds as %d", driver.vmssCacheTTLInSeconds)
