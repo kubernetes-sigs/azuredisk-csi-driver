@@ -42,6 +42,7 @@ import (
 	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/optimization"
+	"sigs.k8s.io/azuredisk-csi-driver/pkg/util"
 	volumehelper "sigs.k8s.io/azuredisk-csi-driver/pkg/util"
 	azureconsts "sigs.k8s.io/cloud-provider-azure/pkg/consts"
 	"sigs.k8s.io/cloud-provider-azure/pkg/metrics"
@@ -570,6 +571,9 @@ func (d *Driver) ControllerPublishVolume(ctx context.Context, req *csi.Controlle
 				errMsg := fmt.Sprintf("Attach volume %s to instance %s failed with %v", diskURI, nodeName, err)
 				if len(errMsg) > maxErrMsgLength {
 					errMsg = errMsg[:maxErrMsgLength]
+				}
+				if strings.Contains(err.Error(), util.MaximumDataDiskExceededMsg) {
+					return nil, status.Errorf(codes.ResourceExhausted, "%v", errMsg)
 				}
 				return nil, status.Errorf(codes.Internal, "%v", errMsg)
 			}
