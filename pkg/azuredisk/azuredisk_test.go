@@ -618,3 +618,45 @@ func TestGetUsedLunsFromNode(t *testing.T) {
 		}
 	}
 }
+
+func TestIsCheckDiskLunThrottled(t *testing.T) {
+	cntl := gomock.NewController(t)
+	defer cntl.Finish()
+	
+	fakeD, _ := NewFakeDriver(cntl)
+	d := fakeD.(*fakeDriver)
+
+	tests := []struct {
+		name         string
+		setupCache   func(*fakeDriver)
+		expectedBool bool
+	}{
+		{
+			name: "no throttling cache set",
+			setupCache: func(d *fakeDriver) {
+				// cache is empty by default
+			},
+			expectedBool: false,
+		},
+		{
+			name: "throttling cache is set",
+			setupCache: func(d *fakeDriver) {
+				// Set a cache entry to simulate throttling
+				d.checkDiskLunThrottlingCache.Set(consts.CheckDiskLunThrottlingKey, "throttled")
+			},
+			expectedBool: true,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			test.setupCache(d)
+			result := d.isCheckDiskLunThrottled(context.Background())
+			if result != test.expectedBool {
+				t.Errorf("test(%s): result(%v) != expected result(%v)", test.name, result, test.expectedBool)
+			}
+			// Clear cache for next test
+			d.checkDiskLunThrottlingCache.Delete(consts.CheckDiskLunThrottlingKey)
+		})
+	}
+}
