@@ -559,7 +559,7 @@ func ParseDiskParameters(parameters map[string]string) (ManagedDiskParameters, e
 		Tags:           make(map[string]string),
 		VolumeContext:  parameters,
 	}
-	var originTags, tagValueDelimiter string
+	var originTags, tagValueDelimiter, pvcName, pvcNamespace, pvName string
 	for k, v := range parameters {
 		switch strings.ToLower(k) {
 		case consts.SkuNameField:
@@ -608,10 +608,13 @@ func ParseDiskParameters(parameters map[string]string) (ManagedDiskParameters, e
 				return diskParams, fmt.Errorf("parse %s returned with invalid value: %d", v, diskParams.MaxShares)
 			}
 		case consts.PvcNameKey:
+			pvcName = v
 			diskParams.Tags[consts.PvcNameTag] = v
 		case consts.PvcNamespaceKey:
+			pvcNamespace = v
 			diskParams.Tags[consts.PvcNamespaceTag] = v
 		case consts.PvNameKey:
+			pvName = v
 			diskParams.Tags[consts.PvNameTag] = v
 		case consts.FsTypeField:
 			diskParams.FsType = strings.ToLower(v)
@@ -661,11 +664,15 @@ func ParseDiskParameters(parameters map[string]string) (ManagedDiskParameters, e
 			}
 		}
 	}
+
 	customTagsMap, err := util.ConvertTagsToMap(originTags, tagValueDelimiter)
 	if err != nil {
 		return diskParams, err
 	}
 	for k, v := range customTagsMap {
+		if strings.Contains(v, "$") {
+			v = replaceTemplateVariables(v, pvcName, pvcNamespace, pvName)
+		}
 		diskParams.Tags[k] = v
 	}
 
@@ -677,15 +684,7 @@ func ParseDiskParameters(parameters map[string]string) (ManagedDiskParameters, e
 
 	// support disk name with $ in it, e.g. ${pvc.metadata.name}
 	if strings.Contains(diskParams.DiskName, "$") {
-		if pvcName, ok := diskParams.Tags[consts.PvcNameTag]; ok && pvcName != "" {
-			diskParams.DiskName = strings.ReplaceAll(diskParams.DiskName, "${pvc.metadata.name}", pvcName)
-		}
-		if pvcNamespace, ok := diskParams.Tags[consts.PvcNamespaceTag]; ok && pvcNamespace != "" {
-			diskParams.DiskName = strings.ReplaceAll(diskParams.DiskName, "${pvc.metadata.namespace}", pvcNamespace)
-		}
-		if pvName, ok := diskParams.Tags[consts.PvNameTag]; ok && pvName != "" {
-			diskParams.DiskName = strings.ReplaceAll(diskParams.DiskName, "${pv.metadata.name}", pvName)
-		}
+		diskParams.DiskName = replaceTemplateVariables(diskParams.DiskName, pvcName, pvcNamespace, pvName)
 	}
 
 	return diskParams, nil
@@ -845,4 +844,13 @@ func RemoveOptionIfExists(options []string, removeOption string) ([]string, bool
 		}
 	}
 	return options, false
+}
+
+func replaceTemplateVariables(str, pvcName, pvcNamespace, pvName string) string {
+	// replace $pvc.metadata.name with pvcName
+	str = strings.ReplaceAll(str, consts.PvcMetaDataName, pvcName)
+	// replace $pvc.metadata.namespace with pvcNamespace
+	str = strings.ReplaceAll(str, consts.PvcMetaDataNamespace, pvcNamespace)
+	// replace $pv.metadata.name with pvName
+	return strings.ReplaceAll(str, consts.PvMetaDataName, pvName)
 }

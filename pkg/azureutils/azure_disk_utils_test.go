@@ -35,6 +35,7 @@ import (
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/utils/ptr"
 	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
+	"sigs.k8s.io/azuredisk-csi-driver/pkg/util"
 	"sigs.k8s.io/azuredisk-csi-driver/test/utils/testutil"
 )
 
@@ -2104,6 +2105,230 @@ func TestParseDiskParameters_DiskNameTemplateVariables(t *testing.T) {
 				}
 			}
 			assert.Equal(t, tt.expected, params.DiskName, tt.description)
+		})
+	}
+}
+
+func TestParseDiskParameters_CustomTagsWithTemplateVariables(t *testing.T) {
+	tests := []struct {
+		name        string
+		customTags  string
+		pvcName     string
+		pvcNS       string
+		pvName      string
+		expected    map[string]string
+		description string
+	}{
+		{
+			name:       "all variables replaced in tag value",
+			customTags: "tag1=${pvc.metadata.name},tag2=${pvc.metadata.namespace},tag3=${pv.metadata.name}",
+			pvcName:    "mypvc",
+			pvcNS:      "myns",
+			pvName:     "mypv",
+			expected: map[string]string{
+				"tag1": "mypvc",
+				"tag2": "myns",
+				"tag3": "mypv",
+			},
+			description: "All template variables in tag values are replaced",
+		},
+		{
+			name:       "missing pvc name in tag value",
+			customTags: "tag1=${pvc.metadata.name},tag2=${pvc.metadata.namespace},tag3=${pv.metadata.name}",
+			pvcName:    "",
+			pvcNS:      "myns",
+			pvName:     "mypv",
+			expected: map[string]string{
+				"tag1": "",
+				"tag2": "myns",
+				"tag3": "mypv",
+			},
+			description: "pvc name missing, only others replaced",
+		},
+		{
+			name:       "missing pvc namespace in tag value",
+			customTags: "tag1=${pvc.metadata.name},tag2=${pvc.metadata.namespace},tag3=${pv.metadata.name}",
+			pvcName:    "mypvc",
+			pvcNS:      "",
+			pvName:     "mypv",
+			expected: map[string]string{
+				"tag1": "mypvc",
+				"tag2": "",
+				"tag3": "mypv",
+			},
+			description: "pvc namespace missing, only others replaced",
+		},
+		{
+			name:       "missing pv name in tag value",
+			customTags: "tag1=${pvc.metadata.name},tag2=${pvc.metadata.namespace},tag3=${pv.metadata.name}",
+			pvcName:    "mypvc",
+			pvcNS:      "myns",
+			pvName:     "",
+			expected: map[string]string{
+				"tag1": "mypvc",
+				"tag2": "myns",
+				"tag3": "",
+			},
+			description: "pv name missing, only others replaced",
+		},
+		{
+			name:       "no variables present in tag value",
+			customTags: "tag1=plain,tag2=plain2",
+			pvcName:    "mypvc",
+			pvcNS:      "myns",
+			pvName:     "mypv",
+			expected: map[string]string{
+				"tag1": "plain",
+				"tag2": "plain2",
+			},
+			description: "No template variables, tag values unchanged",
+		},
+		{
+			name:        "empty tags",
+			customTags:  "",
+			pvcName:     "mypvc",
+			pvcNS:       "myns",
+			pvName:      "mypv",
+			expected:    map[string]string{},
+			description: "No tags, nothing to replace",
+		},
+		{
+			name:       "variables with empty tag values",
+			customTags: "tag1=${pvc.metadata.name},tag2=${pvc.metadata.namespace},tag3=${pv.metadata.name}",
+			pvcName:    "",
+			pvcNS:      "",
+			pvName:     "",
+			expected: map[string]string{
+				"tag1": "",
+				"tag2": "",
+				"tag3": "",
+			},
+			description: "Tags present but empty, tag values unchanged",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			params := ManagedDiskParameters{
+				Tags: make(map[string]string),
+			}
+			// Simulate util.ConvertTagsToMap
+			customTagsMap, err := util.ConvertTagsToMap(tt.customTags, "")
+			require.NoError(t, err)
+			pvcName := tt.pvcName
+			pvcNamespace := tt.pvcNS
+			pvName := tt.pvName
+			for k, v := range customTagsMap {
+				if strings.Contains(v, "$") {
+					v = strings.ReplaceAll(v, consts.PvcMetaDataName, pvcName)
+					v = strings.ReplaceAll(v, consts.PvcMetaDataNamespace, pvcNamespace)
+					params.Tags[k] = strings.ReplaceAll(v, consts.PvMetaDataName, pvName)
+				} else {
+					params.Tags[k] = v
+				}
+			}
+			assert.Equal(t, tt.expected, params.Tags, tt.description)
+		})
+	}
+}
+
+func TestReplaceTemplateVariables(t *testing.T) {
+	tests := []struct {
+		name        string
+		input       string
+		pvcName     string
+		pvcNS       string
+		pvName      string
+		expected    string
+		description string
+	}{
+		{
+			name:        "all variables present",
+			input:       "disk-${pvc.metadata.name}-${pvc.metadata.namespace}-${pv.metadata.name}",
+			pvcName:     "mypvc",
+			pvcNS:       "myns",
+			pvName:      "mypv",
+			expected:    "disk-mypvc-myns-mypv",
+			description: "All template variables are replaced",
+		},
+		{
+			name:        "missing pvc name",
+			input:       "disk-${pvc.metadata.name}-${pvc.metadata.namespace}-${pv.metadata.name}",
+			pvcName:     "",
+			pvcNS:       "myns",
+			pvName:      "mypv",
+			expected:    "disk--myns-mypv",
+			description: "pvc name missing, others replaced",
+		},
+		{
+			name:        "missing pvc namespace",
+			input:       "disk-${pvc.metadata.name}-${pvc.metadata.namespace}-${pv.metadata.name}",
+			pvcName:     "mypvc",
+			pvcNS:       "",
+			pvName:      "mypv",
+			expected:    "disk-mypvc--mypv",
+			description: "pvc namespace missing, others replaced",
+		},
+		{
+			name:        "missing pv name",
+			input:       "disk-${pvc.metadata.name}-${pvc.metadata.namespace}-${pv.metadata.name}",
+			pvcName:     "mypvc",
+			pvcNS:       "myns",
+			pvName:      "",
+			expected:    "disk-mypvc-myns-",
+			description: "pv name missing, others replaced",
+		},
+		{
+			name:        "no variables present",
+			input:       "disk-plain",
+			pvcName:     "mypvc",
+			pvcNS:       "myns",
+			pvName:      "mypv",
+			expected:    "disk-plain",
+			description: "No template variables, string unchanged",
+		},
+		{
+			name:        "empty input string",
+			input:       "",
+			pvcName:     "mypvc",
+			pvcNS:       "myns",
+			pvName:      "mypv",
+			expected:    "",
+			description: "Empty input string",
+		},
+		{
+			name:        "variables with empty tag values",
+			input:       "disk-${pvc.metadata.name}-${pvc.metadata.namespace}-${pv.metadata.name}",
+			pvcName:     "",
+			pvcNS:       "",
+			pvName:      "",
+			expected:    "disk---",
+			description: "All variables empty, replaced with empty strings",
+		},
+		{
+			name:        "partial variables in string",
+			input:       "disk-${pvc.metadata.name}-plain",
+			pvcName:     "mypvc",
+			pvcNS:       "",
+			pvName:      "",
+			expected:    "disk-mypvc-plain",
+			description: "Only pvc name replaced",
+		},
+		{
+			name:        "multiple occurrences of same variable",
+			input:       "${pvc.metadata.name}-${pvc.metadata.name}",
+			pvcName:     "mypvc",
+			pvcNS:       "",
+			pvName:      "",
+			expected:    "mypvc-mypvc",
+			description: "Multiple occurrences replaced",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := replaceTemplateVariables(tt.input, tt.pvcName, tt.pvcNS, tt.pvName)
+			assert.Equal(t, tt.expected, result, tt.description)
 		})
 	}
 }
