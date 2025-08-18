@@ -395,8 +395,8 @@ github.com/rogpeppe/go-internal v1.12.0/go.mod h1:E+RYuTGaKKdloAfM02xzb0FW3Paa99
 github.com/rogpeppe/go-internal v1.13.1 h1:KvO1DLK/DRN07sQ1LQKScxyZJuNnedQ5/wKSR38lUII=
 github.com/rogpeppe/go-internal v1.13.1/go.mod h1:uMEvuHeurkdAXX61udpOXGD/AzZDWNMNyH2VO9fmH0o=
 github.com/russross/blackfriday/v2 v2.1.0/go.mod h1:+Rmxgy9KzJVeS9/2gXHxylqXiyQDYRxCVz55jmeOWTM=
-github.com/samber/lo v1.49.1 h1:4BIFyVfuQSEpluc7Fua+j1NolZHiEHEpaSEKdsH0tew=
-github.com/samber/lo v1.49.1/go.mod h1:dO6KHFzUKXgP8LDhU0oI8d2hekjXnGOu0DB8Jecxd6o=
+github.com/samber/lo v1.50.0 h1:XrG0xOeHs+4FQ8gJR97zDz5uOFMW7OwFWiFVzqopKgY=
+github.com/samber/lo v1.50.0/go.mod h1:RjZyNk6WSnUFRKK6EyOhsRJMqft3G+pg7dCWHQCWvsc=
 github.com/sirupsen/logrus v1.4.1/go.mod h1:ni0Sbl8bgC9z8RoU9G6nDWqqs/fq4eDPysMBDgk/93Q=
 github.com/sirupsen/logrus v1.9.3 h1:dueUQJ1C2q9oE3F7wvmSGAaVtTmUizReu6fjN8uqzbQ=
 github.com/sirupsen/logrus v1.9.3/go.mod h1:naHLuLoDiP4jHNo9R0sCBMtWGeIprob74mVsIT4qYEQ=
@@ -840,12 +840,12 @@ k8s.io/utils v0.0.0-20250502105355-0f33e8f1c979 h1:jgJW5IePPXLGB8e/1wvd0Ich9QE97
 k8s.io/utils v0.0.0-20250502105355-0f33e8f1c979/go.mod h1:OLgZIPagt7ERELqWJFomSt595RzquPNLL48iOWgYOg0=
 sigs.k8s.io/apiserver-network-proxy/konnectivity-client v0.31.1 h1:uOuSLOMBWkJH0TWa9X6l+mj5nZdm6Ay6Bli8HL8rNfk=
 sigs.k8s.io/apiserver-network-proxy/konnectivity-client v0.31.1/go.mod h1:Ve9uj1L+deCXFrPOk1LpFXqTg7LCFzFso6PA48q/XZw=
-sigs.k8s.io/cloud-provider-azure v1.29.1-0.20250425133425-2efcaed305f8 h1:6SQj82q2K+kJqqSJf13Z+1qqZrxheNWBhZbdyOxMb0A=
-sigs.k8s.io/cloud-provider-azure v1.29.1-0.20250425133425-2efcaed305f8/go.mod h1:6BBnJ5zA/rD0DQwpSi3hrhH42qFcdXKqQIsbs7TBoUU=
+sigs.k8s.io/cloud-provider-azure v1.29.1-0.20250817175907-4641c936e0e4 h1:k15gF1Nq5Z3x/0dn/nFjQ3VYgphfZNWGTlHitoBhEJM=
+sigs.k8s.io/cloud-provider-azure v1.29.1-0.20250817175907-4641c936e0e4/go.mod h1:nQwPUbT8hsv3jUsNncZS56L6wamr1FVmF/qf6kjMyJU=
 sigs.k8s.io/cloud-provider-azure/pkg/azclient v0.8.0 h1:4HslsrGfvZ7ta3mumZ+96/m/In+niKGLHcZ/JghGG3A=
 sigs.k8s.io/cloud-provider-azure/pkg/azclient v0.8.0/go.mod h1:2LFS9udLmEoJ3vjUNpyzmfRRszdwPHTQNuiJNUH8JPI=
-sigs.k8s.io/cloud-provider-azure/pkg/azclient/configloader v0.5.2 h1:jjFJF0PmS9IHLokD41mM6RVoqQF3BQtVDmQd6ZMnN6E=
-sigs.k8s.io/cloud-provider-azure/pkg/azclient/configloader v0.5.2/go.mod h1:7DdZ9ipIsmPLpBlfT4gueejcUlJBZQKWhdljQE5SKvc=
+sigs.k8s.io/cloud-provider-azure/pkg/azclient/configloader v0.5.3 h1:PiQy1U20uPkBgdpbERnX3BZ4bB6tljBJKU9wXmn1GrI=
+sigs.k8s.io/cloud-provider-azure/pkg/azclient/configloader v0.5.3/go.mod h1:eBK7J+xfuzLATTK5ALuERxsZv7O4kncWnCW5ILCLX0w=
 sigs.k8s.io/json v0.0.0-20221116044647-bc3834ca7abd/go.mod h1:B8JuhiUyNFVKdsE8h686QcCxMaH6HrOAZj4vswFpcB0=
 sigs.k8s.io/json v0.0.0-20241010143419-9aa6b5e7a4b3/go.mod h1:18nIHnGi6636UCz6m8i4DhaJ65T6EruyzmoQqI2BVDo=
 sigs.k8s.io/json v0.0.0-20241014173422-cfa47c3a1cc8 h1:gBQPwqORJ8d8/YNZWEjoZs7npUVDpVXUUOFfW6CgAqE=
