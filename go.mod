@@ -43,9 +43,9 @@ require (
 	k8s.io/mount-utils v0.32.2
 	k8s.io/pod-security-admission v0.32.0
 	k8s.io/utils v0.0.0-20250502105355-0f33e8f1c979
-	sigs.k8s.io/cloud-provider-azure v1.29.1-0.20250425133425-2efcaed305f8
+	sigs.k8s.io/cloud-provider-azure v1.29.1-0.20250817175907-4641c936e0e4
 	sigs.k8s.io/cloud-provider-azure/pkg/azclient v0.8.0
-	sigs.k8s.io/cloud-provider-azure/pkg/azclient/configloader v0.5.2
+	sigs.k8s.io/cloud-provider-azure/pkg/azclient/configloader v0.5.3
 	sigs.k8s.io/yaml v1.4.0
 )
 
@@ -134,7 +134,7 @@ require (
 	github.com/prometheus/client_model v0.6.1 // indirect
 	github.com/prometheus/common v0.62.0 // indirect
 	github.com/prometheus/procfs v0.15.1 // indirect
-	github.com/samber/lo v1.49.1 // indirect
+	github.com/samber/lo v1.50.0 // indirect
 	github.com/sirupsen/logrus v1.9.3 // indirect
 	github.com/spf13/cobra v1.9.1 // indirect
 	github.com/spf13/pflag v1.0.6 // indirect
