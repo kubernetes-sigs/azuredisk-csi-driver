@@ -127,3 +127,49 @@ func withEnvironmentVariables(t *testing.T) {
 	assert.NoError(t, err)
 	assert.JSONEq(t, buf.String(), string(azureCredentialFileContent))
 }
+
+func TestDeleteAzureCredentialFile(t *testing.T) {
+	tests := []struct {
+		name            string
+		setupFile       bool
+		expectedError   bool
+	}{
+		{
+			name:          "delete existing file",
+			setupFile:     true,
+			expectedError: false,
+		},
+		{
+			name:          "delete non-existing file (should not error)",
+			setupFile:     false,
+			expectedError: false,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			// Clean up any existing file first
+			os.Remove(TempAzureCredentialFilePath)
+
+			if test.setupFile {
+				// Create a temporary file
+				file, err := os.Create(TempAzureCredentialFilePath)
+				assert.NoError(t, err)
+				file.WriteString("test content")
+				file.Close()
+			}
+
+			err := DeleteAzureCredentialFile()
+			
+			if test.expectedError {
+				assert.Error(t, err)
+			} else {
+				assert.NoError(t, err)
+			}
+
+			// File should not exist after deletion
+			_, err = os.Stat(TempAzureCredentialFilePath)
+			assert.True(t, os.IsNotExist(err))
+		})
+	}
+}
