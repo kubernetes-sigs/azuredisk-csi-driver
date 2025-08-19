@@ -3,8 +3,12 @@ reviewers:
 - ZeroMagic
 - edreed
 - cvvz
+- nearora-msft
+- landreasyan
 
 approvers:
 - andyzhangx
 - feiskyer
 - edreed
+- nearora-msft
+- landreasyan
