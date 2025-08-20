@@ -68,6 +68,8 @@ type FakeDriver interface {
 	CSIDriver
 
 	GetSourceDiskSize(ctx context.Context, subsID, resourceGroup, diskName string, curDepth, maxDepth int) (*int32, *armcompute.Disk, error)
+	SetWaitForSnapshotReady(bool)
+	GetWaitForSnapshotReady() bool
 
 	setNextCommandOutputScripts(scripts ...testingexec.FakeAction)
 
@@ -221,4 +223,12 @@ func (d *fakeDriver) SetMigrationMonitor(monitor *MigrationProgressMonitor) {
 
 func (d *fakeDriver) RecoverMigrationMonitor(ctx context.Context) error {
 	return d.recoverMigrationMonitorsFromLabels(ctx)
+}
+
+func (d *fakeDriver) SetWaitForSnapshotReady(shouldWait bool) {
+	d.shouldWaitForSnapshotReady = shouldWait
+}
+
+func (d *fakeDriver) GetWaitForSnapshotReady() bool {
+	return d.shouldWaitForSnapshotReady
 }
