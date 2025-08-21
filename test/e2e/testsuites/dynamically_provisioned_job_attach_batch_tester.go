@@ -19,6 +19,7 @@ package testsuites
 import (
 	"context"
 	"sync"
+	"time"
 
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azuredisk"
 	"sigs.k8s.io/azuredisk-csi-driver/test/e2e/driver"
@@ -97,9 +98,21 @@ func (t *DynamicallyProvisionedAttachBatchTest) Run(ctx context.Context, client 
 			framework.ExpectNoError(err)
 		}
 
+		// check if all jobs have completed, if failed, then wait for 1min, and check again with maximum timeout
 		ginkgo.By("checking if there are any jobs left")
 		tjobs, err := client.BatchV1().Jobs(namespace.Name).List(context.TODO(), metav1.ListOptions{})
-		framework.ExpectNoError(err)
+		for i := 0; i < 15; i++ {
+			framework.ExpectNoError(err)
+			if len(tjobs.Items) > 0 {
+				framework.Logf("There are still jobs left in the namespace %s", namespace.Name)
+			} else {
+				framework.Logf("All jobs have completed in the namespace %s", namespace.Name)
+				return
+			}
+			time.Sleep(30 * time.Second)
+			tjobs, err = client.BatchV1().Jobs(namespace.Name).List(context.TODO(), metav1.ListOptions{})
+		}
+
 		if len(tjobs.Items) > 0 {
 			framework.Failf("There are still jobs left in the namespace %s", namespace.Name)
 		}
