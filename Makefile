@@ -18,9 +18,9 @@ REGISTRY = mcr.microsoft.com/oss/v2/kubernetes-csi
 REGISTRY_NAME ?= $(shell echo $(REGISTRY) | sed "s/.azurecr.io//g")
 IMAGE_NAME ?= azuredisk-csi
 PLUGIN_NAME = azurediskplugin
-IMAGE_VERSION = v1.32.10
+IMAGE_VERSION = v1.33.4
 ifdef WINDOWS_USE_HOST_PROCESS_CONTAINERS
-IMAGE_VERSION = v1.32.10
+IMAGE_VERSION = v1.33.4
 endif
 CHART_VERSION ?= latest
 CLOUD ?= AzurePublicCloud
