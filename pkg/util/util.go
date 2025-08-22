@@ -99,8 +99,8 @@ func ConvertTagsToMap(tags string, tagsDelimiter string) (map[string]string, err
 		if key == "" {
 			return nil, fmt.Errorf("tags '%s' are invalid, the format should like: 'key1=value1%skey2=value2'", tags, tagsDelimiter)
 		}
-		// <>%&?/. are not allowed in tag key
-		if strings.ContainsAny(key, "<>%&?/.") {
+		// <>%&?\/ are not allowed in Azure tag keys: https://learn.microsoft.com/en-us/azure/azure-resource-manager/management/tag-resources#limitations
+		if strings.ContainsAny(key, "<>%&?\\/") {
 			return nil, fmt.Errorf("tag key '%s' contains invalid characters", key)
 		}
 		value := strings.TrimSpace(kv[1])
