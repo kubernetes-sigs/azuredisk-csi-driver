@@ -124,6 +124,16 @@ func TestConvertTagsToMap(t *testing.T) {
 			expectedError:  true,
 		},
 		{
+			desc:          "should return success for keys containing '.'",
+			tags:          "key.1=value1,key2=value2",
+			tagsDelimiter: ",",
+			expectedOutput: map[string]string{
+				"key.1": "value1",
+				"key2":  "value2",
+			},
+			expectedError: false,
+		},
+		{
 			desc:           "should return success for special characters in value",
 			tags:           "key1=value1,key2=<>%&?/.",
 			tagsDelimiter:  ",",
