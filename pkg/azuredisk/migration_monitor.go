@@ -138,7 +138,7 @@ func initializeTimeouts() {
 			return sortedMigrationSlabArray[i] < sortedMigrationSlabArray[j]
 		})
 
-		klog.Infof("Sorted migration slab array: %v", sortedMigrationSlabArray)
+		klog.V(4).Infof("Sorted migration slab array: %v", sortedMigrationSlabArray)
 	}
 
 	if maxMigrationTimeoutEnv := os.Getenv("MAX_MIGRATION_TIMEOUT"); maxMigrationTimeoutEnv != "" {
@@ -168,6 +168,7 @@ type MigrationTask struct {
 	MigrationTimeout     time.Duration // Calculated timeout based on volume size
 	Timedout             bool          // Indicates if the task has timed out
 	Cancelled            atomic.Bool   // Indicates if the task was cancelled
+	PVLabeled            bool          // Indicates if the PV has been labelled for migration
 }
 
 // MigrationProgressMonitor monitors disk migration progress
@@ -190,7 +191,7 @@ func NewMigrationProgressMonitor(kubeClient kubernetes.Interface, eventRecorder 
 }
 
 // StartMigrationMonitoring starts monitoring a disk migration with progress updates
-func (m *MigrationProgressMonitor) StartMigrationMonitoring(ctx context.Context, diskURI, pvName string, fromSKU, toSKU armcompute.DiskStorageAccountTypes) error {
+func (m *MigrationProgressMonitor) StartMigrationMonitoring(ctx context.Context, provisioningFlow bool, diskURI, pvName string, fromSKU, toSKU armcompute.DiskStorageAccountTypes, volumeSize int64) error {
 	m.mutex.Lock()
 	defer m.mutex.Unlock()
 
@@ -200,29 +201,23 @@ func (m *MigrationProgressMonitor) StartMigrationMonitoring(ctx context.Context,
 		return nil
 	}
 
-	// Get PV to find associated PVC
-	pv, err := m.kubeClient.CoreV1().PersistentVolumes().Get(ctx, pvName, metav1.GetOptions{})
-	if err != nil {
-		return fmt.Errorf("failed to get PV %s: %v", pvName, err)
-	}
+	var pvcName, pvcNamespace string
 
-	// Check if PV has a claim reference
-	if pv.Spec.ClaimRef == nil {
-		klog.V(2).Infof("PV %s has no claim reference, skipping migration monitoring", pvName)
-		return nil
-	}
+	if !provisioningFlow {
+		// Get PV to find associated PVC
+		pv, err := m.kubeClient.CoreV1().PersistentVolumes().Get(ctx, pvName, metav1.GetOptions{})
+		if err != nil {
+			return fmt.Errorf("failed to get PV %s: %v", pvName, err)
+		}
 
-	pvcName := pv.Spec.ClaimRef.Name
-	pvcNamespace := pv.Spec.ClaimRef.Namespace
+		// Check if PV has a claim reference
+		if pv.Spec.ClaimRef == nil {
+			klog.V(2).Infof("PV %s has no claim reference, skipping migration monitoring", pvName)
+			return nil
+		}
 
-	// Get volume size from PV capacity
-	var volumeSize int64
-	// Use the resource.Quantity methods explicitly to avoid import not recognized by linter/ide/goimports
-	storageQuantity, exists := pv.Spec.Capacity[corev1.ResourceStorage]
-	if exists {
-		volumeSize = storageQuantity.Value()
-	} else {
-		return fmt.Errorf("PV %s does not have storage capacity defined", pvName)
+		pvcName = pv.Spec.ClaimRef.Name
+		pvcNamespace = pv.Spec.ClaimRef.Namespace
 	}
 
 	// Calculate timeout based on volume size
@@ -244,24 +239,27 @@ func (m *MigrationProgressMonitor) StartMigrationMonitoring(ctx context.Context,
 		CancelFunc:           cancelFunc,
 		VolumeSize:           volumeSize,
 		MigrationTimeout:     migrationTimeout,
+		PVLabeled:            false,
 	}
 
 	m.activeTasks[diskURI] = task
-
-	// Start async monitoring
-	go m.monitorMigrationProgress(task)
 
 	// Add label to PVC to track migration state and check if it was already present
 	labelExisted, err := m.addMigrationLabelIfNotExists(ctx, pvName, fromSKU, toSKU)
 	if err != nil {
 		klog.Warningf("Failed to add migration label to PV %s: %v", pvName, err)
+	} else {
+		task.PVLabeled = true
 	}
+
+	// Start async monitoring
+	go m.monitorMigrationProgress(task)
 
 	// Log the timeout being used
 	klog.V(2).Infof("Using migration timeout of %v for volume %s", migrationTimeout, pvName)
 
 	// Only emit start event if label was not already present (new migration)
-	if !labelExisted {
+	if !provisioningFlow && !labelExisted {
 		_ = m.emitMigrationEvent(task, corev1.EventTypeNormal, ReasonSKUMigrationStarted,
 			fmt.Sprintf("Started monitoring SKU migration from %s to %s for volume %s (timeout: %v)", fromSKU, toSKU, pvName, migrationTimeout))
 		klog.V(2).Infof("Started migration monitoring for disk %s (%s -> %s)", pvName, fromSKU, toSKU)
@@ -274,6 +272,12 @@ func (m *MigrationProgressMonitor) StartMigrationMonitoring(ctx context.Context,
 
 // monitorMigrationProgress monitors the progress of a disk migration using PollUntilContextTimeout
 func (m *MigrationProgressMonitor) monitorMigrationProgress(task *MigrationTask) {
+
+	isPvcInfoEmpty := func() bool {
+		m.mutex.RLock()
+		defer m.mutex.RUnlock()
+		return (task.PVCName == "" || task.PVCNamespace == "")
+	}
 
 	// Poll condition function
 	pollCondition := func(_ context.Context) (bool, error) {
@@ -290,10 +294,39 @@ func (m *MigrationProgressMonitor) monitorMigrationProgress(task *MigrationTask)
 			return true, fmt.Errorf("maximum migration timeout exceeded")
 		}
 
+		// when a volume is created from a snapshot, the PV will be created by external provisioner
+		// & so we could not have added the label from StartMigrationMonitoring(), so we will try here
+		if !task.PVLabeled {
+			_, err := m.addMigrationLabelIfNotExists(task.Context, task.PVName, task.FromSKU, task.ToSKU)
+			if err != nil {
+				klog.Warningf("Failed to add migration label to PV %s: %v", task.PVName, err)
+			} else {
+				task.PVLabeled = true
+			}
+		}
+
+		// During provisioning flow, we may not have PVC name and namespace in provisioning context,
+		// so we would not have emitted the events
+		if task.PVLabeled && isPvcInfoEmpty() {
+			// Get PV to find associated PVC
+			pv, err := m.kubeClient.CoreV1().PersistentVolumes().Get(task.Context, task.PVName, metav1.GetOptions{})
+			if err == nil && pv.Spec.ClaimRef != nil {
+				m.mutex.Lock()
+				defer m.mutex.Unlock()
+				task.PVCName = pv.Spec.ClaimRef.Name
+				task.PVCNamespace = pv.Spec.ClaimRef.Namespace
+				_ = m.emitMigrationEvent(task, corev1.EventTypeNormal, ReasonSKUMigrationStarted,
+					fmt.Sprintf(
+						"Started monitoring SKU migration from %s to %s for volume %s (timeout: %v)",
+						task.FromSKU, task.ToSKU, task.PVName, task.MigrationTimeout))
+				klog.V(2).Infof("Started migration monitoring for disk %s (%s -> %s)", task.PVName, task.FromSKU, task.ToSKU)
+			}
+		}
+
 		// Check migration progress
 		completed, err := m.checkMigrationProgress(task)
 		if err != nil {
-			klog.V(4).Infof("Progress check error for disk %s (will retry): %v", task.DiskURI, err)
+			klog.Warningf("Progress check error for disk %s (will retry): %v", task.DiskURI, err)
 			return false, nil // Continue polling on transient errors
 		}
 
@@ -321,7 +354,6 @@ func (m *MigrationProgressMonitor) monitorMigrationProgress(task *MigrationTask)
 
 	// Handle different timeout/error scenarios
 	if pollErr != nil {
-
 		// Check if this is the initial migration timeout (not max timeout)
 		if (pollErr == context.DeadlineExceeded ||
 			task.Context.Err() == context.DeadlineExceeded) && !task.Timedout {
@@ -338,8 +370,10 @@ func (m *MigrationProgressMonitor) monitorMigrationProgress(task *MigrationTask)
 				extendedCtx, extendedCancel := context.WithTimeout(context.Background(), remaining)
 				defer extendedCancel()
 
+				m.mutex.Lock()
 				task.Context = extendedCtx
 				task.CancelFunc = extendedCancel
+				m.mutex.Unlock()
 
 				// Continue polling with extended timeout
 				extendedPollErr := wait.PollUntilContextTimeout(extendedCtx, migrationCheckInterval, remaining, true, pollCondition)
@@ -581,7 +615,11 @@ func (d *Driver) recoverMigrationMonitorsFromLabels(ctx context.Context) error {
 			fromSKU := armcompute.DiskStorageAccountTypesPremiumLRS
 			toSKU := armcompute.DiskStorageAccountTypesPremiumV2LRS
 
-			if err := d.migrationMonitor.StartMigrationMonitoring(ctx, diskURI, pv.Name, fromSKU, toSKU); err != nil {
+			storageQtyVal := pv.Spec.Capacity[corev1.ResourceStorage]
+			storageQty := &storageQtyVal
+			volumeSizeInBytes := storageQty.Value()
+
+			if err := d.migrationMonitor.StartMigrationMonitoring(ctx, false, diskURI, pv.Name, fromSKU, toSKU, volumeSizeInBytes); err != nil {
 				klog.Errorf("Failed to recover migration for PV %s: %v", pv.Name, err)
 			} else {
 				recoveredCount++
