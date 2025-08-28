@@ -158,7 +158,7 @@ type MigrationTask struct {
 	PVName               string
 	PVCName              string
 	PVCNamespace         string
-	FromSKU              armcompute.DiskStorageAccountTypes
+	FromSKU              string
 	ToSKU                armcompute.DiskStorageAccountTypes
 	StartTime            time.Time
 	LastReportedProgress float32
@@ -191,7 +191,7 @@ func NewMigrationProgressMonitor(kubeClient kubernetes.Interface, eventRecorder 
 }
 
 // StartMigrationMonitoring starts monitoring a disk migration with progress updates
-func (m *MigrationProgressMonitor) StartMigrationMonitoring(ctx context.Context, provisioningFlow bool, diskURI, pvName string, fromSKU, toSKU armcompute.DiskStorageAccountTypes, volumeSize int64) error {
+func (m *MigrationProgressMonitor) StartMigrationMonitoring(ctx context.Context, isProvisioningFlow bool, diskURI, pvName string, fromSKU string, toSKU armcompute.DiskStorageAccountTypes, volumeSize int64) error {
 	m.mutex.Lock()
 	defer m.mutex.Unlock()
 
@@ -203,7 +203,7 @@ func (m *MigrationProgressMonitor) StartMigrationMonitoring(ctx context.Context,
 
 	var pvcName, pvcNamespace string
 
-	if !provisioningFlow {
+	if !isProvisioningFlow {
 		// Get PV to find associated PVC
 		pv, err := m.kubeClient.CoreV1().PersistentVolumes().Get(ctx, pvName, metav1.GetOptions{})
 		if err != nil {
@@ -244,7 +244,7 @@ func (m *MigrationProgressMonitor) StartMigrationMonitoring(ctx context.Context,
 
 	m.activeTasks[diskURI] = task
 
-	// Add label to PVC to track migration state and check if it was already present
+	// Add label to PV to track migration state and check if it was already present
 	labelExisted, err := m.addMigrationLabelIfNotExists(ctx, pvName, fromSKU, toSKU)
 	if err != nil {
 		klog.Warningf("Failed to add migration label to PV %s: %v", pvName, err)
@@ -259,7 +259,7 @@ func (m *MigrationProgressMonitor) StartMigrationMonitoring(ctx context.Context,
 	klog.V(2).Infof("Using migration timeout of %v for volume %s", migrationTimeout, pvName)
 
 	// Only emit start event if label was not already present (new migration)
-	if !provisioningFlow && !labelExisted {
+	if !isProvisioningFlow && !labelExisted {
 		_ = m.emitMigrationEvent(task, corev1.EventTypeNormal, ReasonSKUMigrationStarted,
 			fmt.Sprintf("Started monitoring SKU migration from %s to %s for volume %s (timeout: %v)", fromSKU, toSKU, pvName, migrationTimeout))
 		klog.V(2).Infof("Started migration monitoring for disk %s (%s -> %s)", pvName, fromSKU, toSKU)
@@ -458,7 +458,7 @@ func (m *MigrationProgressMonitor) emitMigrationEvent(task *MigrationTask, event
 
 // addMigrationLabelIfNotExists adds migration label to the PersistentVolume if it doesn't already exist
 // Returns true if label already existed, false if it was newly added
-func (m *MigrationProgressMonitor) addMigrationLabelIfNotExists(ctx context.Context, pvName string, fromSKU, toSKU armcompute.DiskStorageAccountTypes) (bool, error) {
+func (m *MigrationProgressMonitor) addMigrationLabelIfNotExists(ctx context.Context, pvName string, fromSKU string, toSKU armcompute.DiskStorageAccountTypes) (bool, error) {
 	pv, err := m.kubeClient.CoreV1().PersistentVolumes().Get(ctx, pvName, metav1.GetOptions{})
 	if err != nil {
 		return false, err
@@ -612,7 +612,7 @@ func (d *Driver) recoverMigrationMonitorsFromLabels(ctx context.Context) error {
 			klog.V(2).Infof("Recovering migration monitor for PV: %s", pv.Name)
 
 			// For now, we'll use placeholders - when more SKUs involve for migration, need to get this from disk properties
-			fromSKU := armcompute.DiskStorageAccountTypesPremiumLRS
+			fromSKU := string(armcompute.DiskStorageAccountTypesPremiumLRS) // we may incorrectly say PremiumLRS instead of StandardZRS, lets keep it simple for now
 			toSKU := armcompute.DiskStorageAccountTypesPremiumV2LRS
 
 			storageQtyVal := pv.Spec.Capacity[corev1.ResourceStorage]
