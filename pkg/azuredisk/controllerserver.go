@@ -63,6 +63,35 @@ type listVolumeStatus struct {
 	err           error
 }
 
+func (d *Driver) startSKUMigrationMonitor(
+	ctx context.Context,
+	isProvisioningFlow bool,
+	fromSKUStr string,
+	toSKU armcompute.DiskStorageAccountTypes,
+	diskURI, pvName string,
+	sizeBytes int64,
+) {
+	if d.migrationMonitor == nil || fromSKUStr == "" {
+		return
+	}
+
+	if toSKU != armcompute.DiskStorageAccountTypesPremiumV2LRS || fromSKUStr == string(toSKU) {
+		return
+	}
+	if pvName == "" {
+		var parseErr error
+		_, _, pvName, parseErr = azureutils.GetInfoFromURI(diskURI)
+		if parseErr != nil {
+			klog.Warningf("Skipping monitor, failed to extract pv name from URI %s: %v", diskURI, parseErr)
+			return
+		}
+	}
+	if err := d.migrationMonitor.StartMigrationMonitoring(
+		ctx, isProvisioningFlow, diskURI, pvName, fromSKUStr, toSKU, sizeBytes); err != nil {
+		klog.Warningf("failed to start SKU migration monitoring for %s: %v", diskURI, err)
+	}
+}
+
 // CreateVolume provisions an azure disk
 func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest) (*csi.CreateVolumeResponse, error) {
 	if err := d.ValidateControllerServiceRequest(csi.ControllerServiceCapability_RPC_CREATE_DELETE_VOLUME); err != nil {
@@ -225,19 +254,21 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 					},
 				},
 			}
-			subsID, resourceGroup, snapName, err := azureutils.GetInfoFromURI(sourceID)
-			if err != nil {
-				return nil, status.Errorf(codes.NotFound, "%v", err)
-			}
-			snap, err := d.GetSourceSnapshot(ctx, subsID, resourceGroup, snapName)
-			if err == nil {
-				if snap.SKU != nil && snap.SKU.Name != nil {
-					sourceSKU = string(*snap.SKU.Name)
-				} else {
-					klog.Warningf("snapshot sku is nil, snapshotName: %s", snapName)
+			if d.migrationMonitor != nil {
+				subsID, resourceGroup, snapName, err := azureutils.GetInfoFromURI(sourceID)
+				if err != nil {
+					return nil, status.Errorf(codes.NotFound, "%v", err)
 				}
-			} else {
-				klog.Warningf("failed to get source snapshot(%s) size, err: %v", sourceID, err)
+				snap, err := d.GetSourceSnapshot(ctx, subsID, resourceGroup, snapName)
+				if err == nil {
+					if snap.SKU != nil && snap.SKU.Name != nil {
+						sourceSKU = string(*snap.SKU.Name)
+					} else {
+						klog.Warningf("snapshot sku is nil, snapshotName: %s", snapName)
+					}
+				} else {
+					klog.Warningf("failed to get source snapshot(%s) size, err: %v", sourceID, err)
+				}
 			}
 			metricsRequest = "controller_create_volume_from_snapshot"
 		} else {
@@ -266,7 +297,7 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 						klog.V(2).Infof("source disk(%s) is in zone(%s), set diskZone as %s", sourceID, *disk.Zones[0], diskZone)
 					}
 				}
-				if disk != nil && disk.SKU != nil {
+				if d.migrationMonitor != nil && disk != nil && disk.SKU != nil {
 					sourceSKU = string(*disk.SKU.Name)
 				}
 			} else {
@@ -358,27 +389,7 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 		return nil, status.Errorf(codes.Internal, "%v", err)
 	}
 
-	// After disk creation success and you have diskObj (armcompute.Disk) & req.VolumeContentSource != nil && snapshot != nil
-	if skuName == armcompute.DiskStorageAccountTypesPremiumV2LRS && sourceSKU != string(skuName) {
-		if d.migrationMonitor != nil {
-			// convert sourceSKU which may be in SnapshotStorageAccountTypes to DiskStorageAccountTypes
-			var srcSkuName armcompute.DiskStorageAccountTypes
-			switch sourceSKU {
-			case string(armcompute.SnapshotStorageAccountTypesStandardLRS):
-				srcSkuName = armcompute.DiskStorageAccountTypesStandardLRS
-			case string(armcompute.SnapshotStorageAccountTypesPremiumLRS):
-				srcSkuName = armcompute.DiskStorageAccountTypesPremiumLRS
-			case string(armcompute.SnapshotStorageAccountTypesStandardZRS):
-				srcSkuName = armcompute.DiskStorageAccountTypesStandardSSDLRS
-			default:
-				srcSkuName = armcompute.DiskStorageAccountTypesPremiumLRS
-			}
-			err := d.migrationMonitor.StartMigrationMonitoring(ctx, true, diskURI, req.Name, srcSkuName, skuName, volSizeBytes)
-			if err != nil {
-				klog.Warningf("failed to start migration monitoring for disk %s: %v", diskURI, err)
-			}
-		}
-	}
+	d.startSKUMigrationMonitor(ctx, true, sourceSKU, skuName, diskURI, req.Name, volSizeBytes)
 
 	isOperationSucceeded = true
 	klog.V(2).Infof("create azure disk(%s) account type(%s) rg(%s) location(%s) size(%d) tags(%s) successfully", diskParams.DiskName, skuName, diskParams.ResourceGroup, diskParams.Location, requestGiB, diskParams.Tags)
@@ -468,7 +479,7 @@ func (d *Driver) ControllerModifyVolume(ctx context.Context, req *csi.Controller
 	// Check if this is a SKU migration
 	var fromSKU armcompute.DiskStorageAccountTypes
 	var monitorSKUMigration bool
-	if currentDisk != nil {
+	if currentDisk != nil && d.migrationMonitor != nil {
 		if currentDisk.SKU != nil && currentDisk.SKU.Name != nil {
 			fromSKU = *currentDisk.SKU.Name
 			monitorSKUMigration = skuName == armcompute.DiskStorageAccountTypesPremiumV2LRS && fromSKU == armcompute.DiskStorageAccountTypesPremiumLRS
@@ -477,7 +488,8 @@ func (d *Driver) ControllerModifyVolume(ctx context.Context, req *csi.Controller
 		// modifyVolume will be reattempted if controller restarts. In case if the controller restarted after updating disk sku to PremiumV2LRS & before we label,
 		// we may not be able to detect the migration post restart, hence during re-attempt, we can check this condition and set monitorSKUMigration accordingly
 		if !monitorSKUMigration {
-			if currentDisk.Properties != nil && currentDisk.Properties.CompletionPercent != nil && *currentDisk.Properties.CompletionPercent < float32(100.0) {
+			if currentDisk.Properties != nil && currentDisk.Properties.DiskSizeGB != nil &&
+				currentDisk.Properties.CompletionPercent != nil && *currentDisk.Properties.CompletionPercent < float32(100.0) {
 				monitorSKUMigration = fromSKU == armcompute.DiskStorageAccountTypesPremiumV2LRS
 			}
 		}
@@ -512,17 +524,9 @@ func (d *Driver) ControllerModifyVolume(ctx context.Context, req *csi.Controller
 	isOperationSucceeded = true
 
 	// Start migration monitoring if this is a SKU change
-	if monitorSKUMigration && d.migrationMonitor != nil {
-		// Extract disk name from URI if not provided
-		_, _, diskName, parseErr := azureutils.GetInfoFromURI(diskURI)
-		if parseErr != nil {
-			klog.Warningf("Skipping monitor, failed to extract disk name from URI %s: %v", diskURI, parseErr)
-		} else if currentDisk.Properties.DiskSizeGB != nil {
-			volSizeInBytes := int64(*currentDisk.Properties.DiskSizeGB) * 1024 * 1024 * 1024
-			if monitorErr := d.migrationMonitor.StartMigrationMonitoring(ctx, false, diskURI, diskName, fromSKU, skuName, volSizeInBytes); monitorErr != nil {
-				klog.Warningf("Failed to start migration monitoring for disk %s: %v", diskURI, monitorErr)
-			}
-		}
+	if monitorSKUMigration {
+		volSizeBytes := int64(*currentDisk.Properties.DiskSizeGB) * 1024 * 1024 * 1024
+		d.startSKUMigrationMonitor(ctx, false, string(fromSKU), skuName, diskURI, "", volSizeBytes)
 	}
 
 	klog.V(2).Infof("modify azure disk(%s) account type(%s) rg(%s) location(%s) successfully", diskParams.DiskName, skuName, diskParams.ResourceGroup, diskParams.Location)
