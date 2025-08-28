@@ -163,7 +163,7 @@ func TestStartMigrationMonitoring(t *testing.T) {
 			monitor := NewMigrationProgressMonitor(mockKubeClient, mockEventRecorder, mockDiskController)
 
 			ctx := context.Background()
-			err := monitor.StartMigrationMonitoring(ctx, false, tt.diskURI, tt.pvName, tt.fromSKU, tt.toSKU, qty.Value())
+			err := monitor.StartMigrationMonitoring(ctx, false, tt.diskURI, tt.pvName, string(tt.fromSKU), tt.toSKU, qty.Value())
 
 			if tt.expectError {
 				assert.Error(t, err)
@@ -181,7 +181,7 @@ func TestStartMigrationMonitoring(t *testing.T) {
 				assert.Equal(t, tt.pvName, task.PVName)
 				assert.Equal(t, tt.pvcName, task.PVCName)
 				assert.Equal(t, tt.pvcNamespace, task.PVCNamespace)
-				assert.Equal(t, tt.fromSKU, task.FromSKU)
+				assert.Equal(t, string(tt.fromSKU), task.FromSKU)
 				assert.Equal(t, tt.toSKU, task.ToSKU)
 				assert.NotNil(t, task.CancelFunc)
 				assert.NotNil(t, task.Context)
@@ -345,7 +345,7 @@ func TestIsMigrationActive(t *testing.T) {
 	// Start monitoring
 	ctx := context.Background()
 	err := monitor.StartMigrationMonitoring(ctx, false, diskURI, "test-pv",
-		armcompute.DiskStorageAccountTypesPremiumLRS,
+		string(armcompute.DiskStorageAccountTypesPremiumLRS),
 		armcompute.DiskStorageAccountTypesPremiumV2LRS, qty.Value())
 	assert.NoError(t, err)
 
@@ -423,7 +423,7 @@ func TestEmitMigrationEvent(t *testing.T) {
 		PVName:       "test-pv",
 		PVCName:      "test-pvc",
 		PVCNamespace: "default",
-		FromSKU:      armcompute.DiskStorageAccountTypesPremiumLRS,
+		FromSKU:      string(armcompute.DiskStorageAccountTypesPremiumLRS),
 		ToSKU:        armcompute.DiskStorageAccountTypesPremiumV2LRS,
 		StartTime:    time.Now(),
 		Context:      ctx,
@@ -470,7 +470,7 @@ func TestEmitMigrationEvent_PVCNotFound(t *testing.T) {
 		PVName:       "test-pv",
 		PVCName:      "non-existent-pvc",
 		PVCNamespace: "default",
-		FromSKU:      armcompute.DiskStorageAccountTypesPremiumLRS,
+		FromSKU:      string(armcompute.DiskStorageAccountTypesPremiumLRS),
 		ToSKU:        armcompute.DiskStorageAccountTypesPremiumV2LRS,
 		StartTime:    time.Now(),
 		Context:      ctx,
@@ -601,7 +601,7 @@ func TestMigrationStop(t *testing.T) {
 
 	for i, diskURI := range diskURIs {
 		err := monitor.StartMigrationMonitoring(ctx, false, diskURI, fmt.Sprintf("pv-%d", i+1),
-			armcompute.DiskStorageAccountTypesPremiumLRS,
+			string(armcompute.DiskStorageAccountTypesPremiumLRS),
 			armcompute.DiskStorageAccountTypesPremiumV2LRS,
 			qty.Value())
 		assert.NoError(t, err)
@@ -899,7 +899,7 @@ func TestAddMigrationLabelIfNotExists(t *testing.T) {
 	// Execute
 	ctx := context.Background()
 	existed, err := monitor.addMigrationLabelIfNotExists(ctx, "test-pv",
-		armcompute.DiskStorageAccountTypesPremiumLRS,
+		string(armcompute.DiskStorageAccountTypesPremiumLRS),
 		armcompute.DiskStorageAccountTypesPremiumV2LRS)
 
 	assert.False(t, existed)
@@ -1068,7 +1068,7 @@ func TestMigrationMonitorControllerRestart_EndToEnd(t *testing.T) {
 		ctx := context.Background()
 		diskURI := "/subscriptions/test/resourceGroups/rg/providers/Microsoft.Compute/disks/test-disk"
 		err := monitor1.StartMigrationMonitoring(ctx, false, diskURI, "test-pv",
-			armcompute.DiskStorageAccountTypesPremiumLRS,
+			string(armcompute.DiskStorageAccountTypesPremiumLRS),
 			armcompute.DiskStorageAccountTypesPremiumV2LRS, qty.Value())
 		assert.NoError(t, err)
 		assert.True(t, monitor1.IsMigrationActive(diskURI))
@@ -1095,7 +1095,7 @@ func TestMigrationMonitorControllerRestart_EndToEnd(t *testing.T) {
 		assert.Equal(t, "test-pv", task.PVName)
 		assert.Equal(t, "test-pvc", task.PVCName)
 		assert.Equal(t, "default", task.PVCNamespace)
-		assert.Equal(t, armcompute.DiskStorageAccountTypesPremiumLRS, task.FromSKU)
+		assert.Equal(t, string(armcompute.DiskStorageAccountTypesPremiumLRS), task.FromSKU)
 		assert.Equal(t, armcompute.DiskStorageAccountTypesPremiumV2LRS, task.ToSKU)
 
 		// Cleanup
@@ -2061,7 +2061,7 @@ func TestMigrationTimeoutScenarios(t *testing.T) {
 		// Start monitoring
 		ctx := context.Background()
 		err := monitor.StartMigrationMonitoring(ctx, false, diskURI, "test-pv",
-			armcompute.DiskStorageAccountTypesPremiumLRS,
+			string(armcompute.DiskStorageAccountTypesPremiumLRS),
 			armcompute.DiskStorageAccountTypesPremiumV2LRS, qty.Value())
 		assert.NoError(t, err)
 		assert.True(t, monitor.IsMigrationActive(diskURI))
@@ -2222,7 +2222,7 @@ func TestMigrationTimeoutScenarios(t *testing.T) {
 		// Start monitoring
 		ctx := context.Background()
 		err := monitor.StartMigrationMonitoring(ctx, false, diskURI, "test-pv",
-			armcompute.DiskStorageAccountTypesPremiumLRS,
+			string(armcompute.DiskStorageAccountTypesPremiumLRS),
 			armcompute.DiskStorageAccountTypesPremiumV2LRS, qty.Value())
 		assert.NoError(t, err)
 		assert.True(t, monitor.IsMigrationActive(diskURI))
@@ -2409,7 +2409,7 @@ func TestMigrationThroughProvisioningFlowDelayedPVAndLabelRetry(t *testing.T) {
 
 	// provisioningFlow=true: should not require PV initially
 	err := monitor.StartMigrationMonitoring(context.Background(), true, id, pvName,
-		armcompute.DiskStorageAccountTypesPremiumLRS,
+		string(armcompute.DiskStorageAccountTypesPremiumLRS),
 		armcompute.DiskStorageAccountTypesPremiumV2LRS,
 		qty.Value())
 	assert.NoError(t, err)
@@ -2530,7 +2530,7 @@ func TestMigrationProgressMilestones(t *testing.T) {
 	qty := resource.MustParse("1Gi")
 
 	err := monitor.StartMigrationMonitoring(context.Background(), false, diskID, "pv-milestones",
-		armcompute.DiskStorageAccountTypesPremiumLRS,
+		string(armcompute.DiskStorageAccountTypesPremiumLRS),
 		armcompute.DiskStorageAccountTypesPremiumV2LRS,
 		qty.Value())
 	assert.NoError(t, err)
@@ -2635,12 +2635,12 @@ func TestStartMigrationMonitoringIdempotent(t *testing.T) {
 	var qty = resource.MustParse("1Gi")
 	m := NewMigrationProgressMonitor(mockKube, eventRecorder, d.GetDiskController())
 	err := m.StartMigrationMonitoring(context.Background(), false, id, "pv-dup",
-		armcompute.DiskStorageAccountTypesPremiumLRS, armcompute.DiskStorageAccountTypesPremiumV2LRS,
+		string(armcompute.DiskStorageAccountTypesPremiumLRS), armcompute.DiskStorageAccountTypesPremiumV2LRS,
 		qty.Value())
 	assert.NoError(t, err)
 	// Second call should be no-op
 	err = m.StartMigrationMonitoring(context.Background(), false, id, "pv-dup",
-		armcompute.DiskStorageAccountTypesPremiumLRS, armcompute.DiskStorageAccountTypesPremiumV2LRS,
+		string(armcompute.DiskStorageAccountTypesPremiumLRS), armcompute.DiskStorageAccountTypesPremiumV2LRS,
 		qty.Value())
 	assert.NoError(t, err)
 	assert.Equal(t, 1, len(m.GetActiveMigrations()))
@@ -2702,7 +2702,7 @@ func TestMigrationMonitorStopCancels(t *testing.T) {
 	var qty = resource.MustParse("1Gi")
 	m := NewMigrationProgressMonitor(mockKube, eventRecorder, d.GetDiskController())
 	err := m.StartMigrationMonitoring(context.Background(), false, id, "pv-stop",
-		armcompute.DiskStorageAccountTypesPremiumLRS, armcompute.DiskStorageAccountTypesPremiumV2LRS,
+		string(armcompute.DiskStorageAccountTypesPremiumLRS), armcompute.DiskStorageAccountTypesPremiumV2LRS,
 		qty.Value())
 	assert.NoError(t, err)
 	assert.True(t, m.IsMigrationActive(id))

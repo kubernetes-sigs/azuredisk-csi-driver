@@ -1237,7 +1237,7 @@ func TestControllerModifyVolume(t *testing.T) {
 			// Verify SKU change details if this is a migration test
 			if newSKU, exists := test.req.MutableParameters[consts.SkuNameField]; exists && test.oldSKU != nil {
 				assert.Equal(t, armcompute.DiskStorageAccountTypes(newSKU), migration.ToSKU)
-				assert.Equal(t, *test.oldSKU, migration.FromSKU)
+				assert.Equal(t, string(*test.oldSKU), migration.FromSKU)
 			}
 
 			// Verify migration started event was emitted for successful cases
