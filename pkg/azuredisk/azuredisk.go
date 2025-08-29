@@ -91,51 +91,52 @@ type Driver struct {
 	csi.UnimplementedIdentityServer
 	csi.UnimplementedNodeServer
 
-	perfOptimizationEnabled      bool
-	cloudConfigSecretName        string
-	cloudConfigSecretNamespace   string
-	customUserAgent              string
-	userAgentSuffix              string
-	cloud                        *azure.Cloud
-	clientFactory                azclient.ClientFactory
-	diskController               *ManagedDiskController
-	eventRecorder                record.EventRecorder
-	migrationMonitor             *MigrationProgressMonitor
-	mounter                      *mount.SafeFormatAndMount
-	deviceHelper                 optimization.Interface
-	nodeInfo                     *optimization.NodeInfo
-	ioHandler                    azureutils.IOHandler
-	hostUtil                     hostUtil
-	useCSIProxyGAInterface       bool
-	enableDiskOnlineResize       bool
-	allowEmptyCloudConfig        bool
-	enableListVolumes            bool
-	enableListSnapshots          bool
-	supportZone                  bool
-	getNodeInfoFromLabels        bool
-	enableDiskCapacityCheck      bool
-	enableTrafficManager         bool
-	trafficManagerPort           int64
-	vmssCacheTTLInSeconds        int64
-	listVMSSWithInstanceView     bool
-	volStatsCacheExpireInMinutes int64
-	attachDetachInitialDelayInMs int64
-	getDiskTimeoutInSeconds      int64
-	vmType                       string
-	enableWindowsHostProcess     bool
-	useWinCIMAPI                 bool
-	getNodeIDFromIMDS            bool
-	enableOtelTracing            bool
-	shouldWaitForSnapshotReady   bool
-	checkDiskLUNCollision        bool
-	checkDiskCountForBatching    bool
-	forceDetachBackoff           bool
-	waitForDetach                bool
-	endpoint                     string
-	disableAVSetNodes            bool
-	removeNotReadyTaint          bool
-	neverStopTaintRemoval        bool
-	kubeClient                   clientset.Interface
+	perfOptimizationEnabled       bool
+	cloudConfigSecretName         string
+	cloudConfigSecretNamespace    string
+	customUserAgent               string
+	userAgentSuffix               string
+	cloud                         *azure.Cloud
+	clientFactory                 azclient.ClientFactory
+	diskController                *ManagedDiskController
+	eventRecorder                 record.EventRecorder
+	migrationMonitor              *MigrationProgressMonitor
+	mounter                       *mount.SafeFormatAndMount
+	deviceHelper                  optimization.Interface
+	nodeInfo                      *optimization.NodeInfo
+	ioHandler                     azureutils.IOHandler
+	hostUtil                      hostUtil
+	useCSIProxyGAInterface        bool
+	enableDiskOnlineResize        bool
+	allowEmptyCloudConfig         bool
+	enableListVolumes             bool
+	enableListSnapshots           bool
+	supportZone                   bool
+	getNodeInfoFromLabels         bool
+	enableDiskCapacityCheck       bool
+	enableTrafficManager          bool
+	trafficManagerPort            int64
+	vmssCacheTTLInSeconds         int64
+	listVMSSWithInstanceView      bool
+	volStatsCacheExpireInMinutes  int64
+	attachDetachInitialDelayInMs  int64
+	DetachOperationMinTimeoutInMs int64
+	getDiskTimeoutInSeconds       int64
+	vmType                        string
+	enableWindowsHostProcess      bool
+	useWinCIMAPI                  bool
+	getNodeIDFromIMDS             bool
+	enableOtelTracing             bool
+	shouldWaitForSnapshotReady    bool
+	checkDiskLUNCollision         bool
+	checkDiskCountForBatching     bool
+	forceDetachBackoff            bool
+	waitForDetach                 bool
+	endpoint                      string
+	disableAVSetNodes             bool
+	removeNotReadyTaint           bool
+	neverStopTaintRemoval         bool
+	kubeClient                    clientset.Interface
 	// a timed cache storing volume stats <volumeID, volumeStats>
 	volStatsCache           azcache.Resource
 	maxConcurrentFormat     int64
@@ -172,6 +173,7 @@ func NewDriver(options *DriverOptions) *Driver {
 	driver.getNodeInfoFromLabels = options.GetNodeInfoFromLabels
 	driver.enableDiskCapacityCheck = options.EnableDiskCapacityCheck
 	driver.attachDetachInitialDelayInMs = options.AttachDetachInitialDelayInMs
+	driver.DetachOperationMinTimeoutInMs = options.DetachOperationMinTimeoutInMs
 	driver.enableTrafficManager = options.EnableTrafficManager
 	driver.trafficManagerPort = options.TrafficManagerPort
 	driver.vmssCacheTTLInSeconds = options.VMSSCacheTTLInSeconds
@@ -278,6 +280,10 @@ func NewDriver(options *DriverOptions) *Driver {
 		driver.diskController.ForceDetachBackoff = driver.forceDetachBackoff
 		driver.diskController.WaitForDetach = driver.waitForDetach
 		driver.diskController.CheckDiskCountForBatching = driver.checkDiskCountForBatching
+		driver.diskController.DetachOperationMinTimeoutInMs = int(driver.DetachOperationMinTimeoutInMs)
+		if driver.diskController.DetachOperationMinTimeoutInMs <= 0 {
+			driver.diskController.DetachOperationMinTimeoutInMs = defaultDetachOperationMinTimeoutInMs
+		}
 
 		if kubeClient != nil && driver.NodeID == "" && driver.enableMigrationMonitor {
 			eventBroadcaster := record.NewBroadcaster()
