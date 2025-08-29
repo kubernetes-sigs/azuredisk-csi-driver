@@ -63,6 +63,35 @@ type listVolumeStatus struct {
 	err           error
 }
 
+func (d *Driver) startSKUMigrationMonitor(
+	ctx context.Context,
+	isProvisioningFlow bool,
+	fromSKUStr string,
+	toSKU armcompute.DiskStorageAccountTypes,
+	diskURI, pvName string,
+	sizeBytes int64,
+) {
+	if d.migrationMonitor == nil || fromSKUStr == "" {
+		return
+	}
+
+	if toSKU != armcompute.DiskStorageAccountTypesPremiumV2LRS || fromSKUStr == string(toSKU) {
+		return
+	}
+	if pvName == "" {
+		var parseErr error
+		_, _, pvName, parseErr = azureutils.GetInfoFromURI(diskURI)
+		if parseErr != nil {
+			klog.Warningf("Skipping monitor, failed to extract pv name from URI %s: %v", diskURI, parseErr)
+			return
+		}
+	}
+	if err := d.migrationMonitor.StartMigrationMonitoring(
+		ctx, isProvisioningFlow, diskURI, pvName, fromSKUStr, toSKU, sizeBytes); err != nil {
+		klog.Warningf("failed to start SKU migration monitoring for %s: %v", diskURI, err)
+	}
+}
+
 // CreateVolume provisions an azure disk
 func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest) (*csi.CreateVolumeResponse, error) {
 	if err := d.ValidateControllerServiceRequest(csi.ControllerServiceCapability_RPC_CREATE_DELETE_VOLUME); err != nil {
@@ -211,7 +240,7 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 	if strings.EqualFold(diskParams.WriteAcceleratorEnabled, consts.TrueValue) {
 		diskParams.Tags[azure.WriteAcceleratorEnabled] = consts.TrueValue
 	}
-	var sourceID, sourceType string
+	var sourceID, sourceType, sourceSKU string
 	metricsRequest := "controller_create_volume"
 	content := req.GetVolumeContentSource()
 	if content != nil {
@@ -224,6 +253,22 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 						SnapshotId: sourceID,
 					},
 				},
+			}
+			if d.migrationMonitor != nil {
+				subsID, resourceGroup, snapName, err := azureutils.GetInfoFromURI(sourceID)
+				if err != nil {
+					return nil, status.Errorf(codes.NotFound, "%v", err)
+				}
+				snap, err := d.GetSourceSnapshot(ctx, subsID, resourceGroup, snapName)
+				if err == nil {
+					if snap.SKU != nil && snap.SKU.Name != nil {
+						sourceSKU = string(*snap.SKU.Name)
+					} else {
+						klog.Warningf("snapshot sku is nil, snapshotName: %s", snapName)
+					}
+				} else {
+					klog.Warningf("failed to get source snapshot(%s) size, err: %v", sourceID, err)
+				}
 			}
 			metricsRequest = "controller_create_volume_from_snapshot"
 		} else {
@@ -251,6 +296,9 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 						diskZone = fmt.Sprintf("%s-%s", diskParams.Location, *disk.Zones[0])
 						klog.V(2).Infof("source disk(%s) is in zone(%s), set diskZone as %s", sourceID, *disk.Zones[0], diskZone)
 					}
+				}
+				if d.migrationMonitor != nil && disk != nil && disk.SKU != nil {
+					sourceSKU = string(*disk.SKU.Name)
 				}
 			} else {
 				klog.Warningf("failed to get source disk(%s) size, err: %v", sourceID, err)
@@ -341,6 +389,8 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 		return nil, status.Errorf(codes.Internal, "%v", err)
 	}
 
+	d.startSKUMigrationMonitor(ctx, true, sourceSKU, skuName, diskURI, req.Name, volSizeBytes)
+
 	isOperationSucceeded = true
 	klog.V(2).Infof("create azure disk(%s) account type(%s) rg(%s) location(%s) size(%d) tags(%s) successfully", diskParams.DiskName, skuName, diskParams.ResourceGroup, diskParams.Location, requestGiB, diskParams.Tags)
 
@@ -429,9 +479,20 @@ func (d *Driver) ControllerModifyVolume(ctx context.Context, req *csi.Controller
 	// Check if this is a SKU migration
 	var fromSKU armcompute.DiskStorageAccountTypes
 	var monitorSKUMigration bool
-	if currentDisk != nil && currentDisk.SKU != nil && currentDisk.SKU.Name != nil {
-		fromSKU = *currentDisk.SKU.Name
-		monitorSKUMigration = skuName == armcompute.DiskStorageAccountTypesPremiumV2LRS && fromSKU == armcompute.DiskStorageAccountTypesPremiumLRS
+	if currentDisk != nil && d.migrationMonitor != nil {
+		if currentDisk.SKU != nil && currentDisk.SKU.Name != nil {
+			fromSKU = *currentDisk.SKU.Name
+			monitorSKUMigration = skuName == armcompute.DiskStorageAccountTypesPremiumV2LRS && fromSKU == armcompute.DiskStorageAccountTypesPremiumLRS
+		}
+
+		// modifyVolume will be reattempted if controller restarts. In case if the controller restarted after updating disk sku to PremiumV2LRS & before we label,
+		// we may not be able to detect the migration post restart, hence during re-attempt, we can check this condition and set monitorSKUMigration accordingly
+		if !monitorSKUMigration {
+			if currentDisk.Properties != nil && currentDisk.Properties.DiskSizeGB != nil &&
+				currentDisk.Properties.CompletionPercent != nil && *currentDisk.Properties.CompletionPercent < float32(100.0) {
+				monitorSKUMigration = fromSKU == armcompute.DiskStorageAccountTypesPremiumV2LRS
+			}
+		}
 	}
 
 	klog.V(2).Infof("begin to modify azure disk(%s) account type(%s) rg(%s) location(%s)",
@@ -463,16 +524,9 @@ func (d *Driver) ControllerModifyVolume(ctx context.Context, req *csi.Controller
 	isOperationSucceeded = true
 
 	// Start migration monitoring if this is a SKU change
-	if monitorSKUMigration && d.migrationMonitor != nil {
-		// Extract disk name from URI if not provided
-		_, _, diskName, parseErr := azureutils.GetInfoFromURI(diskURI)
-		if parseErr != nil {
-			klog.Warningf("Skipping monitor, failed to extract disk name from URI %s: %v", diskURI, parseErr)
-		} else {
-			if monitorErr := d.migrationMonitor.StartMigrationMonitoring(ctx, diskURI, diskName, fromSKU, skuName); monitorErr != nil {
-				klog.Warningf("Failed to start migration monitoring for disk %s: %v", diskURI, monitorErr)
-			}
-		}
+	if monitorSKUMigration {
+		volSizeBytes := int64(*currentDisk.Properties.DiskSizeGB) * 1024 * 1024 * 1024
+		d.startSKUMigrationMonitor(ctx, false, string(fromSKU), skuName, diskURI, "", volSizeBytes)
 	}
 
 	klog.V(2).Infof("modify azure disk(%s) account type(%s) rg(%s) location(%s) successfully", diskParams.DiskName, skuName, diskParams.ResourceGroup, diskParams.Location)
@@ -1335,4 +1389,20 @@ func (d *Driver) GetSourceDiskSize(ctx context.Context, subsID, resourceGroup, d
 		return nil, result, status.Error(codes.Internal, fmt.Sprintf("DiskSizeGB for disk (%s) in resourcegroup (%s) is nil", diskName, resourceGroup))
 	}
 	return (*result.Properties).DiskSizeGB, result, nil
+}
+
+// GetSourceSnapshot recursively searches for the sourceSnapshot and returns: sourceSnapshot snapshot size, error
+func (d *Driver) GetSourceSnapshot(ctx context.Context, subsID, resourceGroup, snapshotName string) (*armcompute.Snapshot, error) {
+	snapClient, err := d.clientFactory.GetSnapshotClientForSub(subsID)
+	if err != nil {
+		return nil, err
+	}
+	result, err := snapClient.Get(ctx, resourceGroup, snapshotName)
+	if err != nil {
+		return nil, err
+	}
+	if result == nil || result.Properties == nil {
+		return result, status.Error(codes.Internal, fmt.Sprintf("Snapshot property not found for snapshot (%s) in resource group (%s)", snapshotName, resourceGroup))
+	}
+	return result, nil
 }
