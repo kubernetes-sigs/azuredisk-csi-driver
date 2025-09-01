@@ -169,7 +169,7 @@ type MigrationTask struct {
 	Timedout             bool          // Indicates if the task has timed out
 	Cancelled            atomic.Bool   // Indicates if the task was cancelled
 	PVLabeled            bool          // Indicates if the PV has been labelled for migration
-	mutex                sync.RWMutex
+	mutex                sync.RWMutex  // Ensures disk level migration details are accessed safely
 }
 
 // MigrationProgressMonitor monitors disk migration progress
@@ -178,7 +178,7 @@ type MigrationProgressMonitor struct {
 	eventRecorder  record.EventRecorder
 	diskController *ManagedDiskController
 	activeTasks    map[string]*MigrationTask
-	mutex          sync.RWMutex
+	mutex          sync.RWMutex // Ensures the activeTasks map is accessed safely
 }
 
 // NewMigrationProgressMonitor creates a new migration progress monitor
@@ -204,7 +204,7 @@ func (m *MigrationProgressMonitor) StartMigrationMonitoring(ctx context.Context,
 
 	var pvcName, pvcNamespace string
 
-	if !isProvisioningFlow {
+	if !isProvisioningFlow && pvName != "" {
 		// Get PV to find associated PVC
 		pv, err := m.kubeClient.CoreV1().PersistentVolumes().Get(ctx, pvName, metav1.GetOptions{})
 		if err != nil {
