@@ -1518,10 +1518,10 @@ func TestControllerModifyVolume_MigrationLifecycleAndTimeout(t *testing.T) {
 		testVolumeStr := fmt.Sprintf("%s%d", testVolumeID, 1)
 		d, rec, pvIf, _, diskClient, _, _ := newEnv(ctrl, testVolumeStr)
 
-		updateCount := 0
+		updateCount := atomic.Int32{}
 		pvIf.EXPECT().Update(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
 			func(_ context.Context, got *v1.PersistentVolume, _ metav1.UpdateOptions) (*v1.PersistentVolume, error) {
-				updateCount++
+				updateCount.Add(1)
 				return got, nil
 			},
 		).MinTimes(2)
@@ -1602,7 +1602,7 @@ func TestControllerModifyVolume_MigrationLifecycleAndTimeout(t *testing.T) {
 		assert.Equal(t, 1, compCnt, "expected one completion event")
 		time.Sleep(100 * time.Millisecond)
 		assert.False(t, d.GetMigrationMonitor().IsMigrationActive(testVolumeStr))
-		assert.GreaterOrEqual(t, updateCount, 2)
+		assert.GreaterOrEqual(t, updateCount.Load(), int32(2))
 	})
 
 	t.Run("idempotent: second modify call while active does not duplicate task or emit second start", func(t *testing.T) {
