@@ -63,6 +63,66 @@ type listVolumeStatus struct {
 	err           error
 }
 
+// startSKUMigrationMonitor starts (idempotently) an asynchronous monitor that tracks
+// migration of a managed disk from one SKU to another (currently only when moving
+// to PremiumV2).
+//
+// Parameters:
+//
+//	ctx                - request context
+//	isProvisioningFlow - true when invoked from CreateVolume (PV may not exist yet);
+//	                     false when invoked from ModifyVolume (PV should already exist).
+//	fromSKUStr         - original disk SKU name (string form, may differ in casing)
+//	toSKU              - target armcompute.DiskStorageAccountTypes (must be PremiumV2LRS to proceed)
+//	diskURI            - full Azure disk resource ID
+//	pvName             - Kubernetes PV name if known (CreateVolume path supplies req.Name;
+//	                     ModifyVolume path does not, so we derive it from diskURI)
+//	sizeBytes          - disk size (used to derive migration timeout)
+//
+// Workflow / decision points:
+// 1. Guard clauses:
+//   - If no migration monitor is configured OR fromSKUStr empty: do nothing.
+//   - If target SKU is not PremiumV2 OR already matches fromSKU: no migration needed.
+//
+// 2. PV name resolution:
+//   - If pvName is empty (ModifyVolume path) attempt to parse diskURI and use its last
+//     token (disk name) as the PV name.
+//   - If the cluster used static provisioning with a PV name different from the Azure
+//     disk name, this heuristic cannot map the disk to the PV; monitoring is skipped.
+//
+// 3. StartMonitoring call:
+//   - Calls migrationMonitor.StartMigrationMonitoring(ctx, isProvisioningFlow, ...).
+//   - isProvisioningFlow influences initial behavior inside the monitor:
+//   - Provisioning (true): PV may not yet exist. The monitor records a task with
+//     empty PVC metadata, attempts an initial label add (may fail if PV absent),
+//     and defers PV / PVC discovery, labeling, and start event emission to the
+//     periodic polling loop (monitorMigrationProgress).
+//   - Modify (false): PV should exist. The monitor immediately fetches the PV,
+//     derives PVC name/namespace, adds/ensures the migration label, and emits
+//     the "Started" event (unless label already existed; then it logs a resume).
+//
+// 4. Label management:
+//   - addMigrationLabelIfNotExists is executed once at start; if it fails (e.g. PV
+//     not yet created) task.PVLabeled remains false. The polling loop will retry
+//     labeling until successful.
+//
+// 5. Asynchronous monitoring:
+//   - A goroutine watches progress (polling Azure), emitting events for start (if
+//     deferred), incremental progress, completion, failure or timeout.
+//
+// 6. Error handling:
+//   - Non‑fatal issues (parse failure, start error) are logged and abort initiation
+//     for that disk; they do not propagate back to the CSI operation.
+//
+// Concurrency notes:
+//   - This function itself is lightweight and only delegates; StartMigrationMonitoring
+//     handles internal synchronization of task state.
+//   - Idempotency: if monitoring is already active for diskURI, underlying monitor
+//     short‑circuits.
+//
+// Returns: nothing; logs warnings on recoverable issues.
+//
+// NOTE: If future migrations support additional target SKUs, relax the toSKU check.
 func (d *Driver) startSKUMigrationMonitor(
 	ctx context.Context,
 	isProvisioningFlow bool,
@@ -254,21 +314,10 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 					},
 				},
 			}
-			if d.migrationMonitor != nil {
-				subsID, resourceGroup, snapName, err := azureutils.GetInfoFromURI(sourceID)
-				if err != nil {
-					return nil, status.Errorf(codes.NotFound, "%v", err)
-				}
-				snap, err := d.GetSourceSnapshot(ctx, subsID, resourceGroup, snapName)
-				if err == nil {
-					if snap.SKU != nil && snap.SKU.Name != nil {
-						sourceSKU = string(*snap.SKU.Name)
-					} else {
-						klog.Warningf("snapshot sku is nil, snapshotName: %s", snapName)
-					}
-				} else {
-					klog.Warningf("failed to get source snapshot(%s) size, err: %v", sourceID, err)
-				}
+			// if migration monitoring is enabled and if target SKU is PremiumV2LRS, get the snapshot SKU
+			// the snapshot SKU is marked as source SKU
+			if skuName == armcompute.DiskStorageAccountTypesPremiumV2LRS && d.migrationMonitor != nil {
+				sourceSKU = d.getSnapshotSKU(ctx, sourceID)
 			}
 			metricsRequest = "controller_create_volume_from_snapshot"
 		} else {
@@ -389,6 +438,7 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 		return nil, status.Errorf(codes.Internal, "%v", err)
 	}
 
+	// Start migration monitoring if enabled
 	d.startSKUMigrationMonitor(ctx, true, sourceSKU, skuName, diskURI, req.Name, volSizeBytes)
 
 	isOperationSucceeded = true
@@ -479,7 +529,7 @@ func (d *Driver) ControllerModifyVolume(ctx context.Context, req *csi.Controller
 	// Check if this is a SKU migration
 	var fromSKU armcompute.DiskStorageAccountTypes
 	var monitorSKUMigration bool
-	if currentDisk != nil && d.migrationMonitor != nil {
+	if currentDisk != nil && currentDisk.Properties != nil && d.migrationMonitor != nil {
 		if currentDisk.SKU != nil && currentDisk.SKU.Name != nil {
 			fromSKU = *currentDisk.SKU.Name
 			monitorSKUMigration = skuName == armcompute.DiskStorageAccountTypesPremiumV2LRS && fromSKU == armcompute.DiskStorageAccountTypesPremiumLRS
@@ -1391,18 +1441,26 @@ func (d *Driver) GetSourceDiskSize(ctx context.Context, subsID, resourceGroup, d
 	return (*result.Properties).DiskSizeGB, result, nil
 }
 
-// GetSourceSnapshot recursively searches for the sourceSnapshot and returns: sourceSnapshot snapshot size, error
-func (d *Driver) GetSourceSnapshot(ctx context.Context, subsID, resourceGroup, snapshotName string) (*armcompute.Snapshot, error) {
+// getSnapshotSKU retrieves the SKU of the snapshot and returns the SKU or if any error occurs
+func (d *Driver) getSnapshotSKU(ctx context.Context, sourceID string) string {
+	subsID, resourceGroup, snapshotName, err := azureutils.GetInfoFromURI(sourceID)
+	if err != nil {
+		klog.Warningf("could not get subscription id, resource group from snapshot uri (%s) with error(%v)", sourceID, err)
+		return ""
+	}
 	snapClient, err := d.clientFactory.GetSnapshotClientForSub(subsID)
 	if err != nil {
-		return nil, err
+		klog.Warningf("could not get snapshot client for subscription(%s) with error(%v)", subsID, err)
+		return ""
 	}
 	result, err := snapClient.Get(ctx, resourceGroup, snapshotName)
 	if err != nil {
-		return nil, err
+		klog.Warningf("get snapshot %s from rg(%s) error: %v", snapshotName, resourceGroup, err)
+		return ""
 	}
-	if result == nil || result.Properties == nil {
-		return result, status.Error(codes.Internal, fmt.Sprintf("Snapshot property not found for snapshot (%s) in resource group (%s)", snapshotName, resourceGroup))
+	if result == nil || result.SKU == nil || result.SKU.Name == nil {
+		klog.Warningf("Snapshot or Snapshot property not found for snapshot (%s) in resource group (%s)", snapshotName, resourceGroup)
+		return ""
 	}
-	return result, nil
+	return string(*result.SKU.Name)
 }
