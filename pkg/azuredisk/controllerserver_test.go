@@ -326,7 +326,7 @@ func TestCreateVolume(t *testing.T) {
 				mp := make(map[string]string)
 				mp["tags"] = "unit=test"
 				volumeSnapshotSource := &csi.VolumeContentSource_SnapshotSource{
-					SnapshotId: fmt.Sprintf(consts.SnapshotPath, "subs", "rg", "unit-test"),
+					SnapshotId: fmt.Sprintf(diskSnapshotPath, "subs", "rg", "unit-test"),
 				}
 				volumeContentSourceSnapshotSource := &csi.VolumeContentSource_Snapshot{
 					Snapshot: volumeSnapshotSource,
@@ -4075,11 +4075,13 @@ func TestGetSourceDiskSize(t *testing.T) {
 
 func TestGetSnapshotSKU(t *testing.T) {
 	type testCase struct {
-		name          string
-		snapshotURI   string
-		setupMocks    func(factory *mock_azclient.MockClientFactory, snap *mock_snapshotclient.MockInterface)
-		expectedSKU   string
-		expectFactory bool
+		name            string
+		snapshotURI     string
+		setupMocks      func(factory *mock_azclient.MockClientFactory, snap *mock_snapshotclient.MockInterface)
+		expectedSKU     string
+		expectFactory   bool
+		expectErrSubstr string
+		expectGRPCCode  codes.Code
 	}
 	tests := []testCase{
 		{
@@ -4099,61 +4101,67 @@ func TestGetSnapshotSKU(t *testing.T) {
 			},
 		},
 		{
-			name:          "factory error -> empty string",
-			snapshotURI:   "/subscriptions/sub/resourceGroups/rg/providers/Microsoft.Compute/snapshots/snap",
-			expectFactory: true,
-			expectedSKU:   "",
+			name:            "bad URI",
+			snapshotURI:     "bad-uri",
+			expectErrSubstr: "invalid URI",
+			expectGRPCCode:  codes.NotFound,
+			setupMocks:      func(_ *mock_azclient.MockClientFactory, _ *mock_snapshotclient.MockInterface) {},
+		},
+		{
+			name:            "factory error -> empty string",
+			snapshotURI:     "/subscriptions/sub/resourceGroups/rg/providers/Microsoft.Compute/snapshots/snap",
+			expectFactory:   true,
+			expectedSKU:     "",
+			expectErrSubstr: "factory error",
 			setupMocks: func(f *mock_azclient.MockClientFactory, _ *mock_snapshotclient.MockInterface) {
 				f.EXPECT().GetSnapshotClientForSub("sub").Return(nil, fmt.Errorf("factory error"))
 			},
 		},
 		{
-			name:          "get error -> empty string",
-			snapshotURI:   "/subscriptions/sub/resourceGroups/rg/providers/Microsoft.Compute/snapshots/snap",
-			expectFactory: true,
-			expectedSKU:   "",
+			name:            "get error -> empty string",
+			snapshotURI:     "/subscriptions/sub/resourceGroups/rg/providers/Microsoft.Compute/snapshots/snap",
+			expectFactory:   true,
+			expectedSKU:     "",
+			expectErrSubstr: "get error",
 			setupMocks: func(f *mock_azclient.MockClientFactory, s *mock_snapshotclient.MockInterface) {
 				f.EXPECT().GetSnapshotClientForSub("sub").Return(s, nil)
 				s.EXPECT().Get(gomock.Any(), "rg", "snap").Return(nil, fmt.Errorf("get error"))
 			},
 		},
 		{
-			name:          "nil snapshot result -> empty string",
-			snapshotURI:   "/subscriptions/sub/resourceGroups/rg/providers/Microsoft.Compute/snapshots/snap",
-			expectFactory: true,
-			expectedSKU:   "",
+			name:            "nil snapshot result -> empty string",
+			snapshotURI:     "/subscriptions/sub/resourceGroups/rg/providers/Microsoft.Compute/snapshots/snap",
+			expectFactory:   true,
+			expectedSKU:     "",
+			expectErrSubstr: "Snapshot property not found",
 			setupMocks: func(f *mock_azclient.MockClientFactory, s *mock_snapshotclient.MockInterface) {
 				f.EXPECT().GetSnapshotClientForSub("sub").Return(s, nil)
 				s.EXPECT().Get(gomock.Any(), "rg", "snap").Return(nil, nil)
 			},
 		},
 		{
-			name:          "nil SKU struct -> empty string",
-			snapshotURI:   "/subscriptions/sub/resourceGroups/rg/providers/Microsoft.Compute/snapshots/snap",
-			expectFactory: true,
-			expectedSKU:   "",
+			name:            "nil SKU struct -> empty string",
+			snapshotURI:     "/subscriptions/sub/resourceGroups/rg/providers/Microsoft.Compute/snapshots/snap",
+			expectFactory:   true,
+			expectedSKU:     "",
+			expectErrSubstr: "Snapshot property not found",
 			setupMocks: func(f *mock_azclient.MockClientFactory, s *mock_snapshotclient.MockInterface) {
 				f.EXPECT().GetSnapshotClientForSub("sub").Return(s, nil)
 				s.EXPECT().Get(gomock.Any(), "rg", "snap").Return(&armcompute.Snapshot{}, nil)
 			},
 		},
 		{
-			name:          "nil SKU name -> empty string",
-			snapshotURI:   "/subscriptions/sub/resourceGroups/rg/providers/Microsoft.Compute/snapshots/snap",
-			expectFactory: true,
-			expectedSKU:   "",
+			name:            "nil SKU name -> empty string",
+			snapshotURI:     "/subscriptions/sub/resourceGroups/rg/providers/Microsoft.Compute/snapshots/snap",
+			expectFactory:   true,
+			expectedSKU:     "",
+			expectErrSubstr: "Snapshot property not found",
 			setupMocks: func(f *mock_azclient.MockClientFactory, s *mock_snapshotclient.MockInterface) {
 				f.EXPECT().GetSnapshotClientForSub("sub").Return(s, nil)
 				s.EXPECT().Get(gomock.Any(), "rg", "snap").Return(&armcompute.Snapshot{
 					SKU: &armcompute.SnapshotSKU{Name: nil},
 				}, nil)
 			},
-		},
-		{
-			name:        "bad URI (no factory call) -> empty string",
-			snapshotURI: "bad-uri",
-			expectedSKU: "",
-			setupMocks:  func(_ *mock_azclient.MockClientFactory, _ *mock_snapshotclient.MockInterface) {},
 		},
 	}
 
@@ -4173,8 +4181,26 @@ func TestGetSnapshotSKU(t *testing.T) {
 				tc.setupMocks(factory, snapClient)
 			}
 
-			got := d.getSnapshotSKU(context.Background(), tc.snapshotURI)
-			require.Equal(t, tc.expectedSKU, got)
+			invoke := func() (string, error) {
+				return d.getSnapshotSKU(context.Background(), tc.snapshotURI)
+			}
+
+			sku, err := invoke()
+
+			if tc.expectErrSubstr != "" {
+				require.Error(t, err)
+				require.Empty(t, sku)
+				require.Contains(t, err.Error(), tc.expectErrSubstr)
+				if tc.expectGRPCCode != 0 {
+					if st, ok := status.FromError(err); ok {
+						require.Equal(t, tc.expectGRPCCode, st.Code())
+					}
+				}
+			} else {
+				require.NoError(t, err)
+				require.NotNil(t, sku)
+				require.Equal(t, tc.expectedSKU, sku)
+			}
 		})
 	}
 }

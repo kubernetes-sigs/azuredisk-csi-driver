@@ -115,7 +115,6 @@ const (
 var (
 	// ManagedDiskPath is described here: https://docs.microsoft.com/en-us/rest/api/compute/disks/createorupdate#create-a-managed-disk-from-an-existing-managed-disk-in-the-same-or-different-subscription.
 	ManagedDiskPath    = "/subscriptions/%s/resourceGroups/%s/providers/Microsoft.Compute/disks/%s"
-	SnapshotPath       = "/subscriptions/%s/resourceGroups/%s/providers/Microsoft.Compute/snapshots/%s"
 	ManagedDiskPathRE  = regexp.MustCompile(`(?i).*/subscriptions/(?:.*)/resourceGroups/(?:.*)/providers/Microsoft.Compute/disks/(.+)`)
 	DiskSnapshotPathRE = regexp.MustCompile(`(?i).*/subscriptions/(?:.*)/resourceGroups/(?:.*)/providers/Microsoft.Compute/snapshots/(.+)`)
 )

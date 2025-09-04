@@ -317,7 +317,7 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 			// if migration monitoring is enabled and if target SKU is PremiumV2LRS, get the snapshot SKU
 			// the snapshot SKU is marked as source SKU
 			if skuName == armcompute.DiskStorageAccountTypesPremiumV2LRS && d.migrationMonitor != nil {
-				sourceSKU = d.getSnapshotSKU(ctx, sourceID)
+				sourceSKU, _ = d.getSnapshotSKU(ctx, sourceID)
 			}
 			metricsRequest = "controller_create_volume_from_snapshot"
 		} else {
@@ -1442,25 +1442,25 @@ func (d *Driver) GetSourceDiskSize(ctx context.Context, subsID, resourceGroup, d
 }
 
 // getSnapshotSKU retrieves the SKU of the snapshot and returns the SKU or if any error occurs
-func (d *Driver) getSnapshotSKU(ctx context.Context, sourceID string) string {
+func (d *Driver) getSnapshotSKU(ctx context.Context, sourceID string) (string, error) {
 	subsID, resourceGroup, snapshotName, err := azureutils.GetInfoFromURI(sourceID)
 	if err != nil {
 		klog.Warningf("could not get subscription id, resource group from snapshot uri (%s) with error(%v)", sourceID, err)
-		return ""
+		return "", err
 	}
 	snapClient, err := d.clientFactory.GetSnapshotClientForSub(subsID)
 	if err != nil {
 		klog.Warningf("could not get snapshot client for subscription(%s) with error(%v)", subsID, err)
-		return ""
+		return "", err
 	}
 	result, err := snapClient.Get(ctx, resourceGroup, snapshotName)
 	if err != nil {
 		klog.Warningf("get snapshot %s from rg(%s) error: %v", snapshotName, resourceGroup, err)
-		return ""
+		return "", err
 	}
 	if result == nil || result.SKU == nil || result.SKU.Name == nil {
 		klog.Warningf("Snapshot or Snapshot property not found for snapshot (%s) in resource group (%s)", snapshotName, resourceGroup)
-		return ""
+		return "", status.Error(codes.NotFound, fmt.Sprintf("Snapshot or Snapshot property not found for snapshot (%s) in resource group (%s)", snapshotName, resourceGroup))
 	}
-	return string(*result.SKU.Name)
+	return string(*result.SKU.Name), nil
 }
