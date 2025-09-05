@@ -30,6 +30,7 @@ import (
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute/v6"
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -325,7 +326,7 @@ func TestCreateVolume(t *testing.T) {
 				mp := make(map[string]string)
 				mp["tags"] = "unit=test"
 				volumeSnapshotSource := &csi.VolumeContentSource_SnapshotSource{
-					SnapshotId: "unit-test",
+					SnapshotId: fmt.Sprintf(diskSnapshotPath, "subs", "rg", "unit-test"),
 				}
 				volumeContentSourceSnapshotSource := &csi.VolumeContentSource_Snapshot{
 					Snapshot: volumeSnapshotSource,
@@ -343,9 +344,17 @@ func TestCreateVolume(t *testing.T) {
 					Properties: &armcompute.DiskProperties{},
 				}
 				diskClient := mock_diskclient.NewMockInterface(cntl)
+				snapshotclient := mock_snapshotclient.NewMockInterface(cntl)
 				d.getClientFactory().(*mock_azclient.MockClientFactory).EXPECT().GetDiskClientForSub(gomock.Any()).Return(diskClient, nil).AnyTimes()
+				d.getClientFactory().(*mock_azclient.MockClientFactory).EXPECT().GetSnapshotClientForSub(gomock.Any()).Return(snapshotclient, nil).AnyTimes()
 				diskClient.EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any()).Return(disk, nil).AnyTimes()
 				diskClient.EXPECT().CreateOrUpdate(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, fmt.Errorf("test")).AnyTimes()
+				snapshotclient.EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any()).Return(&armcompute.Snapshot{
+					SKU: &armcompute.SnapshotSKU{
+						Name: ptr.To(armcompute.SnapshotStorageAccountTypesStandardZRS),
+					},
+					Properties: &armcompute.SnapshotProperties{},
+				}, nil).AnyTimes()
 				_, err := d.CreateVolume(context.Background(), req)
 				expectedErr := status.Errorf(codes.Internal, "test")
 				if err.Error() != expectedErr.Error() {
@@ -607,6 +616,187 @@ func TestCreateVolume(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.name, tc.testFunc)
 	}
+}
+
+func TestCreateVolume_SnapshotPremiumLRS_ToPremiumV2_EmitsMigrationEvents(t *testing.T) {
+	cntl := gomock.NewController(t)
+	defer cntl.Finish()
+
+	d := getFakeDriverWithKubeClient(cntl)
+
+	// Inject mock kube client for migration monitor
+	mockKube := d.getCloud().KubeClient
+	coreMock := d.getCloud().KubeClient.(*mockkubeclient.MockInterface)
+	pvMock := d.getCloud().KubeClient.CoreV1().PersistentVolumes().(*mockpersistentvolume.MockInterface)
+	pvcMock := mockpersistentvolumeclaim.NewMockPersistentVolumeClaimInterface(cntl)
+
+	d.getCloud().KubeClient = mockKube
+	eventRecorder := record.NewFakeRecorder(100)
+	d.SetMigrationMonitor(NewMigrationProgressMonitor(d.getCloud().KubeClient, eventRecorder, d.GetDiskController()))
+
+	// Speed up polling
+	origInterval := migrationCheckInterval
+	migrationCheckInterval = 30 * time.Millisecond
+	defer func() { migrationCheckInterval = origInterval }()
+
+	// Mock k8s PV/PVC lookup
+	coreMock.CoreV1().(*mockcorev1.MockInterface).EXPECT().PersistentVolumeClaims(gomock.Any()).Return(pvcMock).AnyTimes()
+
+	pvName := testVolumeName
+	pvcName := "test-pvc"
+	storageQty := resource.MustParse("1Gi")
+	pvObj := &v1.PersistentVolume{
+		ObjectMeta: metav1.ObjectMeta{Name: pvName},
+		Spec: v1.PersistentVolumeSpec{
+			ClaimRef: &v1.ObjectReference{Name: pvcName, Namespace: "default"},
+			Capacity: v1.ResourceList{v1.ResourceStorage: storageQty},
+		},
+	}
+	pvcObj := &v1.PersistentVolumeClaim{
+		ObjectMeta: metav1.ObjectMeta{Name: pvcName, Namespace: "default"},
+		Spec:       v1.PersistentVolumeClaimSpec{VolumeName: pvName},
+	}
+
+	pvMock.EXPECT().Get(gomock.Any(), pvName, gomock.Any()).Return(pvObj.DeepCopy(), nil).AnyTimes()
+	// Expect label update once (may be more; allow AnyTimes)
+	pvMock.EXPECT().Update(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
+		func(_ context.Context, in *v1.PersistentVolume, _ metav1.UpdateOptions) (*v1.PersistentVolume, error) {
+			if in.Labels == nil {
+				in.Labels = map[string]string{}
+			}
+			in.Labels[LabelMigrationInProgress] = "true"
+			return in, nil
+		}).AnyTimes()
+	pvcMock.EXPECT().Get(gomock.Any(), pvcName, gomock.Any()).Return(pvcObj.DeepCopy(), nil).AnyTimes()
+
+	// Mock snapshot (source Premium_LRS)
+	snapshotClient := mock_snapshotclient.NewMockInterface(cntl)
+	d.getClientFactory().(*mock_azclient.MockClientFactory).EXPECT().GetSnapshotClientForSub(gomock.Any()).Return(snapshotClient, nil).AnyTimes()
+	snapID := "/subscriptions/sub/resourceGroups/rg/providers/Microsoft.Compute/snapshots/src-snap"
+	srcSKU := armcompute.SnapshotStorageAccountTypesPremiumLRS
+	sizeGB := int32(1)
+	provState := "Succeeded"
+	snapshotClient.EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any()).Return(&armcompute.Snapshot{
+		ID: &snapID,
+		SKU: &armcompute.SnapshotSKU{
+			Name: &srcSKU,
+		},
+		Properties: &armcompute.SnapshotProperties{
+			DiskSizeGB:        &sizeGB,
+			ProvisioningState: &provState,
+		},
+	}, nil).AnyTimes()
+
+	// Mock disk client for new PremiumV2 disk + progress polling
+	diskClient := mock_diskclient.NewMockInterface(cntl)
+	d.getClientFactory().(*mock_azclient.MockClientFactory).EXPECT().GetDiskClientForSub(gomock.Any()).Return(diskClient, nil).AnyTimes()
+
+	newDiskID := fmt.Sprintf(consts.ManagedDiskPath, "subs", "rg", testVolumeName)
+	newDiskName := testVolumeName
+	percent := float32(0)
+	state := "Succeeded"
+
+	// CreateOrUpdate returns initial disk
+	diskClient.EXPECT().CreateOrUpdate(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
+		func(_ context.Context, _, _ string, _ armcompute.Disk) (*armcompute.Disk, error) {
+			return &armcompute.Disk{
+				ID:   &newDiskID,
+				Name: &newDiskName,
+				SKU:  &armcompute.DiskSKU{Name: ptr.To(armcompute.DiskStorageAccountTypesPremiumV2LRS)},
+				Properties: &armcompute.DiskProperties{
+					DiskSizeGB:        &sizeGB,
+					ProvisioningState: &state,
+					CompletionPercent: &percent,
+				},
+			}, nil
+		}).Times(1)
+
+	// Get simulates migration progress milestones 0->25->45->65->85->100
+	diskClient.EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
+		func(_ context.Context, _, _ string) (*armcompute.Disk, error) {
+			if percent < 100 {
+				switch {
+				case percent < 25:
+					percent = 25
+				case percent < 45:
+					percent = 45
+				case percent < 65:
+					percent = 65
+				case percent < 85:
+					percent = 85
+				default:
+					percent = 100
+				}
+			}
+			return &armcompute.Disk{
+				ID:   &newDiskID,
+				Name: &newDiskName,
+				SKU:  &armcompute.DiskSKU{Name: ptr.To(armcompute.DiskStorageAccountTypesPremiumV2LRS)},
+				Properties: &armcompute.DiskProperties{
+					DiskSizeGB:        &sizeGB,
+					ProvisioningState: &state,
+					CompletionPercent: &percent,
+				},
+			}, nil
+		}).AnyTimes()
+
+	req := &csi.CreateVolumeRequest{
+		Name:               testVolumeName,
+		VolumeCapabilities: stdVolumeCapabilities,
+		CapacityRange: &csi.CapacityRange{
+			RequiredBytes: volumehelper.GiBToBytes(1),
+			LimitBytes:    volumehelper.GiBToBytes(1),
+		},
+		Parameters: map[string]string{
+			consts.SkuNameField: string(armcompute.DiskStorageAccountTypesPremiumV2LRS),
+		},
+		VolumeContentSource: &csi.VolumeContentSource{
+			Type: &csi.VolumeContentSource_Snapshot{
+				Snapshot: &csi.VolumeContentSource_SnapshotSource{
+					SnapshotId: snapID,
+				},
+			},
+		},
+	}
+
+	_, err := d.CreateVolume(context.Background(), req)
+	assert.NoError(t, err)
+
+	// Wait for monitor to emit events
+	time.Sleep(500 * time.Millisecond)
+
+	// Drain events
+	var events []string
+collect:
+	for {
+		select {
+		case e := <-eventRecorder.Events:
+			events = append(events, e)
+		default:
+			break collect
+		}
+	}
+
+	hasStart := false
+	hasProgress := false
+	hasCompleted := false
+	for _, e := range events {
+		if strings.Contains(e, ReasonSKUMigrationStarted) {
+			hasStart = true
+		}
+		if strings.Contains(e, ReasonSKUMigrationProgress) {
+			hasProgress = true
+		}
+		if strings.Contains(e, ReasonSKUMigrationCompleted) {
+			hasCompleted = true
+		}
+	}
+
+	if !hasStart || !hasProgress || !hasCompleted {
+		t.Fatalf("expected start+progress+completed events, got: %v", events)
+	}
+
+	d.GetMigrationMonitor().Stop()
 }
 
 func TestDeleteVolume(t *testing.T) {
@@ -883,12 +1073,15 @@ func TestControllerModifyVolume(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.TODO())
 		defer cancel()
 		id := test.req.VolumeId
+		var diskSizeInGb int64 = 10
 		disk := &armcompute.Disk{
 			ID: &id,
 			SKU: &armcompute.DiskSKU{
 				Name: test.oldSKU,
 			},
-			Properties: &armcompute.DiskProperties{},
+			Properties: &armcompute.DiskProperties{
+				DiskSizeGB: to.Ptr(int32(diskSizeInGb)),
+			},
 		}
 
 		// Setup disk client mocks
@@ -914,7 +1107,7 @@ func TestControllerModifyVolume(t *testing.T) {
 					},
 					Resources: v1.VolumeResourceRequirements{
 						Requests: v1.ResourceList{
-							v1.ResourceName("storage"): *resource.NewQuantity(10*1024*1024*1024, resource.BinarySI), // 10GiB
+							v1.ResourceName("storage"): *resource.NewQuantity(diskSizeInGb*1024*1024*1024, resource.BinarySI), // 10GiB
 						},
 					},
 					VolumeName: testVolumeName,
@@ -1045,7 +1238,7 @@ func TestControllerModifyVolume(t *testing.T) {
 			// Verify SKU change details if this is a migration test
 			if newSKU, exists := test.req.MutableParameters[consts.SkuNameField]; exists && test.oldSKU != nil {
 				assert.Equal(t, armcompute.DiskStorageAccountTypes(newSKU), migration.ToSKU)
-				assert.Equal(t, *test.oldSKU, migration.FromSKU)
+				assert.Equal(t, string(*test.oldSKU), migration.FromSKU)
 			}
 
 			// Verify migration started event was emitted for successful cases
@@ -1225,6 +1418,296 @@ func TestControllerModifyVolume(t *testing.T) {
 			d.GetMigrationMonitor().Stop()
 		}
 	}
+}
+
+func TestControllerModifyVolume_MigrationLifecycleAndTimeout(t *testing.T) {
+	// Save originals
+	origInterval := migrationCheckInterval
+	origMax := maxMigrationTimeout
+	origTimeouts := make(map[int64]time.Duration)
+	for k, v := range migrationTimeouts {
+		origTimeouts[k] = v
+	}
+	defer func() {
+		migrationCheckInterval = origInterval
+		maxMigrationTimeout = origMax
+		for k := range migrationTimeouts {
+			delete(migrationTimeouts, k)
+		}
+		for k, v := range origTimeouts {
+			migrationTimeouts[k] = v
+		}
+	}()
+
+	// Base shared timing (used by idempotent subtest)
+	baseInterval := 20 * time.Millisecond
+	baseSlabTimeout := 100 * time.Millisecond
+	baseMaxTimeout := 200 * time.Millisecond
+
+	setTiming := func(interval time.Duration, slabTimeout time.Duration, maxTimeout time.Duration) {
+		migrationCheckInterval = interval
+		migrationTimeouts[volumeSize2TB] = slabTimeout
+		maxMigrationTimeout = maxTimeout
+	}
+
+	// Apply base once
+	setTiming(baseInterval, baseSlabTimeout, baseMaxTimeout)
+
+	newEnv := func(ctrl *gomock.Controller, testVolumeStr string) (FakeDriver, *record.FakeRecorder,
+		*mockpersistentvolume.MockInterface, *mockpersistentvolumeclaim.MockPersistentVolumeClaimInterface,
+		*mock_diskclient.MockInterface, *v1.PersistentVolume, *v1.PersistentVolumeClaim) {
+
+		d := getFakeDriverWithKubeClient(ctrl)
+		rec := record.NewFakeRecorder(200)
+		d.SetMigrationMonitor(NewMigrationProgressMonitor(d.getCloud().KubeClient, rec, d.GetDiskController()))
+
+		// get the last token in testVolumeStr
+		volumeID := strings.Split(testVolumeStr, "/")[len(strings.Split(testVolumeStr, "/"))-1]
+		pvcID := fmt.Sprintf("pvc-%s", volumeID)
+
+		sizeGi := int64(10)
+		pv := &v1.PersistentVolume{
+			ObjectMeta: metav1.ObjectMeta{Name: volumeID},
+			Spec: v1.PersistentVolumeSpec{
+				Capacity: v1.ResourceList{
+					v1.ResourceName("storage"): *resource.NewQuantity(sizeGi*1024*1024*1024, resource.BinarySI),
+				},
+				ClaimRef: &v1.ObjectReference{Name: pvcID, Namespace: "default"},
+				PersistentVolumeSource: v1.PersistentVolumeSource{
+					CSI: &v1.CSIPersistentVolumeSource{
+						Driver:       "disk.csi.azure.com",
+						VolumeHandle: testVolumeStr,
+					},
+				},
+			},
+		}
+		pvc := &v1.PersistentVolumeClaim{
+			ObjectMeta: metav1.ObjectMeta{Name: pvcID, Namespace: "default"},
+			Spec: v1.PersistentVolumeClaimSpec{
+				VolumeName: pv.Name,
+				Resources: v1.VolumeResourceRequirements{
+					Requests: v1.ResourceList{
+						v1.ResourceName("storage"): *resource.NewQuantity(sizeGi*1024*1024*1024, resource.BinarySI),
+					},
+				},
+				AccessModes: []v1.PersistentVolumeAccessMode{v1.ReadWriteOnce},
+			},
+		}
+
+		coreMock := d.getCloud().KubeClient.CoreV1().(*mockcorev1.MockInterface)
+		pvIf := d.getCloud().KubeClient.CoreV1().PersistentVolumes().(*mockpersistentvolume.MockInterface)
+		pvcIf := mockpersistentvolumeclaim.NewMockPersistentVolumeClaimInterface(ctrl)
+
+		// Use gomock.Any() for namespace to avoid strict mismatch; set expectations BEFORE any call
+		coreMock.EXPECT().PersistentVolumes().Return(pvIf).AnyTimes()
+		coreMock.EXPECT().PersistentVolumeClaims(gomock.Any()).Return(pvcIf).AnyTimes()
+
+		pvIf.EXPECT().Get(gomock.Any(), pv.Name, gomock.Any()).Return(pv.DeepCopy(), nil).AnyTimes()
+		pvcIf.EXPECT().Get(gomock.Any(), pvc.Name, gomock.Any()).Return(pvc.DeepCopy(), nil).AnyTimes()
+
+		diskClient := mock_diskclient.NewMockInterface(ctrl)
+		d.getClientFactory().(*mock_azclient.MockClientFactory).EXPECT().
+			GetDiskClientForSub(gomock.Any()).Return(diskClient, nil).AnyTimes()
+
+		return d, rec, pvIf, pvcIf, diskClient, pv, pvc
+	}
+
+	t.Run("lifecycle: start -> milestones -> completion -> label removed", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+
+		testVolumeStr := fmt.Sprintf("%s%d", testVolumeID, 1)
+		d, rec, pvIf, _, diskClient, _, _ := newEnv(ctrl, testVolumeStr)
+
+		updateCount := atomic.Int32{}
+		pvIf.EXPECT().Update(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
+			func(_ context.Context, got *v1.PersistentVolume, _ metav1.UpdateOptions) (*v1.PersistentVolume, error) {
+				updateCount.Add(1)
+				return got, nil
+			},
+		).MinTimes(2)
+
+		progressSeq := []float32{0, 10, 20, 35, 40, 55, 60, 75, 80, 95, 100}
+		var idx int32
+		baseDisk := &armcompute.Disk{
+			ID:  to.Ptr(testVolumeStr),
+			SKU: &armcompute.DiskSKU{Name: to.Ptr(armcompute.DiskStorageAccountTypesPremiumLRS)},
+			Properties: &armcompute.DiskProperties{
+				DiskSizeGB: to.Ptr[int32](10),
+			},
+		}
+		diskClient.EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
+			func(_ context.Context, _, _ string) (*armcompute.Disk, error) {
+				i := int(atomic.AddInt32(&idx, 1)) - 1
+				if i >= len(progressSeq) {
+					i = len(progressSeq) - 1
+				}
+				cp := progressSeq[i]
+				dcopy := &armcompute.Disk{
+					ID:  baseDisk.ID,
+					SKU: baseDisk.SKU,
+					Properties: &armcompute.DiskProperties{
+						DiskSizeGB:        baseDisk.Properties.DiskSizeGB,
+						CompletionPercent: to.Ptr(cp),
+					},
+				}
+				return dcopy, nil
+			},
+		).AnyTimes()
+		diskClient.EXPECT().Patch(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(baseDisk, nil).AnyTimes()
+
+		req := &csi.ControllerModifyVolumeRequest{
+			VolumeId: testVolumeStr,
+			MutableParameters: map[string]string{
+				consts.SkuNameField: string(armcompute.DiskStorageAccountTypesPremiumV2LRS),
+			},
+		}
+		_, err := d.ControllerModifyVolume(context.Background(), req)
+		assert.NoError(t, err)
+
+		var events []string
+		timeout := time.After(maxMigrationTimeout)
+		for {
+			time.Sleep(migrationCheckInterval)
+			select {
+			case e := <-rec.Events:
+				events = append(events, e)
+				if strings.Contains(e, ReasonSKUMigrationCompleted) {
+					goto DONE
+				}
+			case <-timeout:
+				goto DONE
+			}
+		}
+	DONE:
+		startCnt := 0
+		compCnt := 0
+		milestones := map[int]bool{}
+		for _, e := range events {
+			if strings.Contains(e, ReasonSKUMigrationStarted) {
+				startCnt++
+			}
+			if strings.Contains(e, ReasonSKUMigrationProgress) {
+				for _, m := range []int{20, 40, 60, 80} {
+					if strings.Contains(e, fmt.Sprintf("%.1f%%", float32(m))) {
+						milestones[m] = true
+					}
+				}
+			}
+			if strings.Contains(e, ReasonSKUMigrationCompleted) {
+				compCnt++
+			}
+		}
+		assert.Equal(t, 1, startCnt, "expected one start event")
+		assert.True(t, milestones[20] && milestones[40] && milestones[60] && milestones[80], "missing milestone events: %v", events)
+		assert.Equal(t, 1, compCnt, "expected one completion event")
+		time.Sleep(100 * time.Millisecond)
+		assert.False(t, d.GetMigrationMonitor().IsMigrationActive(testVolumeStr))
+		assert.GreaterOrEqual(t, updateCount.Load(), int32(2))
+	})
+
+	t.Run("idempotent: second modify call while active does not duplicate task or emit second start", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+
+		testVolumeStr := fmt.Sprintf("%s%d", testVolumeID, 2)
+		d, rec, pvIf, _, diskClient, _, _ := newEnv(ctrl, testVolumeStr)
+
+		pvIf.EXPECT().Update(gomock.Any(), gomock.Any(), gomock.Any()).
+			Return(&v1.PersistentVolume{}, nil).MinTimes(1)
+
+		disk := &armcompute.Disk{
+			ID:  to.Ptr(testVolumeStr),
+			SKU: &armcompute.DiskSKU{Name: to.Ptr(armcompute.DiskStorageAccountTypesPremiumLRS)},
+			Properties: &armcompute.DiskProperties{
+				DiskSizeGB:        to.Ptr[int32](10),
+				CompletionPercent: to.Ptr(float32(10)),
+			},
+		}
+		diskClient.EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any()).Return(disk, nil).AnyTimes()
+		diskClient.EXPECT().Patch(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(disk, nil).AnyTimes()
+
+		req := &csi.ControllerModifyVolumeRequest{
+			VolumeId: testVolumeStr,
+			MutableParameters: map[string]string{
+				consts.SkuNameField: string(armcompute.DiskStorageAccountTypesPremiumV2LRS),
+			},
+		}
+		_, err := d.ControllerModifyVolume(context.Background(), req)
+		assert.NoError(t, err)
+		time.Sleep(60 * time.Millisecond)
+		_, err = d.ControllerModifyVolume(context.Background(), req)
+		assert.NoError(t, err)
+
+		starts := 0
+		time.Sleep(migrationCheckInterval)
+		for {
+			timeout := time.After(maxMigrationTimeout)
+			select {
+			case e := <-rec.Events:
+				if strings.Contains(e, ReasonSKUMigrationStarted) {
+					starts++
+				}
+			case <-timeout:
+				goto DONE
+			}
+		}
+	DONE:
+		assert.Equal(t, 1, starts)
+		d.GetMigrationMonitor().Stop()
+	})
+
+	t.Run("timeout: emits timeout event without completion", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+
+		testVolumeStr := fmt.Sprintf("%s%d", testVolumeID, 3)
+		d, rec, pvIf, _, diskClient, _, _ := newEnv(ctrl, testVolumeStr)
+
+		pvIf.EXPECT().Update(gomock.Any(), gomock.Any(), gomock.Any()).
+			Return(&v1.PersistentVolume{}, nil).MinTimes(1)
+
+		disk := &armcompute.Disk{
+			ID:  to.Ptr(testVolumeStr),
+			SKU: &armcompute.DiskSKU{Name: to.Ptr(armcompute.DiskStorageAccountTypesPremiumLRS)},
+			Properties: &armcompute.DiskProperties{
+				DiskSizeGB:        to.Ptr[int32](10),
+				CompletionPercent: to.Ptr(float32(10)),
+			},
+		}
+		diskClient.EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any()).Return(disk, nil).AnyTimes()
+		diskClient.EXPECT().Patch(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(disk, nil).AnyTimes()
+
+		req := &csi.ControllerModifyVolumeRequest{
+			VolumeId: testVolumeStr,
+			MutableParameters: map[string]string{
+				consts.SkuNameField: string(armcompute.DiskStorageAccountTypesPremiumV2LRS),
+			},
+		}
+		_, err := d.ControllerModifyVolume(context.Background(), req)
+		assert.NoError(t, err)
+
+		timeout := time.After(2 * time.Second)
+		var timeoutFound, completionFound bool
+		for !timeoutFound && !completionFound {
+			time.Sleep(migrationCheckInterval)
+			select {
+			case e := <-rec.Events:
+				if strings.Contains(e, ReasonSKUMigrationTimeout) {
+					timeoutFound = true
+				}
+				if strings.Contains(e, ReasonSKUMigrationCompleted) {
+					completionFound = true
+				}
+			case <-timeout:
+				goto DONE
+			}
+		}
+	DONE:
+		assert.True(t, timeoutFound, "expected timeout event")
+		assert.False(t, completionFound, "unexpected completion event")
+		d.GetMigrationMonitor().Stop()
+	})
 }
 
 func TestControllerPublishVolume(t *testing.T) {
@@ -3587,6 +4070,138 @@ func TestGetSourceDiskSize(t *testing.T) {
 	}
 	for _, tc := range testCases {
 		t.Run(tc.name, tc.testFunc)
+	}
+}
+
+func TestGetSnapshotSKU(t *testing.T) {
+	type testCase struct {
+		name            string
+		snapshotURI     string
+		setupMocks      func(factory *mock_azclient.MockClientFactory, snap *mock_snapshotclient.MockInterface)
+		expectedSKU     string
+		expectFactory   bool
+		expectErrSubstr string
+		expectGRPCCode  codes.Code
+	}
+	tests := []testCase{
+		{
+			name:          "success premium",
+			snapshotURI:   "/subscriptions/sub/resourceGroups/rg/providers/Microsoft.Compute/snapshots/snap",
+			expectFactory: true,
+			expectedSKU:   string(armcompute.SnapshotStorageAccountTypesPremiumLRS),
+			setupMocks: func(f *mock_azclient.MockClientFactory, s *mock_snapshotclient.MockInterface) {
+				f.EXPECT().GetSnapshotClientForSub("sub").Return(s, nil)
+				s.EXPECT().
+					Get(gomock.Any(), "rg", "snap").
+					Return(&armcompute.Snapshot{
+						SKU: &armcompute.SnapshotSKU{
+							Name: to.Ptr(armcompute.SnapshotStorageAccountTypesPremiumLRS),
+						},
+					}, nil)
+			},
+		},
+		{
+			name:            "bad URI",
+			snapshotURI:     "bad-uri",
+			expectErrSubstr: "invalid URI",
+			expectGRPCCode:  codes.NotFound,
+			setupMocks:      func(_ *mock_azclient.MockClientFactory, _ *mock_snapshotclient.MockInterface) {},
+		},
+		{
+			name:            "factory error -> empty string",
+			snapshotURI:     "/subscriptions/sub/resourceGroups/rg/providers/Microsoft.Compute/snapshots/snap",
+			expectFactory:   true,
+			expectedSKU:     "",
+			expectErrSubstr: "factory error",
+			setupMocks: func(f *mock_azclient.MockClientFactory, _ *mock_snapshotclient.MockInterface) {
+				f.EXPECT().GetSnapshotClientForSub("sub").Return(nil, fmt.Errorf("factory error"))
+			},
+		},
+		{
+			name:            "get error -> empty string",
+			snapshotURI:     "/subscriptions/sub/resourceGroups/rg/providers/Microsoft.Compute/snapshots/snap",
+			expectFactory:   true,
+			expectedSKU:     "",
+			expectErrSubstr: "get error",
+			setupMocks: func(f *mock_azclient.MockClientFactory, s *mock_snapshotclient.MockInterface) {
+				f.EXPECT().GetSnapshotClientForSub("sub").Return(s, nil)
+				s.EXPECT().Get(gomock.Any(), "rg", "snap").Return(nil, fmt.Errorf("get error"))
+			},
+		},
+		{
+			name:            "nil snapshot result -> empty string",
+			snapshotURI:     "/subscriptions/sub/resourceGroups/rg/providers/Microsoft.Compute/snapshots/snap",
+			expectFactory:   true,
+			expectedSKU:     "",
+			expectErrSubstr: "Snapshot property not found",
+			setupMocks: func(f *mock_azclient.MockClientFactory, s *mock_snapshotclient.MockInterface) {
+				f.EXPECT().GetSnapshotClientForSub("sub").Return(s, nil)
+				s.EXPECT().Get(gomock.Any(), "rg", "snap").Return(nil, nil)
+			},
+		},
+		{
+			name:            "nil SKU struct -> empty string",
+			snapshotURI:     "/subscriptions/sub/resourceGroups/rg/providers/Microsoft.Compute/snapshots/snap",
+			expectFactory:   true,
+			expectedSKU:     "",
+			expectErrSubstr: "Snapshot property not found",
+			setupMocks: func(f *mock_azclient.MockClientFactory, s *mock_snapshotclient.MockInterface) {
+				f.EXPECT().GetSnapshotClientForSub("sub").Return(s, nil)
+				s.EXPECT().Get(gomock.Any(), "rg", "snap").Return(&armcompute.Snapshot{}, nil)
+			},
+		},
+		{
+			name:            "nil SKU name -> empty string",
+			snapshotURI:     "/subscriptions/sub/resourceGroups/rg/providers/Microsoft.Compute/snapshots/snap",
+			expectFactory:   true,
+			expectedSKU:     "",
+			expectErrSubstr: "Snapshot property not found",
+			setupMocks: func(f *mock_azclient.MockClientFactory, s *mock_snapshotclient.MockInterface) {
+				f.EXPECT().GetSnapshotClientForSub("sub").Return(s, nil)
+				s.EXPECT().Get(gomock.Any(), "rg", "snap").Return(&armcompute.Snapshot{
+					SKU: &armcompute.SnapshotSKU{Name: nil},
+				}, nil)
+			},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			defer ctrl.Finish()
+			d, _ := NewFakeDriver(ctrl)
+
+			factory, ok := d.getClientFactory().(*mock_azclient.MockClientFactory)
+			if !ok {
+				t.Fatalf("clientFactory is not a *mock_azclient.MockClientFactory")
+			}
+			snapClient := mock_snapshotclient.NewMockInterface(ctrl)
+
+			if tc.setupMocks != nil {
+				tc.setupMocks(factory, snapClient)
+			}
+
+			invoke := func() (string, error) {
+				return d.getSnapshotSKU(context.Background(), tc.snapshotURI)
+			}
+
+			sku, err := invoke()
+
+			if tc.expectErrSubstr != "" {
+				require.Error(t, err)
+				require.Empty(t, sku)
+				require.Contains(t, err.Error(), tc.expectErrSubstr)
+				if tc.expectGRPCCode != 0 {
+					if st, ok := status.FromError(err); ok {
+						require.Equal(t, tc.expectGRPCCode, st.Code())
+					}
+				}
+			} else {
+				require.NoError(t, err)
+				require.NotNil(t, sku)
+				require.Equal(t, tc.expectedSKU, sku)
+			}
+		})
 	}
 }
 
