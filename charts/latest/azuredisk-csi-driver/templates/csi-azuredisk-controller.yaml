@@ -110,7 +110,7 @@ spec:
           args:
             - "-v=2"
             - "-csi-address=$(ADDRESS)"
-            - "-timeout=1200s"
+            - "-timeout=8m"
             - "-leader-election"
             - "--leader-election-namespace={{ .Release.Namespace }}"
             - "-worker-threads={{ .Values.controller.attacherWorkerThreads }}"
@@ -243,6 +243,7 @@ spec:
             - "--traffic-manager-port={{ .Values.controller.trafficManagerPort }}"
             - "--enable-otel-tracing={{ .Values.controller.otelTracing.enabled }}"
             - "--check-disk-lun-collision=true"
+            - "--detach-operation-min-timeout-ms={{ .Values.controller.detachOperationMinTimeoutInMs }}"
             {{- range $value := .Values.controller.extraArgs }}
             - {{ $value | quote }}
             {{- end }}
