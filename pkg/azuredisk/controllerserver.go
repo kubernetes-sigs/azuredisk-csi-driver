@@ -359,8 +359,8 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 	if strings.HasSuffix(strings.ToLower(string(skuName)), "zrs") {
 		klog.V(2).Infof("diskZone(%s) is reset as empty since disk(%s) is ZRS(%s)", diskZone, diskParams.DiskName, skuName)
 		diskZone = ""
-		// make volume scheduled on all 3 availability zones
-		for i := 1; i <= 3; i++ {
+		// make volume scheduled on all 4 availability zones
+		for i := 1; i <= 4; i++ {
 			topology := &csi.Topology{
 				Segments: map[string]string{topologyKey: fmt.Sprintf("%s-%d", diskParams.Location, i)},
 			}
