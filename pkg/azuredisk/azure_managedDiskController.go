@@ -49,10 +49,11 @@ type ManagedDiskController struct {
 
 func NewManagedDiskController(provider *provider.Cloud) *ManagedDiskController {
 	common := &controllerCommon{
-		cloud:                        provider,
-		lockMap:                      newLockMap(),
-		AttachDetachInitialDelayInMs: defaultAttachDetachInitialDelayInMs,
-		clientFactory:                provider.ComputeClientFactory,
+		cloud:                              provider,
+		lockMap:                            newLockMap(),
+		AttachDetachInitialDelayInMs:       defaultAttachDetachInitialDelayInMs,
+		DetachOperationMinTimeoutInSeconds: defaultDetachOperationMinTimeoutInSeconds,
+		clientFactory:                      provider.ComputeClientFactory,
 	}
 	getter := func(_ context.Context, _ string) (interface{}, error) { return nil, nil }
 	common.hitMaxDataDiskCountCache, _ = azcache.NewTimedCache(5*time.Minute, getter, false)

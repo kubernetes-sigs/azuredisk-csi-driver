@@ -208,6 +208,205 @@ func TestCommonAttachDisk(t *testing.T) {
 	}
 }
 
+func TestForceDetach(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	testCases := []struct {
+		desc                   string
+		vmList                 map[string]string
+		nodeName               types.NodeName
+		diskName               string
+		forceDetachBackoff     bool
+		detachOperationTimeout int
+		contextTimeout         time.Duration
+		firstDetachError       error
+		forceDetachError       error
+		expectedErr            bool
+		expectForceDetach      bool
+	}{
+		{
+			desc:                   "force detach should be called when regular detach times out",
+			vmList:                 map[string]string{"vm1": "PowerState/Running"},
+			nodeName:               "vm1",
+			diskName:               "disk1",
+			forceDetachBackoff:     true,
+			detachOperationTimeout: 1,               // 1s timeout
+			contextTimeout:         2 * time.Second, // not more than double the detach timeout
+			firstDetachError:       context.DeadlineExceeded,
+			forceDetachError:       nil,
+			expectedErr:            false,
+			expectForceDetach:      true,
+		},
+		{
+			desc:                   "detach operation timeout of more than half the context timeout should be respected",
+			vmList:                 map[string]string{"vm1": "PowerState/Running"},
+			nodeName:               "vm1",
+			diskName:               "disk1",
+			forceDetachBackoff:     true,
+			detachOperationTimeout: 2,               // 2s timeout
+			contextTimeout:         3 * time.Second, // not more than double the detach timeout
+			firstDetachError:       context.DeadlineExceeded,
+			forceDetachError:       nil,
+			expectedErr:            false,
+			expectForceDetach:      true,
+		},
+		{
+			desc:                   "force detach should be called with half context timeout when min detach timeout is less than half context timeout",
+			vmList:                 map[string]string{"vm1": "PowerState/Running"},
+			nodeName:               "vm1",
+			diskName:               "disk1",
+			forceDetachBackoff:     true,
+			detachOperationTimeout: 1,               // 1s timeout
+			contextTimeout:         3 * time.Second, // more than double the detach timeout
+			firstDetachError:       context.DeadlineExceeded,
+			forceDetachError:       nil,
+			expectedErr:            false,
+			expectForceDetach:      true,
+		},
+		{
+			desc:                   "force detach should be called when regular detach fails",
+			vmList:                 map[string]string{"vm1": "PowerState/Running"},
+			nodeName:               "vm1",
+			diskName:               "disk1",
+			forceDetachBackoff:     true,
+			detachOperationTimeout: 1,
+			contextTimeout:         2 * time.Second,
+			firstDetachError:       errors.New("detach failed"),
+			forceDetachError:       nil,
+			expectedErr:            false,
+			expectForceDetach:      true,
+		},
+		{
+			desc:                   "should return error when force detach also fails",
+			vmList:                 map[string]string{"vm1": "PowerState/Running"},
+			nodeName:               "vm1",
+			diskName:               "disk1",
+			forceDetachBackoff:     true,
+			detachOperationTimeout: 1,
+			contextTimeout:         2 * time.Second,
+			firstDetachError:       context.DeadlineExceeded,
+			forceDetachError:       errors.New("force detach failed"),
+			expectedErr:            true,
+			expectForceDetach:      true,
+		},
+		{
+			desc:                   "force detach should not be called when forceDetachBackoff is false",
+			vmList:                 map[string]string{"vm1": "PowerState/Running"},
+			nodeName:               "vm1",
+			diskName:               "disk1",
+			forceDetachBackoff:     false,
+			detachOperationTimeout: 1,
+			contextTimeout:         2 * time.Second,
+			firstDetachError:       errors.New("detach failed"),
+			forceDetachError:       nil,
+			expectedErr:            true,
+			expectForceDetach:      false,
+		},
+		{
+			desc:                   "successful regular detach should not trigger force detach",
+			vmList:                 map[string]string{"vm1": "PowerState/Running"},
+			nodeName:               "vm1",
+			diskName:               "disk1",
+			forceDetachBackoff:     true,
+			detachOperationTimeout: 1,
+			contextTimeout:         2 * time.Second,
+			firstDetachError:       nil,
+			forceDetachError:       nil,
+			expectedErr:            false,
+			expectForceDetach:      false,
+		},
+	}
+
+	for i, test := range testCases {
+		t.Run(test.desc, func(t *testing.T) {
+			ctx, cancel := context.WithTimeout(context.Background(), test.contextTimeout)
+			defer cancel()
+			testCloud := provider.GetTestCloud(ctrl)
+			common := &controllerCommon{
+				cloud:                              testCloud,
+				lockMap:                            newLockMap(),
+				ForceDetachBackoff:                 test.forceDetachBackoff,
+				DetachOperationMinTimeoutInSeconds: test.detachOperationTimeout,
+				DisableDiskLunCheck:                true, // Disable lun check to simplify test
+			}
+
+			diskURI := fmt.Sprintf("/subscriptions/%s/resourceGroups/%s/providers/Microsoft.Compute/disks/%s",
+				testCloud.SubscriptionID, testCloud.ResourceGroup, test.diskName)
+
+			expectedVMs := setTestVirtualMachines(testCloud, test.vmList, false)
+			mockVMClient := testCloud.ComputeClientFactory.GetVirtualMachineClient().(*mockvmclient.MockInterface)
+
+			for _, vm := range expectedVMs {
+				mockVMClient.EXPECT().Get(gomock.Any(), testCloud.ResourceGroup, *vm.Name, gomock.Any()).Return(&vm, nil).AnyTimes()
+			}
+
+			// Set up expectations for CreateOrUpdate calls
+			callCount := 0
+			if test.expectForceDetach {
+				// Expect two calls: regular detach and force detach
+				mockVMClient.EXPECT().CreateOrUpdate(gomock.Any(), testCloud.ResourceGroup, gomock.Any(), gomock.Any()).DoAndReturn(
+					func(ctx context.Context, _ string, _ string, vm armcompute.VirtualMachine) (*armcompute.VirtualMachine, error) {
+						callCount++
+						if callCount == 1 {
+							// First call is regular detach
+							// Verify that context timeout is at least the min detach timeout
+							contextDeadline, ok := ctx.Deadline()
+							assert.True(t, ok, "Context should have a deadline")
+							assert.True(t, contextDeadline.After(time.Now()), "Context deadline should be in the future")
+							assert.True(t, time.Until(contextDeadline) >= time.Duration(test.detachOperationTimeout)*time.Millisecond-100*time.Millisecond, "Context deadline should exceed min detach timeout.")
+							assert.True(t, time.Until(contextDeadline) >= test.contextTimeout/2-100*time.Millisecond, "Context deadline should be at least half of context timeout.")
+							// Simulate timeout by sleeping longer than context deadline
+							if test.firstDetachError == context.DeadlineExceeded {
+								time.Sleep(time.Until(contextDeadline.Add(50 * time.Millisecond)))
+							}
+							return nil, test.firstDetachError
+						} else if callCount == 2 {
+							// Second call is force detach
+							// Verify force detach parameter is set
+							if vm.Properties != nil && vm.Properties.StorageProfile != nil {
+								for _, disk := range vm.Properties.StorageProfile.DataDisks {
+									if disk.Name != nil && *disk.Name == test.diskName {
+										assert.NotNil(t, disk.DetachOption, "DetachOption should be set for force detach")
+										if disk.DetachOption != nil {
+											assert.Equal(t, armcompute.DiskDetachOptionTypesForceDetach, *disk.DetachOption, "DetachOption should be ForceDetach")
+										}
+									}
+								}
+							}
+							return nil, test.forceDetachError
+						}
+						return nil, errors.New("unexpected call")
+					}).Times(2)
+			} else {
+				// Expect only one call for regular detach
+				mockVMClient.EXPECT().CreateOrUpdate(gomock.Any(), testCloud.ResourceGroup, gomock.Any(), gomock.Any()).Return(nil, test.firstDetachError).Times(1)
+			}
+
+			// Create context with custom timeout if specified
+			testCtx := ctx
+			if test.contextTimeout > 0 {
+				testCtx, cancel = context.WithTimeout(ctx, test.contextTimeout)
+				defer cancel()
+			}
+
+			err := common.DetachDisk(testCtx, test.diskName, diskURI, test.nodeName)
+
+			if test.expectedErr {
+				assert.Error(t, err, "TestCase[%d]: %s", i, test.desc)
+			} else {
+				assert.NoError(t, err, "TestCase[%d]: %s", i, test.desc)
+			}
+
+			if test.expectForceDetach {
+				assert.Equal(t, 2, callCount, "TestCase[%d]: %s - Expected force detach to be called", i, test.desc)
+			} else {
+				assert.LessOrEqual(t, callCount, 1, "TestCase[%d]: %s - Force detach should not be called", i, test.desc)
+			}
+		})
+	}
+}
+
 func TestCommonDetachDisk(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
