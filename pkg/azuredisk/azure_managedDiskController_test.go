@@ -265,11 +265,11 @@ func TestCreateManagedDisk(t *testing.T) {
 		testCloud := provider.GetTestCloud(ctrl)
 
 		common := &controllerCommon{
-			cloud:                         testCloud,
-			lockMap:                       newLockMap(),
-			AttachDetachInitialDelayInMs:  defaultAttachDetachInitialDelayInMs,
-			DetachOperationMinTimeoutInMs: defaultDetachOperationMinTimeoutInMs,
-			clientFactory:                 testCloud.ComputeClientFactory,
+			cloud:                              testCloud,
+			lockMap:                            newLockMap(),
+			AttachDetachInitialDelayInMs:       defaultAttachDetachInitialDelayInMs,
+			DetachOperationMinTimeoutInSeconds: defaultDetachOperationMinTimeoutInSeconds,
+			clientFactory:                      testCloud.ComputeClientFactory,
 		}
 
 		managedDiskController := &ManagedDiskController{common}
@@ -331,11 +331,11 @@ func TestCreateManagedDiskWithExtendedLocation(t *testing.T) {
 	}
 
 	common := &controllerCommon{
-		cloud:                         testCloud,
-		lockMap:                       newLockMap(),
-		AttachDetachInitialDelayInMs:  defaultAttachDetachInitialDelayInMs,
-		DetachOperationMinTimeoutInMs: defaultDetachOperationMinTimeoutInMs,
-		clientFactory:                 testCloud.ComputeClientFactory,
+		cloud:                              testCloud,
+		lockMap:                            newLockMap(),
+		AttachDetachInitialDelayInMs:       defaultAttachDetachInitialDelayInMs,
+		DetachOperationMinTimeoutInSeconds: defaultDetachOperationMinTimeoutInSeconds,
+		clientFactory:                      testCloud.ComputeClientFactory,
 	}
 
 	managedDiskController := &ManagedDiskController{common}
@@ -399,11 +399,11 @@ func TestDeleteManagedDisk(t *testing.T) {
 		testCloud := provider.GetTestCloud(ctrl)
 
 		common := &controllerCommon{
-			cloud:                         testCloud,
-			lockMap:                       newLockMap(),
-			AttachDetachInitialDelayInMs:  defaultAttachDetachInitialDelayInMs,
-			DetachOperationMinTimeoutInMs: defaultDetachOperationMinTimeoutInMs,
-			clientFactory:                 testCloud.ComputeClientFactory,
+			cloud:                              testCloud,
+			lockMap:                            newLockMap(),
+			AttachDetachInitialDelayInMs:       defaultAttachDetachInitialDelayInMs,
+			DetachOperationMinTimeoutInSeconds: defaultDetachOperationMinTimeoutInSeconds,
+			clientFactory:                      testCloud.ComputeClientFactory,
 		}
 
 		managedDiskController := &ManagedDiskController{common}

@@ -231,7 +231,7 @@ func TestForceDetach(t *testing.T) {
 			nodeName:               "vm1",
 			diskName:               "disk1",
 			forceDetachBackoff:     true,
-			detachOperationTimeout: 1000,            // 1s timeout
+			detachOperationTimeout: 1,               // 1s timeout
 			contextTimeout:         2 * time.Second, // not more than double the detach timeout
 			firstDetachError:       context.DeadlineExceeded,
 			forceDetachError:       nil,
@@ -244,8 +244,8 @@ func TestForceDetach(t *testing.T) {
 			nodeName:               "vm1",
 			diskName:               "disk1",
 			forceDetachBackoff:     true,
-			detachOperationTimeout: 1500,            // 1.5s timeout
-			contextTimeout:         2 * time.Second, // not more than double the detach timeout
+			detachOperationTimeout: 2,               // 2s timeout
+			contextTimeout:         3 * time.Second, // not more than double the detach timeout
 			firstDetachError:       context.DeadlineExceeded,
 			forceDetachError:       nil,
 			expectedErr:            false,
@@ -257,7 +257,7 @@ func TestForceDetach(t *testing.T) {
 			nodeName:               "vm1",
 			diskName:               "disk1",
 			forceDetachBackoff:     true,
-			detachOperationTimeout: 1000,            // 1s timeout
+			detachOperationTimeout: 1,               // 1s timeout
 			contextTimeout:         3 * time.Second, // more than double the detach timeout
 			firstDetachError:       context.DeadlineExceeded,
 			forceDetachError:       nil,
@@ -270,7 +270,7 @@ func TestForceDetach(t *testing.T) {
 			nodeName:               "vm1",
 			diskName:               "disk1",
 			forceDetachBackoff:     true,
-			detachOperationTimeout: 1000,
+			detachOperationTimeout: 1,
 			contextTimeout:         2 * time.Second,
 			firstDetachError:       errors.New("detach failed"),
 			forceDetachError:       nil,
@@ -283,7 +283,7 @@ func TestForceDetach(t *testing.T) {
 			nodeName:               "vm1",
 			diskName:               "disk1",
 			forceDetachBackoff:     true,
-			detachOperationTimeout: 1000,
+			detachOperationTimeout: 1,
 			contextTimeout:         2 * time.Second,
 			firstDetachError:       context.DeadlineExceeded,
 			forceDetachError:       errors.New("force detach failed"),
@@ -296,7 +296,7 @@ func TestForceDetach(t *testing.T) {
 			nodeName:               "vm1",
 			diskName:               "disk1",
 			forceDetachBackoff:     false,
-			detachOperationTimeout: 100,
+			detachOperationTimeout: 1,
 			contextTimeout:         2 * time.Second,
 			firstDetachError:       errors.New("detach failed"),
 			forceDetachError:       nil,
@@ -309,7 +309,7 @@ func TestForceDetach(t *testing.T) {
 			nodeName:               "vm1",
 			diskName:               "disk1",
 			forceDetachBackoff:     true,
-			detachOperationTimeout: 1000,
+			detachOperationTimeout: 1,
 			contextTimeout:         2 * time.Second,
 			firstDetachError:       nil,
 			forceDetachError:       nil,
@@ -324,11 +324,11 @@ func TestForceDetach(t *testing.T) {
 			defer cancel()
 			testCloud := provider.GetTestCloud(ctrl)
 			common := &controllerCommon{
-				cloud:                         testCloud,
-				lockMap:                       newLockMap(),
-				ForceDetachBackoff:            test.forceDetachBackoff,
-				DetachOperationMinTimeoutInMs: test.detachOperationTimeout,
-				DisableDiskLunCheck:           true, // Disable lun check to simplify test
+				cloud:                              testCloud,
+				lockMap:                            newLockMap(),
+				ForceDetachBackoff:                 test.forceDetachBackoff,
+				DetachOperationMinTimeoutInSeconds: test.detachOperationTimeout,
+				DisableDiskLunCheck:                true, // Disable lun check to simplify test
 			}
 
 			diskURI := fmt.Sprintf("/subscriptions/%s/resourceGroups/%s/providers/Microsoft.Compute/disks/%s",

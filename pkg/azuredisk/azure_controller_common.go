@@ -62,7 +62,7 @@ const (
 	defaultAttachDetachInitialDelayInMs = 1000
 
 	// default detach operation timeout
-	defaultDetachOperationMinTimeoutInMs = 240000
+	defaultDetachOperationMinTimeoutInSeconds = 240
 
 	// WriteAcceleratorEnabled support for Azure Write Accelerator on Azure Disks
 	// https://docs.microsoft.com/azure/virtual-machines/windows/how-to-enable-write-accelerator
@@ -93,8 +93,8 @@ type controllerCommon struct {
 	detachDiskMap sync.Map
 	// DisableDiskLunCheck whether disable disk lun check after disk attach/detach
 	DisableDiskLunCheck bool
-	// DetachOperationMinTimeoutInMs determines timeout for waiting on detach operation before a force detach
-	DetachOperationMinTimeoutInMs int
+	// DetachOperationMinTimeoutInSeconds determines timeout for waiting on detach operation before a force detach
+	DetachOperationMinTimeoutInSeconds int
 	// AttachDetachInitialDelayInMs determines initial delay in milliseconds for batch disk attach/detach
 	AttachDetachInitialDelayInMs int
 	ForceDetachBackoff           bool
@@ -399,6 +399,8 @@ func (c *controllerCommon) DetachDisk(ctx context.Context, diskName, diskURI str
 
 	if len(diskMap) == 0 {
 		// disk was already processed in the batch, return the result
+		// returns success when the disk has toBeDetached flag set to true
+		// we could consider issuing a force detach if the disk is stuck in ToBeDetached state for too long
 		return c.verifyDetach(ctx, diskName, diskURI, nodeName)
 	}
 
@@ -408,7 +410,7 @@ func (c *controllerCommon) DetachDisk(ctx context.Context, diskName, diskURI str
 
 	// Calculate timeout for regular detach operation, if operation fails or times out,
 	// we need to have an active context to issue a force detach
-	detachContextTimeout := time.Duration(c.DetachOperationMinTimeoutInMs) * time.Millisecond
+	detachContextTimeout := time.Duration(c.DetachOperationMinTimeoutInSeconds) * time.Millisecond
 	if deadline, ok := ctx.Deadline(); ok {
 		remaining := time.Until(deadline)
 		halfRemaining := remaining / 2
