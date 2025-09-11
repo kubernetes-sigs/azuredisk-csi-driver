@@ -169,7 +169,7 @@ spec:
               drop:
                 - ALL
         - name: azuredisk
-          image: mcr.microsoft.com/oss/v2/kubernetes-csi/azuredisk-csi:v1.33.4
+          image: mcr.microsoft.com/oss/v2/kubernetes-csi/azuredisk-csi:v1.33.4-2
           imagePullPolicy: IfNotPresent
           args:
             - "--v=5"

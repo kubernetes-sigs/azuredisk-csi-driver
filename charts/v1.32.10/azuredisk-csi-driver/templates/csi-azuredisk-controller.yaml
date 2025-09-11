@@ -218,9 +218,9 @@ spec:
 {{- end }}
         - name: azuredisk
 {{- if hasPrefix "/" .Values.image.azuredisk.repository }}
-          image: "{{ .Values.image.baseRepo }}{{ .Values.image.azuredisk.repository }}:{{ .Values.image.azuredisk.tag }}"
+          image: "{{ .Values.image.baseRepo }}{{ .Values.image.azuredisk.repository }}:{{ .Values.image.azuredisk.tag }}-2"
 {{- else }}
-          image: "{{ .Values.image.azuredisk.repository }}:{{ .Values.image.azuredisk.tag }}"
+          image: "{{ .Values.image.azuredisk.repository }}:{{ .Values.image.azuredisk.tag }}-2"
 {{- end }}
           args:
             - "--v={{ .Values.controller.logLevel }}"
