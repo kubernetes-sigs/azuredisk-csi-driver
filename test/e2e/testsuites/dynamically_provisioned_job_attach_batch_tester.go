@@ -18,6 +18,7 @@ package testsuites
 
 import (
 	"context"
+	"fmt"
 	"sync"
 
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azuredisk"
@@ -101,6 +102,26 @@ func (t *DynamicallyProvisionedAttachBatchTest) Run(ctx context.Context, client 
 		tjobs, err := client.BatchV1().Jobs(namespace.Name).List(context.TODO(), metav1.ListOptions{})
 		framework.ExpectNoError(err)
 		if len(tjobs.Items) > 0 {
+			tpods, err := client.CoreV1().Pods(namespace.Name).List(context.TODO(), metav1.ListOptions{})
+			framework.ExpectNoError(err)
+			if len(tpods.Items) > 0 {
+				for _, pod := range tpods.Items {
+					events, err := client.CoreV1().Events(pod.Namespace).List(
+						context.TODO(),
+						metav1.ListOptions{
+							FieldSelector: fmt.Sprintf(
+								"involvedObject.kind=Pod,involvedObject.name=%s,involvedObject.namespace=%s",
+								pod.Name,
+								pod.Namespace,
+							),
+						},
+					)
+					framework.ExpectNoError(err)
+					for _, e := range events.Items {
+						framework.Logf("Event: %s %s %s", e.Reason, e.Type, e.Message)
+					}
+				}
+			}
 			framework.Failf("There are still jobs left in the namespace %s", namespace.Name)
 		}
 	}

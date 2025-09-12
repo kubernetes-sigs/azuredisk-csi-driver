@@ -1386,7 +1386,6 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 	})
 
 	ginkgo.It("should succeed without MaximumDataDisksExceeded", func(ctx ginkgo.SpecContext) {
-		ginkgo.Skip("skip this flaky test case")
 		// there's cleanup issue of PVs with this test in the Windows with hostprocess, skip it for now
 		skipIfTestingInWindowsCluster()
 		skipIfOnAzureStackCloud()
