@@ -45,7 +45,15 @@ func (t *DynamicallyProvisionedAttachBatchTest) Run(ctx context.Context, client 
 		nodes, err := client.CoreV1().Nodes().List(context.TODO(), metav1.ListOptions{})
 		framework.ExpectNoError(err)
 		for _, node := range nodes.Items {
-			if !node.Spec.Unschedulable {
+			noSchedule := false
+			for _, taint := range node.Spec.Taints {
+				if taint.Effect == v1.TaintEffectNoSchedule {
+					noSchedule = true
+					break
+				}
+			}
+
+			if !noSchedule && !node.Spec.Unschedulable {
 				_, instanceType, err := azuredisk.GetNodeInfoFromLabels(ctx, string(node.Name), client)
 				framework.ExpectNoError(err)
 				if instanceType != "" {
@@ -60,6 +68,9 @@ func (t *DynamicallyProvisionedAttachBatchTest) Run(ctx context.Context, client 
 			}
 		}
 		framework.Logf("maximum number of disks: %d", numOfJobs)
+		if numOfJobs == 0 {
+			ginkgo.Skip("no schedulable nodes found")
+		}
 		numOfJobs += 5
 		framework.Logf("number of jobs to run: %d", numOfJobs)
 
