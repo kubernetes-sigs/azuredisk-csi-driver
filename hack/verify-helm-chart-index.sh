@@ -19,6 +19,7 @@ set -euo pipefail
 readonly PKG_ROOT="$(git rev-parse --show-toplevel)"
 
 INDEX=${PKG_ROOT}/charts/index.yaml
+ignore_filename=""
 
 function check_url() {  
     url=$1
@@ -35,6 +36,12 @@ function check_url() {
 		echo "$local does not exist"
 		# ignore url which contains latest
 		if [[ "$url" == *"latest"* ]]; then
+			echo "ignore $url"
+			ignore_filename=$(basename "$url")
+			return
+		fi
+		# if ignore_filename is set, ignore url which contains ignore_filename
+		if [[ -n "${ignore_filename:-}" && "$url" == *"$ignore_filename"* ]]; then
 			echo "ignore $url"
 			return
 		fi
