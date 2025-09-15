@@ -129,7 +129,7 @@ func (t *DynamicallyProvisionedAttachBatchTest) Run(ctx context.Context, client 
 					)
 					framework.ExpectNoError(err)
 					for _, e := range events.Items {
-						framework.Logf("Event: %s %s %s", e.Reason, e.Type, e.Message)
+						framework.Logf("Event on pod %s: %s %s %s", pod.Name, e.Reason, e.Type, e.Message)
 					}
 				}
 			}
