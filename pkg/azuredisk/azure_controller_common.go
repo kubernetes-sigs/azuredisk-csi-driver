@@ -62,6 +62,9 @@ const (
 	// default initial delay in milliseconds for batch disk attach/detach
 	defaultAttachDetachInitialDelayInMs = 1000
 
+	// default detach operation timeout
+	defaultDetachOperationMinTimeoutInSeconds = 240
+
 	// WriteAcceleratorEnabled support for Azure Write Accelerator on Azure Disks
 	// https://docs.microsoft.com/azure/virtual-machines/windows/how-to-enable-write-accelerator
 	WriteAcceleratorEnabled = "writeacceleratorenabled"
@@ -91,6 +94,8 @@ type controllerCommon struct {
 	detachDiskMap sync.Map
 	// DisableDiskLunCheck whether disable disk lun check after disk attach/detach
 	DisableDiskLunCheck bool
+	// DetachOperationMinTimeoutInSeconds determines timeout for waiting on detach operation before a force detach
+	DetachOperationMinTimeoutInSeconds int
 	// AttachDetachInitialDelayInMs determines initial delay in milliseconds for batch disk attach/detach
 	AttachDetachInitialDelayInMs int
 	ForceDetachBackoff           bool
@@ -395,6 +400,8 @@ func (c *controllerCommon) DetachDisk(ctx context.Context, diskName, diskURI str
 
 	if len(diskMap) == 0 {
 		// disk was already processed in the batch, return the result
+		// returns success when the disk has toBeDetached flag set to true
+		// we could consider issuing a force detach if the disk is stuck in ToBeDetached state for too long
 		return c.verifyDetach(ctx, diskName, diskURI, nodeName)
 	}
 
@@ -402,7 +409,20 @@ func (c *controllerCommon) DetachDisk(ctx context.Context, diskName, diskURI str
 	c.diskStateMap.Store(formattedDiskURI, "detaching")
 	defer c.diskStateMap.Delete(formattedDiskURI)
 
-	if err = vmset.DetachDisk(ctx, nodeName, diskMap, false); err != nil {
+	// Calculate timeout for regular detach operation, if operation fails or times out,
+	// we need to have an active context to issue a force detach
+	detachContextTimeout := time.Duration(c.DetachOperationMinTimeoutInSeconds) * time.Second
+	if deadline, ok := ctx.Deadline(); ok {
+		remaining := time.Until(deadline)
+		halfRemaining := remaining / 2
+		if halfRemaining > detachContextTimeout {
+			detachContextTimeout = halfRemaining
+		}
+	}
+	detachCtx, cancel := context.WithTimeout(ctx, detachContextTimeout)
+	defer cancel()
+
+	if err = vmset.DetachDisk(detachCtx, nodeName, diskMap, false); err != nil {
 		if isInstanceNotFoundError(err) {
 			// if host doesn't exist, no need to detach
 			klog.Warningf("azureDisk - got InstanceNotFoundError(%v), DetachDisk(%s) will assume disk is already detached",

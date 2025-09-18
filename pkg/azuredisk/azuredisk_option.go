@@ -39,39 +39,40 @@ type DriverOptions struct {
 	EnableMinimumRetryAfter    bool
 
 	//only used in v1
-	EnableDiskOnlineResize            bool
-	AllowEmptyCloudConfig             bool
-	EnableListVolumes                 bool
-	EnableListSnapshots               bool
-	SupportZone                       bool
-	GetNodeInfoFromLabels             bool
-	EnableDiskCapacityCheck           bool
-	EnableTrafficManager              bool
-	TrafficManagerPort                int64
-	AttachDetachInitialDelayInMs      int64
-	VMSSCacheTTLInSeconds             int64
-	ListVMSSWithInstanceView          bool
-	VolStatsCacheExpireInMinutes      int64
-	GetDiskTimeoutInSeconds           int64
-	VMType                            string
-	EnableWindowsHostProcess          bool
-	ListDisksUsingWinCIM              bool
-	GetNodeIDFromIMDS                 bool
-	WaitForSnapshotReady              bool
-	CheckDiskLUNCollision             bool
-	ForceDetachBackoff                bool
-	CheckDiskCountForBatching         bool
-	WaitForDetach                     bool
-	Kubeconfig                        string
-	Endpoint                          string
-	DisableAVSetNodes                 bool
-	RemoveNotReadyTaint               bool
-	NeverStopTaintRemoval             bool
-	TaintRemovalInitialDelayInSeconds int64
-	MaxConcurrentFormat               int64
-	ConcurrentFormatTimeout           int64
-	GoMaxProcs                        int64
-	EnableMigrationMonitor            bool
+	EnableDiskOnlineResize             bool
+	AllowEmptyCloudConfig              bool
+	EnableListVolumes                  bool
+	EnableListSnapshots                bool
+	SupportZone                        bool
+	GetNodeInfoFromLabels              bool
+	EnableDiskCapacityCheck            bool
+	EnableTrafficManager               bool
+	TrafficManagerPort                 int64
+	AttachDetachInitialDelayInMs       int64
+	DetachOperationMinTimeoutInSeconds int64
+	VMSSCacheTTLInSeconds              int64
+	ListVMSSWithInstanceView           bool
+	VolStatsCacheExpireInMinutes       int64
+	GetDiskTimeoutInSeconds            int64
+	VMType                             string
+	EnableWindowsHostProcess           bool
+	ListDisksUsingWinCIM               bool
+	GetNodeIDFromIMDS                  bool
+	WaitForSnapshotReady               bool
+	CheckDiskLUNCollision              bool
+	ForceDetachBackoff                 bool
+	CheckDiskCountForBatching          bool
+	WaitForDetach                      bool
+	Kubeconfig                         string
+	Endpoint                           string
+	DisableAVSetNodes                  bool
+	RemoveNotReadyTaint                bool
+	NeverStopTaintRemoval              bool
+	TaintRemovalInitialDelayInSeconds  int64
+	MaxConcurrentFormat                int64
+	ConcurrentFormatTimeout            int64
+	GoMaxProcs                         int64
+	EnableMigrationMonitor             bool
 }
 
 func (o *DriverOptions) AddFlags() *flag.FlagSet {
@@ -102,6 +103,7 @@ func (o *DriverOptions) AddFlags() *flag.FlagSet {
 	fs.BoolVar(&o.EnableTrafficManager, "enable-traffic-manager", false, "boolean flag to enable traffic manager")
 	fs.Int64Var(&o.TrafficManagerPort, "traffic-manager-port", 7788, "default traffic manager port")
 	fs.Int64Var(&o.AttachDetachInitialDelayInMs, "attach-detach-initial-delay-ms", 1000, "initial delay in milliseconds for batch disk attach/detach")
+	fs.Int64Var(&o.DetachOperationMinTimeoutInSeconds, "detach-operation-min-timeout-seconds", 240, "minimum detach operation timeout in seconds")
 	fs.Int64Var(&o.VMSSCacheTTLInSeconds, "vmss-cache-ttl-seconds", -1, "vmss cache TTL in seconds (600 by default)")
 	fs.BoolVar(&o.ListVMSSWithInstanceView, "list-vmss-with-instance-view", false, "boolean flag to enable vmss cache with instance view")
 	fs.Int64Var(&o.VolStatsCacheExpireInMinutes, "vol-stats-cache-expire-in-minutes", 10, "The cache expire time in minutes for volume stats cache")
