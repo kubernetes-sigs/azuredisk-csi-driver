@@ -893,7 +893,7 @@ func (t *TestJob) WaitForAttachBatchCheck(ctx context.Context) error {
 	jobPods, err := e2epod.WaitForPodsWithLabel(ctx, t.client, t.namespace.Name, selector)
 	framework.ExpectNoError(err)
 
-	err = waitForPodEvent(ctx, t.client, &jobPods.Items[0], "The maximum number of data disks allowed to be attached to a VM of this size is", 3*time.Minute)
+	err = waitForPodEvent(ctx, t.client, &jobPods.Items[0], "The maximum number of data disks allowed to be attached to a VM of this size is", 10*time.Minute)
 	if err == nil {
 		return fmt.Errorf("pod %q hit MaximumDataDisksExceeded issue during attaching", jobPods.Items[0].Name)
 	}
