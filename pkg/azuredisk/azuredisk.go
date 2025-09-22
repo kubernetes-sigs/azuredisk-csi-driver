@@ -304,8 +304,12 @@ func NewDriver(options *DriverOptions) *Driver {
 			// Recover any ongoing migrations after restart
 			go func() {
 				time.Sleep(30 * time.Second) // Wait for controller to fully start
-				if err := driver.recoverMigrationMonitorsFromLabels(context.Background()); err != nil {
-					klog.Errorf("Failed to recover migration monitors: %v", err)
+				// Periodically check every 10 minutes - in worst case kubernetes administrator can add the label to subscribe the events
+				for {
+					if err := driver.recoverMigrationMonitorsFromLabels(context.Background()); err != nil {
+						klog.Errorf("Failed to recover migration monitors: %v", err)
+					}
+					time.Sleep(10 * time.Minute)
 				}
 			}()
 		}
