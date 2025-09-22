@@ -36,6 +36,7 @@ import (
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/timestamppb"
 	v1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/tools/record"
@@ -794,6 +795,254 @@ collect:
 
 	if !hasStart || !hasProgress || !hasCompleted {
 		t.Fatalf("expected start+progress+completed events, got: %v", events)
+	}
+
+	d.GetMigrationMonitor().Stop()
+}
+
+func TestCreateVolume_RecoveryLoopStartsMigrationAfterInitialMonitorUnavailable(t *testing.T) {
+	origInterval := migrationCheckInterval
+	defer func() { migrationCheckInterval = origInterval }()
+	migrationCheckInterval = 25 * time.Millisecond
+
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	d := getFakeDriverWithKubeClient(ctrl)
+	// Simulate transient unavailability – monitor not ready at provisioning time
+	d.SetMigrationMonitor(nil)
+
+	snapshotID := "/subscriptions/sub/resourceGroups/rg/providers/Microsoft.Compute/snapshots/snap-recov1"
+	volName := "pv-recover-transient-start"
+	sizeGi := int64(10)
+	capBytes := sizeGi * 1024 * 1024 * 1024
+	diskURI := fmt.Sprintf("/subscriptions/sub/resourceGroups/rg/providers/Microsoft.Compute/disks/%s", volName)
+
+	// Mock disk & snapshot clients
+	diskClient := mock_diskclient.NewMockInterface(ctrl)
+	d.getClientFactory().(*mock_azclient.MockClientFactory).EXPECT().
+		GetDiskClientForSub(gomock.Any()).Return(diskClient, nil).AnyTimes()
+
+	snapshotClient := mock_snapshotclient.NewMockInterface(ctrl)
+	d.getClientFactory().(*mock_azclient.MockClientFactory).EXPECT().
+		GetSnapshotClientForSub(gomock.Any()).
+		Return(snapshotClient, nil).AnyTimes()
+
+	// Snapshot SKU (source = Premium_LRS)
+	snapshotClient.EXPECT().Get(gomock.Any(), "rg", "snap-recov1").Return(
+		&armcompute.Snapshot{
+			Name: to.Ptr("snap-recov1"),
+			SKU:  &armcompute.SnapshotSKU{Name: to.Ptr(armcompute.SnapshotStorageAccountTypesPremiumLRS)},
+			Properties: &armcompute.SnapshotProperties{
+				CreationData: &armcompute.CreationData{},
+			},
+		}, nil).AnyTimes()
+
+	// Track creation & progress
+	var createDone atomic.Bool
+	var progressPolls atomic.Int32
+
+	// GET behavior:
+	//  - Before CreateOrUpdate: return NotFound
+	//  - After CreateOrUpdate: return disk with ProvisioningState=Succeeded and evolving CompletionPercent
+	diskClient.EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any()).
+		DoAndReturn(func(_ context.Context, _ string, _ string) (*armcompute.Disk, error) {
+			if !createDone.Load() {
+				// Simulate disk not existing yet
+				return nil, apierrors.NewInternalError(fmt.Errorf("transient error"))
+			}
+			p := progressPolls.Add(1)
+			var pct float32
+			if p >= 5 {
+				pct = 100
+			} else {
+				pct = 0
+			}
+			return &armcompute.Disk{
+				ID:  to.Ptr(diskURI),
+				SKU: &armcompute.DiskSKU{Name: to.Ptr(armcompute.DiskStorageAccountTypesPremiumLRS)},
+				Properties: &armcompute.DiskProperties{
+					DiskSizeGB:        to.Ptr[int32](int32(sizeGi)),
+					ProvisioningState: to.Ptr("Succeeded"),
+					CompletionPercent: to.Ptr(pct),
+				},
+			}, nil
+		}).AnyTimes()
+
+	// CreateOrUpdate sets createDone
+	diskClient.EXPECT().CreateOrUpdate(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+		DoAndReturn(func(_ context.Context, _ string, _ string, _ armcompute.Disk) (*armcompute.Disk, error) {
+			return &armcompute.Disk{
+				ID:  to.Ptr(diskURI),
+				SKU: &armcompute.DiskSKU{Name: to.Ptr(armcompute.DiskStorageAccountTypesPremiumLRS)},
+				Properties: &armcompute.DiskProperties{
+					DiskSizeGB:        to.Ptr[int32](int32(sizeGi)),
+					ProvisioningState: to.Ptr("Succeeded"),
+				},
+			}, nil
+		}).Times(1)
+
+	// Patch used during migration monitor after recovery
+	diskClient.EXPECT().Patch(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+		Return(&armcompute.Disk{
+			ID:  to.Ptr(diskURI),
+			SKU: &armcompute.DiskSKU{Name: to.Ptr(armcompute.DiskStorageAccountTypesPremiumV2LRS)},
+		}, nil).AnyTimes()
+
+	req := &csi.CreateVolumeRequest{
+		Name: volName,
+		CapacityRange: &csi.CapacityRange{
+			RequiredBytes: capBytes,
+		},
+		Parameters: map[string]string{
+			consts.SkuNameField: string(armcompute.DiskStorageAccountTypesPremiumV2LRS),
+		},
+		VolumeCapabilities: []*csi.VolumeCapability{
+			{
+				AccessType: &csi.VolumeCapability_Mount{Mount: &csi.VolumeCapability_MountVolume{}},
+				AccessMode: &csi.VolumeCapability_AccessMode{
+					Mode: csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER,
+				},
+			},
+		},
+		VolumeContentSource: &csi.VolumeContentSource{
+			Type: &csi.VolumeContentSource_Snapshot{
+				Snapshot: &csi.VolumeContentSource_SnapshotSource{
+					SnapshotId: snapshotID,
+				},
+			},
+		},
+	}
+
+	_, err := d.CreateVolume(context.Background(), req)
+	assert.NoError(t, err, "CreateVolume should succeed")
+	assert.True(t, d.GetMigrationMonitor().IsMigrationActive(diskURI), "Migration for volume %s should be active", diskURI)
+
+	// Simulate restart
+	d.GetMigrationMonitor().Stop()
+	// Ensure cleanup (task removed)
+	cleanupDeadline := time.Now().Add(1 * time.Second)
+	for {
+		if !d.GetMigrationMonitor().IsMigrationActive(diskURI) {
+			break
+		}
+		if time.Now().After(cleanupDeadline) {
+			t.Fatalf("Migration task still active after completion")
+		}
+		time.Sleep(25 * time.Millisecond)
+	}
+	createDone.Store(true)
+
+	eventRecorder := record.NewFakeRecorder(100)
+	d.SetMigrationMonitor(NewMigrationProgressMonitor(d.getCloud().KubeClient, eventRecorder, d.GetDiskController()))
+
+	// Prepare labeled PV/PVC for recovery
+	coreMock := d.getCloud().KubeClient.CoreV1().(*mockcorev1.MockInterface)
+	pvIf := d.getCloud().KubeClient.CoreV1().PersistentVolumes().(*mockpersistentvolume.MockInterface)
+	pvcIf := mockpersistentvolumeclaim.NewMockPersistentVolumeClaimInterface(ctrl)
+	coreMock.EXPECT().PersistentVolumeClaims(gomock.Any()).Return(pvcIf).AnyTimes()
+
+	pvcName := "pvc-" + volName
+	ns := "default"
+
+	pv := &v1.PersistentVolume{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: volName,
+			Labels: map[string]string{
+				LabelMigrationInProgress: "true",
+			},
+		},
+		Spec: v1.PersistentVolumeSpec{
+			Capacity: v1.ResourceList{
+				v1.ResourceName("storage"): *resource.NewQuantity(capBytes, resource.BinarySI),
+			},
+			ClaimRef: &v1.ObjectReference{Name: pvcName, Namespace: ns},
+			PersistentVolumeSource: v1.PersistentVolumeSource{
+				CSI: &v1.CSIPersistentVolumeSource{
+					Driver:       "disk.csi.azure.com",
+					VolumeHandle: diskURI,
+					VolumeAttributes: map[string]string{
+						"storageAccountType": string(armcompute.DiskStorageAccountTypesPremiumV2LRS),
+						"skuName":            string(armcompute.DiskStorageAccountTypesPremiumV2LRS),
+					},
+				},
+			},
+		},
+	}
+	pvc := &v1.PersistentVolumeClaim{
+		ObjectMeta: metav1.ObjectMeta{Name: pvcName, Namespace: ns},
+		Spec:       v1.PersistentVolumeClaimSpec{VolumeName: pv.Name},
+	}
+
+	pvIf.EXPECT().List(gomock.Any(), gomock.Any()).
+		Return(&v1.PersistentVolumeList{Items: []v1.PersistentVolume{*pv}}, nil).AnyTimes()
+	pvIf.EXPECT().Get(gomock.Any(), pv.Name, gomock.Any()).
+		Return(pv.DeepCopy(), nil).AnyTimes()
+	pvIf.EXPECT().Update(gomock.Any(), gomock.Any(), gomock.Any()).
+		DoAndReturn(func(_ context.Context, updated *v1.PersistentVolume, _ metav1.UpdateOptions) (*v1.PersistentVolume, error) {
+			return updated, nil
+		}).AnyTimes()
+	pvcIf.EXPECT().Get(gomock.Any(), pvc.Name, gomock.Any()).
+		Return(pvc.DeepCopy(), nil).AnyTimes()
+
+	// Accelerated recovery loop (instead of 30s + 10m)
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	go func() {
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			default:
+				_ = d.RecoverMigrationMonitor(context.Background())
+				time.Sleep(40 * time.Millisecond)
+			}
+		}
+	}()
+
+	// Wait for migration activation
+	activateDeadline := time.Now().Add(2 * time.Second)
+	for {
+		if d.GetMigrationMonitor().IsMigrationActive(diskURI) {
+			break
+		}
+		if time.Now().After(activateDeadline) {
+			t.Fatalf("Migration did not activate via recovery")
+		}
+		time.Sleep(25 * time.Millisecond)
+	}
+
+	// Collect events until Started & Completed
+	foundStart, foundCompletion := false, false
+	timeout := time.After(6 * time.Second)
+	for !(foundStart && foundCompletion) {
+		select {
+		case e := <-eventRecorder.Events:
+			if strings.Contains(e, ReasonSKUMigrationStarted) {
+				foundStart = true
+			}
+			if strings.Contains(e, ReasonSKUMigrationCompleted) {
+				foundCompletion = true
+			}
+		case <-timeout:
+			t.Fatalf("Timed out waiting for migration start/completion (start=%v completion=%v)", foundStart, foundCompletion)
+		case <-time.After(30 * time.Millisecond):
+		}
+	}
+
+	assert.True(t, foundStart, "Expected migration start event")
+	assert.True(t, foundCompletion, "Expected migration completion event")
+
+	// Ensure cleanup (task removed)
+	cleanupDeadline = time.Now().Add(1 * time.Second)
+	for {
+		if !d.GetMigrationMonitor().IsMigrationActive(diskURI) {
+			break
+		}
+		if time.Now().After(cleanupDeadline) {
+			t.Fatalf("Migration task still active after completion")
+		}
+		time.Sleep(25 * time.Millisecond)
 	}
 
 	d.GetMigrationMonitor().Stop()
