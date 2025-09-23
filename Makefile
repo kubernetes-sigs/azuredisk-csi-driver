@@ -18,7 +18,7 @@ REGISTRY ?= andyzhangx
 REGISTRY_NAME ?= $(shell echo $(REGISTRY) | sed "s/.azurecr.io//g")
 IMAGE_NAME ?= azuredisk-csi
 PLUGIN_NAME = azurediskplugin
-IMAGE_VERSION ?= v1.33.4
+IMAGE_VERSION ?= v1.33.5
 CHART_VERSION ?= latest
 CLOUD ?= AzurePublicCloud
 # Use a custom version for E2E tests if we are testing in CI
