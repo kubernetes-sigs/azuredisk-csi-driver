@@ -68,7 +68,7 @@ spec:
               drop:
                 - ALL
         - name: csi-attacher
-          image: mcr.microsoft.com/oss/v2/kubernetes-csi/csi-attacher:v4.9.0
+          image: mcr.microsoft.com/oss/v2/kubernetes-csi/csi-attacher:v4.10.0
           args:
             - "-v=2"
             - "-csi-address=$(ADDRESS)"
@@ -149,7 +149,7 @@ spec:
               drop:
                 - ALL
         - name: liveness-probe
-          image: mcr.microsoft.com/oss/v2/kubernetes-csi/livenessprobe:v2.16.0
+          image: mcr.microsoft.com/oss/v2/kubernetes-csi/livenessprobe:v2.17.0
           args:
             - --csi-address=/csi/csi.sock
             - --probe-timeout=3s
