@@ -101,11 +101,6 @@ sanity-test: azuredisk
 
 .PHONY: e2e-bootstrap
 e2e-bootstrap: install-helm
-ifdef WINDOWS_USE_HOST_PROCESS_CONTAINERS
-	(docker pull $(CSI_IMAGE_TAG) && docker pull $(CSI_IMAGE_TAG)-windows-hp)  || make container-all push-manifest
-else
-	docker pull $(CSI_IMAGE_TAG) || make container-all push-manifest
-endif
 ifdef TEST_WINDOWS
 	helm install azuredisk-csi-driver charts/${CHART_VERSION}/azuredisk-csi-driver --namespace kube-system --wait --timeout=15m -v=5 --debug \
 		${E2E_HELM_OPTIONS} \
