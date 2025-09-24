@@ -8,7 +8,7 @@ updates:
     - "area/dependency"
     - "release-note-none"
     - "ok-to-test"
-  open-pull-requests-limit: 1
+  open-pull-requests-limit: 2
   groups:
     k8s:
       applies-to: version-updates
@@ -25,7 +25,7 @@ updates:
     - "area/dependency"
     - "release-note-none"
     - "ok-to-test"
-  open-pull-requests-limit: 1
+  open-pull-requests-limit: 2
 - package-ecosystem: "docker"
   directory: "/pkg/azurediskplugin/"
   schedule:
