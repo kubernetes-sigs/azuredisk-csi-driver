@@ -538,34 +538,43 @@ func (d *Driver) NodeExpandVolume(_ context.Context, req *csi.NodeExpandVolumeRe
 		}
 	}
 
+	// CRITICAL SAFETY CHECK: Verify block device size BEFORE filesystem resize
+	// This prevents filesystem corruption if the underlying disk hasn't been expanded yet
+	actualDevicePath := devicePath
+	if runtime.GOOS == "windows" && d.enableWindowsHostProcess {
+		// in windows host process mode, this driver could get the volume size from the volume path
+		actualDevicePath = volumePath
+	}
+
+	currentBlockSizeBytes, err := d.validateBlockDeviceSize(actualDevicePath, requestGiB)
+	if err != nil {
+		return nil, status.Errorf(codes.FailedPrecondition, "NodeExpandVolume: block device size did not match requested size: %v", err)
+	}
+
+	klog.V(2).Infof("NodeExpandVolume: block device size verified (%d bytes >= %d GiB requested), proceeding with filesystem resize",
+		currentBlockSizeBytes, requestGiB)
+
+	// Now safe to resize filesystem since we've verified the block device is large enough
 	var retErr error
 	if err := resizeVolume(devicePath, volumePath, d.mounter); err != nil {
 		retErr = status.Errorf(codes.Internal, "could not resize volume %q (%q):  %v", volumeID, devicePath, err)
 		klog.Errorf("%v, will continue checking whether the volume has been resized", retErr)
 	}
 
-	if runtime.GOOS == "windows" && d.enableWindowsHostProcess {
-		// in windows host process mode, this driver could get the volume size from the volume path
-		devicePath = volumePath
-	}
-	gotBlockSizeBytes, err := getBlockSizeBytes(devicePath, d.mounter)
+	// Final verification after filesystem resize
+	finalBlockSizeBytes, err := d.validateBlockDeviceSize(actualDevicePath, requestGiB)
 	if err != nil {
-		return nil, status.Error(codes.Internal, fmt.Sprintf("could not get size of block volume at path %s: %v", devicePath, err))
-	}
-	gotBlockGiB := volumehelper.RoundUpGiB(gotBlockSizeBytes)
-	if gotBlockGiB < requestGiB {
 		if retErr != nil {
 			return nil, retErr
 		}
-		// Because size was rounded up, getting more size than requested will be a success.
-		return nil, status.Errorf(codes.Internal, "resize requested for %v, but after resizing volume size was %v", requestGiB, gotBlockGiB)
+		return nil, status.Errorf(codes.Internal, "NodeExpandVolume: block device size did not match requested size after filesystem resize: %v", err)
 	}
 
-	klog.V(2).Infof("NodeExpandVolume succeeded on resizing volume %v to %v", volumeID, gotBlockSizeBytes)
+	klog.V(2).Infof("NodeExpandVolume succeeded on resizing volume %v to %v", volumeID, finalBlockSizeBytes)
 
 	isOperationSucceeded = true
 	return &csi.NodeExpandVolumeResponse{
-		CapacityBytes: gotBlockSizeBytes,
+		CapacityBytes: finalBlockSizeBytes,
 	}, nil
 }
 
@@ -680,6 +689,23 @@ func (d *Driver) ensureBlockTargetFile(target string) error {
 	}
 
 	return nil
+}
+
+// validateBlockDeviceSize checks if the block device is large enough for the requested size
+// Returns the actual block size in bytes if validation passes, otherwise returns an error
+func (d *Driver) validateBlockDeviceSize(devicePath string, requestGiB int64) (int64, error) {
+	blockSizeBytes, err := getBlockSizeBytes(devicePath, d.mounter)
+	if err != nil {
+		return 0, status.Error(codes.Internal, fmt.Sprintf("could not get size of block volume at path %s: %v", devicePath, err))
+	}
+
+	blockGiB := volumehelper.RoundUpGiB(blockSizeBytes)
+
+	if blockGiB < requestGiB {
+		return 0, status.Error(codes.Internal, fmt.Sprintf("block volume at path %s size check failed: current %d GiB < requested %d GiB", devicePath, blockGiB, requestGiB))
+	}
+
+	return blockSizeBytes, nil
 }
 
 func collectMountOptions(fsType string, mntFlags []string) []string {

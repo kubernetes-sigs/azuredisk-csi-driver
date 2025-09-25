@@ -1058,7 +1058,7 @@ func TestNodeExpandVolume(t *testing.T) {
 		WindowsError: status.Errorf(codes.NotFound, "error reading link for mount D:\\a\\azuredisk-csi-driver\\azuredisk-csi-driver\\pkg\\azuredisk\\target_test. target  err: readlink D:\\a\\azuredisk-csi-driver\\azuredisk-csi-driver\\pkg\\azuredisk\\target_test: The file or directory is not a reparse point."),
 	}
 	blockSizeErr := testutil.TestError{
-		DefaultError: status.Error(codes.Internal, "could not get size of block volume at path test: error when getting size of block volume at path test: output: , err: exit status 1"),
+		DefaultError: status.Error(codes.FailedPrecondition, "NodeExpandVolume: block device size did not match requested size: rpc error: code = Internal desc = block volume at path test size check failed: current 0 GiB < requested 15 GiB"),
 		WindowsError: status.Errorf(codes.NotFound, "error reading link for mount D:\\a\\azuredisk-csi-driver\\azuredisk-csi-driver\\pkg\\azuredisk\\target_test. target  err: readlink D:\\a\\azuredisk-csi-driver\\azuredisk-csi-driver\\pkg\\azuredisk\\target_test: The file or directory is not a reparse point."),
 	}
 	resizeErr := testutil.TestError{
@@ -1066,7 +1066,7 @@ func TestNodeExpandVolume(t *testing.T) {
 		WindowsError: status.Errorf(codes.NotFound, "error reading link for mount D:\\a\\azuredisk-csi-driver\\azuredisk-csi-driver\\pkg\\azuredisk\\target_test. target  err: readlink D:\\a\\azuredisk-csi-driver\\azuredisk-csi-driver\\pkg\\azuredisk\\target_test: The file or directory is not a reparse point."),
 	}
 	sizeTooSmallErr := testutil.TestError{
-		DefaultError: status.Errorf(codes.Internal, "resize requested for %v, but after resizing volume size was %v", volumehelper.RoundUpGiB(stdCapacityRange.RequiredBytes), volumehelper.RoundUpGiB(stdCapacityRange.RequiredBytes/2)),
+		DefaultError: status.Error(codes.Internal, "NodeExpandVolume: block device size did not match requested size after filesystem resize: rpc error: code = Internal desc = block volume at path test size check failed: current 8 GiB < requested 15 GiB"),
 		WindowsError: status.Errorf(codes.NotFound, "error reading link for mount D:\\a\\azuredisk-csi-driver\\azuredisk-csi-driver\\pkg\\azuredisk\\target_test. target  err: readlink D:\\a\\azuredisk-csi-driver\\azuredisk-csi-driver\\pkg\\azuredisk\\target_test: The file or directory is not a reparse point."),
 	}
 
@@ -1090,6 +1090,10 @@ func TestNodeExpandVolume(t *testing.T) {
 	}
 	blockdevAction := func() ([]byte, []byte, error) {
 		return []byte(fmt.Sprintf("%d", stdCapacityRange.RequiredBytes)), []byte{}, nil
+	}
+	// Action that returns 0 bytes (invalid block size)
+	blockdevZeroAction := func() ([]byte, []byte, error) {
+		return []byte("0"), []byte{}, nil
 	}
 
 	tests := []struct {
@@ -1148,7 +1152,7 @@ func TestNodeExpandVolume(t *testing.T) {
 			},
 			expectedErr:   blockSizeErr,
 			skipOnDarwin:  true, // ResizeFs not supported on Darwin
-			outputScripts: []testingexec.FakeAction{findmntAction, blkidAction, resize2fsAction, notFoundErrAction},
+			outputScripts: []testingexec.FakeAction{findmntAction, blockdevZeroAction},
 		},
 		{
 			desc: "Resize failure",
@@ -1158,9 +1162,10 @@ func TestNodeExpandVolume(t *testing.T) {
 				VolumeId:          "test",
 				StagingTargetPath: "test",
 			},
-			expectedErr:   resizeErr,
-			skipOnDarwin:  true, // ResizeFs not supported on Darwin
-			outputScripts: []testingexec.FakeAction{findmntAction, blkidAction, resize2fsFailedAction, blockdevSizeTooSmallAction},
+			expectedErr:  resizeErr,
+			skipOnDarwin: true, // ResizeFs not supported on Darwin
+			// First blockdev call succeeds (pre-resize validation), blkid checks filesystem, resize2fs fails, second blockdev for post-resize validation
+			outputScripts: []testingexec.FakeAction{findmntAction, blockdevAction, blkidAction, resize2fsFailedAction, blockdevSizeTooSmallAction},
 		},
 		{
 			desc: "Resize too small failure",
@@ -1170,9 +1175,10 @@ func TestNodeExpandVolume(t *testing.T) {
 				VolumeId:          "test",
 				StagingTargetPath: "test",
 			},
-			expectedErr:   sizeTooSmallErr,
-			skipOnDarwin:  true, // ResizeFs not supported on Darwin
-			outputScripts: []testingexec.FakeAction{findmntAction, blkidAction, resize2fsAction, blockdevSizeTooSmallAction},
+			expectedErr:  sizeTooSmallErr,
+			skipOnDarwin: true, // ResizeFs not supported on Darwin
+			// First blockdev call succeeds (pre-resize validation), resize2fs succeeds, second blockdev shows size too small
+			outputScripts: []testingexec.FakeAction{findmntAction, blockdevAction, blkidAction, resize2fsAction, blockdevSizeTooSmallAction},
 		},
 		{
 			desc: "Successfully expanded",
@@ -1184,7 +1190,8 @@ func TestNodeExpandVolume(t *testing.T) {
 			},
 			skipOnWindows: true,
 			skipOnDarwin:  true, // ResizeFs not supported on Darwin
-			outputScripts: []testingexec.FakeAction{findmntAction, blkidAction, resize2fsAction, blockdevAction},
+			// First blockdev call (pre-resize validation), resize2fs succeeds, second blockdev call (post-resize validation)
+			outputScripts: []testingexec.FakeAction{findmntAction, blockdevAction, blkidAction, resize2fsAction, blockdevAction},
 		},
 		{
 			desc: "Block volume expansion",
@@ -1474,4 +1481,90 @@ func TestNodePublishVolumeIdempotentMount(t *testing.T) {
 	assert.NoError(t, err)
 	err = os.RemoveAll(targetTest)
 	assert.NoError(t, err)
+}
+
+func TestValidateBlockDeviceSize(t *testing.T) {
+	cntl := gomock.NewController(t)
+	defer cntl.Finish()
+
+	d, _ := NewFakeDriver(cntl)
+	fakeMounter, err := mounter.NewFakeSafeMounter()
+	assert.NoError(t, err)
+	d.setMounter(fakeMounter)
+
+	notFoundErr := errors.New("exit status 1")
+	blockdevAction := func() ([]byte, []byte, error) {
+		return []byte(fmt.Sprintf("%d", volumehelper.GiBToBytes(20))), []byte{}, nil
+	}
+	blockdevSmallAction := func() ([]byte, []byte, error) {
+		return []byte(fmt.Sprintf("%d", volumehelper.GiBToBytes(5))), []byte{}, nil
+	}
+	blockdevErrorAction := func() ([]byte, []byte, error) {
+		return []byte{}, []byte{}, notFoundErr
+	}
+
+	tests := []struct {
+		desc          string
+		devicePath    string
+		requestGiB    int64
+		outputScript  testingexec.FakeAction
+		expectedErr   error
+		expectedBytes int64
+		skipOnWindows bool
+	}{
+		{
+			desc:          "Error getting block size",
+			devicePath:    "/dev/sda",
+			requestGiB:    10,
+			outputScript:  blockdevErrorAction,
+			expectedErr:   status.Error(codes.Internal, fmt.Sprintf("could not get size of block volume at path %s: %v", "/dev/sda", fmt.Errorf("error when getting size of block volume at path /dev/sda: output: , err: exit status 1"))),
+			skipOnWindows: true,
+		},
+		{
+			desc:          "Block size too small",
+			devicePath:    "/dev/sdb",
+			requestGiB:    10,
+			outputScript:  blockdevSmallAction,
+			expectedErr:   status.Error(codes.Internal, fmt.Sprintf("block volume at path %s size check failed: current %d GiB < requested %d GiB", "/dev/sdb", 5, 10)),
+			skipOnWindows: true,
+		},
+		{
+			desc:          "Successful validation",
+			devicePath:    "/dev/sdc",
+			requestGiB:    10,
+			outputScript:  blockdevAction,
+			expectedErr:   nil,
+			expectedBytes: volumehelper.GiBToBytes(20),
+			skipOnWindows: true,
+		},
+		{
+			desc:          "Exact size match",
+			devicePath:    "/dev/sdd",
+			requestGiB:    20,
+			outputScript:  blockdevAction,
+			expectedErr:   nil,
+			expectedBytes: volumehelper.GiBToBytes(20),
+			skipOnWindows: true,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.desc, func(t *testing.T) {
+			if test.skipOnWindows && runtime.GOOS == "windows" {
+				t.Skip("Skipping test on Windows")
+			}
+
+			d.setNextCommandOutputScripts(test.outputScript)
+
+			actualBytes, err := d.validateBlockDeviceSize(test.devicePath, test.requestGiB)
+
+			if test.expectedErr == nil {
+				assert.NoError(t, err)
+				assert.Equal(t, test.expectedBytes, actualBytes)
+			} else {
+				assert.EqualError(t, err, test.expectedErr.Error())
+				assert.Equal(t, int64(0), actualBytes)
+			}
+		})
+	}
 }
