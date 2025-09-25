@@ -2794,6 +2794,106 @@ func TestRecoverMigrationMonitorsFromLabels_VolumeAttributeFiltering(t *testing.
 			expectRecover: false,
 			note:          "storageAccountType mismatch blocks recovery",
 		},
+		// NEW: Case-insensitive key tests
+		{
+			name:          "pv-case-insensitive-storageaccounttype-uppercase-key",
+			attrs:         map[string]string{"STORAGEACCOUNTTYPE": string(toSKU)},
+			expectRecover: true,
+			note:          "uppercase storageAccountType key should match case-insensitively",
+		},
+		{
+			name:          "pv-case-insensitive-storageaccounttype-mixed-key",
+			attrs:         map[string]string{"StorageAccountType": string(toSKU)},
+			expectRecover: true,
+			note:          "mixed case storageAccountType key should match case-insensitively",
+		},
+		{
+			name:          "pv-case-insensitive-skuname-uppercase-key",
+			attrs:         map[string]string{"SKUNAME": string(toSKU)},
+			expectRecover: true,
+			note:          "uppercase skuName key should match case-insensitively",
+		},
+		{
+			name:          "pv-case-insensitive-skuname-lowercase-key",
+			attrs:         map[string]string{"skuname": string(toSKU)},
+			expectRecover: true,
+			note:          "lowercase skuName key should match case-insensitively",
+		},
+		{
+			name:          "pv-case-insensitive-skuname-mixed-key",
+			attrs:         map[string]string{"SkuName": string(toSKU)},
+			expectRecover: true,
+			note:          "mixed case skuName key should match case-insensitively",
+		},
+		// NEW: Case-insensitive value tests
+		{
+			name:          "pv-case-insensitive-value-lowercase-premiumv2",
+			attrs:         map[string]string{"skuName": strings.ToLower(string(toSKU))},
+			expectRecover: true,
+			note:          "lowercase PremiumV2_LRS value should match case-insensitively",
+		},
+		{
+			name:          "pv-case-insensitive-value-uppercase-premiumv2",
+			attrs:         map[string]string{"skuName": strings.ToUpper(string(toSKU))},
+			expectRecover: true,
+			note:          "uppercase PREMIUMV2_LRS value should match case-insensitively",
+		},
+		{
+			name:          "pv-case-insensitive-value-mixed-premiumv2",
+			attrs:         map[string]string{"skuName": "PremiumV2_lrs"},
+			expectRecover: true,
+			note:          "mixed case PremiumV2_lrs value should match case-insensitively",
+		},
+		{
+			name:          "pv-case-insensitive-value-mismatch-premium",
+			attrs:         map[string]string{"skuName": strings.ToLower(string(armcompute.DiskStorageAccountTypesPremiumLRS))},
+			expectRecover: false,
+			note:          "lowercase premium_lrs value should not match PremiumV2_LRS",
+		},
+		// NEW: Combined case-insensitive key and value tests
+		{
+			name:          "pv-case-insensitive-both-key-value-uppercase",
+			attrs:         map[string]string{"SKUNAME": strings.ToUpper(string(toSKU))},
+			expectRecover: true,
+			note:          "uppercase key and value should both match case-insensitively",
+		},
+		{
+			name:          "pv-case-insensitive-both-key-value-mixed",
+			attrs:         map[string]string{"SkuName": "premiumv2_LRS"},
+			expectRecover: true,
+			note:          "mixed case key and value should both match case-insensitively",
+		},
+		{
+			name: "pv-case-insensitive-multiple-keys-match",
+			attrs: map[string]string{
+				"STORAGEACCOUNTTYPE": strings.ToUpper(string(toSKU)),
+				"skuname":            strings.ToLower(string(toSKU)),
+			},
+			expectRecover: true,
+			note:          "multiple case-insensitive keys with matching values should recover",
+		},
+		{
+			name: "pv-case-insensitive-multiple-keys-mismatch",
+			attrs: map[string]string{
+				"STORAGEACCOUNTTYPE": strings.ToUpper(string(toSKU)),
+				"skuname":            strings.ToLower(string(armcompute.DiskStorageAccountTypesPremiumLRS)),
+			},
+			expectRecover: false,
+			note:          "case-insensitive keys with one mismatched value should not recover",
+		},
+		// Edge cases for case sensitivity
+		{
+			name:          "pv-case-insensitive-extra-spaces-key",
+			attrs:         map[string]string{"storageaccounttype": string(toSKU)}, // Note: spaces in keys would be unusual but testing lowercase
+			expectRecover: true,
+			note:          "key case variations should work",
+		},
+		{
+			name:          "pv-case-insensitive-underscore-variations",
+			attrs:         map[string]string{"skuName": "PremiumV2_LRS"},
+			expectRecover: true,
+			note:          "exact match should still work with case-insensitive implementation",
+		},
 	}
 
 	var pvListItems []corev1.PersistentVolume
@@ -2924,13 +3024,13 @@ func TestRecoverMigrationMonitorsFromLabels_VolumeAttributeFiltering(t *testing.
 			if task.PVName == c.name {
 				found = true
 				if !c.expectRecover {
-					t.Errorf("PV %s was recovered but should have been skipped (attributes %+v)", c.name, c.attrs)
+					t.Errorf("PV %s was recovered but should have been skipped (attributes %+v, note: %s)", c.name, c.attrs, c.note)
 				}
 				break
 			}
 		}
 		if c.expectRecover && !found {
-			t.Errorf("PV %s should have been recovered but was not (attributes %+v)", c.name, c.attrs)
+			t.Errorf("PV %s should have been recovered but was not (attributes %+v, note: %s)", c.name, c.attrs, c.note)
 		}
 	}
 

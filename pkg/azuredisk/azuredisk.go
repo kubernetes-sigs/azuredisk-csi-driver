@@ -291,7 +291,6 @@ func NewDriver(options *DriverOptions) *Driver {
 
 		if kubeClient != nil && driver.NodeID == "" && driver.enableMigrationMonitor {
 			eventBroadcaster := record.NewBroadcaster()
-			eventBroadcaster.StartStructuredLogging(0)
 			eventBroadcaster.StartRecordingToSink(&clientcorev1.EventSinkImpl{
 				Interface: kubeClient.CoreV1().Events(""),
 			})
