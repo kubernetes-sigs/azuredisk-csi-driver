@@ -103,6 +103,7 @@ type FakeDriver interface {
 	setThrottlingCache(key string, value string)
 	getUsedLunsFromVolumeAttachments(context.Context, string) ([]int, error)
 	getUsedLunsFromNode(context.Context, types.NodeName) ([]int, error)
+	validateBlockDeviceSize(devicePath string, requestGiB int64) (int64, error)
 }
 
 type fakeDriver struct {
