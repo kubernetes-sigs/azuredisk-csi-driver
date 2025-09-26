@@ -1279,8 +1279,8 @@ func TestConcurrentDetachDisk(t *testing.T) {
 	for i := 0; i < 2; i++ {
 		diskURI := fmt.Sprintf("/subscriptions/%s/resourceGroups/%s/providers/Microsoft.Compute/disks/%s",
 			testCloud.SubscriptionID, testCloud.ResourceGroup, fmt.Sprintf("disk-batched-%d", i))
+		wg.Add(1)
 		go func() {
-			wg.Add(1)
 			defer wg.Done()
 			err := common.DetachDisk(ctx, fmt.Sprintf("disk-batched-%d", i), diskURI, "vm1")
 			if err != nil {
