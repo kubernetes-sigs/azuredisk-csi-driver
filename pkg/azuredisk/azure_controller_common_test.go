@@ -1276,17 +1276,17 @@ func TestConcurrentDetachDisk(t *testing.T) {
 	// Simulate concurrent detach requests that would be batched
 	wg := &sync.WaitGroup{}
 	errorChan := make(chan error, 1)
-	for i := 0; i < 2; i++ {
+	for i := range 2 {
 		diskURI := fmt.Sprintf("/subscriptions/%s/resourceGroups/%s/providers/Microsoft.Compute/disks/%s",
 			testCloud.SubscriptionID, testCloud.ResourceGroup, fmt.Sprintf("disk-batched-%d", i))
 		wg.Add(1)
-		go func() {
+		go func(i int, diskURI string) {
 			defer wg.Done()
 			err := common.DetachDisk(ctx, fmt.Sprintf("disk-batched-%d", i), diskURI, "vm1")
 			if err != nil {
 				errorChan <- err
 			}
-		}()
+		}(i, diskURI)
 	}
 
 	time.Sleep(1005 * time.Millisecond) // Wait for the batching timeout
