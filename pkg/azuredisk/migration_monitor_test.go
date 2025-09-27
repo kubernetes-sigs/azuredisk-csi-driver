@@ -2710,3 +2710,229 @@ func TestMigrationMonitorStopCancels(t *testing.T) {
 	time.Sleep(50 * time.Millisecond)
 	assert.False(t, m.IsMigrationActive(id))
 }
+
+func TestRecoverMigrationMonitorsFromLabels_VolumeAttributeFiltering(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	driver := getFakeDriverWithKubeClientForMigration(ctrl)
+	diskClient := mock_diskclient.NewMockInterface(ctrl)
+	mockKube := driver.getCloud().KubeClient.(*mockkubeclient.MockInterface)
+	coreMock := mockcorev1.NewMockInterface(ctrl)
+	pvMock := mockpersistentvolume.NewMockInterface(ctrl)
+	pvcMock := mockpersistentvolumeclaim.NewMockPersistentVolumeClaimInterface(ctrl)
+	eventRecorder := record.NewFakeRecorder(50)
+
+	monitor := NewMigrationProgressMonitor(mockKube, eventRecorder, driver.GetDiskController())
+	driver.SetMigrationMonitor(monitor)
+
+	toSKU := armcompute.DiskStorageAccountTypesPremiumV2LRS
+
+	type pvCase struct {
+		name          string
+		attrs         map[string]string
+		expectRecover bool
+		note          string
+	}
+
+	pvCases := []pvCase{
+		{
+			name:          "pv-no-attrs-nil",
+			attrs:         nil,
+			expectRecover: true,
+			note:          "nil VolumeAttributes => no filter keys, should recover",
+		},
+		{
+			name:          "pv-no-attrs-empty",
+			attrs:         map[string]string{},
+			expectRecover: true,
+			note:          "empty map => recover",
+		},
+		{
+			name:          "pv-storageAccountType-match",
+			attrs:         map[string]string{"storageAccountType": string(toSKU)},
+			expectRecover: true,
+		},
+		{
+			name:          "pv-storageAccountType-mismatch",
+			attrs:         map[string]string{"storageAccountType": string(armcompute.DiskStorageAccountTypesPremiumLRS)},
+			expectRecover: false,
+		},
+		{
+			name:          "pv-skuName-match",
+			attrs:         map[string]string{"skuName": string(toSKU)},
+			expectRecover: true,
+		},
+		{
+			name:          "pv-skuName-mismatch",
+			attrs:         map[string]string{"skuName": string(armcompute.DiskStorageAccountTypesPremiumLRS)},
+			expectRecover: false,
+		},
+		{
+			name: "pv-both-match",
+			attrs: map[string]string{
+				"storageAccountType": string(toSKU),
+				"skuName":            string(toSKU),
+			},
+			expectRecover: true,
+		},
+		{
+			name: "pv-mixed-mismatch-1",
+			attrs: map[string]string{
+				"storageAccountType": string(toSKU),
+				"skuName":            string(armcompute.DiskStorageAccountTypesPremiumLRS),
+			},
+			expectRecover: false,
+			note:          "skuName mismatch blocks recovery",
+		},
+		{
+			name: "pv-mixed-mismatch-2",
+			attrs: map[string]string{
+				"storageAccountType": string(armcompute.DiskStorageAccountTypesPremiumLRS),
+				"skuName":            string(toSKU),
+			},
+			expectRecover: false,
+			note:          "storageAccountType mismatch blocks recovery",
+		},
+	}
+
+	var pvListItems []corev1.PersistentVolume
+	for _, c := range pvCases {
+		pvListItems = append(pvListItems, corev1.PersistentVolume{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: c.name,
+				Labels: map[string]string{
+					LabelMigrationInProgress: "true",
+				},
+			},
+			Spec: corev1.PersistentVolumeSpec{
+				Capacity: corev1.ResourceList{
+					corev1.ResourceStorage: resource.MustParse("10Gi"),
+				},
+				ClaimRef: &corev1.ObjectReference{
+					Name:      c.name + "-pvc",
+					Namespace: "default",
+				},
+				PersistentVolumeSource: corev1.PersistentVolumeSource{
+					CSI: &corev1.CSIPersistentVolumeSource{
+						Driver:           "disk.csi.azure.com",
+						VolumeHandle:     fmt.Sprintf("/subscriptions/sub/resourceGroups/rg/providers/Microsoft.Compute/disks/%s-disk", c.name),
+						VolumeAttributes: c.attrs,
+					},
+				},
+			},
+		})
+	}
+
+	expectedRecovered := 0
+	for _, c := range pvCases {
+		if c.expectRecover {
+			expectedRecovered++
+		}
+	}
+
+	// Core client wiring
+	mockKube.EXPECT().CoreV1().Return(coreMock).AnyTimes()
+	coreMock.EXPECT().PersistentVolumes().Return(pvMock).AnyTimes()
+	coreMock.EXPECT().PersistentVolumeClaims("default").Return(pvcMock).AnyTimes()
+	coreMock.EXPECT().PersistentVolumeClaims("").Return(pvcMock).AnyTimes()
+
+	// List returns all labeled PVs
+	pvMock.EXPECT().List(gomock.Any(), gomock.Any()).Return(&corev1.PersistentVolumeList{Items: pvListItems}, nil)
+
+	// Disk client factory
+	driver.getClientFactory().(*mock_azclient.MockClientFactory).
+		EXPECT().
+		GetDiskClientForSub(gomock.Any()).
+		Return(diskClient, nil).AnyTimes()
+
+	// Provide a stable disk for recovered monitors
+	diskClient.EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
+		func(_ context.Context, _, _ string) (*armcompute.Disk, error) {
+			state := "Succeeded"
+			size := int32(10)
+			progress := float32(0)
+			id := "/subscriptions/sub/resourceGroups/rg/providers/Microsoft.Compute/disks/recovered-disk"
+			name := "recovered-disk"
+			return &armcompute.Disk{
+				ID:   &id,
+				Name: &name,
+				Properties: &armcompute.DiskProperties{
+					ProvisioningState: &state,
+					DiskSizeGB:        &size,
+					CompletionPercent: &progress,
+				},
+			}, nil
+		},
+	).AnyTimes()
+
+	// For each PV we expect to recover, set up Get/Update/PVC Get
+	for _, c := range pvCases {
+		if c.expectRecover {
+			var original *corev1.PersistentVolume
+			for i := range pvListItems {
+				if pvListItems[i].Name == c.name {
+					cp := pvListItems[i] // copy
+					original = &cp
+					break
+				}
+			}
+			if original == nil {
+				t.Fatalf("internal test setup: PV %s not found", c.name)
+			}
+
+			pvMock.EXPECT().
+				Get(gomock.Any(), c.name, gomock.Any()).
+				Return(original.DeepCopy(), nil).AnyTimes()
+
+			pvMock.EXPECT().
+				Update(gomock.Any(), gomock.Any(), gomock.Any()).
+				DoAndReturn(func(_ context.Context, pv *corev1.PersistentVolume, _ metav1.UpdateOptions) (*corev1.PersistentVolume, error) {
+					return pv, nil
+				}).AnyTimes()
+
+			pvcMock.EXPECT().
+				Get(gomock.Any(), c.name+"-pvc", gomock.Any()).
+				Return(&corev1.PersistentVolumeClaim{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      c.name + "-pvc",
+						Namespace: "default",
+					},
+					Spec: corev1.PersistentVolumeClaimSpec{
+						VolumeName: c.name,
+					},
+				}, nil).AnyTimes()
+		}
+	}
+
+	ctx := context.Background()
+	err := driver.RecoverMigrationMonitor(ctx)
+	assert.NoError(t, err)
+
+	// Allow monitors to spin up briefly
+	time.Sleep(120 * time.Millisecond)
+
+	active := monitor.GetActiveMigrations()
+	if len(active) != expectedRecovered {
+		t.Fatalf("expected %d recovered migrations, got %d", expectedRecovered, len(active))
+	}
+
+	// Verify only expected PVs present
+	for _, c := range pvCases {
+		found := false
+		for _, task := range active {
+			if task.PVName == c.name {
+				found = true
+				if !c.expectRecover {
+					t.Errorf("PV %s was recovered but should have been skipped (attributes %+v)", c.name, c.attrs)
+				}
+				break
+			}
+		}
+		if c.expectRecover && !found {
+			t.Errorf("PV %s should have been recovered but was not (attributes %+v)", c.name, c.attrs)
+		}
+	}
+
+	monitor.Stop()
+}
