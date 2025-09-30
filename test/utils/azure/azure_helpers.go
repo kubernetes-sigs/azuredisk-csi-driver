@@ -165,8 +165,8 @@ func (az *Client) EnsureVirtualMachine(ctx context.Context, groupName, location,
 				StorageProfile: &compute.StorageProfile{
 					ImageReference: &compute.ImageReference{
 						Publisher: to.Ptr("Canonical"),
-						Offer:     to.Ptr("UbuntuServer"),
-						SKU:       to.Ptr("16.04.0-LTS"),
+						Offer:     to.Ptr("0001-com-ubuntu-server-jammy"),
+						SKU:       to.Ptr("22_04-lts-gen2"),
 						Version:   to.Ptr("latest"),
 					},
 				},
