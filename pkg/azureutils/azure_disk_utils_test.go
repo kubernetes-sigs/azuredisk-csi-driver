@@ -2332,3 +2332,155 @@ func TestReplaceTemplateVariables(t *testing.T) {
 		})
 	}
 }
+
+func TestParseDiskParametersForKey(t *testing.T) {
+	tests := []struct {
+		name           string
+		parameters     map[string]string
+		key            string
+		expectedValue  string
+		expectedExists bool
+		description    string
+	}{
+		{
+			name:           "nil parameters map",
+			parameters:     nil,
+			key:            "skuName",
+			expectedValue:  "",
+			expectedExists: false,
+			description:    "Should handle nil parameters map gracefully",
+		},
+		{
+			name:           "empty parameters map",
+			parameters:     map[string]string{},
+			key:            "skuName",
+			expectedValue:  "",
+			expectedExists: false,
+			description:    "Should return false for empty map",
+		},
+		{
+			name: "exact key match",
+			parameters: map[string]string{
+				"skuName": "Premium_LRS",
+			},
+			key:            "skuName",
+			expectedValue:  "Premium_LRS",
+			expectedExists: true,
+			description:    "Should find exact key match",
+		},
+		{
+			name: "case insensitive key match - lowercase key",
+			parameters: map[string]string{
+				"SKUNAME": "PremiumV2_LRS",
+			},
+			key:            "skuName",
+			expectedValue:  "PremiumV2_LRS",
+			expectedExists: true,
+			description:    "Should match regardless of key case (lowercase search)",
+		},
+		{
+			name: "case insensitive key match - uppercase key",
+			parameters: map[string]string{
+				"skuname": "StandardSSD_LRS",
+			},
+			key:            "SKUNAME",
+			expectedValue:  "StandardSSD_LRS",
+			expectedExists: true,
+			description:    "Should match regardless of key case (uppercase search)",
+		},
+		{
+			name: "case insensitive key match - mixed case",
+			parameters: map[string]string{
+				"SkuName": "Premium_ZRS",
+			},
+			key:            "skuname",
+			expectedValue:  "Premium_ZRS",
+			expectedExists: true,
+			description:    "Should match with mixed case variations",
+		},
+		{
+			name: "storageAccountType key",
+			parameters: map[string]string{
+				"storageAccountType": "Premium_LRS",
+			},
+			key:            "storageAccountType",
+			expectedValue:  "Premium_LRS",
+			expectedExists: true,
+			description:    "Should find storageAccountType key",
+		},
+		{
+			name: "case insensitive storageAccountType",
+			parameters: map[string]string{
+				"STORAGEACCOUNTTYPE": "PremiumV2_LRS",
+			},
+			key:            "storageaccounttype",
+			expectedValue:  "PremiumV2_LRS",
+			expectedExists: true,
+			description:    "Should match storageAccountType case insensitively",
+		},
+		{
+			name: "key not found",
+			parameters: map[string]string{
+				"skuName":       "Premium_LRS",
+				"location":      "eastus",
+				"resourceGroup": "myRG",
+			},
+			key:            "nonexistentkey",
+			expectedValue:  "",
+			expectedExists: false,
+			description:    "Should return false for non-existent key",
+		},
+		{
+			name: "multiple keys with case variations",
+			parameters: map[string]string{
+				"skuName":            "Premium_LRS",
+				"STORAGEACCOUNTTYPE": "StandardSSD_LRS",
+				"Location":           "eastus",
+			},
+			key:            "location",
+			expectedValue:  "eastus",
+			expectedExists: true,
+			description:    "Should find correct key among multiple case variations",
+		},
+		{
+			name: "empty value but key exists",
+			parameters: map[string]string{
+				"skuName": "",
+			},
+			key:            "skuName",
+			expectedValue:  "",
+			expectedExists: true,
+			description:    "Should return true for empty value but existing key",
+		},
+		{
+			name: "value with spaces",
+			parameters: map[string]string{
+				"description": "Premium LRS with spaces",
+			},
+			key:            "description",
+			expectedValue:  "Premium LRS with spaces",
+			expectedExists: true,
+			description:    "Should handle values with spaces",
+		},
+		{
+			name: "special characters in value",
+			parameters: map[string]string{
+				"customTag": "tag-value_with.special@chars",
+			},
+			key:            "customTag",
+			expectedValue:  "tag-value_with.special@chars",
+			expectedExists: true,
+			description:    "Should handle special characters in values",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			value, exists := ParseDiskParametersForKey(tt.parameters, tt.key)
+			assert.Equal(t, tt.expectedExists, exists, "exists flag should match expected for: %s", tt.description)
+			if tt.expectedExists {
+				assert.Equal(t, tt.expectedValue, value, "value should match expected for: %s", tt.description)
+			}
+		})
+	}
+}
