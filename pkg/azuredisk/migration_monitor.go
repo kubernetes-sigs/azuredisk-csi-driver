@@ -35,6 +35,7 @@ import (
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/record"
 	"k8s.io/klog/v2"
+	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
 )
 
 const (
@@ -625,11 +626,24 @@ func (d *Driver) recoverMigrationMonitorsFromLabels(ctx context.Context) error {
 			diskURI := pv.Spec.CSI.VolumeHandle
 
 			// For recovery, we need to determine fromSKU and toSKU from the disk properties
-			klog.V(2).Infof("Recovering migration monitor for PV: %s", pv.Name)
+			klog.V(3).Infof("Recovering migration monitor for PV: %s", pv.Name)
 
 			// For now, we'll use placeholders - when more SKUs involve for migration, need to get this from disk properties
 			fromSKU := string(armcompute.DiskStorageAccountTypesPremiumLRS) // we may incorrectly say PremiumLRS instead of StandardZRS, lets keep it simple for now
 			toSKU := armcompute.DiskStorageAccountTypesPremiumV2LRS
+
+			if pv.Spec.CSI.VolumeAttributes != nil {
+				if sku, exists := azureutils.ParseDiskParametersForKey(pv.Spec.CSI.VolumeAttributes, "storageAccountType"); exists {
+					if !strings.EqualFold(sku, string(toSKU)) {
+						continue
+					}
+				}
+				if sku, exists := azureutils.ParseDiskParametersForKey(pv.Spec.CSI.VolumeAttributes, "skuName"); exists {
+					if !strings.EqualFold(sku, string(toSKU)) {
+						continue
+					}
+				}
+			}
 
 			storageQtyVal := pv.Spec.Capacity[corev1.ResourceStorage]
 			storageQty := &storageQtyVal
@@ -643,6 +657,6 @@ func (d *Driver) recoverMigrationMonitorsFromLabels(ctx context.Context) error {
 		}
 	}
 
-	klog.V(2).Infof("Recovered %d migration monitors from labels", recoveredCount)
+	klog.V(4).Infof("Recovered %d migration monitors from labels", recoveredCount)
 	return nil
 }

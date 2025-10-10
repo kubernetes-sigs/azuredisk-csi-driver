@@ -548,6 +548,15 @@ func ValidateDataAccessAuthMode(dataAccessAuthMode string) error {
 	return fmt.Errorf("dataAccessAuthMode(%s) is not supported", dataAccessAuthMode)
 }
 
+func ParseDiskParametersForKey(parameters map[string]string, key string) (string, bool) {
+	for k, v := range parameters {
+		if strings.EqualFold(k, key) {
+			return v, true
+		}
+	}
+	return "", false
+}
+
 func ParseDiskParameters(parameters map[string]string) (ManagedDiskParameters, error) {
 	var err error
 	if parameters == nil {
