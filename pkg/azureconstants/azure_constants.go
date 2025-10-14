@@ -111,6 +111,7 @@ const (
 	TagValueDelimiterField       = "tagvaluedelimiter"
 	AzureDiskDriverTag           = "kubernetes-azure-dd"
 	InstantAccessDurationMinutes = "instantaccessdurationminutes"
+	QADWireserverEndpoint        = "http://168.63.129.16/vmservice/diskstate"
 )
 
 var (

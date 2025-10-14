@@ -21,6 +21,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/http"
 	"reflect"
 	"strconv"
 	"strings"
@@ -169,6 +170,8 @@ type Driver struct {
 	nodeLister                      cache.GenericLister
 	nodeInformerSynced              cache.InformerSynced
 	nodeInformerFactory             metadatainformer.SharedInformerFactory
+	// HTTP client for wireserver calls
+	httpClient *http.Client
 }
 
 // NewDriver Creates a NewCSIDriver object. Assumes vendor version is equal to driver version &
@@ -229,6 +232,11 @@ func NewDriver(options *DriverOptions) *Driver {
 	driver.hostUtil = hostutil.NewHostUtil()
 	driver.enableMigrationMonitor = options.EnableMigrationMonitor
 	driver.convertRWCachingModeForIntreePV = options.ConvertRWCachingModeForIntreePV
+
+	// Initialize HTTP client for wireserver calls
+	driver.httpClient = &http.Client{
+		Timeout: 30 * time.Second,
+	}
 
 	if driver.NodeID == "" {
 		// nodeid is not needed in controller component

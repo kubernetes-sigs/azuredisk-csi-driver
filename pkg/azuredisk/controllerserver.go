@@ -694,6 +694,17 @@ func (d *Driver) ControllerPublishVolume(ctx context.Context, req *csi.Controlle
 		mc.WithAdditionalVolumeInfo(consts.VolumeID, diskURI, consts.Node, string(nodeName)).Observe(isOperationSucceeded)
 	}()
 
+	volumeContext := req.GetVolumeContext()
+	if volumeContext == nil {
+		volumeContext = map[string]string{}
+	}
+
+	// TODO: Add the QAD changes here?
+	if volumeContext["qadEnabled"] == "true" {
+		// Update the PV to add qad counter annotation.
+		// Also update the PV to add BlobURI annotation.
+	}
+
 	lun, vmState, err := d.diskController.GetDiskLun(ctx, diskName, diskURI, nodeName)
 	if err == cloudprovider.InstanceNotFound {
 		return nil, status.Error(codes.NotFound, fmt.Sprintf("failed to get azure instance id for node %q (%v)", nodeName, err))
@@ -705,11 +716,6 @@ func (d *Driver) ControllerPublishVolume(ctx context.Context, req *csi.Controlle
 	}
 
 	klog.V(2).Infof("GetDiskLun returned: %v. Initiating attaching volume %s to node %s (vmState %s).", err, diskURI, nodeName, vmStateStr)
-
-	volumeContext := req.GetVolumeContext()
-	if volumeContext == nil {
-		volumeContext = map[string]string{}
-	}
 
 	if err == nil {
 		if vmState != nil && strings.ToLower(*vmState) == "failed" {
