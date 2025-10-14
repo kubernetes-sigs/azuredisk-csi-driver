@@ -34,6 +34,7 @@ import (
 	volumehelpers "k8s.io/cloud-provider/volume/helpers"
 	"k8s.io/klog/v2"
 	"k8s.io/utils/ptr"
+	csidriverconsts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 
 	azureconsts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
@@ -153,10 +154,20 @@ func (c *ManagedDiskController) CreateManagedDisk(ctx context.Context, options *
 	if err != nil {
 		return "", err
 	}
-	diskProperties := armcompute.DiskProperties{
-		DiskSizeGB:      &diskSizeGB,
-		CreationData:    &creationData,
-		BurstingEnabled: options.BurstingEnabled,
+
+	diskProperties := armcompute.DiskProperties{}
+	// when creating from snapshot, and diskSizeGB is 0, let disk RP calculate size from snapshot bytes size.
+	if diskSizeGB == 0 && options.SourceType == csidriverconsts.SourceSnapshot {
+		diskProperties = armcompute.DiskProperties{
+			CreationData:    &creationData,
+			BurstingEnabled: options.BurstingEnabled,
+		}
+	} else {
+		diskProperties = armcompute.DiskProperties{
+			CreationData:    &creationData,
+			BurstingEnabled: options.BurstingEnabled,
+			DiskSizeGB:      &diskSizeGB,
+		}
 	}
 
 	if options.PublicNetworkAccess != "" {
