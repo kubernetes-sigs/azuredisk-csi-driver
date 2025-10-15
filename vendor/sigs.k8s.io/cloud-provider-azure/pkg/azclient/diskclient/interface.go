@@ -32,4 +32,5 @@ type Interface interface {
 	utils.DeleteFunc[armcompute.Disk]
 	utils.ListFunc[armcompute.Disk]
 	Patch(ctx context.Context, resourceGroupName string, resourceName string, parameters armcompute.DiskUpdate) (result *armcompute.Disk, err error)
+	BeginGrantAccess(ctx context.Context, resourceGroupName string, diskName string, parameters armcompute.GrantAccessData) (result *armcompute.DisksClientGrantAccessResponse, err error)
 }

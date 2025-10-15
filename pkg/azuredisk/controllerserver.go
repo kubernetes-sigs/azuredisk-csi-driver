@@ -699,10 +699,52 @@ func (d *Driver) ControllerPublishVolume(ctx context.Context, req *csi.Controlle
 		volumeContext = map[string]string{}
 	}
 
-	// TODO: Add the QAD changes here?
 	if volumeContext["qadEnabled"] == "true" {
-		// Update the PV to add qad counter annotation.
-		// Also update the PV to add BlobURI annotation.
+		klog.V(2).Infof("qad is enabled for disk %s, granting access", diskURI)
+		accessLevel := armcompute.AccessLevelWrite
+		accessData := &armcompute.GrantAccessData{
+			Access:            &accessLevel,
+			DurationInSeconds: to.Ptr(int32(3600)),
+		}
+		klog.V(2).Infof("granting access for disk %s with parameters %+v", diskURI, accessData)
+		diskclient, err := d.clientFactory.GetDiskClientForSub(d.cloud.SubscriptionID)
+		if err != nil {
+			return nil, status.Errorf(codes.Internal, "failed to get disk client for subscription %s: %v", d.cloud.SubscriptionID, err)
+		}
+		accessResp, err := diskclient.BeginGrantAccess(ctx, d.cloud.ResourceGroup, diskURI, *accessData)
+		klog.V(2).Infof("grant access for disk %s returned with %v", diskURI, accessResp)
+		blobURI := accessResp.AccessURI.AccessSAS
+
+		pv, err := d.getPVFromDiskURI(ctx, diskURI)
+		if err != nil {
+			return nil, status.Errorf(codes.Internal, "failed to get PV from disk URI %s: %v", diskURI, err)
+		}
+
+		// Check if the PV has existing annotations, if not add them and update the PV
+		if _, exists := pv.Annotations["azuredisk.csi.azure.com/blob-url"]; !exists {
+			klog.Infof("PV %s doesn't have annotations, adding annotations for QAD", pv.Name)
+			if pv.Annotations == nil {
+				pv.Annotations = make(map[string]string)
+			}
+			pv.Annotations["azuredisk.csi.azure.com/blob-url"] = *blobURI
+			pv.Annotations["azuredisk.csi.azure.com/qad-counter"] = "0"
+
+			// Prepare the updated PV object
+			updatedPV := &v1.PersistentVolume{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:        pv.Name,
+					Annotations: pv.Annotations,
+				},
+			}
+			// Update the PV in Kubernetes
+			_, err := d.kubeClient.CoreV1().PersistentVolumes().Update(context.TODO(), updatedPV, metav1.UpdateOptions{})
+			if err != nil {
+				return nil, status.Errorf(codes.Internal, "failed to update PV %s with QAD annotations: %v", pv.Name, err)
+			}
+		}
+
+		// TODO:Return an ok response here since we have updated the PV with the blob url
+		return &csi.ControllerPublishVolumeResponse{}, nil
 	}
 
 	lun, vmState, err := d.diskController.GetDiskLun(ctx, diskName, diskURI, nodeName)

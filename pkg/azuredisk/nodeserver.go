@@ -132,7 +132,7 @@ func (d *Driver) NodeStageVolume(ctx context.Context, req *csi.NodeStageVolumeRe
 	var lun string
 	// Check if this volume is using the QAD path.
 	// If yes, increment the qad-counter and make an HTTP request to the QAD wireserver endpoint.
-	if pv, isUsingQAD, err := isUsingQADPath(d.kubeClient, volumeID); isUsingQAD && err == nil {
+	if pv, isUsingQAD, err := d.isUsingQADPath(ctx, diskURI); isUsingQAD && err == nil {
 		blobUrl := pv.Annotations["azuredisk.csi.azure.com/blob-url"]
 		qadCounterVal, err := incrementQADCounterAnnotation(d.kubeClient, pv)
 		if err != nil {
@@ -295,7 +295,7 @@ func (d *Driver) NodeUnstageVolume(ctx context.Context, req *csi.NodeUnstageVolu
 	}
 	klog.V(2).Infof("NodeUnstageVolume: unmount %s successfully", stagingTargetPath)
 
-	if pv, isUsingQAD, err := isUsingQADPath(d.kubeClient, volumeID); isUsingQAD && err == nil {
+	if pv, isUsingQAD, err := d.isUsingQADPath(ctx, volumeID); isUsingQAD && err == nil {
 		blobUrl := pv.Annotations["azuredisk.csi.azure.com/blob-url"]
 		qadCounterVal, err := incrementQADCounterAnnotation(d.kubeClient, pv)
 		if err != nil {
@@ -327,7 +327,7 @@ func (d *Driver) NodeUnstageVolume(ctx context.Context, req *csi.NodeUnstageVolu
 				return true, nil
 			}
 		}); err != nil {
-			klog.Errorf("current disk: %s, wait for detach disk requests on node %s failed: %v")
+			klog.Errorf("Error occurred while waiting for disk: %s to be detached from node: %s, error: %v", volumeID, d.NodeID, err)
 		}
 	}
 
@@ -851,39 +851,24 @@ func collectMountOptions(fsType string, mntFlags []string) []string {
 	return options
 }
 
-func isUsingQADPath(kubeClient clientset.Interface, diskURI string) (*v1.PersistentVolume, bool, error) {
+func (d *Driver) isUsingQADPath(ctx context.Context, diskURI string) (*v1.PersistentVolume, bool, error) {
 
-	// Use label selector to filter PVs managed by Azure Disk CSI driver
-	labelSelector := "pv.kubernetes.io/provisioned-by=disk.csi.azure.com"
-
-	pvList, err := kubeClient.CoreV1().PersistentVolumes().List(context.TODO(), metav1.ListOptions{
-		LabelSelector: labelSelector,
-	})
+	klog.Infof("Checking if diskURI %s is using QAD path", diskURI)
+	pv, err := d.getPVFromDiskURI(ctx, diskURI)
 	if err != nil {
-		// Fallback to listing all PVs if label selector fails
-		klog.V(4).Infof("Label selector failed, falling back to list all PVs: %v", err)
-		pvList, err = kubeClient.CoreV1().PersistentVolumes().List(context.TODO(), metav1.ListOptions{})
-		if err != nil {
-			return nil, false, fmt.Errorf("failed to list PersistentVolumes: %v", err)
-		}
+		return nil, false, err
 	}
 
-	// Search for a PV with matching VolumeHandle
-	for _, pv := range pvList.Items {
-		if pv.Spec.CSI != nil && pv.Spec.CSI.VolumeHandle == diskURI {
-			// Found matching PV, check if it has qad-counter
-			if pvName := pv.Name; pvName != "" {
-				// Check for QAD-related annotations or labels
-				if qadCounter, exists := pv.Annotations["azuredisk.csi.azure.com/qad-counter"]; exists {
-					klog.V(2).Infof("Found PV %s with matching VolumeHandle %s and QAD counter: %s", pvName, diskURI, qadCounter)
-					return &pv, true, nil
-				}
-
-				// Found PV but no QAD configuration
-				klog.V(2).Infof("Found PV %s with matching VolumeHandle %s but no QAD configuration", pvName, diskURI)
-				return nil, false, nil
-			}
+	if pvName := pv.Name; pvName != "" {
+		// Check for QAD-related annotations or labels
+		if qadCounter, exists := pv.Annotations["azuredisk.csi.azure.com/qad-counter"]; exists {
+			klog.V(2).Infof("Found PV %s with matching VolumeHandle %s and QAD counter: %s", pvName, diskURI, qadCounter)
+			return pv, true, nil
 		}
+
+		// Found PV but no QAD configuration
+		klog.V(2).Infof("Found PV %s with matching VolumeHandle %s but no QAD configuration", pvName, diskURI)
+		return nil, false, nil
 	}
 
 	// No matching PV found
@@ -892,6 +877,8 @@ func isUsingQADPath(kubeClient clientset.Interface, diskURI string) (*v1.Persist
 }
 
 func incrementQADCounterAnnotation(kubeClient clientset.Interface, pv *v1.PersistentVolume) (int, error) {
+	klog.Infof("Incrementing QAD counter annotation for PV %s", pv.Name)
+
 	// Update the annotation
 	if pv.Annotations == nil {
 		pv.Annotations = make(map[string]string)
