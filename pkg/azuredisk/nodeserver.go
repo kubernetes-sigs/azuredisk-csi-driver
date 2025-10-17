@@ -151,10 +151,12 @@ func (d *Driver) NodeStageVolume(ctx context.Context, req *csi.NodeStageVolumeRe
 		}
 		klog.V(2).Infof("NodeStageVolume: volume %s is using QAD path, making POST call to wireserver with qad-counter %d", volumeID, qadCounterVal)
 
+		attachTimer := time.Now()
 		attachResponse, err := attachOrDetachDisk(ctx, *d.httpClient, volumeID, d.cloud.AADClientID, blobUrl, qadCounterVal, "ATTACH")
-		// Print key value pairs in attachResponse for debugging
-		for key, value := range attachResponse {
-			klog.V(2).Infof("NodeStageVolume: attachResponse[%s] = %v", key, value)
+
+		if err != nil {
+			klog.Errorf("NodeStageVolume: failed to make POST call to wireserver for volume %s: %v", volumeID, err)
+			return nil, status.Error(codes.Internal, "failed to make POST call to wireserver")
 		}
 
 		lowercaseDiskURI := strings.ToLower(volumeID)
@@ -173,6 +175,7 @@ func (d *Driver) NodeStageVolume(ctx context.Context, req *csi.NodeStageVolumeRe
 				diskStatus, ok := getDisksResponse[lowercaseDiskURI]
 				if ok && diskStatus.Status == AttachmentStatusAttached {
 					// Disk is attached, get the lun number
+					klog.Infof("NodeStageVolume: Latency observed for attach operation of disk %s is %v", volumeID, time.Since(attachTimer).Milliseconds())
 					lun = strconv.Itoa(diskStatus.LUN)
 					return true, nil
 				} else {
@@ -187,6 +190,7 @@ func (d *Driver) NodeStageVolume(ctx context.Context, req *csi.NodeStageVolumeRe
 			}
 
 		} else if statusResp.Status == AttachmentStatusAttached {
+			klog.Infof("NodeStageVolume: Latency observed for attach operation of disk %s is %v", volumeID, time.Since(attachTimer).Milliseconds())
 			lun = strconv.Itoa(statusResp.LUN)
 		} else {
 			return nil, status.Errorf(codes.Internal, "The attach request to the wireserver returned an unexpected status message %s", statusResp.Status)
@@ -326,6 +330,7 @@ func (d *Driver) NodeUnstageVolume(ctx context.Context, req *csi.NodeUnstageVolu
 			return nil, status.Error(codes.Internal, "failed to increment qad-counter")
 		}
 		klog.V(2).Infof("NodeUnStageVolume: volume %s is using QAD path, making POST call to wireserver with qad-counter %d", volumeID, qadCounterVal)
+		detachTimer := time.Now()
 		detachResponse, err := attachOrDetachDisk(ctx, *d.httpClient, volumeID, d.cloud.AADClientID, blobURL, qadCounterVal, "DETACH")
 		if err != nil {
 			klog.Errorf("NodeUnStageVolume: failed to make POST call to wireserver for volume %s: %v", volumeID, err)
@@ -335,6 +340,7 @@ func (d *Driver) NodeUnstageVolume(ctx context.Context, req *csi.NodeUnstageVolu
 		lowercaseVolumeID := strings.ToLower(volumeID)
 		if statusResp, ok := detachResponse[lowercaseVolumeID]; !ok {
 			klog.Infof("The volume with id %s is already detached", volumeID)
+			klog.Infof("NodeUnStageVolume: Latency observed for detach operation of disk %s is %v", volumeID, time.Since(detachTimer).Milliseconds())
 		} else if statusResp.Status == AttachmentStatusDetaching {
 			detached := false
 			if err = kwait.PollUntilContextTimeout(ctx, 500*time.Millisecond, 5*time.Second, true, func(context.Context) (bool, error) {
@@ -349,6 +355,7 @@ func (d *Driver) NodeUnstageVolume(ctx context.Context, req *csi.NodeUnstageVolu
 					return false, nil
 				} else {
 					// The disk is detached now
+					klog.Infof("NodeUnStageVolume: Latency observed for detach operation of disk %s is %v", volumeID, time.Since(detachTimer).Milliseconds())
 					detached = true
 					return true, nil
 				}
