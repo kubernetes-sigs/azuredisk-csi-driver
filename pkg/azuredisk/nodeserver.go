@@ -30,6 +30,7 @@ import (
 	"strings"
 	"time"
 
+	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/optimization"
 	volumehelper "sigs.k8s.io/azuredisk-csi-driver/pkg/util"
 	azcache "sigs.k8s.io/cloud-provider-azure/pkg/cache"
@@ -132,8 +133,8 @@ func (d *Driver) NodeStageVolume(ctx context.Context, req *csi.NodeStageVolumeRe
 	var lun string
 	// Check if this volume is using the QAD path.
 	// If yes, increment the qad-counter and make an HTTP request to the QAD wireserver endpoint.
-	if pv, isUsingQAD, err := d.isUsingQADPath(ctx, diskURI); isUsingQAD && err == nil {
-		blobUrl := pv.Annotations["azuredisk.csi.azure.com/blob-url"]
+	if pv, isUsingQAD, err := d.isUsingQADPath(ctx, volumeID); isUsingQAD && err == nil {
+		blobUrl := pv.Annotations[consts.BlobURLAnnotation]
 		qadCounterVal, err := incrementQADCounterAnnotation(d.kubeClient, pv)
 		if err != nil {
 			klog.Errorf("NodeStageVolume: failed to increment qad-counter for volume %s: %v", volumeID, err)
@@ -142,31 +143,43 @@ func (d *Driver) NodeStageVolume(ctx context.Context, req *csi.NodeStageVolumeRe
 		klog.V(2).Infof("NodeStageVolume: volume %s is using QAD path, making POST call to wireserver with qad-counter %d", volumeID, qadCounterVal)
 
 		attachResponse, err := attachOrDetachDisk(ctx, *d.httpClient, volumeID, d.cloud.AADClientID, blobUrl, qadCounterVal, "ATTACH")
+		// Print key value pairs in attachResponse for debugging
+		for key, value := range attachResponse {
+			klog.V(2).Infof("NodeStageVolume: attachResponse[%s] = %v", key, value)
+		}
+
 		if err != nil {
 			klog.Errorf("NodeStageVolume: failed to make POST call to wireserver for volume %s: %v", volumeID, err)
 			return nil, status.Error(codes.Internal, "failed to make POST call to wireserver")
 		}
-		if statusResp, ok := attachResponse[volumeID]; !ok || statusResp.Status != "DISK_STATUS_ATTACHING" && statusResp.Status != "DISK_STATUS_ATTACHED" {
-			return nil, status.Error(codes.Internal, "The attach request to the wireserver returned an unexpected status message")
+		statusResp, ok := attachResponse[strings.ToLower(volumeID)]
+		if !ok {
+			return nil, status.Errorf(codes.Internal, "The response from wireserver doesn't contain volume %s", volumeID)
 		}
-
-		if err = kwait.PollUntilContextTimeout(ctx, 500*time.Millisecond, 5*time.Second, true, func(context.Context) (bool, error) {
-			getDisksResponse, err := getAttachedDisks(ctx, *d.httpClient)
-			if err != nil {
-				klog.Errorf("NodeStageVolume: failed to get attached disks for volume %s: %v", volumeID, err)
-				return false, err
+		if statusResp.Status == "DISK_STATUS_ATTACHING" {
+			// Wait for the disk to be attached
+			if err = kwait.PollUntilContextTimeout(ctx, 500*time.Millisecond, 5*time.Second, true, func(context.Context) (bool, error) {
+				getDisksResponse, err := getAttachedDisks(ctx, *d.httpClient)
+				if err != nil {
+					klog.Errorf("NodeStageVolume: failed to get attached disks for volume %s: %v", volumeID, err)
+					return false, err
+				}
+				diskStatus, ok := getDisksResponse[volumeID]
+				if ok {
+					// Disk is attached, get the lun number
+					lun = strconv.Itoa(diskStatus.LUN)
+					return true, nil
+				} else {
+					// Wait for the disk to be attached
+					return false, nil
+				}
+			}); err != nil {
+				klog.Errorf("Error occured while waiting for disk: %s to be attached on node: %s, error: %v", volumeID, d.NodeID, err)
 			}
-			diskStatus, ok := getDisksResponse[volumeID]
-			if ok {
-				// Disk is attached, get the lun number
-				lun = strconv.Itoa(diskStatus.LUN)
-				return true, nil
-			} else {
-				// Wait for the disk to be attached
-				return false, nil
-			}
-		}); err != nil {
-			klog.Errorf("Error occured while waiting for disk: %s to be attached on node: %s, error: %v", volumeID, d.NodeID, err)
+		} else if statusResp.Status == "DISK_STATUS_ATTACHED" {
+			lun = strconv.Itoa(statusResp.LUN)
+		} else {
+			return nil, status.Errorf(codes.Internal, "The attach request to the wireserver returned an unexpected status message %s", statusResp.Status)
 		}
 	} else {
 		val, ok := req.PublishContext[consts.LUN]
@@ -296,7 +309,7 @@ func (d *Driver) NodeUnstageVolume(ctx context.Context, req *csi.NodeUnstageVolu
 	klog.V(2).Infof("NodeUnstageVolume: unmount %s successfully", stagingTargetPath)
 
 	if pv, isUsingQAD, err := d.isUsingQADPath(ctx, volumeID); isUsingQAD && err == nil {
-		blobUrl := pv.Annotations["azuredisk.csi.azure.com/blob-url"]
+		blobUrl := pv.Annotations[azureconstants.BlobURLAnnotation]
 		qadCounterVal, err := incrementQADCounterAnnotation(d.kubeClient, pv)
 		if err != nil {
 			klog.Errorf("NodeUnStageVolume: failed to increment qad-counter for volume %s: %v", volumeID, err)
@@ -308,29 +321,31 @@ func (d *Driver) NodeUnstageVolume(ctx context.Context, req *csi.NodeUnstageVolu
 			klog.Errorf("NodeUnStageVolume: failed to make POST call to wireserver for volume %s: %v", volumeID, err)
 			return nil, status.Error(codes.Internal, "failed to make POST call to wireserver")
 		}
-		if statusResp, ok := detachResponse[volumeID]; !ok || statusResp.Status != "DISK_STATUS_DETACHING" && statusResp.Status != "DISK_STATUS_DETACHED" {
-			return nil, status.Error(codes.Internal, "The detach request to the wireserver returned an unexpected status message")
-		}
 
-		if err = kwait.PollUntilContextTimeout(ctx, 500*time.Millisecond, 5*time.Second, true, func(context.Context) (bool, error) {
-			getDisksResponse, err := getAttachedDisks(ctx, *d.httpClient)
-			if err != nil {
-				klog.Errorf("NodeStageVolume: failed to get attached disks for volume %s: %v", volumeID, err)
-				return false, err
+		if statusResp, ok := detachResponse[volumeID]; !ok {
+			klog.Infof("The volume with id %s is already detached", volumeID)
+		} else if statusResp.Status == "DISK_STATUS_DETACHING" {
+			if err = kwait.PollUntilContextTimeout(ctx, 500*time.Millisecond, 5*time.Second, true, func(context.Context) (bool, error) {
+				getDisksResponse, err := getAttachedDisks(ctx, *d.httpClient)
+				if err != nil {
+					klog.Errorf("NodeUnStageVolume: failed to get attached disks for volume %s: %v", volumeID, err)
+					return false, err
+				}
+				_, ok := getDisksResponse[volumeID]
+				if ok {
+					// Disk is still attached, wait for it to be detached
+					return false, nil
+				} else {
+					// The disk is detached now
+					return true, nil
+				}
+			}); err != nil {
+				klog.Errorf("Error occurred while waiting for disk: %s to be detached from node: %s, error: %v", volumeID, d.NodeID, err)
 			}
-			_, ok := getDisksResponse[volumeID]
-			if ok {
-				// Disk is still attached, wait for it to be detached
-				return false, nil
-			} else {
-				// The disk is detached now
-				return true, nil
-			}
-		}); err != nil {
-			klog.Errorf("Error occurred while waiting for disk: %s to be detached from node: %s, error: %v", volumeID, d.NodeID, err)
+		} else {
+			return nil, status.Errorf(codes.Internal, "The detach request to the wireserver returned an unexpected status message %s", statusResp.Status)
 		}
 	}
-
 	isOperationSucceeded = true
 	return &csi.NodeUnstageVolumeResponse{}, nil
 }
@@ -861,7 +876,7 @@ func (d *Driver) isUsingQADPath(ctx context.Context, diskURI string) (*v1.Persis
 
 	if pvName := pv.Name; pvName != "" {
 		// Check for QAD-related annotations or labels
-		if qadCounter, exists := pv.Annotations["azuredisk.csi.azure.com/qad-counter"]; exists {
+		if qadCounter, exists := pv.Annotations[azureconstants.QADCounterAnnotation]; exists {
 			klog.V(2).Infof("Found PV %s with matching VolumeHandle %s and QAD counter: %s", pvName, diskURI, qadCounter)
 			return pv, true, nil
 		}
@@ -884,27 +899,19 @@ func incrementQADCounterAnnotation(kubeClient clientset.Interface, pv *v1.Persis
 		pv.Annotations = make(map[string]string)
 	}
 	currentQADCounter := 0
-	if val, ok := pv.Annotations["azuredisk.csi.azure.com/qad-counter"]; ok {
+	if val, ok := pv.Annotations[azureconstants.QADCounterAnnotation]; ok {
 		currentQADCounter, _ = strconv.Atoi(val)
 	}
 	updatedCounter := currentQADCounter + 1
-	pv.Annotations["azuredisk.csi.azure.com/qad-counter"] = fmt.Sprintf("%d", updatedCounter)
-
-	// Prepare the updated PV object
-	updatedPV := &v1.PersistentVolume{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:        pv.Name,
-			Annotations: pv.Annotations,
-		},
-	}
+	pv.Annotations[azureconstants.QADCounterAnnotation] = fmt.Sprintf("%d", updatedCounter)
 
 	// Update the PV in Kubernetes
-	_, err := kubeClient.CoreV1().PersistentVolumes().Update(context.TODO(), updatedPV, metav1.UpdateOptions{})
+	_, err := kubeClient.CoreV1().PersistentVolumes().Update(context.TODO(), pv, metav1.UpdateOptions{})
 	if err != nil {
 		return 0, fmt.Errorf("failed to update PersistentVolume %s: %v", pv.Name, err)
 	}
 
-	klog.V(2).Infof("Successfully incremented QAD counter annotation for PV %s to %s", pv.Name, pv.Annotations["azuredisk.csi.azure.com/qad-counter"])
+	klog.V(2).Infof("Successfully incremented QAD counter annotation for PV %s to %s", pv.Name, pv.Annotations[azureconstants.QADCounterAnnotation])
 	return updatedCounter, nil
 }
 
@@ -917,7 +924,10 @@ func attachOrDetachDisk(ctx context.Context, client http.Client, diskURI string,
 	}
 
 	request := &WireserverRequest{
-		MSIClientID: clientId,
+		// TODO: Remove this hardcoding for the actual implementation
+		// One way to get the kubelet identity is to get IMDS metadata
+		// It doesn't work for this cluster because there is not kubelet identity present for these VMs
+		MSIClientID: "75a44eb9-3e9d-49cd-b5a1-0447ff029f00",
 		DiskOps: map[string]*DiskOp{
 			diskURI: diskOp,
 		},
@@ -948,10 +958,23 @@ func attachOrDetachDisk(ctx context.Context, client http.Client, diskURI string,
 		return WireserverDiskStatusResponse{}, fmt.Errorf("failed to read response body: %v", err)
 	}
 
+	// Log wireserver request and response for debugging
+	klog.V(2).Infof("Wireserver request: %s", string(requestBody))
+	klog.V(2).Infof("Wireserver response: %s", string(bytes))
+
 	var wireserverDiskStatusResponse WireserverDiskStatusResponse
 	if err := json.Unmarshal(bytes, &wireserverDiskStatusResponse); err != nil {
 		return WireserverDiskStatusResponse{}, fmt.Errorf("failed to unmarshal wireserver response: %v", err)
 	}
+
+	// Convert all the keys in the response to lowercase for case-insensitive comparison
+	lowercaseResponse := make(WireserverDiskStatusResponse)
+	for k, v := range wireserverDiskStatusResponse {
+		lowercaseResponse[strings.ToLower(k)] = v
+	}
+
+	wireserverDiskStatusResponse = lowercaseResponse
+
 	return wireserverDiskStatusResponse, nil
 }
 
