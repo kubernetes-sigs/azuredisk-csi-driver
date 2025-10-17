@@ -43,17 +43,3 @@ func (client *Client) Patch(ctx context.Context, resourceGroupName string, resou
 	}
 	return nil, nil
 }
-
-func (client *Client) BeginGrantAccess(ctx context.Context, resourceGroupName string, diskName string, parameters armcompute.GrantAccessData) (result *armcompute.DisksClientGrantAccessResponse, err error) {
-	ctx = utils.ContextWithClientName(ctx, "DisksClient")
-	ctx = utils.ContextWithRequestMethod(ctx, "BeginGrantAccess")
-	ctx = utils.ContextWithResourceGroupName(ctx, resourceGroupName)
-	ctx = utils.ContextWithSubscriptionID(ctx, client.subscriptionID)
-	ctx, endSpan := runtime.StartSpan(ctx, CreateOrUpdateOperationName, client.tracer, nil)
-	defer endSpan(err)
-	resp, err := utils.NewPollerWrapper(client.DisksClient.BeginGrantAccess(ctx, resourceGroupName, diskName, parameters, nil)).WaitforPollerResp(ctx)
-	if err != nil {
-		return nil, err
-	}
-	return resp, nil
-}

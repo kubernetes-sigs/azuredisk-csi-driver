@@ -778,18 +778,17 @@ func (d *Driver) getPVFromDiskURI(ctx context.Context, diskURI string) (*v1.Pers
 	labelSelector := "pv.kubernetes.io/provisioned-by=disk.csi.azure.com"
 	klog.Infof("Looking for PV with handle %s", diskURI)
 
-	pvList, err := d.kubeClient.CoreV1().PersistentVolumes().List(context.TODO(), metav1.ListOptions{
+	pvList, err := d.kubeClient.CoreV1().PersistentVolumes().List(ctx, metav1.ListOptions{
 		LabelSelector: labelSelector,
 	})
 	if err != nil || pvList == nil || len(pvList.Items) == 0 {
-		pvList, err = d.kubeClient.CoreV1().PersistentVolumes().List(context.TODO(), metav1.ListOptions{})
+		pvList, err = d.kubeClient.CoreV1().PersistentVolumes().List(ctx, metav1.ListOptions{})
 		if err != nil {
 			return nil, fmt.Errorf("failed to list PersistentVolumes: %v", err)
 		}
 	}
 	// Search for a PV with matching VolumeHandle
 	for _, pv := range pvList.Items {
-		klog.Infof("Comparing pv volumeHandle %s with diskuri %s", pv.Spec.CSI.VolumeHandle, diskURI)
 		if pv.Spec.CSI != nil && pv.Spec.CSI.VolumeHandle == diskURI {
 			klog.Infof("Found PV %s with handle %s", pv.Name, diskURI)
 			return &pv, nil

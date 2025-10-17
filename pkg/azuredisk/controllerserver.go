@@ -843,13 +843,14 @@ func (d *Driver) ControllerUnpublishVolume(ctx context.Context, req *csi.Control
 		return nil, status.Error(codes.InvalidArgument, "Volume ID not provided")
 	}
 
-	// Check if the PV has QAD enabled, if yes skip detach
+	// Check if the PV has QAD enabled, if yes skip detach as the disk
+	// should've already been detached in NodeUnstageVolume
 	pv, err := d.getPVFromDiskURI(ctx, diskURI)
 	if err != nil {
 		klog.Errorf("failed to get PV from disk URI %s: %v", diskURI, err)
 	} else {
 		if pv.Annotations != nil {
-			if pv.Annotations["azuredisk.csi.azure.com/qad-enabled"] == "true" {
+			if _, exists := pv.Annotations[azureconstants.QADCounterAnnotation]; exists {
 				klog.V(2).Infof("PV %s has QAD enabled, skipping detach for disk %s", pv.Name, diskURI)
 				return &csi.ControllerUnpublishVolumeResponse{}, nil
 			}
