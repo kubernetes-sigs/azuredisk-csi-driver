@@ -157,11 +157,8 @@ func (d *Driver) NodeStageVolume(ctx context.Context, req *csi.NodeStageVolumeRe
 			klog.V(2).Infof("NodeStageVolume: attachResponse[%s] = %v", key, value)
 		}
 
-		if err != nil {
-			klog.Errorf("NodeStageVolume: failed to make POST call to wireserver for volume %s: %v", volumeID, err)
-			return nil, status.Error(codes.Internal, "failed to make POST call to wireserver")
-		}
-		statusResp, ok := attachResponse[strings.ToLower(volumeID)]
+		lowercaseDiskURI := strings.ToLower(volumeID)
+		statusResp, ok := attachResponse[lowercaseDiskURI]
 		if !ok {
 			return nil, status.Errorf(codes.Internal, "The response from wireserver doesn't contain volume %s", volumeID)
 		}
@@ -173,7 +170,7 @@ func (d *Driver) NodeStageVolume(ctx context.Context, req *csi.NodeStageVolumeRe
 					klog.Errorf("NodeStageVolume: failed to get attached disks for volume %s: %v", volumeID, err)
 					return false, err
 				}
-				diskStatus, ok := getDisksResponse[volumeID]
+				diskStatus, ok := getDisksResponse[lowercaseDiskURI]
 				if ok && diskStatus.Status == AttachmentStatusAttached {
 					// Disk is attached, get the lun number
 					lun = strconv.Itoa(diskStatus.LUN)
@@ -335,7 +332,8 @@ func (d *Driver) NodeUnstageVolume(ctx context.Context, req *csi.NodeUnstageVolu
 			return nil, status.Error(codes.Internal, "failed to make POST call to wireserver")
 		}
 
-		if statusResp, ok := detachResponse[volumeID]; !ok {
+		lowercaseVolumeID := strings.ToLower(volumeID)
+		if statusResp, ok := detachResponse[lowercaseVolumeID]; !ok {
 			klog.Infof("The volume with id %s is already detached", volumeID)
 		} else if statusResp.Status == AttachmentStatusDetaching {
 			detached := false
@@ -345,7 +343,7 @@ func (d *Driver) NodeUnstageVolume(ctx context.Context, req *csi.NodeUnstageVolu
 					klog.Errorf("NodeUnStageVolume: failed to get attached disks for volume %s: %v", volumeID, err)
 					return false, err
 				}
-				_, ok := getDisksResponse[volumeID]
+				_, ok := getDisksResponse[lowercaseVolumeID]
 				if ok {
 					// Disk is still attached, wait for it to be detached
 					return false, nil
@@ -1014,6 +1012,9 @@ func getAttachedDisks(ctx context.Context, client http.Client) (WireserverDiskSt
 	if err != nil {
 		return WireserverDiskStatusResponse{}, fmt.Errorf("failed to read response body: %v", err)
 	}
+
+	// TODO:// Remove this post debugging
+	klog.V(2).Infof("Wireserver response for GET: %s", string(bytes))
 
 	var wireserverDiskStatusResponse WireserverDiskStatusResponse
 	if err := json.Unmarshal(bytes, &wireserverDiskStatusResponse); err != nil {
