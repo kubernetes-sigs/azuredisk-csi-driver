@@ -96,7 +96,7 @@ type FakeDriver interface {
 	checkDiskExists(ctx context.Context, diskURI string) (*armcompute.Disk, error)
 	waitForSnapshotReady(context.Context, string, string, string, time.Duration, time.Duration) error
 	getSnapshotByID(context.Context, string, string, string, string) (*csi.Snapshot, error)
-	getSnapshotSKU(context.Context, string) (string, error)
+	getSnapshot(context.Context, string) (*armcompute.Snapshot, error)
 	ensureMountPoint(string) (bool, error)
 	ensureBlockTargetFile(string) error
 	getDevicePathWithLUN(lunStr string) (string, error)
