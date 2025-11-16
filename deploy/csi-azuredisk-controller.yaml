@@ -37,7 +37,7 @@ spec:
           effect: "NoSchedule"
       containers:
         - name: csi-provisioner
-          image: mcr.microsoft.com/oss/v2/kubernetes-csi/csi-provisioner:v5.3.0
+          image: mcr.microsoft.com/oss/v2/kubernetes-csi/csi-provisioner:v6.0.0
           args:
             - "--feature-gates=Topology=true,HonorPVReclaimPolicy=true,VolumeAttributesClass=true"
             - "--csi-address=$(ADDRESS)"
@@ -95,7 +95,7 @@ spec:
               drop:
                 - ALL
         - name: csi-snapshotter
-          image: mcr.microsoft.com/oss/v2/kubernetes-csi/csi-snapshotter:v8.3.0
+          image: mcr.microsoft.com/oss/v2/kubernetes-csi/csi-snapshotter:v8.4.0
           args:
             - "-csi-address=$(ADDRESS)"
             - "-leader-election"
@@ -122,7 +122,7 @@ spec:
               drop:
                 - ALL
         - name: csi-resizer
-          image: mcr.microsoft.com/oss/v2/kubernetes-csi/csi-resizer:v1.14.0
+          image: mcr.microsoft.com/oss/v2/kubernetes-csi/csi-resizer:v2.0.0
           args:
             - "-csi-address=$(ADDRESS)"
             - "-v=2"
