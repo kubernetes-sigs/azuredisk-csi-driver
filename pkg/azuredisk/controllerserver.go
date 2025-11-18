@@ -695,6 +695,13 @@ func (d *Driver) ControllerPublishVolume(ctx context.Context, req *csi.Controlle
 			return nil, status.Errorf(codes.Internal, "%v", err)
 		}
 
+		if d.convertRWCachingModeForIntreePV && cachingMode == armcompute.CachingTypesReadWrite {
+			if strings.EqualFold(volumeContext[consts.KindField], string(v1.AzureManagedDisk)) {
+				klog.V(2).Infof("converting RWCachingMode to ReadOnly for intree PV volume %s", diskURI)
+				cachingMode = armcompute.CachingTypesReadOnly
+			}
+		}
+
 		occupiedLuns := d.getOccupiedLunsFromNode(ctx, nodeName, diskURI)
 		klog.V(2).Infof("Trying to attach volume %s to node %s", diskURI, nodeName)
 

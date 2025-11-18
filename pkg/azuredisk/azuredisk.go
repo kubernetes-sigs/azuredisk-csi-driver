@@ -148,6 +148,8 @@ type Driver struct {
 	// a timed cache for disk lun collision check throttling
 	checkDiskLunThrottlingCache azcache.Resource
 	enableMigrationMonitor      bool
+	// whether to convert ReadWrite cachingMode to ReadOnly for intree PVs to avoid issues
+	convertRWCachingModeForIntreePV bool
 }
 
 // NewDriver Creates a NewCSIDriver object. Assumes vendor version is equal to driver version &
@@ -201,6 +203,7 @@ func NewDriver(options *DriverOptions) *Driver {
 	driver.ioHandler = azureutils.NewOSIOHandler()
 	driver.hostUtil = hostutil.NewHostUtil()
 	driver.enableMigrationMonitor = options.EnableMigrationMonitor
+	driver.convertRWCachingModeForIntreePV = options.ConvertRWCachingModeForIntreePV
 
 	if driver.NodeID == "" {
 		// nodeid is not needed in controller component
