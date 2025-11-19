@@ -1568,3 +1568,205 @@ func TestValidateBlockDeviceSize(t *testing.T) {
 		})
 	}
 }
+
+func TestNodeServer_FreezeIntegration(t *testing.T) {
+	// Note: These tests validate the watcher lifecycle integration.
+	// The detailed freeze/unfreeze functionality is tested in:
+	// - freeze/fsfreeze_test.go: FreezeManager functionality
+	// - freeze/volumeattachment_watcher_test.go: VolumeAttachment monitoring and event processing
+	// - freeze_orchestrator_test.go: Freeze orchestration logic
+
+	t.Run("watcher lifecycle validation", func(t *testing.T) {
+		cntl := gomock.NewController(t)
+		defer cntl.Finish()
+
+		d, err := NewFakeDriver(cntl)
+		if err != nil {
+			t.Fatalf("NewFakeDriver failed: %v", err)
+		}
+
+		// Access internal driver for watcher manipulation
+		driver := d.(*fakeDriver)
+
+		// Test: watcher starts with enableSnapshotConsistency=true and NodeID set
+		driver.enableSnapshotConsistency = true
+		driver.NodeID = "test-node"
+
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+
+		// Start watcher
+		driver.startVolumeAttachmentWatcher(ctx)
+
+		// Verify watcher is initialized
+		if driver.vaWatcher == nil {
+			t.Error("VolumeAttachment watcher should be initialized when enabled with NodeID")
+		}
+
+		// Stop watcher
+		driver.stopVolumeAttachmentWatcher()
+
+		// Verify watcher is cleaned up
+		if driver.vaWatcher != nil {
+			t.Error("VolumeAttachment watcher should be nil after stop")
+		}
+	})
+
+	t.Run("watcher does not start on Windows", func(t *testing.T) {
+		cntl := gomock.NewController(t)
+		defer cntl.Finish()
+
+		d, err := NewFakeDriver(cntl)
+		if err != nil {
+			t.Fatalf("NewFakeDriver failed: %v", err)
+		}
+
+		driver := d.(*fakeDriver)
+		driver.NodeID = "test-node"
+
+		// Note: startVolumeAttachmentWatcher checks runtime.GOOS for "windows"
+		// This test validates the conditional logic exists
+		// On Linux, the watcher WILL start if NodeID is set
+		if runtime.GOOS == "windows" {
+			ctx := context.Background()
+			driver.startVolumeAttachmentWatcher(ctx)
+
+			// On Windows, watcher should not start
+			if driver.vaWatcher != nil {
+				t.Error("VolumeAttachment watcher should not start on Windows")
+			}
+		}
+	})
+
+	t.Run("watcher does not start without NodeID", func(t *testing.T) {
+		cntl := gomock.NewController(t)
+		defer cntl.Finish()
+
+		d, err := NewFakeDriver(cntl)
+		if err != nil {
+			t.Fatalf("NewFakeDriver failed: %v", err)
+		}
+
+		driver := d.(*fakeDriver)
+		driver.enableSnapshotConsistency = true
+		driver.NodeID = "" // Empty NodeID
+
+		ctx := context.Background()
+
+		// Start watcher (should not initialize)
+		driver.startVolumeAttachmentWatcher(ctx)
+
+		// Verify watcher is not initialized
+		if driver.vaWatcher != nil {
+			t.Error("VolumeAttachment watcher should not be initialized without NodeID")
+		}
+	})
+
+	t.Run("multiple stop calls are safe", func(t *testing.T) {
+		cntl := gomock.NewController(t)
+		defer cntl.Finish()
+
+		d, err := NewFakeDriver(cntl)
+		if err != nil {
+			t.Fatalf("NewFakeDriver failed: %v", err)
+		}
+
+		driver := d.(*fakeDriver)
+		driver.enableSnapshotConsistency = true
+		driver.NodeID = "test-node"
+
+		ctx := context.Background()
+		driver.startVolumeAttachmentWatcher(ctx)
+
+		// Multiple stop calls should not panic
+		driver.stopVolumeAttachmentWatcher()
+		driver.stopVolumeAttachmentWatcher()
+		driver.stopVolumeAttachmentWatcher()
+	})
+}
+
+func TestNodeServer_FreezeUnfreezeAnnotationHandling(t *testing.T) {
+	// This test validates that the watcher can be created with NodeID for annotation matching.
+	// Detailed annotation processing tests are in freeze/volumeattachment_watcher_test.go which validate:
+	// - Annotation-based freeze requests (consts.AzureDiskFreezeRequiredAnnotation)
+	// - Freeze completion tracking (consts.AzureDiskFreezeCompleteAnnotation)
+	// - Unfreeze requests (annotation removal)
+	// - Timeout handling
+
+	t.Run("watcher initialization with NodeID", func(t *testing.T) {
+		cntl := gomock.NewController(t)
+		defer cntl.Finish()
+
+		d, err := NewFakeDriver(cntl)
+		if err != nil {
+			t.Fatalf("NewFakeDriver failed: %v", err)
+		}
+
+		driver := d.(*fakeDriver)
+		nodeID := "test-node-123"
+		driver.NodeID = nodeID
+		driver.enableSnapshotConsistency = true
+
+		ctx := context.Background()
+		driver.startVolumeAttachmentWatcher(ctx)
+		defer driver.stopVolumeAttachmentWatcher()
+
+		// Verify watcher was created
+		if driver.vaWatcher == nil {
+			t.Error("VolumeAttachment watcher should be initialized")
+		}
+
+		// The watcher uses driver.NodeID to filter relevant VolumeAttachments
+		// This integration is validated in the watcher's own test suite
+	})
+}
+
+func TestNodeServer_FreezeCleanupOnShutdown(t *testing.T) {
+	t.Run("stopVolumeAttachmentWatcher safely handles nil watcher", func(t *testing.T) {
+		cntl := gomock.NewController(t)
+		defer cntl.Finish()
+
+		d, err := NewFakeDriver(cntl)
+		if err != nil {
+			t.Fatalf("NewFakeDriver failed: %v", err)
+		}
+
+		driver := d.(*fakeDriver)
+		driver.vaWatcher = nil
+
+		// Should not panic
+		driver.stopVolumeAttachmentWatcher()
+	})
+
+	t.Run("stopVolumeAttachmentWatcher cleans up active watcher", func(t *testing.T) {
+		cntl := gomock.NewController(t)
+		defer cntl.Finish()
+
+		d, err := NewFakeDriver(cntl)
+		if err != nil {
+			t.Fatalf("NewFakeDriver failed: %v", err)
+		}
+
+		driver := d.(*fakeDriver)
+		driver.enableSnapshotConsistency = true
+		driver.NodeID = "test-node"
+
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+
+		// Start watcher
+		driver.startVolumeAttachmentWatcher(ctx)
+
+		if driver.vaWatcher == nil {
+			t.Fatal("VolumeAttachment watcher should be initialized")
+		}
+
+		// Stop watcher
+		driver.stopVolumeAttachmentWatcher()
+
+		// Verify cleanup
+		if driver.vaWatcher != nil {
+			t.Error("VolumeAttachment watcher should be nil after stop")
+		}
+	})
+}

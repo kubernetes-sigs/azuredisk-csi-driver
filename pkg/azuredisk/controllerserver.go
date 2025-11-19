@@ -1291,6 +1291,20 @@ func (d *Driver) CreateSnapshot(ctx context.Context, req *csi.CreateSnapshotRequ
 
 	csiSnapshot, _ := d.getSnapshotByID(ctx, subsID, resourceGroup, snapshotName, "")
 	if csiSnapshot == nil || sourceVolumeID != csiSnapshot.SourceVolumeId {
+		// TODO set extraCreateMetadata in csi external snapshotter to true
+		checkOrReqErr, checkOrReqFn := d.CheckOrRequestFreeze(ctx, sourceVolumeID, snapshotName, tags[consts.SnapshotNamespaceTag])
+
+		if checkOrReqErr != nil {
+			return nil, checkOrReqErr
+		}
+
+		var snapshotCreated bool
+		defer func() {
+			if checkOrReqFn != nil {
+				checkOrReqFn(snapshotCreated)
+			}
+		}()
+
 		if _, err := snapshotClient.CreateOrUpdate(ctx, resourceGroup, snapshotName, snapshot); err != nil {
 			if strings.Contains(err.Error(), "existing disk") {
 				return nil, status.Error(codes.AlreadyExists, fmt.Sprintf("request snapshot(%s) under rg(%s) already exists, but the SourceVolumeId is different, error details: %v", snapshotName, resourceGroup, err))
@@ -1298,6 +1312,10 @@ func (d *Driver) CreateSnapshot(ctx context.Context, req *csi.CreateSnapshotRequ
 
 			azureutils.SleepIfThrottled(err, consts.SnapshotOpThrottlingSleepSec)
 			return nil, status.Error(codes.Internal, fmt.Sprintf("create snapshot error: %v", err.Error()))
+		}
+		csiSnapshot, _ := d.getSnapshotByID(ctx, subsID, resourceGroup, snapshotName, "")
+		if csiSnapshot != nil {
+			snapshotCreated = true
 		}
 	}
 
