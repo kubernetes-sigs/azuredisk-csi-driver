@@ -106,7 +106,7 @@ func getDevicePathWithMountPath(mountPath string, m *mount.SafeFormatAndMount) (
 
 	if err != nil {
 		if sts, ok := status.FromError(err); ok {
-			return "", fmt.Errorf(sts.Message())
+			return "", fmt.Errorf("%v", sts.Message())
 		}
 		return "", err
 	}
@@ -126,7 +126,7 @@ func getBlockSizeBytes(devicePath string, m *mount.SafeFormatAndMount) (int64, e
 
 	if err != nil {
 		if sts, ok := status.FromError(err); ok {
-			return -1, fmt.Errorf(sts.Message())
+			return -1, fmt.Errorf("%v", sts.Message())
 		}
 		return -1, err
 	}
@@ -144,7 +144,7 @@ func resizeVolume(devicePath, volumePath string, m *mount.SafeFormatAndMount) er
 
 	if err != nil {
 		if sts, ok := status.FromError(err); ok {
-			return fmt.Errorf(sts.Message())
+			return fmt.Errorf("%v", sts.Message())
 		}
 		return err
 	}
@@ -171,7 +171,7 @@ func (d *Driver) GetVolumeStats(ctx context.Context, m *mount.SafeFormatAndMount
 	// check if the volume stats is cached
 	cache, err := d.volStatsCache.Get(ctx, volumeID, azcache.CacheReadTypeDefault)
 	if err != nil {
-		return nil, status.Errorf(codes.Internal, err.Error())
+		return nil, status.Errorf(codes.Internal, "%v", err)
 	}
 	if cache != nil {
 		volUsage := cache.(csi.VolumeUsage)
