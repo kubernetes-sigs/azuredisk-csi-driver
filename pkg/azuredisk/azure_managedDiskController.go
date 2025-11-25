@@ -170,10 +170,16 @@ func (c *ManagedDiskController) CreateManagedDisk(ctx context.Context, options *
 		}
 	}
 
+	isAzureStack := azureutils.IsAzureStackCloud(c.cloud.Config.Cloud, c.cloud.Config.DisableAzureStackCloud)
+
 	if options.PublicNetworkAccess != "" {
 		diskProperties.PublicNetworkAccess = to.Ptr(options.PublicNetworkAccess)
 	} else {
-		diskProperties.PublicNetworkAccess = to.Ptr(armcompute.PublicNetworkAccessDisabled)
+		if isAzureStack {
+			klog.V(2).Infof("AzureDisk - PublicNetworkAccess is not supported in Azure Stack, skipping the property setting")
+		} else {
+			diskProperties.PublicNetworkAccess = to.Ptr(armcompute.PublicNetworkAccessDisabled)
+		}
 	}
 
 	if options.NetworkAccessPolicy != "" {
@@ -189,7 +195,11 @@ func (c *ManagedDiskController) CreateManagedDisk(ctx context.Context, options *
 			}
 		}
 	} else {
-		diskProperties.NetworkAccessPolicy = to.Ptr(armcompute.NetworkAccessPolicyDenyAll)
+		if isAzureStack {
+			klog.V(2).Infof("AzureDisk - NetworkAccessPolicy is not supported in Azure Stack, skipping the property setting")
+		} else {
+			diskProperties.NetworkAccessPolicy = to.Ptr(armcompute.NetworkAccessPolicyDenyAll)
+		}
 	}
 
 	if diskSku == armcompute.DiskStorageAccountTypesUltraSSDLRS || diskSku == armcompute.DiskStorageAccountTypesPremiumV2LRS {
