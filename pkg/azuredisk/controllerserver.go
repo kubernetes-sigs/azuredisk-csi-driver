@@ -49,10 +49,11 @@ import (
 )
 
 const (
-	waitForSnapshotReadyInterval = 5 * time.Second
-	waitForSnapshotReadyTimeout  = 10 * time.Minute
-	maxErrMsgLength              = 990
-	checkDiskLunThrottleLatency  = 1 * time.Second
+	waitForSnapshotReadyInterval     = 5 * time.Second
+	waitForSnapshotReadyTimeout      = 10 * time.Minute
+	maxErrMsgLength                  = 990
+	checkDiskLunThrottleLatency      = 1 * time.Second
+	maxSnapshotSizeDifferenceAllowed = 50 // in GiB
 )
 
 // listVolumeStatus explains the return status of `listVolumesByResourceGroup`
@@ -107,6 +108,7 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 
 	capacityBytes := req.GetCapacityRange().GetRequiredBytes()
 	volSizeBytes := int64(capacityBytes)
+	requestSizeToBeSupplied := true
 	requestGiB := int(volumehelper.RoundUpGiB(volSizeBytes))
 
 	if diskParams.PerformancePlus != nil && *diskParams.PerformancePlus && requestGiB < consts.PerformancePlusMinimumDiskSizeGiB {
@@ -225,6 +227,26 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 					},
 				},
 			}
+
+			// Get snapshot once and extract both SKU and disk size info
+			snapshot, err := d.getSnapshot(ctx, sourceID)
+			if err == nil {
+				// fetch snapshot info and compare size with requested size
+				// when snapshot size is larger than requested size, do not supply the size in the request
+				// to allow Azure to create a disk with exact snapshot size in bytes.
+				diskSizeInBytes, err := getDiskSizeInBytesFromSnapshot(snapshot)
+				if err == nil {
+					requestedGiBfromSnapshot := int(volumehelper.RoundUpGiB(diskSizeInBytes))
+					differenceSize := requestedGiBfromSnapshot - requestGiB
+					if requestedGiBfromSnapshot > requestGiB && differenceSize <= maxSnapshotSizeDifferenceAllowed {
+						klog.V(4).Infof("snapshot size (%d GiB) is larger than requested size (%d GiB) but difference (%d GiB) is within the allowed limit (%d GiB), will not supply the size in the create disk request", requestedGiBfromSnapshot, requestGiB, differenceSize, maxSnapshotSizeDifferenceAllowed)
+						requestSizeToBeSupplied = false
+					}
+				}
+			} else {
+				return nil, status.Errorf(codes.NotFound, "%v", err)
+			}
+
 			metricsRequest = "controller_create_volume_from_snapshot"
 		} else {
 			sourceID = content.GetVolume().GetVolumeId()
@@ -295,6 +317,11 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 	}
 
 	diskParams.VolumeContext[consts.RequestedSizeGib] = strconv.Itoa(requestGiB)
+
+	if !requestSizeToBeSupplied && sourceType == consts.SourceSnapshot {
+		requestGiB = 0
+	}
+
 	volumeOptions := &ManagedDiskOptions{
 		AvailabilityZone:    diskZone,
 		BurstingEnabled:     diskParams.EnableBursting,
@@ -1335,4 +1362,50 @@ func (d *Driver) GetSourceDiskSize(ctx context.Context, subsID, resourceGroup, d
 		return nil, result, status.Error(codes.Internal, fmt.Sprintf("DiskSizeGB for disk (%s) in resourcegroup (%s) is nil", diskName, resourceGroup))
 	}
 	return (*result.Properties).DiskSizeGB, result, nil
+}
+
+// getSnapshot retrieves the Snapshot and returns the Snapshot or the error if any error occurs
+func (d *Driver) getSnapshot(ctx context.Context, sourceID string) (*armcompute.Snapshot, error) {
+	subsID, resourceGroup, snapshotName, err := azureutils.GetInfoFromURI(sourceID)
+	if err != nil {
+		klog.Warningf("could not get subscription id, resource group from snapshot uri (%s) with error(%v)", sourceID, err)
+		return nil, err
+	}
+	snapClient, err := d.clientFactory.GetSnapshotClientForSub(subsID)
+	if err != nil {
+		klog.Warningf("could not get snapshot client for subscription(%s) with error(%v)", subsID, err)
+		return nil, err
+	}
+	snapshotRetrieved, err := snapClient.Get(ctx, resourceGroup, snapshotName)
+	if err != nil {
+		klog.Warningf("get snapshot %s from rg(%s) error: %v", snapshotName, resourceGroup, err)
+		return nil, err
+	}
+	return snapshotRetrieved, nil
+}
+
+// getSnapshotSKU retrieves the SKU of the snapshot and returns the SKU or if any error occurs
+func getSnapshotSKUFromSnapshot(computeSnapshot *armcompute.Snapshot) (string, error) {
+	if computeSnapshot == nil {
+		klog.Warningf("Snapshot is nil")
+		return "", status.Error(codes.NotFound, "Snapshot is nil")
+	}
+	if computeSnapshot.SKU == nil || computeSnapshot.SKU.Name == nil {
+		klog.Warningf("Snapshot or Snapshot Properties SKU not found for snapshot")
+		return "", status.Error(codes.NotFound, "Snapshot SKU property not found")
+	}
+	return string(*computeSnapshot.SKU.Name), nil
+}
+
+// getDiskSizeInBytes retrieves the size of the disk and returns the size or if any error occurs
+func getDiskSizeInBytesFromSnapshot(computeSnapshot *armcompute.Snapshot) (int64, error) {
+	if computeSnapshot == nil {
+		klog.Warningf("Snapshot is nil")
+		return 0, status.Error(codes.NotFound, "Snapshot is nil")
+	}
+	if computeSnapshot.Properties == nil || computeSnapshot.Properties.DiskSizeBytes == nil {
+		klog.Warningf("Snapshot or Snapshot Properties.DiskSizeBytes not found for snapshot")
+		return 0, status.Error(codes.NotFound, "Snapshot size not found")
+	}
+	return *computeSnapshot.Properties.DiskSizeBytes, nil
 }
