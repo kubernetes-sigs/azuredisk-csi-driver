@@ -127,9 +127,6 @@ spec:
                   fieldPath: spec.nodeName
           securityContext:
             privileged: true
-            capabilities:
-              drop:
-                - ALL
           lifecycle:
             preStop:
               exec:
