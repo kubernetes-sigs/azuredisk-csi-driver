@@ -2591,6 +2591,50 @@ func RunTestCreateSnapshot(t *testing.T, fakeDriverFn func(t *gomock.Controller)
 			},
 		},
 		{
+			name: "invalid network access policy ",
+			testFunc: func(t *testing.T) {
+				parameter := make(map[string]string)
+				parameter["networkaccesspolicy"] = "Invalid"
+				req := &csi.CreateSnapshotRequest{
+					SourceVolumeId: testVolumeID,
+					Name:           "snapname",
+					Parameters:     parameter,
+				}
+				cntl := gomock.NewController(t)
+				defer cntl.Finish()
+				d, _ := fakeDriverFn(cntl)
+				d.setCloud(&azure.Cloud{})
+
+				_, err := d.CreateSnapshot(context.Background(), req)
+				expectedErr := status.Errorf(codes.InvalidArgument, "azureDisk - Invalid is not supported NetworkAccessPolicy. Supported values are [AllowAll AllowPrivate DenyAll]")
+				if !reflect.DeepEqual(err, expectedErr) {
+					t.Errorf("actualErr: (%v), expectedErr: (%v)", err, expectedErr)
+				}
+			},
+		},
+		{
+			name: "invalid publicNetworkAccess ",
+			testFunc: func(t *testing.T) {
+				parameter := make(map[string]string)
+				parameter["publicnetworkaccess"] = "Invalid"
+				req := &csi.CreateSnapshotRequest{
+					SourceVolumeId: testVolumeID,
+					Name:           "snapname",
+					Parameters:     parameter,
+				}
+				cntl := gomock.NewController(t)
+				defer cntl.Finish()
+				d, _ := fakeDriverFn(cntl)
+				d.setCloud(&azure.Cloud{})
+
+				_, err := d.CreateSnapshot(context.Background(), req)
+				expectedErr := status.Errorf(codes.InvalidArgument, "azureDisk - Invalid is not supported PublicNetworkAccess. Supported values are [Disabled Enabled]")
+				if !reflect.DeepEqual(err, expectedErr) {
+					t.Errorf("actualErr: (%v), expectedErr: (%v)", err, expectedErr)
+				}
+			},
+		},
+		{
 			name: "cross region non-incremental error ",
 			testFunc: func(t *testing.T) {
 				parameter := make(map[string]string)
@@ -3128,6 +3172,8 @@ func RunTestCreateSnapshot(t *testing.T, fakeDriverFn func(t *gomock.Controller)
 				parameter := make(map[string]string)
 				parameter["tags"] = "unit=test"
 				parameter["dataaccessauthmode"] = "None"
+				parameter["networkAccessPolicy"] = "AllowAll"
+				parameter["publicNetworkAccess"] = "Enabled"
 				parameter["tagvaluedelimiter"] = ","
 				parameter["useragent"] = "ut"
 				parameter["csi.storage.k8s.io/volumesnapshot/name"] = "VolumeSnapshotNameKeyPlaceholder"
