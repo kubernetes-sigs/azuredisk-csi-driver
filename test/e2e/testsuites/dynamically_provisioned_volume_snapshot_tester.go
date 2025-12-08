@@ -101,6 +101,8 @@ func (t *DynamicallyProvisionedVolumeSnapshotTest) Run(ctx context.Context, clie
 		tvsc.volumeSnapshotClass.Parameters = map[string]string{}
 	}
 	tvsc.volumeSnapshotClass.Parameters["resourceGroup"] = externalRG
+	tvsc.volumeSnapshotClass.Parameters["networkAccessPolicy"] = "AllowAll"
+	tvsc.volumeSnapshotClass.Parameters["publicNetworkAccess"] = "Enabled"
 	tvsc.Create(ctx)
 	defer cleanup()
 
