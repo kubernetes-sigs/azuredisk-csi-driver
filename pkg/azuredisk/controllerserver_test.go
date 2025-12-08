@@ -3121,6 +3121,7 @@ func RunTestCreateSnapshot(t *testing.T, fakeDriverFn func(t *gomock.Controller)
 			testFunc: func(t *testing.T) {
 				parameter := make(map[string]string)
 				parameter["tags"] = "unit=test"
+				parameter["publicNetworkAccess"] = "Enabled"
 				req := &csi.CreateSnapshotRequest{
 					SourceVolumeId: testVolumeID,
 					Name:           "testurl/subscriptions/23/providers/Microsoft.Compute/snapshots/snapshot-name",
@@ -3282,6 +3283,7 @@ func RunTestCreateSnapshot(t *testing.T, fakeDriverFn func(t *gomock.Controller)
 				parameter := make(map[string]string)
 				parameter["location"] = "eastus"
 				parameter["incremental"] = "true"
+				parameter["networkAccessPolicy"] = "AllowAll"
 				req := &csi.CreateSnapshotRequest{
 					SourceVolumeId: testVolumeID,
 					Name:           "testurl/subscriptions/23/providers/Microsoft.Compute/snapshots/snapshot-name",
