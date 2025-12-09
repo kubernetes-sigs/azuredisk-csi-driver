@@ -1140,7 +1140,7 @@ func (d *Driver) CreateSnapshot(ctx context.Context, req *csi.CreateSnapshotRequ
 	var customTags string
 	// set incremental snapshot as true by default
 	incremental := true
-	var subsID, resourceGroup, dataAccessAuthMode, tagValueDelimiter string
+	var subsID, resourceGroup, dataAccessAuthMode, networkAccessPolicy, publicNetworkAccess, tagValueDelimiter string
 	var err error
 	localCloud := d.cloud
 	location := d.cloud.Location
@@ -1171,6 +1171,10 @@ func (d *Driver) CreateSnapshot(ctx context.Context, req *csi.CreateSnapshotRequ
 			subsID = v
 		case consts.DataAccessAuthModeField:
 			dataAccessAuthMode = v
+		case consts.NetworkAccessPolicyField:
+			networkAccessPolicy = v
+		case consts.PublicNetworkAccessField:
+			publicNetworkAccess = v
 		case consts.TagValueDelimiterField:
 			tagValueDelimiter = v
 		case consts.VolumeSnapshotNameKey:
@@ -1231,6 +1235,22 @@ func (d *Driver) CreateSnapshot(ctx context.Context, req *csi.CreateSnapshotRequ
 			return nil, status.Error(codes.InvalidArgument, err.Error())
 		}
 		snapshot.Properties.DataAccessAuthMode = to.Ptr(armcompute.DataAccessAuthMode(dataAccessAuthMode))
+	}
+
+	if networkAccessPolicy != "" {
+		policy, err := azureutils.NormalizeNetworkAccessPolicy(networkAccessPolicy)
+		if err != nil {
+			return nil, status.Error(codes.InvalidArgument, err.Error())
+		}
+		snapshot.Properties.NetworkAccessPolicy = to.Ptr(armcompute.NetworkAccessPolicy(policy))
+	}
+
+	if publicNetworkAccess != "" {
+		pna, err := azureutils.NormalizePublicNetworkAccess(publicNetworkAccess)
+		if err != nil {
+			return nil, status.Error(codes.InvalidArgument, err.Error())
+		}
+		snapshot.Properties.PublicNetworkAccess = to.Ptr(armcompute.PublicNetworkAccess(pna))
 	}
 
 	if acquired := d.volumeLocks.TryAcquire(snapshotName); !acquired {
