@@ -74,6 +74,9 @@ type DriverOptions struct {
 	GoMaxProcs                         int64
 	EnableMigrationMonitor             bool
 	ConvertRWCachingModeForIntreePV    bool
+	EnableSnapshotConsistency          bool
+	SnapshotConsistencyMode            string
+	FsFreezeWaitTimeoutInMins          int64
 }
 
 func (o *DriverOptions) AddFlags() *flag.FlagSet {
@@ -129,5 +132,8 @@ func (o *DriverOptions) AddFlags() *flag.FlagSet {
 	fs.Int64Var(&o.GoMaxProcs, "max-procs", 2, "maximum number of CPUs that can be executing simultaneously in golang runtime")
 	fs.BoolVar(&o.EnableMigrationMonitor, "enable-migration-monitor", true, "enable migration monitor for Azure Disk CSI Driver")
 	fs.BoolVar(&o.ConvertRWCachingModeForIntreePV, "convert-rw-caching-mode-for-intree-pv", false, "convert ReadWrite cachingMode to ReadOnly for intree PVs to avoid issues")
+	fs.BoolVar(&o.EnableSnapshotConsistency, "enable-snapshot-consistency", true, "enable snapshot consistency with fsfreeze/unfreeze")
+	fs.StringVar(&o.SnapshotConsistencyMode, "snapshot-consistency-mode", "best-effort", "snapshot consistency mode: strict or best-effort")
+	fs.Int64Var(&o.FsFreezeWaitTimeoutInMins, "fsfreeze-wait-timeout-mins", 2, "timeout in minutes for fsfreeze operations")
 	return fs
 }
