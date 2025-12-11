@@ -1,28 +1,19 @@
 # ModifyVolume feature example
- - Feature Status: Alpha
+ - Feature Status: GA from Kubernetes 1.34
  - supported from Azure Disk CSI driver v1.30.2
-
-## Prerequisites
-To use this `VolumeAttributesClass` feature, you should enable following feature gates:
-- `VolumeAttributesClass` feature gate on `kube-apiserver` (consult your Kubernetes distro's documentation)
-- `storage.k8s.io/v1alpha1` enabled in `kube-apiserver` via [`runtime-config`](https://kubernetes.io/docs/tasks/administer-cluster/enable-disable-api/) (consult your Kubernetes distro's documentation)
-- `VolumeAttributesClass` feature gate on `kube-controller-manager` (consult your Kubernetes distro's documentation)
-- `VolumeAttributesClass` feature gate on `external-provisioner` sidecar container in CSI driver controller
-- `VolumeAttributesClass` feature gate on `external-resizer` sidecar container in CSI driver controller
 
 To learn more about this feature, please refer to the [Kubernetes documentation for VolumeAttributesClass feature](https://kubernetes.io/docs/concepts/storage/volume-attributes-classes/).
 
-## Parameters
-You could specify the following parameters in `VolumeAttributesClass`:
+## Supported parameters in `VolumeAttributesClass`
 - `DiskIOPSReadWrite`: disk IOPS
 - `DiskMBpsReadWrite`: disk throughput
 - `skuName`:  disk type
-> Changing the `skuName` to or from UltraSSD_LRS is not permitted. For additional information, please consult the following resource [Change the disk type of an Azure managed disk](https://learn.microsoft.com/en-us/azure/virtual-machines/disks-convert-types?tabs=azure-powershell)
+> Changing the `skuName` to or from UltraSSD_LRS is not permitted. For additional information, please consult the following resource [Change the disk type of an Azure managed disk](https://learn.microsoft.com/en-us/azure/virtual-machines/disks-convert-types)
 
-here is an example to update disk IOPS and throughput:
+Here is an example of the `VolumeAttributesClass` used to update the disk IOPS and throughput on an Azure PremiumV2 disk:
 
 ```yaml
-apiVersion: storage.k8s.io/v1alpha1
+apiVersion: storage.k8s.io/v1
 kind: VolumeAttributesClass
 metadata:
   name: premium2-disk-class
@@ -34,15 +25,17 @@ parameters:
 
 ## Usage
 
-### Create an example Pod, PVC and StorageClass
-```console
+### Create a StorageClass, PVC and pod
+> The following example creates a PremiumV2_LRS disk
+
+```bash
 kubectl apply -f https://raw.githubusercontent.com/kubernetes-sigs/azuredisk-csi-driver/master/deploy/example/modifyvolume/storageclass-azuredisk-csi-premiumv2.yaml
-kubectl apply -f https://raw.githubusercontent.com/kubernetes-sigs/azuredisk-csi-driver/master/deploy/example/pvc-azuredisk-csi.yaml
+kubectl apply -f https://raw.githubusercontent.com/kubernetes-sigs/azuredisk-csi-driver/master/deploy/example/modifyvolume/pvc-azuredisk-csi.yaml
 kubectl apply -f https://raw.githubusercontent.com/kubernetes-sigs/azuredisk-csi-driver/master/deploy/example/nginx-pod-azuredisk.yaml
 ```
 
-### Wait for the PVC in Bound state and the pod in Running state
-```console
+### Wait until the PVC reaches the Bound state and the pod is in the Running state.
+```bash
 kubectl get pvc pvc-azuredisk
 NAME            STATUS   VOLUME                                     CAPACITY   ACCESS MODES   STORAGECLASS        VOLUMEATTRIBUTESCLASS   AGE
 pvc-azuredisk   Bound    pvc-e2a5c302-0b48-49a5-bde7-5c0528c7a06f   10Gi       RWO            managed-csi         <unset>                 17m
@@ -52,25 +45,21 @@ NAME              READY   STATUS              RESTARTS   AGE
 nginx-azuredisk   1/1     Running             0          20s
 ```
 
-### Create VolumeAttributesClass
-```console
+### Create a new VolumeAttributesClass
+```bash
 kubectl apply -f https://raw.githubusercontent.com/kubernetes-sigs/azuredisk-csi-driver/master/deploy/example/modifyvolume/volumeattributesclass.yaml
 kubectl get volumeattributesclass premium2-disk-class
 NAME                  DRIVERNAME           AGE
 premium2-disk-class   disk.csi.azure.com   4s
 ```
 
-### Modify the PVC to reference the VolumeAttributesClass
-```console
+### Update the existing PVC to refer to the newly created VolumeAttributesClass
+```bash
 kubectl patch pvc pvc-azuredisk --patch '{"spec": {"volumeAttributesClassName": "premium2-disk-class"}}'
 ```
 
-### Wait for the VolumeAttributesClass to be applied to the volume
-```console
-kubectl get pvc pvc-azuredisk
-NAME            STATUS   VOLUME                                     CAPACITY   ACCESS MODES   STORAGECLASS        VOLUMEATTRIBUTESCLASS   AGE
-pvc-azuredisk   Bound    pvc-e2a5c302-0b48-49a5-bde7-5c0528c7a06f   10Gi       RWO            managed-csi         premium2-disk-class     20m
-
+### Wait until the VolumeAttributesClass is applied to the volume
+```bash
 kubectl describe pvc pvc-azuredisk
 Name:          pvc-azuredisk
 Namespace:     default
