@@ -1,0 +1,130 @@
+{
+  "timestamp": "2025-12-12T23:45:20.058570",
+  "qad_attach": {
+    "statistics": {
+      "count": 3,
+      "min": 0.817,
+      "max": 0.877,
+      "avg": 0.854,
+      "p50": 0.868,
+      "p95": 0.877,
+      "p99": 0.877
+    },
+    "raw_metrics": [
+      {
+        "source": "/home/laandrea/go/src/github.com/azuredisk-csi-driver/qad_my_log_1.log",
+        "operation": "attach",
+        "latency_seconds": 0.877,
+        "latency_milliseconds": 877.0,
+        "timestamp": "2025-12-12T23:45:20.057092"
+      },
+      {
+        "source": "/home/laandrea/go/src/github.com/azuredisk-csi-driver/qad_my_log_1.log",
+        "operation": "attach",
+        "latency_seconds": 0.817,
+        "latency_milliseconds": 817.0,
+        "timestamp": "2025-12-12T23:45:20.057096"
+      },
+      {
+        "source": "/home/laandrea/go/src/github.com/azuredisk-csi-driver/qad_my_log_1.log",
+        "operation": "attach",
+        "latency_seconds": 0.868,
+        "latency_milliseconds": 868.0,
+        "timestamp": "2025-12-12T23:45:20.057098"
+      }
+    ]
+  },
+  "qad_detach": {
+    "statistics": {
+      "count": 3,
+      "min": 0.528,
+      "max": 0.532,
+      "avg": 0.53,
+      "p50": 0.53,
+      "p95": 0.532,
+      "p99": 0.532
+    },
+    "raw_metrics": [
+      {
+        "source": "/home/laandrea/go/src/github.com/azuredisk-csi-driver/qad_my_log_1.log",
+        "operation": "detach",
+        "latency_seconds": 0.532,
+        "latency_milliseconds": 532.0,
+        "timestamp": "2025-12-12T23:45:20.057359"
+      },
+      {
+        "source": "/home/laandrea/go/src/github.com/azuredisk-csi-driver/qad_my_log_1.log",
+        "operation": "detach",
+        "latency_seconds": 0.528,
+        "latency_milliseconds": 528.0,
+        "timestamp": "2025-12-12T23:45:20.057364"
+      },
+      {
+        "source": "/home/laandrea/go/src/github.com/azuredisk-csi-driver/qad_my_log_1.log",
+        "operation": "detach",
+        "latency_seconds": 0.53,
+        "latency_milliseconds": 530.0,
+        "timestamp": "2025-12-12T23:45:20.057367"
+      }
+    ]
+  },
+  "stage_volume": {
+    "statistics": {
+      "count": 6,
+      "min": 0.592475436,
+      "max": 2.3180283729999998,
+      "avg": 1.4039957159999998,
+      "p50": 2.135847923,
+      "p95": 2.3180283729999998,
+      "p99": 2.3180283729999998
+    },
+    "raw_metrics": [
+      {
+        "source": "/home/laandrea/go/src/github.com/azuredisk-csi-driver/qad_my_log_1.log",
+        "request": "azuredisk_csi_driver_node_stage_volume",
+        "latency_seconds": 2.3180283729999998,
+        "result_code": "succeeded",
+        "timestamp": "2025-12-12T23:45:20.056853"
+      },
+      {
+        "source": "/home/laandrea/go/src/github.com/azuredisk-csi-driver/qad_my_log_1.log",
+        "request": "azuredisk_csi_driver_node_unstage_volume",
+        "latency_seconds": 0.605422046,
+        "result_code": "succeeded",
+        "timestamp": "2025-12-12T23:45:20.056882"
+      },
+      {
+        "source": "/home/laandrea/go/src/github.com/azuredisk-csi-driver/qad_my_log_1.log",
+        "request": "azuredisk_csi_driver_node_stage_volume",
+        "latency_seconds": 2.135847923,
+        "result_code": "succeeded",
+        "timestamp": "2025-12-12T23:45:20.056887"
+      },
+      {
+        "source": "/home/laandrea/go/src/github.com/azuredisk-csi-driver/qad_my_log_1.log",
+        "request": "azuredisk_csi_driver_node_unstage_volume",
+        "latency_seconds": 0.592475436,
+        "result_code": "succeeded",
+        "timestamp": "2025-12-12T23:45:20.056890"
+      },
+      {
+        "source": "/home/laandrea/go/src/github.com/azuredisk-csi-driver/qad_my_log_1.log",
+        "request": "azuredisk_csi_driver_node_stage_volume",
+        "latency_seconds": 2.165265475,
+        "result_code": "succeeded",
+        "timestamp": "2025-12-12T23:45:20.056892"
+      },
+      {
+        "source": "/home/laandrea/go/src/github.com/azuredisk-csi-driver/qad_my_log_1.log",
+        "request": "azuredisk_csi_driver_node_unstage_volume",
+        "latency_seconds": 0.606935043,
+        "result_code": "succeeded",
+        "timestamp": "2025-12-12T23:45:20.056894"
+      }
+    ]
+  },
+  "unstage_volume": {
+    "statistics": {},
+    "raw_metrics": []
+  }
+}

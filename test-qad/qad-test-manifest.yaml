@@ -1,0 +1,236 @@
+---
+# ConfigMap: Chaos loop script
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: qad-chaos-scripts
+  namespace: default
+data:
+  chaos-loop.sh: |
+    #!/bin/bash
+    set -e
+    
+    DEPLOYMENT_NAME="${1:-deployment-azuredisk}"
+    DEPLOYMENT_NS="${2:-default}"
+    NODEPOOL_LABEL="${3:-kubernetes.io/os=linux}"
+    LOG_DIR="${4:-.}"
+    LOOP_INTERVAL="${5:-30}"
+    POD_LABEL="${6:-app=nginx}"
+    
+    echo "[$(date)] Starting QAD Testing Chaos Loop"
+    echo "Deployment: $DEPLOYMENT_NAME in namespace $DEPLOYMENT_NS"
+    
+    mkdir -p "$LOG_DIR"
+    CYCLE=1
+    
+    while true; do
+        echo ""
+        echo "=========================================="
+        echo "[$(date)] CYCLE $CYCLE"
+        echo "=========================================="
+        
+        # Get current pod
+        POD=$(kubectl get pods -n "$DEPLOYMENT_NS" -l "$POD_LABEL" \
+            -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || echo "")
+        
+        if [ -z "$POD" ]; then
+            echo "No pod found for deployment $DEPLOYMENT_NAME"
+            CYCLE=$((CYCLE + 1))
+            sleep "$LOOP_INTERVAL"
+            continue
+        fi
+        
+        CURRENT_NODE=$(kubectl get pod "$POD" -n "$DEPLOYMENT_NS" \
+            -o jsonpath='{.spec.nodeName}' 2>/dev/null || echo "")
+        
+        echo "Current pod: $POD on node: $CURRENT_NODE"
+        
+        # Get all nodes
+        NODES=($(kubectl get nodes -l "$NODEPOOL_LABEL" \
+            -o jsonpath='{.items[*].metadata.name}'))
+        
+        # Find the other node
+        TARGET_NODE=""
+        for node in "${NODES[@]}"; do
+            if [ "$node" != "$CURRENT_NODE" ]; then
+                TARGET_NODE="$node"
+                break
+            fi
+        done
+        
+        if [ -z "$TARGET_NODE" ]; then
+            echo "No target node found"
+            CYCLE=$((CYCLE + 1))
+            sleep "$LOOP_INTERVAL"
+            continue
+        fi
+        
+        echo "Target node: $TARGET_NODE"
+        
+        # Cordon and delete
+        echo "[$(date)] Cordoning $CURRENT_NODE and deleting pod"
+        kubectl cordon "$CURRENT_NODE" || true
+        kubectl delete pod "$POD" -n "$DEPLOYMENT_NS" --grace-period=30 || true
+        
+        # Wait for rescheduling
+        echo "[$(date)] Waiting for reschedule..."
+        TIMEOUT=120
+        ELAPSED=0
+        while [ $ELAPSED -lt $TIMEOUT ]; do
+            NEW_POD=$(kubectl get pods -n "$DEPLOYMENT_NS" -l "$POD_LABEL" \
+                -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || echo "")
+            
+            if [ -n "$NEW_POD" ] && [ "$NEW_POD" != "$POD" ]; then
+                NEW_NODE=$(kubectl get pod "$NEW_POD" -n "$DEPLOYMENT_NS" \
+                    -o jsonpath='{.spec.nodeName}' 2>/dev/null || echo "")
+                
+                if [ "$NEW_NODE" != "$CURRENT_NODE" ]; then
+                    echo "[$(date)] Pod rescheduled to $NEW_NODE"
+                    sleep 5  # Wait for volume operations to complete
+                    break
+                fi
+            fi
+            
+            sleep 2
+            ELAPSED=$((ELAPSED + 2))
+        done
+        
+        # Uncordon
+        echo "[$(date)] Uncordoning $CURRENT_NODE"
+        kubectl uncordon "$CURRENT_NODE" || true
+        
+        # Collect logs
+        echo "[$(date)] Collecting CSI logs..."
+        CSI_PODS=$(kubectl get pods -n kube-system -l app=csi-azuredisk-node \
+            -o jsonpath='{.items[*].metadata.name}' 2>/dev/null || echo "")
+        
+        for csi_pod in $CSI_PODS; do
+            NODE=$(kubectl get pod "$csi_pod" -n kube-system \
+                -o jsonpath='{.spec.nodeName}' 2>/dev/null || echo "unknown")
+            LOG_FILE="$LOG_DIR/csi-logs-cycle-$CYCLE-$NODE.log"
+            kubectl logs "$csi_pod" -n kube-system --tail=200 > "$LOG_FILE" 2>&1 || true
+            echo "  Saved: $LOG_FILE"
+        done
+        
+        echo "[$(date)] Cycle $CYCLE completed"
+        CYCLE=$((CYCLE + 1))
+        sleep "$LOOP_INTERVAL"
+    done
+
+---
+# ServiceAccount for the chaos pod
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: qad-chaos
+  namespace: default
+
+---
+# ClusterRole for chaos operations
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: qad-chaos
+rules:
+- apiGroups: [""]
+  resources: ["pods"]
+  verbs: ["get", "list", "delete", "watch"]
+- apiGroups: [""]
+  resources: ["nodes"]
+  verbs: ["get", "list", "patch"]
+- apiGroups: ["apps"]
+  resources: ["deployments"]
+  verbs: ["get", "list"]
+- apiGroups: [""]
+  resources: ["pods/log"]
+  verbs: ["get", "list"]
+
+---
+# ClusterRoleBinding
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: qad-chaos
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: qad-chaos
+subjects:
+- kind: ServiceAccount
+  name: qad-chaos
+  namespace: default
+
+---
+# Pod that runs the chaos loop
+apiVersion: v1
+kind: Pod
+metadata:
+  name: qad-chaos-loop
+  namespace: default
+  labels:
+    app: qad-chaos
+spec:
+  serviceAccountName: qad-chaos
+  restartPolicy: Never
+  containers:
+  - name: chaos
+    image: bitnami/kubectl:latest
+    volumeMounts:
+    - name: scripts
+      mountPath: /scripts
+    - name: logs
+      mountPath: /logs
+    command:
+    - /bin/bash
+    - /scripts/chaos-loop.sh
+    args:
+    - "deployment-azuredisk"        # deployment name
+    - "default"                     # namespace
+    - "kubernetes.io/os=linux"      # node selector label
+    - "/logs"                       # log output dir
+    - "30"                          # loop interval in seconds
+    - "app=nginx"                   # pod label selector
+    env:
+    - name: PATH
+      value: "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+  volumes:
+  - name: scripts
+    configMap:
+      name: qad-chaos-scripts
+      defaultMode: 0755
+  - name: logs
+    emptyDir: {}
+
+---
+# Pod to tail logs from the chaos loop pod
+apiVersion: v1
+kind: Pod
+metadata:
+  name: qad-logs-viewer
+  namespace: default
+spec:
+  containers:
+  - name: viewer
+    image: busybox:latest
+    volumeMounts:
+    - name: logs
+      mountPath: /logs
+    command:
+    - sh
+    - -c
+    - |
+      while true; do
+        clear
+        echo "=== Latest QAD Logs ==="
+        ls -lt /logs/*.log 2>/dev/null | head -10
+        echo ""
+        if [ -f /logs/csi-logs-cycle-latest.log ]; then
+          echo "=== Latest CSI Log ==="
+          tail -50 /logs/csi-logs-cycle-latest.log
+        fi
+        sleep 10
+      done
+  volumes:
+  - name: logs
+    emptyDir:
+      medium: Memory

@@ -1,0 +1,19 @@
+{
+  "timestamp": "2025-12-13T00:29:06.502235",
+  "qad_attach": {
+    "statistics": {},
+    "raw_metrics": []
+  },
+  "qad_detach": {
+    "statistics": {},
+    "raw_metrics": []
+  },
+  "stage_volume": {
+    "statistics": {},
+    "raw_metrics": []
+  },
+  "unstage_volume": {
+    "statistics": {},
+    "raw_metrics": []
+  }
+}

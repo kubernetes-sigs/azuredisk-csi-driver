@@ -1,0 +1,39 @@
+apiVersion: apps/v1 
+kind: Deployment 
+metadata: 
+  labels: 
+    app: nginx 
+  name: deployment-azuredisk 
+spec: 
+  replicas: 1 
+  selector: 
+    matchLabels: 
+      app: nginx 
+  template: 
+    metadata: 
+      labels: 
+        app: nginx 
+      name: deployment-azuredisk 
+    spec: 
+      nodeSelector: 
+        "kubernetes.io/os": linux 
+      containers: 
+        - name: deployment-azuredisk 
+          image: mcr.microsoft.com/mirror/docker/library/nginx:1.23 
+          command: 
+            - "/bin/sh" 
+            - "-c" 
+            - while true; do echo $(date) >> /mnt/azuredisk/outfile; sleep 1; done 
+          volumeMounts: 
+            - name: azuredisk 
+              mountPath: "/mnt/azuredisk" 
+              readOnly: false 
+      volumes: 
+        - name: azuredisk 
+          persistentVolumeClaim: 
+            claimName: pvc-qad1 
+  strategy: 
+    rollingUpdate: 
+      maxSurge: 0 
+      maxUnavailable: 1 
+    type: RollingUpdate 

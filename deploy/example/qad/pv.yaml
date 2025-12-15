@@ -1,0 +1,19 @@
+apiVersion: v1 
+kind: PersistentVolume 
+metadata:
+  annotations: 
+    pv.kubernetes.io/provisioned-by: disk.csi.azure.com 
+    azuredisk.csi.azure.com/blob-url: https://md-grw3rrvxf5zb.z35.blob.storage.azure.net/j0dljhkqx3jk/abcd?sr=b&sp=rw&se=9999-01-01&sk=system-1&sv=2014-02-14
+  name: pv-qad1 
+spec: 
+  capacity: 
+    storage: 10Gi 
+  accessModes: 
+    - ReadWriteOnce 
+  persistentVolumeReclaimPolicy: Retain 
+  storageClassName: managed-csi
+  csi: 
+    driver: disk.csi.azure.com 
+    volumeHandle: /subscriptions/d64ddb0c-7399-4529-a2b6-037b33265372/resourceGroups/MC_LAANDREA-DISK-CSI-QAD-RG_LAANDREA-DISK-CSI-QAD_EASTUS2EUAP/providers/Microsoft.Compute/disks/testdisk
+    volumeAttributes: 
+      qadEnabled: "true" 

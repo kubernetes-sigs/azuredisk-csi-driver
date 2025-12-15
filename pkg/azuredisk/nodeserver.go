@@ -166,7 +166,7 @@ func (d *Driver) NodeStageVolume(ctx context.Context, req *csi.NodeStageVolumeRe
 		}
 		if statusResp.Status == AttachmentStatusAttaching {
 			// Wait for the disk to be attached
-			if err = kwait.PollUntilContextTimeout(ctx, 500*time.Millisecond, 5*time.Second, true, func(context.Context) (bool, error) {
+			if err = kwait.PollUntilContextTimeout(ctx, 250*time.Millisecond, 5*time.Second, true, func(context.Context) (bool, error) {
 				getDisksResponse, err := getAttachedDisks(ctx, *d.httpClient)
 				if err != nil {
 					klog.Errorf("NodeStageVolume: failed to get attached disks for volume %s: %v", volumeID, err)
@@ -953,7 +953,7 @@ func attachOrDetachDisk(ctx context.Context, client http.Client, diskURI string,
 		// This should instead use the kubelet(agentpool) identity.
 		// One way to get the kubelet identity is to get IMDS metadata.
 
-		MSIClientID: "75a44eb9-3e9d-49cd-b5a1-0447ff029f00",
+		MSIClientID: "3aaf73cc-b187-4078-ba96-21105d6bc137",
 		DiskOps: map[string]*DiskOp{
 			diskURI: diskOp,
 		},

@@ -1,0 +1,178 @@
+QAD TESTING SUITE - FILE MANIFEST
+==================================
+
+Total Files: 11
+Location: test-qad/
+
+DOCUMENTATION (6 files)
+=======================
+
+1. SETUP_COMPLETE.md (7.2KB)
+   └─ START HERE! Quick overview and next steps
+   └─ 1-minute quick start guide
+   └─ Component functions summary
+
+2. QUICK_START.md (5.4KB)
+   └─ 5-minute setup guide
+   └─ Expected test flow explanation
+   └─ Common customization tasks
+   └─ Troubleshooting quick reference
+
+3. README.md (5.4KB)
+   └─ Comprehensive documentation
+   └─ Components description
+   └─ Configuration guide
+   └─ Advanced usage examples
+
+4. INDEX.md (7.5KB)
+   └─ Overview of all components
+   └─ Typical workflow documentation
+   └─ Key features and benefits
+   └─ CI/CD integration examples
+
+5. REQUIREMENTS.md (7.4KB)
+   └─ Prerequisites checklist
+   └─ Cluster health check procedures
+   └─ Security considerations
+   └─ Setup verification steps
+
+6. ARCHITECTURE.txt (ASCII diagram)
+   └─ Visual representation of test flow
+   └─ Phase-by-phase breakdown
+   └─ Timeline expectations
+   └─ Command quick reference
+
+EXECUTABLE SCRIPTS (4 files)
+============================
+
+7. qad-test-helper.sh (6.1KB) [EXECUTABLE]
+   └─ Main CLI tool - your primary interface
+   └─ Commands: start, stop, status, logs, collect, metrics, report, cleanup
+   └─ Makes testing easy with one-command operations
+
+8. chaos-loop.sh (4.2KB) [EXECUTABLE]
+   └─ Core test engine (auto-run by Kubernetes)
+   └─ Handles pod rescheduling and log collection
+   └─ Runs independently after deployment
+
+9. qad_metrics_extractor.py (6.5KB) [EXECUTABLE]
+   └─ Log parser and metrics calculator
+   └─ Extracts latency values from CSI logs
+   └─ Generates statistics (min/p50/p95/p99/max)
+   └─ Exports JSON for reporting
+
+10. qad_report_generator.py (12KB) [EXECUTABLE]
+    └─ HTML report generator
+    └─ Converts metrics JSON to beautiful HTML
+    └─ Includes performance recommendations
+    └─ Color-coded status indicators
+
+KUBERNETES MANIFESTS (1 file)
+=============================
+
+11. qad-test-manifest.yaml (6.3KB)
+    └─ Complete Kubernetes configuration
+    └─ ServiceAccount + RBAC roles
+    └─ ConfigMap with scripts
+    └─ Chaos loop pod definition
+    └─ Log viewer pod (optional)
+
+USAGE RECOMMENDATIONS
+=====================
+
+GETTING STARTED:
+1. Read SETUP_COMPLETE.md (2 minutes)
+2. Review QUICK_START.md (3 minutes)
+3. Ensure REQUIREMENTS.md prerequisites are met (2 minutes)
+4. Run: ./qad-test-helper.sh start (1 minute)
+
+DURING TESTING:
+1. Watch: ./qad-test-helper.sh logs -f
+2. Monitor progress and system health
+3. Run at least 10 cycles for meaningful statistics
+
+AFTER TESTING:
+1. Collect: ./qad-test-helper.sh collect /tmp/results
+2. Analyze: ./qad-test-helper.sh metrics /tmp/results
+3. Report: python3 qad_report_generator.py metrics.json
+4. Review: Open qad-report.html in web browser
+
+FILE DEPENDENCIES
+=================
+
+qad-test-helper.sh
+├─ References: qad-test-manifest.yaml, qad_metrics_extractor.py, qad_report_generator.py
+├─ Depends on: kubectl, bash, python3
+
+qad-test-manifest.yaml
+├─ Contains: chaos-loop.sh (embedded in ConfigMap)
+├─ Depends on: kubernetes cluster, kubectl
+
+chaos-loop.sh
+├─ Runs in: Kubernetes pod (auto-invoked)
+├─ Collects logs from: kube-system/csi-azuredisk-node pods
+
+qad_metrics_extractor.py
+├─ Input: CSI driver log files (csi-logs-cycle-*.log)
+├─ Output: metrics.json and console report
+├─ Depends on: python3 (stdlib only, no pip packages)
+
+qad_report_generator.py
+├─ Input: metrics.json from qad_metrics_extractor.py
+├─ Output: qad-report.html
+├─ Depends on: python3 (stdlib only, no pip packages)
+
+CUSTOMIZATION POINTS
+====================
+
+To test different deployment:
+└─ Edit qad-test-manifest.yaml, line ~111: args: ["deployment-name", ...]
+
+To change test interval:
+└─ Edit qad-test-manifest.yaml, line ~115: args: [..., "60", ...] (seconds)
+
+To change node selector:
+└─ Edit qad-test-manifest.yaml, line ~113: args: [..., "agentpool=name", ...]
+
+To test different CSI driver:
+└─ Edit chaos-loop.sh: search for "csi-azuredisk-node" and replace
+
+FILE SIZES SUMMARY
+==================
+
+Documentation:      ~32 KB
+Scripts:            ~28 KB
+Manifests:          ~6  KB
+───────────────────────────
+Total:              ~66 KB
+
+Disk requirements:
+├─ Scripts + docs:   ~100 KB
+├─ Log storage (10 cycles):   ~100-500 MB
+├─ Total headroom:   ~2 GB recommended
+
+QUICK REFERENCE
+===============
+
+Start test:        ./qad-test-helper.sh start
+Watch logs:        ./qad-test-helper.sh logs -f
+Check status:      ./qad-test-helper.sh status
+Collect results:   ./qad-test-helper.sh collect /tmp/qad
+Extract metrics:   ./qad-test-helper.sh metrics /tmp/qad
+Generate report:   python3 qad_report_generator.py /tmp/qad/metrics.json
+Stop test:         ./qad-test-helper.sh stop
+Full cleanup:      ./qad-test-helper.sh cleanup
+
+SUPPORT & DOCUMENTATION
+=======================
+
+For quick start:          → QUICK_START.md
+For overview:             → SETUP_COMPLETE.md or INDEX.md
+For detailed info:        → README.md
+For prerequisites:        → REQUIREMENTS.md
+For architecture:         → ARCHITECTURE.txt
+For troubleshooting:      → QUICK_START.md (section 8)
+
+All scripts are documented with comments and usage instructions.
+All files are self-contained with no external dependencies (except kubectl).
+

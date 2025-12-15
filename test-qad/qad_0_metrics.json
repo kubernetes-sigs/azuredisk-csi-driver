@@ -1,0 +1,342 @@
+{
+  "timestamp": "2025-12-12T23:23:34.315925",
+  "stage_volume": {
+    "statistics": {
+      "count": 46,
+      "min": 0.034729282,
+      "max": 9.515922433,
+      "avg": 1.278379673304348,
+      "p50": 0.661824571,
+      "p95": 2.367665332,
+      "p99": 9.515922433
+    },
+    "raw_metrics": [
+      {
+        "source": "/home/laandrea/go/src/github.com/azuredisk-csi-driver/qad_0.log",
+        "request": "azuredisk_csi_driver_node_stage_volume",
+        "latency_seconds": 0.080135241,
+        "result_code": "failed_csi_driver_node_stage_volume",
+        "timestamp": "2025-12-12T23:23:34.314887"
+      },
+      {
+        "source": "/home/laandrea/go/src/github.com/azuredisk-csi-driver/qad_0.log",
+        "request": "azuredisk_csi_driver_node_stage_volume",
+        "latency_seconds": 0.034729282,
+        "result_code": "failed_csi_driver_node_stage_volume",
+        "timestamp": "2025-12-12T23:23:34.314909"
+      },
+      {
+        "source": "/home/laandrea/go/src/github.com/azuredisk-csi-driver/qad_0.log",
+        "request": "azuredisk_csi_driver_node_stage_volume",
+        "latency_seconds": 0.047658528,
+        "result_code": "failed_csi_driver_node_stage_volume",
+        "timestamp": "2025-12-12T23:23:34.314913"
+      },
+      {
+        "source": "/home/laandrea/go/src/github.com/azuredisk-csi-driver/qad_0.log",
+        "request": "azuredisk_csi_driver_node_stage_volume",
+        "latency_seconds": 0.057097234,
+        "result_code": "failed_csi_driver_node_stage_volume",
+        "timestamp": "2025-12-12T23:23:34.314915"
+      },
+      {
+        "source": "/home/laandrea/go/src/github.com/azuredisk-csi-driver/qad_0.log",
+        "request": "azuredisk_csi_driver_node_stage_volume",
+        "latency_seconds": 0.056782314,
+        "result_code": "failed_csi_driver_node_stage_volume",
+        "timestamp": "2025-12-12T23:23:34.314917"
+      },
+      {
+        "source": "/home/laandrea/go/src/github.com/azuredisk-csi-driver/qad_0.log",
+        "request": "azuredisk_csi_driver_node_stage_volume",
+        "latency_seconds": 0.052846469,
+        "result_code": "failed_csi_driver_node_stage_volume",
+        "timestamp": "2025-12-12T23:23:34.314920"
+      },
+      {
+        "source": "/home/laandrea/go/src/github.com/azuredisk-csi-driver/qad_0.log",
+        "request": "azuredisk_csi_driver_node_stage_volume",
+        "latency_seconds": 0.044738415,
+        "result_code": "failed_csi_driver_node_stage_volume",
+        "timestamp": "2025-12-12T23:23:34.314922"
+      },
+      {
+        "source": "/home/laandrea/go/src/github.com/azuredisk-csi-driver/qad_0.log",
+        "request": "azuredisk_csi_driver_node_stage_volume",
+        "latency_seconds": 0.050641974,
+        "result_code": "failed_csi_driver_node_stage_volume",
+        "timestamp": "2025-12-12T23:23:34.314923"
+      },
+      {
+        "source": "/home/laandrea/go/src/github.com/azuredisk-csi-driver/qad_0.log",
+        "request": "azuredisk_csi_driver_node_stage_volume",
+        "latency_seconds": 0.241636123,
+        "result_code": "failed_csi_driver_node_stage_volume",
+        "timestamp": "2025-12-12T23:23:34.314925"
+      },
+      {
+        "source": "/home/laandrea/go/src/github.com/azuredisk-csi-driver/qad_0.log",
+        "request": "azuredisk_csi_driver_node_stage_volume",
+        "latency_seconds": 0.071940117,
+        "result_code": "failed_csi_driver_node_stage_volume",
+        "timestamp": "2025-12-12T23:23:34.314927"
+      },
+      {
+        "source": "/home/laandrea/go/src/github.com/azuredisk-csi-driver/qad_0.log",
+        "request": "azuredisk_csi_driver_node_stage_volume",
+        "latency_seconds": 0.056824491,
+        "result_code": "failed_csi_driver_node_stage_volume",
+        "timestamp": "2025-12-12T23:23:34.314929"
+      },
+      {
+        "source": "/home/laandrea/go/src/github.com/azuredisk-csi-driver/qad_0.log",
+        "request": "azuredisk_csi_driver_node_stage_volume",
+        "latency_seconds": 0.038421109,
+        "result_code": "failed_csi_driver_node_stage_volume",
+        "timestamp": "2025-12-12T23:23:34.314932"
+      },
+      {
+        "source": "/home/laandrea/go/src/github.com/azuredisk-csi-driver/qad_0.log",
+        "request": "azuredisk_csi_driver_node_stage_volume",
+        "latency_seconds": 0.050281676,
+        "result_code": "failed_csi_driver_node_stage_volume",
+        "timestamp": "2025-12-12T23:23:34.314934"
+      },
+      {
+        "source": "/home/laandrea/go/src/github.com/azuredisk-csi-driver/qad_0.log",
+        "request": "azuredisk_csi_driver_node_stage_volume",
+        "latency_seconds": 9.515922433,
+        "result_code": "succeeded",
+        "timestamp": "2025-12-12T23:23:34.314936"
+      },
+      {
+        "source": "/home/laandrea/go/src/github.com/azuredisk-csi-driver/qad_0.log",
+        "request": "azuredisk_csi_driver_node_unstage_volume",
+        "latency_seconds": 0.73055608,
+        "result_code": "succeeded",
+        "timestamp": "2025-12-12T23:23:34.314938"
+      },
+      {
+        "source": "/home/laandrea/go/src/github.com/azuredisk-csi-driver/qad_0.log",
+        "request": "azuredisk_csi_driver_node_stage_volume",
+        "latency_seconds": 2.367665332,
+        "result_code": "succeeded",
+        "timestamp": "2025-12-12T23:23:34.314940"
+      },
+      {
+        "source": "/home/laandrea/go/src/github.com/azuredisk-csi-driver/qad_0.log",
+        "request": "azuredisk_csi_driver_node_unstage_volume",
+        "latency_seconds": 0.674156083,
+        "result_code": "succeeded",
+        "timestamp": "2025-12-12T23:23:34.314942"
+      },
+      {
+        "source": "/home/laandrea/go/src/github.com/azuredisk-csi-driver/qad_0.log",
+        "request": "azuredisk_csi_driver_node_stage_volume",
+        "latency_seconds": 2.302756329,
+        "result_code": "succeeded",
+        "timestamp": "2025-12-12T23:23:34.314944"
+      },
+      {
+        "source": "/home/laandrea/go/src/github.com/azuredisk-csi-driver/qad_0.log",
+        "request": "azuredisk_csi_driver_node_unstage_volume",
+        "latency_seconds": 0.601578711,
+        "result_code": "succeeded",
+        "timestamp": "2025-12-12T23:23:34.314946"
+      },
+      {
+        "source": "/home/laandrea/go/src/github.com/azuredisk-csi-driver/qad_0.log",
+        "request": "azuredisk_csi_driver_node_stage_volume",
+        "latency_seconds": 2.225362216,
+        "result_code": "succeeded",
+        "timestamp": "2025-12-12T23:23:34.314948"
+      },
+      {
+        "source": "/home/laandrea/go/src/github.com/azuredisk-csi-driver/qad_0.log",
+        "request": "azuredisk_csi_driver_node_unstage_volume",
+        "latency_seconds": 0.638054375,
+        "result_code": "succeeded",
+        "timestamp": "2025-12-12T23:23:34.314950"
+      },
+      {
+        "source": "/home/laandrea/go/src/github.com/azuredisk-csi-driver/qad_0.log",
+        "request": "azuredisk_csi_driver_node_stage_volume",
+        "latency_seconds": 2.239080839,
+        "result_code": "succeeded",
+        "timestamp": "2025-12-12T23:23:34.314952"
+      },
+      {
+        "source": "/home/laandrea/go/src/github.com/azuredisk-csi-driver/qad_0.log",
+        "request": "azuredisk_csi_driver_node_unstage_volume",
+        "latency_seconds": 0.680568046,
+        "result_code": "succeeded",
+        "timestamp": "2025-12-12T23:23:34.314955"
+      },
+      {
+        "source": "/home/laandrea/go/src/github.com/azuredisk-csi-driver/qad_0.log",
+        "request": "azuredisk_csi_driver_node_stage_volume",
+        "latency_seconds": 2.289830333,
+        "result_code": "succeeded",
+        "timestamp": "2025-12-12T23:23:34.314961"
+      },
+      {
+        "source": "/home/laandrea/go/src/github.com/azuredisk-csi-driver/qad_0.log",
+        "request": "azuredisk_csi_driver_node_unstage_volume",
+        "latency_seconds": 0.590010382,
+        "result_code": "succeeded",
+        "timestamp": "2025-12-12T23:23:34.314963"
+      },
+      {
+        "source": "/home/laandrea/go/src/github.com/azuredisk-csi-driver/qad_0.log",
+        "request": "azuredisk_csi_driver_node_stage_volume",
+        "latency_seconds": 2.285475348,
+        "result_code": "succeeded",
+        "timestamp": "2025-12-12T23:23:34.314965"
+      },
+      {
+        "source": "/home/laandrea/go/src/github.com/azuredisk-csi-driver/qad_0.log",
+        "request": "azuredisk_csi_driver_node_unstage_volume",
+        "latency_seconds": 0.661306124,
+        "result_code": "succeeded",
+        "timestamp": "2025-12-12T23:23:34.314968"
+      },
+      {
+        "source": "/home/laandrea/go/src/github.com/azuredisk-csi-driver/qad_0.log",
+        "request": "azuredisk_csi_driver_node_stage_volume",
+        "latency_seconds": 2.196339631,
+        "result_code": "succeeded",
+        "timestamp": "2025-12-12T23:23:34.314970"
+      },
+      {
+        "source": "/home/laandrea/go/src/github.com/azuredisk-csi-driver/qad_0.log",
+        "request": "azuredisk_csi_driver_node_unstage_volume",
+        "latency_seconds": 0.614244277,
+        "result_code": "succeeded",
+        "timestamp": "2025-12-12T23:23:34.314973"
+      },
+      {
+        "source": "/home/laandrea/go/src/github.com/azuredisk-csi-driver/qad_0.log",
+        "request": "azuredisk_csi_driver_node_stage_volume",
+        "latency_seconds": 2.21980747,
+        "result_code": "succeeded",
+        "timestamp": "2025-12-12T23:23:34.314975"
+      },
+      {
+        "source": "/home/laandrea/go/src/github.com/azuredisk-csi-driver/qad_0.log",
+        "request": "azuredisk_csi_driver_node_unstage_volume",
+        "latency_seconds": 0.661824571,
+        "result_code": "succeeded",
+        "timestamp": "2025-12-12T23:23:34.314977"
+      },
+      {
+        "source": "/home/laandrea/go/src/github.com/azuredisk-csi-driver/qad_0.log",
+        "request": "azuredisk_csi_driver_node_stage_volume",
+        "latency_seconds": 2.255958752,
+        "result_code": "succeeded",
+        "timestamp": "2025-12-12T23:23:34.314979"
+      },
+      {
+        "source": "/home/laandrea/go/src/github.com/azuredisk-csi-driver/qad_0.log",
+        "request": "azuredisk_csi_driver_node_unstage_volume",
+        "latency_seconds": 0.5920724,
+        "result_code": "succeeded",
+        "timestamp": "2025-12-12T23:23:34.314981"
+      },
+      {
+        "source": "/home/laandrea/go/src/github.com/azuredisk-csi-driver/qad_0.log",
+        "request": "azuredisk_csi_driver_node_stage_volume",
+        "latency_seconds": 4.331134831,
+        "result_code": "succeeded",
+        "timestamp": "2025-12-12T23:23:34.314984"
+      },
+      {
+        "source": "/home/laandrea/go/src/github.com/azuredisk-csi-driver/qad_0.log",
+        "request": "azuredisk_csi_driver_node_unstage_volume",
+        "latency_seconds": 0.670655553,
+        "result_code": "succeeded",
+        "timestamp": "2025-12-12T23:23:34.314986"
+      },
+      {
+        "source": "/home/laandrea/go/src/github.com/azuredisk-csi-driver/qad_0.log",
+        "request": "azuredisk_csi_driver_node_stage_volume",
+        "latency_seconds": 2.183702093,
+        "result_code": "succeeded",
+        "timestamp": "2025-12-12T23:23:34.314989"
+      },
+      {
+        "source": "/home/laandrea/go/src/github.com/azuredisk-csi-driver/qad_0.log",
+        "request": "azuredisk_csi_driver_node_unstage_volume",
+        "latency_seconds": 0.586903798,
+        "result_code": "succeeded",
+        "timestamp": "2025-12-12T23:23:34.314991"
+      },
+      {
+        "source": "/home/laandrea/go/src/github.com/azuredisk-csi-driver/qad_0.log",
+        "request": "azuredisk_csi_driver_node_stage_volume",
+        "latency_seconds": 2.354569382,
+        "result_code": "succeeded",
+        "timestamp": "2025-12-12T23:23:34.314993"
+      },
+      {
+        "source": "/home/laandrea/go/src/github.com/azuredisk-csi-driver/qad_0.log",
+        "request": "azuredisk_csi_driver_node_unstage_volume",
+        "latency_seconds": 0.651743446,
+        "result_code": "succeeded",
+        "timestamp": "2025-12-12T23:23:34.314995"
+      },
+      {
+        "source": "/home/laandrea/go/src/github.com/azuredisk-csi-driver/qad_0.log",
+        "request": "azuredisk_csi_driver_node_stage_volume",
+        "latency_seconds": 2.306266232,
+        "result_code": "succeeded",
+        "timestamp": "2025-12-12T23:23:34.314997"
+      },
+      {
+        "source": "/home/laandrea/go/src/github.com/azuredisk-csi-driver/qad_0.log",
+        "request": "azuredisk_csi_driver_node_unstage_volume",
+        "latency_seconds": 0.60112636,
+        "result_code": "succeeded",
+        "timestamp": "2025-12-12T23:23:34.314999"
+      },
+      {
+        "source": "/home/laandrea/go/src/github.com/azuredisk-csi-driver/qad_0.log",
+        "request": "azuredisk_csi_driver_node_stage_volume",
+        "latency_seconds": 2.225985148,
+        "result_code": "succeeded",
+        "timestamp": "2025-12-12T23:23:34.315004"
+      },
+      {
+        "source": "/home/laandrea/go/src/github.com/azuredisk-csi-driver/qad_0.log",
+        "request": "azuredisk_csi_driver_node_unstage_volume",
+        "latency_seconds": 0.662392523,
+        "result_code": "succeeded",
+        "timestamp": "2025-12-12T23:23:34.315006"
+      },
+      {
+        "source": "/home/laandrea/go/src/github.com/azuredisk-csi-driver/qad_0.log",
+        "request": "azuredisk_csi_driver_node_stage_volume",
+        "latency_seconds": 2.154347572,
+        "result_code": "succeeded",
+        "timestamp": "2025-12-12T23:23:34.315008"
+      },
+      {
+        "source": "/home/laandrea/go/src/github.com/azuredisk-csi-driver/qad_0.log",
+        "request": "azuredisk_csi_driver_node_unstage_volume",
+        "latency_seconds": 0.588627044,
+        "result_code": "succeeded",
+        "timestamp": "2025-12-12T23:23:34.315010"
+      },
+      {
+        "source": "/home/laandrea/go/src/github.com/azuredisk-csi-driver/qad_0.log",
+        "request": "azuredisk_csi_driver_node_stage_volume",
+        "latency_seconds": 2.261708285,
+        "result_code": "succeeded",
+        "timestamp": "2025-12-12T23:23:34.315013"
+      }
+    ]
+  },
+  "unstage_volume": {
+    "statistics": {},
+    "raw_metrics": []
+  }
+}

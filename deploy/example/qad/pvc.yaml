@@ -1,0 +1,12 @@
+kind: PersistentVolumeClaim 
+apiVersion: v1 
+metadata: 
+  name: pvc-qad1 
+spec: 
+  accessModes: 
+    - ReadWriteOnce 
+  resources: 
+    requests: 
+      storage: 10Gi 
+  volumeName: pv-qad1 
+  storageClassName: managed-csi
