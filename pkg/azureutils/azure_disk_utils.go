@@ -728,7 +728,7 @@ func checkDiskName(diskName string) bool {
 	return true
 }
 
-// InsertProperties: insert disk properties to map
+// InsertDiskProperties inserts disk properties to map
 func InsertDiskProperties(disk *armcompute.Disk, publishConext map[string]string) {
 	if disk == nil || publishConext == nil {
 		return
@@ -739,7 +739,10 @@ func InsertDiskProperties(disk *armcompute.Disk, publishConext map[string]string
 	}
 	prop := disk.Properties
 	if prop != nil {
-		publishConext[consts.NetworkAccessPolicyField] = string(*prop.NetworkAccessPolicy)
+		// Azure stack hub does not have NetworkAccessPolicy property, so the prop.NetworkAccessPolicy will always be nil
+		if prop.NetworkAccessPolicy != nil {
+			publishConext[consts.NetworkAccessPolicyField] = string(*prop.NetworkAccessPolicy)
+		}
 		if prop.DiskIOPSReadWrite != nil {
 			publishConext[consts.DiskIOPSReadWriteField] = strconv.Itoa(int(*prop.DiskIOPSReadWrite))
 		}
