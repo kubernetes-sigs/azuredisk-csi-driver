@@ -1637,6 +1637,65 @@ func TestInsertDiskProperties(t *testing.T) {
 				consts.MaxSharesField:           "3",
 			},
 		},
+		{
+			desc: "Azure Stack Hub - nil NetworkAccessPolicy",
+			disk: &armcompute.Disk{
+				SKU: &armcompute.DiskSKU{Name: to.Ptr(armcompute.DiskStorageAccountTypesStandardLRS)},
+				Properties: &armcompute.DiskProperties{
+					NetworkAccessPolicy: nil,
+					DiskIOPSReadWrite:   ptr.To(int64(500)),
+					DiskMBpsReadWrite:   ptr.To(int64(60)),
+				},
+			},
+			inputMap: map[string]string{},
+			expectedMap: map[string]string{
+				consts.SkuNameField:           string(armcompute.DiskStorageAccountTypesStandardLRS),
+				consts.DiskIOPSReadWriteField: "500",
+				consts.DiskMBPSReadWriteField: "60",
+			},
+		},
+		{
+			desc: "Azure Stack Hub - nil SKU.Name",
+			disk: &armcompute.Disk{
+				SKU: &armcompute.DiskSKU{Name: nil},
+				Properties: &armcompute.DiskProperties{
+					NetworkAccessPolicy: to.Ptr(armcompute.NetworkAccessPolicyAllowAll),
+					DiskIOPSReadWrite:   ptr.To(int64(500)),
+				},
+			},
+			inputMap: map[string]string{},
+			expectedMap: map[string]string{
+				consts.NetworkAccessPolicyField: string(armcompute.NetworkAccessPolicyAllowAll),
+				consts.DiskIOPSReadWriteField:   "500",
+			},
+		},
+		{
+			desc: "Azure Stack Hub - both nil NetworkAccessPolicy and SKU.Name",
+			disk: &armcompute.Disk{
+				SKU: &armcompute.DiskSKU{Name: nil},
+				Properties: &armcompute.DiskProperties{
+					NetworkAccessPolicy: nil,
+					DiskIOPSReadWrite:   ptr.To(int64(500)),
+					DiskMBpsReadWrite:   ptr.To(int64(60)),
+				},
+			},
+			inputMap: map[string]string{},
+			expectedMap: map[string]string{
+				consts.DiskIOPSReadWriteField: "500",
+				consts.DiskMBPSReadWriteField: "60",
+			},
+		},
+		{
+			desc: "Azure Stack Hub - nil Properties",
+			disk: &armcompute.Disk{
+				SKU:        &armcompute.DiskSKU{Name: to.Ptr(armcompute.DiskStorageAccountTypesStandardLRS)},
+				Properties: nil,
+			},
+			inputMap: map[string]string{},
+			expectedMap: map[string]string{
+				consts.SkuNameField: string(armcompute.DiskStorageAccountTypesStandardLRS),
+			},
+		},
 	}
 
 	for _, test := range tests {

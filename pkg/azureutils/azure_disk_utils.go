@@ -752,12 +752,14 @@ func InsertDiskProperties(disk *armcompute.Disk, publishConext map[string]string
 		return
 	}
 
-	if disk.SKU != nil {
+	if disk.SKU != nil && disk.SKU.Name != nil {
 		publishConext[consts.SkuNameField] = string(*disk.SKU.Name)
 	}
 	prop := disk.Properties
 	if prop != nil {
-		publishConext[consts.NetworkAccessPolicyField] = string(*prop.NetworkAccessPolicy)
+		if prop.NetworkAccessPolicy != nil {
+			publishConext[consts.NetworkAccessPolicyField] = string(*prop.NetworkAccessPolicy)
+		}
 		if prop.DiskIOPSReadWrite != nil {
 			publishConext[consts.DiskIOPSReadWriteField] = strconv.Itoa(int(*prop.DiskIOPSReadWrite))
 		}
