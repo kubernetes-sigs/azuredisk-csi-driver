@@ -1637,6 +1637,28 @@ func TestInsertDiskProperties(t *testing.T) {
 				consts.MaxSharesField:           "3",
 			},
 		},
+		{
+			// Azure Stack does not support NetworkAccessPolicy property
+			desc: "DiskProperties with nil NetworkAccessPolicy",
+			disk: &armcompute.Disk{
+				SKU: &armcompute.DiskSKU{Name: to.Ptr(armcompute.DiskStorageAccountTypesStandardSSDLRS)},
+				Properties: &armcompute.DiskProperties{
+					NetworkAccessPolicy: nil,
+					DiskIOPSReadWrite:   ptr.To(int64(6400)),
+					DiskMBpsReadWrite:   ptr.To(int64(100)),
+					CreationData: &armcompute.CreationData{
+						LogicalSectorSize: ptr.To(int32(512)),
+					},
+				},
+			},
+			inputMap: map[string]string{},
+			expectedMap: map[string]string{
+				consts.SkuNameField:           string(armcompute.DiskStorageAccountTypesStandardSSDLRS),
+				consts.DiskIOPSReadWriteField: "6400",
+				consts.DiskMBPSReadWriteField: "100",
+				consts.LogicalSectorSizeField: "512",
+			},
+		},
 	}
 
 	for _, test := range tests {
