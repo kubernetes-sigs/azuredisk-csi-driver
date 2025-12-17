@@ -30,6 +30,7 @@ import (
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute/v6"
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -371,7 +372,9 @@ func TestCreateVolume(t *testing.T) {
 					VolumeContentSource: &volumecontensource,
 				}
 				disk := &armcompute.Disk{
-					Properties: &armcompute.DiskProperties{},
+					Properties: &armcompute.DiskProperties{
+						DiskSizeBytes: ptr.To(int64(1073741824)), // 1GB in bytes
+					},
 				}
 				diskClient := mock_diskclient.NewMockInterface(cntl)
 				d.getClientFactory().(*mock_azclient.MockClientFactory).EXPECT().GetDiskClientForSub(gomock.Any()).Return(diskClient, nil).AnyTimes()
@@ -3587,6 +3590,305 @@ func TestGetSourceDiskSize(t *testing.T) {
 	}
 	for _, tc := range testCases {
 		t.Run(tc.name, tc.testFunc)
+	}
+}
+
+func TestGetSnapshotSKU(t *testing.T) {
+	type testCase struct {
+		name            string
+		snapshotURI     string
+		setupMocks      func(factory *mock_azclient.MockClientFactory, snap *mock_snapshotclient.MockInterface)
+		expectedSKU     string
+		expectFactory   bool
+		expectErrSubstr string
+		expectGRPCCode  codes.Code
+	}
+	tests := []testCase{
+		{
+			name:          "success premium",
+			snapshotURI:   "/subscriptions/sub/resourceGroups/rg/providers/Microsoft.Compute/snapshots/snap",
+			expectFactory: true,
+			expectedSKU:   string(armcompute.SnapshotStorageAccountTypesPremiumLRS),
+			setupMocks: func(f *mock_azclient.MockClientFactory, s *mock_snapshotclient.MockInterface) {
+				f.EXPECT().GetSnapshotClientForSub("sub").Return(s, nil)
+				s.EXPECT().
+					Get(gomock.Any(), "rg", "snap").
+					Return(&armcompute.Snapshot{
+						SKU: &armcompute.SnapshotSKU{
+							Name: to.Ptr(armcompute.SnapshotStorageAccountTypesPremiumLRS),
+						},
+					}, nil)
+			},
+		},
+		{
+			name:            "bad URI",
+			snapshotURI:     "bad-uri",
+			expectErrSubstr: "invalid URI",
+			expectGRPCCode:  codes.NotFound,
+			setupMocks:      func(_ *mock_azclient.MockClientFactory, _ *mock_snapshotclient.MockInterface) {},
+		},
+		{
+			name:            "factory error -> empty string",
+			snapshotURI:     "/subscriptions/sub/resourceGroups/rg/providers/Microsoft.Compute/snapshots/snap",
+			expectFactory:   true,
+			expectedSKU:     "",
+			expectErrSubstr: "factory error",
+			setupMocks: func(f *mock_azclient.MockClientFactory, _ *mock_snapshotclient.MockInterface) {
+				f.EXPECT().GetSnapshotClientForSub("sub").Return(nil, fmt.Errorf("factory error"))
+			},
+		},
+		{
+			name:            "get error -> empty string",
+			snapshotURI:     "/subscriptions/sub/resourceGroups/rg/providers/Microsoft.Compute/snapshots/snap",
+			expectFactory:   true,
+			expectedSKU:     "",
+			expectErrSubstr: "get error",
+			setupMocks: func(f *mock_azclient.MockClientFactory, s *mock_snapshotclient.MockInterface) {
+				f.EXPECT().GetSnapshotClientForSub("sub").Return(s, nil)
+				s.EXPECT().Get(gomock.Any(), "rg", "snap").Return(nil, fmt.Errorf("get error"))
+			},
+		},
+		{
+			name:            "nil snapshot result -> empty string",
+			snapshotURI:     "/subscriptions/sub/resourceGroups/rg/providers/Microsoft.Compute/snapshots/snap",
+			expectFactory:   true,
+			expectedSKU:     "",
+			expectErrSubstr: "Snapshot is nil",
+			setupMocks: func(f *mock_azclient.MockClientFactory, s *mock_snapshotclient.MockInterface) {
+				f.EXPECT().GetSnapshotClientForSub("sub").Return(s, nil)
+				s.EXPECT().Get(gomock.Any(), "rg", "snap").Return(nil, nil)
+			},
+		},
+		{
+			name:            "nil SKU struct -> empty string",
+			snapshotURI:     "/subscriptions/sub/resourceGroups/rg/providers/Microsoft.Compute/snapshots/snap",
+			expectFactory:   true,
+			expectedSKU:     "",
+			expectErrSubstr: "Snapshot SKU property not found",
+			setupMocks: func(f *mock_azclient.MockClientFactory, s *mock_snapshotclient.MockInterface) {
+				f.EXPECT().GetSnapshotClientForSub("sub").Return(s, nil)
+				s.EXPECT().Get(gomock.Any(), "rg", "snap").Return(&armcompute.Snapshot{}, nil)
+			},
+		},
+		{
+			name:            "nil SKU name -> empty string",
+			snapshotURI:     "/subscriptions/sub/resourceGroups/rg/providers/Microsoft.Compute/snapshots/snap",
+			expectFactory:   true,
+			expectedSKU:     "",
+			expectErrSubstr: "Snapshot SKU property not found",
+			setupMocks: func(f *mock_azclient.MockClientFactory, s *mock_snapshotclient.MockInterface) {
+				f.EXPECT().GetSnapshotClientForSub("sub").Return(s, nil)
+				s.EXPECT().Get(gomock.Any(), "rg", "snap").Return(&armcompute.Snapshot{
+					SKU: &armcompute.SnapshotSKU{Name: nil},
+				}, nil)
+			},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			defer ctrl.Finish()
+			d, _ := NewFakeDriver(ctrl)
+
+			factory, ok := d.getClientFactory().(*mock_azclient.MockClientFactory)
+			if !ok {
+				t.Fatalf("clientFactory is not a *mock_azclient.MockClientFactory")
+			}
+			snapClient := mock_snapshotclient.NewMockInterface(ctrl)
+
+			if tc.setupMocks != nil {
+				tc.setupMocks(factory, snapClient)
+			}
+
+			invoke := func() (string, error) {
+				snapshot, err := d.getSnapshot(context.Background(), tc.snapshotURI)
+				if err != nil {
+					return "", err
+				}
+				return getSnapshotSKUFromSnapshot(snapshot)
+			}
+
+			sku, err := invoke()
+
+			if tc.expectErrSubstr != "" {
+				require.Error(t, err)
+				require.Empty(t, sku)
+				require.Contains(t, err.Error(), tc.expectErrSubstr)
+				if tc.expectGRPCCode != 0 {
+					if st, ok := status.FromError(err); ok {
+						require.Equal(t, tc.expectGRPCCode, st.Code())
+					}
+				}
+			} else {
+				require.NoError(t, err)
+				require.NotNil(t, sku)
+				require.Equal(t, tc.expectedSKU, sku)
+			}
+		})
+	}
+}
+
+func TestGetSnapshotSKUFromSnapshot(t *testing.T) {
+	type testCase struct {
+		name            string
+		snapshot        *armcompute.Snapshot
+		expectedSKU     string
+		expectErrSubstr string
+		expectGRPCCode  codes.Code
+	}
+	tests := []testCase{
+		{
+			name:        "success - premium LRS",
+			expectedSKU: string(armcompute.SnapshotStorageAccountTypesPremiumLRS),
+			snapshot: &armcompute.Snapshot{
+				SKU: &armcompute.SnapshotSKU{
+					Name: to.Ptr(armcompute.SnapshotStorageAccountTypesPremiumLRS),
+				},
+			},
+		},
+		{
+			name:        "success - standard LRS",
+			expectedSKU: string(armcompute.SnapshotStorageAccountTypesStandardLRS),
+			snapshot: &armcompute.Snapshot{
+				SKU: &armcompute.SnapshotSKU{
+					Name: to.Ptr(armcompute.SnapshotStorageAccountTypesStandardLRS),
+				},
+			},
+		},
+		{
+			name:            "nil snapshot",
+			snapshot:        nil,
+			expectedSKU:     "",
+			expectErrSubstr: "Snapshot is nil",
+			expectGRPCCode:  codes.NotFound,
+		},
+		{
+			name:            "nil SKU",
+			snapshot:        &armcompute.Snapshot{},
+			expectedSKU:     "",
+			expectErrSubstr: "Snapshot SKU property not found",
+			expectGRPCCode:  codes.NotFound,
+		},
+		{
+			name: "nil SKU Name",
+			snapshot: &armcompute.Snapshot{
+				SKU: &armcompute.SnapshotSKU{Name: nil},
+			},
+			expectedSKU:     "",
+			expectErrSubstr: "Snapshot SKU property not found",
+			expectGRPCCode:  codes.NotFound,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			defer ctrl.Finish()
+
+			sku, err := getSnapshotSKUFromSnapshot(tc.snapshot)
+
+			if tc.expectErrSubstr != "" {
+				require.Error(t, err)
+				require.Empty(t, sku)
+				require.Contains(t, err.Error(), tc.expectErrSubstr)
+				if tc.expectGRPCCode != 0 {
+					if st, ok := status.FromError(err); ok {
+						require.Equal(t, tc.expectGRPCCode, st.Code())
+					}
+				}
+			} else {
+				require.NoError(t, err)
+				require.Equal(t, tc.expectedSKU, sku)
+			}
+		})
+	}
+}
+
+func TestGetDiskSizeInBytesFromSnapshot(t *testing.T) {
+	type testCase struct {
+		name            string
+		snapshot        *armcompute.Snapshot
+		expectedSize    int64
+		expectErrSubstr string
+		expectGRPCCode  codes.Code
+	}
+	tests := []testCase{
+		{
+			name:         "success - 100GB disk",
+			expectedSize: 107374182400, // 100GB in bytes
+			snapshot: &armcompute.Snapshot{
+				Properties: &armcompute.SnapshotProperties{
+					DiskSizeBytes: to.Ptr(int64(107374182400)),
+				},
+			},
+		},
+		{
+			name:         "success - 1TB disk",
+			expectedSize: 1099511627776, // 1TB in bytes
+			snapshot: &armcompute.Snapshot{
+				Properties: &armcompute.SnapshotProperties{
+					DiskSizeBytes: to.Ptr(int64(1099511627776)),
+				},
+			},
+		},
+		{
+			name:         "success - small disk",
+			expectedSize: 4294967296, // 4GB in bytes
+			snapshot: &armcompute.Snapshot{
+				Properties: &armcompute.SnapshotProperties{
+					DiskSizeBytes: to.Ptr(int64(4294967296)),
+				},
+			},
+		},
+		{
+			name:            "nil snapshot",
+			snapshot:        nil,
+			expectedSize:    0,
+			expectErrSubstr: "Snapshot is nil",
+			expectGRPCCode:  codes.NotFound,
+		},
+		{
+			name:            "nil Properties",
+			snapshot:        &armcompute.Snapshot{},
+			expectedSize:    0,
+			expectErrSubstr: "Snapshot size not found",
+			expectGRPCCode:  codes.NotFound,
+		},
+		{
+			name: "nil DiskSizeBytes",
+			snapshot: &armcompute.Snapshot{
+				Properties: &armcompute.SnapshotProperties{
+					DiskSizeBytes: nil,
+				},
+			},
+			expectedSize:    0,
+			expectErrSubstr: "Snapshot size not found",
+			expectGRPCCode:  codes.NotFound,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			defer ctrl.Finish()
+
+			size, err := getDiskSizeInBytesFromSnapshot(tc.snapshot)
+
+			if tc.expectErrSubstr != "" {
+				require.Error(t, err)
+				require.Equal(t, int64(0), size)
+				require.Contains(t, err.Error(), tc.expectErrSubstr)
+				if tc.expectGRPCCode != 0 {
+					if st, ok := status.FromError(err); ok {
+						require.Equal(t, tc.expectGRPCCode, st.Code())
+					}
+				}
+			} else {
+				require.NoError(t, err)
+				require.Equal(t, tc.expectedSize, size)
+			}
+		})
 	}
 }
 
