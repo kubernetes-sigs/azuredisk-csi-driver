@@ -37,7 +37,7 @@ spec:
           effect: "NoSchedule"
       containers:
         - name: csi-provisioner
-          image: mcr.microsoft.com/oss/v2/kubernetes-csi/csi-provisioner:v6.0.0
+          image: mcr.microsoft.com/oss/v2/kubernetes-csi/csi-provisioner:v6.1.0
           args:
             - "--feature-gates=Topology=true,HonorPVReclaimPolicy=true,VolumeAttributesClass=true"
             - "--csi-address=$(ADDRESS)"
