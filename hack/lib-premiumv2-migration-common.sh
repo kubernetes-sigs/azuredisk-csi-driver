@@ -1,4 +1,18 @@
 #!/usr/bin/env bash
+# Copyright 2025 The Kubernetes Authors.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 # Common library for Premium_LRS -> PremiumV2_LRS migration helpers
 set -euo pipefail
 IFS=$'\n\t'
@@ -218,7 +232,7 @@ require_bins() {
 }
 
 # Convert a Kubernetes size string to an integer GiB (ceiling for sub-Gi units).
-# Supports Ki, Mi, Gi, Ti, Pi (with optional 'i'). Returns 0 if unparseable.
+# Supports Ki, Mi, Gi, Ti, Pi (with optional 'i'). Returns 0 if unparsable.
 size_to_gi_ceiling() {
   local raw="$1"
   [[ -z "$raw" ]] && { echo 0; return; }
@@ -1219,12 +1233,12 @@ attrclass_feature_gate_confirm() {
   prompt_msg+=$'    --runtime-config=storage.k8s.io/v1beta1=true   (adjust if GA -> storage.k8s.io/v1)\n\n'
   prompt_msg+=$'Confirm ALL of the above are configured cluster-wide? (y/N): '
 
-  local ans=""
+  local response=""
   # Try /dev/tty to remain interactive even if piped; fall back to stdin if tty not available
   if [[ -t 0 ]]; then
-    read -r -p "$prompt_msg" ans
+    read -r -p "$prompt_msg" response
   elif [[ -r /dev/tty ]]; then
-    read -r -p "$prompt_msg" ans < /dev/tty
+    read -r -p "$prompt_msg" response < /dev/tty
   else
     warn "Non-interactive session; cannot prompt for VolumeAttributesClass feature gate confirmation."
     PREREQ_ISSUES+=("VolumeAttributesClass feature gates / runtime-config not confirmed (non-interactive and no ATTRCLASS_ASSUME_FEATURE_GATES_YES)")
@@ -1232,7 +1246,7 @@ attrclass_feature_gate_confirm() {
     return 0
   fi
 
-  case "${ans,,}" in
+  case "${response,,}" in
     y|yes)
       info "Feature gate & runtime-config confirmation accepted."
       ;;
