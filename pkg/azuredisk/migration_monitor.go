@@ -35,6 +35,7 @@ import (
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/record"
 	"k8s.io/klog/v2"
+	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
 )
 
@@ -633,12 +634,12 @@ func (d *Driver) recoverMigrationMonitorsFromLabels(ctx context.Context) error {
 			toSKU := armcompute.DiskStorageAccountTypesPremiumV2LRS
 
 			if pv.Spec.CSI.VolumeAttributes != nil {
-				if sku, exists := azureutils.ParseDiskParametersForKey(pv.Spec.CSI.VolumeAttributes, "storageAccountType"); exists {
+				if sku, exists := azureutils.ParseDiskParametersForKey(pv.Spec.CSI.VolumeAttributes, azureconstants.StorageAccountTypeField); exists {
 					if !strings.EqualFold(sku, string(toSKU)) {
 						continue
 					}
 				}
-				if sku, exists := azureutils.ParseDiskParametersForKey(pv.Spec.CSI.VolumeAttributes, "skuName"); exists {
+				if sku, exists := azureutils.ParseDiskParametersForKey(pv.Spec.CSI.VolumeAttributes, azureconstants.SkuNameField); exists {
 					if !strings.EqualFold(sku, string(toSKU)) {
 						continue
 					}

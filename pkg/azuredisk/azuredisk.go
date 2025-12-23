@@ -28,6 +28,7 @@ import (
 
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute/v6"
 	"github.com/container-storage-interface/spec/lib/go/csi"
+	snapshotclientset "github.com/kubernetes-csi/external-snapshotter/client/v4/clientset/versioned"
 	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 
 	"google.golang.org/grpc"
@@ -42,6 +43,7 @@ import (
 	clientset "k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/kubernetes/scheme"
 	clientcorev1 "k8s.io/client-go/kubernetes/typed/core/v1"
+	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/client-go/tools/record"
 	"k8s.io/klog/v2"
 	"k8s.io/kubernetes/pkg/volume/util/hostutil"
@@ -150,6 +152,11 @@ type Driver struct {
 	enableMigrationMonitor      bool
 	// whether to convert ReadWrite cachingMode to ReadOnly for intree PVs to avoid issues
 	convertRWCachingModeForIntreePV bool
+	enableSnapshotConsistency       bool
+	snapshotConsistencyMode         string
+	fsFreezeWaitTimeoutInMins       int64
+	freezeOrchestrator              *FreezeOrchestrator
+	vaWatcher                       interface{} // VolumeAttachmentWatcher - using interface{} to avoid circular dependency
 }
 
 // NewDriver Creates a NewCSIDriver object. Assumes vendor version is equal to driver version &
@@ -204,6 +211,9 @@ func NewDriver(options *DriverOptions) *Driver {
 	driver.hostUtil = hostutil.NewHostUtil()
 	driver.enableMigrationMonitor = options.EnableMigrationMonitor
 	driver.convertRWCachingModeForIntreePV = options.ConvertRWCachingModeForIntreePV
+	driver.enableSnapshotConsistency = options.EnableSnapshotConsistency
+	driver.snapshotConsistencyMode = options.SnapshotConsistencyMode
+	driver.fsFreezeWaitTimeoutInMins = options.FsFreezeWaitTimeoutInMins
 
 	if driver.NodeID == "" {
 		// nodeid is not needed in controller component
@@ -290,7 +300,7 @@ func NewDriver(options *DriverOptions) *Driver {
 			driver.diskController.DetachOperationMinTimeoutInSeconds = defaultDetachOperationMinTimeoutInSeconds
 		}
 
-		if kubeClient != nil && driver.NodeID == "" && driver.enableMigrationMonitor {
+		if kubeClient != nil && driver.NodeID == "" && (driver.enableSnapshotConsistency || driver.enableMigrationMonitor) {
 			eventBroadcaster := record.NewBroadcaster()
 			eventBroadcaster.StartRecordingToSink(&clientcorev1.EventSinkImpl{
 				Interface: kubeClient.CoreV1().Events(""),
@@ -299,20 +309,45 @@ func NewDriver(options *DriverOptions) *Driver {
 				Component: driver.Name,
 			})
 			driver.eventRecorder = eventRecorder
-			driver.migrationMonitor = NewMigrationProgressMonitor(kubeClient, eventRecorder, driver.diskController)
 
-			// Recover any ongoing migrations after restart
-			go func() {
-				time.Sleep(30 * time.Second) // Wait for controller to fully start
-				// Periodically check every 10 minutes - in worst case kubernetes administrator can add the label to subscribe the events
-				for {
-					if err := driver.recoverMigrationMonitorsFromLabels(context.Background()); err != nil {
-						klog.Errorf("Failed to recover migration monitors: %v", err)
+			if driver.enableMigrationMonitor {
+				driver.migrationMonitor = NewMigrationProgressMonitor(kubeClient, driver.eventRecorder, driver.diskController)
+
+				// Recover any ongoing migrations after restart
+				go func() {
+					time.Sleep(30 * time.Second) // Wait for controller to fully start
+					// Periodically check every 10 minutes - in worst case kubernetes administrator can add the label to subscribe the events
+					for {
+						if err := driver.recoverMigrationMonitorsFromLabels(context.Background()); err != nil {
+							klog.Errorf("Failed to recover migration monitors: %v", err)
+						}
+						time.Sleep(10 * time.Minute)
 					}
-					time.Sleep(10 * time.Minute)
+				}()
+			}
+
+			// Initialize freeze orchestrator if snapshot consistency is enabled
+			if driver.enableSnapshotConsistency {
+				driver.freezeOrchestrator = NewFreezeOrchestrator(
+					kubeClient,
+					driver.snapshotConsistencyMode,
+					driver.fsFreezeWaitTimeoutInMins,
+				)
+
+				// Create Kubernetes snapshot client for VolumeSnapshot CRDs
+				if restConfig, err := clientcmd.BuildConfigFromFlags("", options.Kubeconfig); err == nil {
+					if snapshotClient, err := snapshotclientset.NewForConfig(restConfig); err == nil {
+						driver.freezeOrchestrator.SetSnapshotClient(snapshotClient)
+						klog.V(2).Infof("Kubernetes snapshot client initialized for freeze orchestrator")
+					} else {
+						klog.Warningf("Failed to create Kubernetes snapshot client: %v", err)
+					}
+				} else {
+					klog.Warningf("Failed to get kubeconfig for snapshot client: %v", err)
 				}
-			}()
+			}
 		}
+
 	}
 
 	driver.deviceHelper = optimization.NewSafeDeviceHelper()
@@ -403,6 +438,11 @@ func (d *Driver) Run(ctx context.Context) error {
 	csi.RegisterControllerServer(s, d)
 	csi.RegisterNodeServer(s, d)
 
+	// Start VolumeAttachment watcher for node driver if snapshot consistency is enabled
+	if d.NodeID != "" && d.enableSnapshotConsistency && d.cloud != nil && d.cloud.KubeClient != nil {
+		d.startVolumeAttachmentWatcher(ctx)
+	}
+
 	go func() {
 		//graceful shutdown
 		<-ctx.Done()
@@ -411,6 +451,9 @@ func (d *Driver) Run(ctx context.Context) error {
 		if d.migrationMonitor != nil {
 			d.migrationMonitor.Stop()
 		}
+
+		// Stop VolumeAttachment watcher if it exists
+		d.stopVolumeAttachmentWatcher()
 
 		s.GracefulStop()
 	}()
