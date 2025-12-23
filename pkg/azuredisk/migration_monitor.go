@@ -634,12 +634,12 @@ func (d *Driver) recoverMigrationMonitorsFromLabels(ctx context.Context) error {
 
 			if pv.Spec.CSI.VolumeAttributes != nil {
 				if sku, exists := azureutils.ParseDiskParametersForKey(pv.Spec.CSI.VolumeAttributes, "storageAccountType"); exists {
-					if !strings.EqualFold(sku, string(toSKU)) {
+					if !strings.EqualFold(sku, string(fromSKU)) && !strings.EqualFold(sku, string(toSKU)) {
 						continue
 					}
 				}
 				if sku, exists := azureutils.ParseDiskParametersForKey(pv.Spec.CSI.VolumeAttributes, "skuName"); exists {
-					if !strings.EqualFold(sku, string(toSKU)) {
+					if !strings.EqualFold(sku, string(fromSKU)) && !strings.EqualFold(sku, string(toSKU)) {
 						continue
 					}
 				}
