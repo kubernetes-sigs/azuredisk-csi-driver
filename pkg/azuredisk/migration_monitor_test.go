@@ -2749,24 +2749,38 @@ func TestRecoverMigrationMonitorsFromLabels_VolumeAttributeFiltering(t *testing.
 			note:          "empty map => recover",
 		},
 		{
-			name:          "pv-storageAccountType-match",
+			name:          "pv-storageAccountType-match-toSKU",
 			attrs:         map[string]string{"storageAccountType": string(toSKU)},
 			expectRecover: true,
 		},
 		{
-			name:          "pv-storageAccountType-mismatch",
+			name:          "pv-storageAccountType-match-fromSKU",
 			attrs:         map[string]string{"storageAccountType": string(armcompute.DiskStorageAccountTypesPremiumLRS)},
-			expectRecover: false,
+			expectRecover: true,
+			note:          "PVs at fromSKU should be recovered (migration in progress)",
 		},
 		{
-			name:          "pv-skuName-match",
+			name:          "pv-storageAccountType-mismatch",
+			attrs:         map[string]string{"storageAccountType": string(armcompute.DiskStorageAccountTypesStandardSSDLRS)},
+			expectRecover: false,
+			note:          "PVs with SKU not in migration path should be skipped",
+		},
+		{
+			name:          "pv-skuName-match-toSKU",
 			attrs:         map[string]string{"skuName": string(toSKU)},
 			expectRecover: true,
 		},
 		{
-			name:          "pv-skuName-mismatch",
+			name:          "pv-skuName-match-fromSKU",
 			attrs:         map[string]string{"skuName": string(armcompute.DiskStorageAccountTypesPremiumLRS)},
+			expectRecover: true,
+			note:          "PVs at fromSKU should be recovered (migration in progress)",
+		},
+		{
+			name:          "pv-skuName-mismatch",
+			attrs:         map[string]string{"skuName": string(armcompute.DiskStorageAccountTypesStandardSSDLRS)},
 			expectRecover: false,
+			note:          "PVs with SKU not in migration path should be skipped",
 		},
 		{
 			name: "pv-both-match",
@@ -2777,22 +2791,22 @@ func TestRecoverMigrationMonitorsFromLabels_VolumeAttributeFiltering(t *testing.
 			expectRecover: true,
 		},
 		{
-			name: "pv-mixed-mismatch-1",
+			name: "pv-mixed-inconsistent-1",
 			attrs: map[string]string{
 				"storageAccountType": string(toSKU),
-				"skuName":            string(armcompute.DiskStorageAccountTypesPremiumLRS),
+				"skuName":            string(armcompute.DiskStorageAccountTypesStandardSSDLRS),
 			},
 			expectRecover: false,
-			note:          "skuName mismatch blocks recovery",
+			note:          "inconsistent SKU params with one not in migration path blocks recovery",
 		},
 		{
-			name: "pv-mixed-mismatch-2",
+			name: "pv-mixed-inconsistent-2",
 			attrs: map[string]string{
-				"storageAccountType": string(armcompute.DiskStorageAccountTypesPremiumLRS),
+				"storageAccountType": string(armcompute.DiskStorageAccountTypesStandardSSDLRS),
 				"skuName":            string(toSKU),
 			},
 			expectRecover: false,
-			note:          "storageAccountType mismatch blocks recovery",
+			note:          "inconsistent SKU params with one not in migration path blocks recovery",
 		},
 		// NEW: Case-insensitive key tests
 		{
@@ -2845,10 +2859,16 @@ func TestRecoverMigrationMonitorsFromLabels_VolumeAttributeFiltering(t *testing.
 			note:          "mixed case PremiumV2_lrs value should match case-insensitively",
 		},
 		{
-			name:          "pv-case-insensitive-value-mismatch-premium",
+			name:          "pv-case-insensitive-value-fromSKU",
 			attrs:         map[string]string{"skuName": strings.ToLower(string(armcompute.DiskStorageAccountTypesPremiumLRS))},
+			expectRecover: true,
+			note:          "lowercase premium_lrs should match fromSKU case-insensitively",
+		},
+		{
+			name:          "pv-case-insensitive-value-mismatch-other-sku",
+			attrs:         map[string]string{"skuName": strings.ToLower(string(armcompute.DiskStorageAccountTypesStandardSSDLRS))},
 			expectRecover: false,
-			note:          "lowercase premium_lrs value should not match PremiumV2_LRS",
+			note:          "SKU not in migration path should not be recovered",
 		},
 		// NEW: Combined case-insensitive key and value tests
 		{
@@ -2873,13 +2893,22 @@ func TestRecoverMigrationMonitorsFromLabels_VolumeAttributeFiltering(t *testing.
 			note:          "multiple case-insensitive keys with matching values should recover",
 		},
 		{
-			name: "pv-case-insensitive-multiple-keys-mismatch",
+			name: "pv-case-insensitive-multiple-keys-both-in-migration-path",
 			attrs: map[string]string{
 				"STORAGEACCOUNTTYPE": strings.ToUpper(string(toSKU)),
 				"skuname":            strings.ToLower(string(armcompute.DiskStorageAccountTypesPremiumLRS)),
 			},
+			expectRecover: true,
+			note:          "both fromSKU and toSKU are in migration path, should recover",
+		},
+		{
+			name: "pv-case-insensitive-multiple-keys-mismatch",
+			attrs: map[string]string{
+				"STORAGEACCOUNTTYPE": strings.ToUpper(string(toSKU)),
+				"skuname":            strings.ToLower(string(armcompute.DiskStorageAccountTypesStandardSSDLRS)),
+			},
 			expectRecover: false,
-			note:          "case-insensitive keys with one mismatched value should not recover",
+			note:          "case-insensitive keys with one SKU not in migration path should not recover",
 		},
 		// Edge cases for case sensitivity
 		{
