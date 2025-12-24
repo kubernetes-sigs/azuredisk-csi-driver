@@ -601,6 +601,8 @@ generate_zone_mapping_template() {
         echo "# /subscriptions/12345678-1234-1234-1234-123456789012/resourceGroups/myRG/providers/Microsoft.Compute/disks/myDisk1=uksouth-1"
         echo "# /subscriptions/12345678-1234-1234-1234-123456789012/resourceGroups/myRG/providers/Microsoft.Compute/disks/myDisk2=uksouth-2"
         echo ""
+
+        populate_pvcs
         
         # Generate entries for existing PVCs
         if [[ ${#MIG_PVCS[@]} -gt 0 ]]; then

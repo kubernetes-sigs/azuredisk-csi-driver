@@ -53,7 +53,7 @@ cd hack
 Additional env (see section 5):
 ```
 ATTR_CLASS_NAME=azuredisk-premiumv2
-ATTR_CLASS_API_VERSION=storage.k8s.io/v1beta1   # or storage.k8s.io/v1 when GA
+ATTR_CLASS_API_VERSION=storage.k8s.io/v1   # or storage.k8s.io/v1beta1 if below GA
 TARGET_SKU=PremiumV2_LRS
 ATTR_CLASS_FORCE_RECREATE=false
 ```
@@ -277,7 +277,7 @@ Change the label (or add additional selectors externally) to control scope. Only
 | `AUDIT_ENABLE` | `true` | Enable audit log lines. |
 | `AUDIT_LOG_FILE` | `pv1-pv2-migration-audit.log` | Rolling append log file. |
 | `ATTR_CLASS_NAME` | `azuredisk-premiumv2` | (AttrClass mode) Name of VolumeAttributesClass to apply. |
-| `ATTR_CLASS_API_VERSION` | `storage.k8s.io/v1beta1` | API version for VolumeAttributesClass (adjust if GA). |
+| `ATTR_CLASS_API_VERSION` | `storage.k8s.io/v1` | API version for VolumeAttributesClass (adjust if below GA). |
 | `TARGET_SKU` | `PremiumV2_LRS` | Target skuName parameter for the VolumeAttributesClass. |
 | `ATTR_CLASS_FORCE_RECREATE` | `false` | Recreate the attr class each run. |
 | `PV_POLL_INTERVAL_SECONDS` | `10` | (AttrClass) Poll interval for sku check. |
