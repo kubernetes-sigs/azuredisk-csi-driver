@@ -25,7 +25,7 @@ MODE=attrclass
 
 # Environment overrides specific to this mode (others inherited from lib):
 ATTR_CLASS_NAME="${ATTR_CLASS_NAME:-azuredisk-premiumv2}"
-ATTR_CLASS_API_VERSION="${ATTR_CLASS_API_VERSION:-storage.k8s.io/v1beta1}"  # Update to v1 when GA.
+ATTR_CLASS_API_VERSION="${ATTR_CLASS_API_VERSION:-storage.k8s.io/v1}"  # Update to v1 when GA.
 TARGET_SKU="${TARGET_SKU:-PremiumV2_LRS}"
 ATTR_CLASS_FORCE_RECREATE="${ATTR_CLASS_FORCE_RECREATE:-false}"
 PV_POLL_INTERVAL_SECONDS="${PV_POLL_INTERVAL_SECONDS:-10}"
@@ -304,12 +304,6 @@ while true; do
     pv="$(get_pv_of_pvc "$ns" "$pvc")"
     if [[ -z "$pv" ]]; then
       warn "PVC lost PV binding? $ns/$pvc"
-      continue
-    fi
-
-    # Fast path: sku already updated
-    if ! check_premiumv2_lrs "$ns" "$pvc"; then
-      kubectl label pvc "$pvc" -n "$ns" "${MIGRATION_INPROGRESS_LABEL_KEY}-" 2>/dev/null 2>&1 || true
       continue
     fi
 

@@ -537,6 +537,7 @@ create_csi_pv_pvc() {
   local csi_pv csi_pvc
   local encoded_spec encoded_pv
   local pv_before
+  local migration_label_exists=false
 
   # check if MIGRATION_LABEL_KEY exists on source pvc and its value is MIGRATION_LABEL_VALUE
   if kcmd get pvc "$pvc" -n "$ns" -o json | jq -e --arg key "$MIGRATION_LABEL_KEY" --arg value "$MIGRATION_LABEL_VALUE" '.metadata.labels[$key]==$value' >/dev/null; then
@@ -668,7 +669,7 @@ create_pvc_from_snapshot() {
   local pvc="$1" ns="$2" pv="$3" size="$4" mode="$5" sc="$6" destpvc="$7" snapshot="$8"
   local inplace
   local encoded_spec
-  local migration_label_exists
+  local migration_label_exists=false
   local encoded_spec encoded_pv
   local pv_before
 
@@ -1229,7 +1230,7 @@ attrclass_feature_gate_confirm() {
   prompt_msg+=$'- kube-controller-manager feature gate:       --feature-gates=...,VolumeAttributesClass=true\n'
   prompt_msg+=$'- external-provisioner (Azure Disk CSI) has:  --feature-gates=VolumeAttributesClass=true (if required by its version)\n'
   prompt_msg+=$'- external-resizer (Azure Disk CSI) has:      --feature-gates=VolumeAttributesClass=true (if required)\n'
-  prompt_msg+=$'- API version ${ATTR_CLASS_API_VERSION} for VolumeAttributesClass is enabled (runtime-config if still beta), e.g.\n'
+  prompt_msg+=$'- API version '${ATTR_CLASS_API_VERSION}' for VolumeAttributesClass is enabled (runtime-config if still beta), e.g.\n'
   prompt_msg+=$'    --runtime-config=storage.k8s.io/v1beta1=true   (adjust if GA -> storage.k8s.io/v1)\n\n'
   prompt_msg+=$'Confirm ALL of the above are configured cluster-wide? (y/N): '
 

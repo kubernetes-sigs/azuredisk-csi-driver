@@ -207,7 +207,7 @@ for ENTRY in "${MIG_PVCS[@]}"; do
   pvc="${ENTRY##*|}"
 
   if check_premiumv2_lrs "$pvc_ns" "$pvc"; then
-    info "PVC $pvc_ns/$pvc not PremiumV2_LRS -> skip"
+    info "PVC $pvc_ns/$pvc already PremiumV2_LRS -> skip"
     continue
   fi
 
