@@ -121,6 +121,7 @@ type Driver struct {
 	volStatsCacheExpireInMinutes       int64
 	attachDetachInitialDelayInMs       int64
 	DetachOperationMinTimeoutInSeconds int64
+	vmssDetachTimeoutInSeconds         int64
 	getDiskTimeoutInSeconds            int64
 	vmType                             string
 	enableWindowsHostProcess           bool
@@ -176,6 +177,7 @@ func NewDriver(options *DriverOptions) *Driver {
 	driver.enableDiskCapacityCheck = options.EnableDiskCapacityCheck
 	driver.attachDetachInitialDelayInMs = options.AttachDetachInitialDelayInMs
 	driver.DetachOperationMinTimeoutInSeconds = options.DetachOperationMinTimeoutInSeconds
+	driver.vmssDetachTimeoutInSeconds = options.VMSSDetachTimeoutInSeconds
 	driver.enableTrafficManager = options.EnableTrafficManager
 	driver.trafficManagerPort = options.TrafficManagerPort
 	driver.vmssCacheTTLInSeconds = options.VMSSCacheTTLInSeconds
@@ -284,10 +286,21 @@ func NewDriver(options *DriverOptions) *Driver {
 		driver.diskController.WaitForDetach = driver.waitForDetach
 		driver.diskController.CheckDiskCountForBatching = driver.checkDiskCountForBatching
 		driver.diskController.DetachOperationMinTimeoutInSeconds = int(driver.DetachOperationMinTimeoutInSeconds)
+		driver.diskController.VMSSDetachTimeoutInSeconds = int(driver.vmssDetachTimeoutInSeconds)
 		klog.V(2).Infof("set DetachOperationMinTimeoutInSeconds as %d", driver.diskController.DetachOperationMinTimeoutInSeconds)
 		if driver.diskController.DetachOperationMinTimeoutInSeconds <= 0 {
 			klog.V(2).Infof("reset DetachOperationMinTimeoutInSeconds as %d", defaultDetachOperationMinTimeoutInSeconds)
 			driver.diskController.DetachOperationMinTimeoutInSeconds = defaultDetachOperationMinTimeoutInSeconds
+		}
+		klog.V(2).Infof("set VMSSDetachTimeoutInSeconds as %d", driver.diskController.VMSSDetachTimeoutInSeconds)
+		if driver.diskController.VMSSDetachTimeoutInSeconds <= 0 || driver.diskController.VMSSDetachTimeoutInSeconds > driver.diskController.DetachOperationMinTimeoutInSeconds {
+			if driver.diskController.DetachOperationMinTimeoutInSeconds <= 20 {
+				klog.V(2).Infof("reset VMSSDetachTimeoutInSeconds as DetachOperationMinTimeoutInSeconds %d", driver.diskController.DetachOperationMinTimeoutInSeconds)
+				driver.diskController.VMSSDetachTimeoutInSeconds = driver.diskController.DetachOperationMinTimeoutInSeconds
+			} else {
+				klog.V(2).Infof("reset VMSSDetachTimeoutInSeconds as 20 (default)")
+				driver.diskController.VMSSDetachTimeoutInSeconds = 20
+			}
 		}
 
 		if kubeClient != nil && driver.NodeID == "" && driver.enableMigrationMonitor {
