@@ -438,7 +438,7 @@ func TestCommonDetachDisk(t *testing.T) {
 			vmList:      map[string]string{"vm1": "PowerState/Running"},
 			nodeName:    "vm1",
 			diskName:    "disk1",
-			expectedErr: false,
+			expectedErr: true,
 		},
 	}
 
@@ -1368,4 +1368,87 @@ func setTestVirtualMachines(c *provider.Cloud, vmList map[string]string, isDataD
 	}
 
 	return expectedVMs
+}
+
+func TestDetachDiskWithVMSSTimeoutConfiguration(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	testCases := []struct {
+		desc                   string
+		vmssDetachTimeout      int
+		detachOperationTimeout int
+		expectEarlyExit        bool
+	}{
+		{
+			desc:                   "vmssDetachTimeout less than detachOperationTimeout creates early exit",
+			vmssDetachTimeout:      5,
+			detachOperationTimeout: 10,
+			expectEarlyExit:        true,
+		},
+		{
+			desc:                   "vmssDetachTimeout zero uses detachOperationTimeout",
+			vmssDetachTimeout:      0,
+			detachOperationTimeout: 10,
+			expectEarlyExit:        false,
+		},
+		{
+			desc:                   "vmssDetachTimeout greater than detachOperationTimeout uses detachOperationTimeout",
+			vmssDetachTimeout:      20,
+			detachOperationTimeout: 10,
+			expectEarlyExit:        false,
+		},
+	}
+
+	for _, test := range testCases {
+		t.Run(test.desc, func(t *testing.T) {
+			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			defer cancel()
+
+			testCloud := provider.GetTestCloud(ctrl)
+			common := &controllerCommon{
+				cloud:                              testCloud,
+				lockMap:                            newLockMap(),
+				VMSSDetachTimeoutInSeconds:         test.vmssDetachTimeout,
+				DetachOperationMinTimeoutInSeconds: test.detachOperationTimeout,
+				ForceDetachBackoff:                 false,
+				DisableDiskLunCheck:                true,
+			}
+
+			diskName := "disk1"
+			diskURI := fmt.Sprintf("/subscriptions/%s/resourceGroups/%s/providers/Microsoft.Compute/disks/%s",
+				testCloud.SubscriptionID, testCloud.ResourceGroup, diskName)
+
+			expectedVMs := setTestVirtualMachines(testCloud, map[string]string{"vm1": "PowerState/Running"}, false)
+			mockVMClient := testCloud.ComputeClientFactory.GetVirtualMachineClient().(*mockvmclient.MockInterface)
+
+			for _, vm := range expectedVMs {
+				mockVMClient.EXPECT().Get(gomock.Any(), testCloud.ResourceGroup, *vm.Name, gomock.Any()).Return(&vm, nil).AnyTimes()
+			}
+
+			// Capture the context passed to CreateOrUpdate to verify timeout
+			var capturedCtxDeadline time.Time
+			mockVMClient.EXPECT().
+				CreateOrUpdate(gomock.Any(), testCloud.ResourceGroup, gomock.Any(), gomock.Any()).
+				DoAndReturn(func(ctx context.Context, _ string, _ string, _ armcompute.VirtualMachine) (*armcompute.VirtualMachine, error) {
+					deadline, ok := ctx.Deadline()
+					if ok {
+						capturedCtxDeadline = deadline
+					}
+					return nil, nil
+				}).
+				Times(1)
+
+			err := common.DetachDisk(ctx, diskName, diskURI, "vm1")
+			assert.NoError(t, err)
+
+			// Verify timeout configuration
+			if test.expectEarlyExit {
+				// With early exit, the context should have timeout close to vmssDetachTimeout
+				expectedTimeout := time.Duration(test.vmssDetachTimeout) * time.Second
+				actualTimeout := time.Until(capturedCtxDeadline)
+				assert.InDelta(t, expectedTimeout.Seconds(), actualTimeout.Seconds(), 1.0, "Expected early exit timeout")
+			}
+		})
+	}
 }

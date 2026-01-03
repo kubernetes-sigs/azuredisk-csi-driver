@@ -56,6 +56,7 @@ const (
 	sourceVolume           = "volume"
 	attachDiskMapKeySuffix = "attachdiskmap"
 	detachDiskMapKeySuffix = "detachdiskmap"
+	detachInProgress       = "detach in progress"
 
 	// default initial delay in milliseconds for batch disk attach/detach
 	defaultAttachDetachInitialDelayInMs = 1000
@@ -448,13 +449,19 @@ func (c *controllerCommon) DetachDisk(ctx context.Context, diskName, diskURI str
 			return nil
 		}
 
-		// continue polling on GET VM to verify detach status
-		if errors.Is(err, context.DeadlineExceeded) || preemptedByForceOperation(err) {
-			klog.Errorf("azureDisk - DetachDisk(%s) from node %s timed out after %v", diskName, nodeName, detachContextTimeout)
-			return c.pollForDetachCompletion(detachCtx, diskName, diskURI, nodeName, vmset)
+		// if operation is preemted by a force operation on VM, check if the disk got detached before returning error
+		if preemptedByForceOperation(err) {
+			klog.Errorf("azureDisk - DetachDisk(%s) from node %s was preempted by a concurrent force detach operation", diskName, nodeName)
+			return c.verifyDetach(ctx, diskName, diskURI, nodeName)
 		}
 
-		if c.ForceDetachBackoff {
+		// continue polling on GET VM to verify detach status
+		if errors.Is(err, context.DeadlineExceeded) {
+			klog.Errorf("azureDisk - DetachDisk(%s) from node %s timed out after %v", diskName, nodeName, detachContextTimeout)
+			err = c.pollForDetachCompletion(detachCtx, diskName, diskURI, nodeName, vmset)
+		}
+
+		if err != nil && c.ForceDetachBackoff {
 			klog.Errorf("azureDisk - DetachDisk(%s) from node %s failed with error: %v, retry with force detach", diskName, nodeName, err)
 			err = vmset.DetachDisk(ctx, nodeName, diskMap, true)
 		}
@@ -519,7 +526,7 @@ func (c *controllerCommon) pollForDetachCompletion(detachCtx context.Context, di
 				klog.V(2).Infof("polling on GET VM: detach disk(%s) succeeded", diskName)
 				return true, nil
 			}
-			if strings.Contains(errGetLun.Error(), consts.DetachInProgress) {
+			if strings.Contains(errGetLun.Error(), detachInProgress) {
 				klog.V(2).Infof("polling on GET VM: detach disk(%s) is in progress", diskName)
 				return false, nil
 			}
@@ -636,7 +643,7 @@ func (c *controllerCommon) GetDiskLun(ctx context.Context, diskName, diskURI str
 			(disk.ManagedDisk != nil && strings.EqualFold(*disk.ManagedDisk.ID, diskURI)) {
 			if disk.ToBeDetached != nil && *disk.ToBeDetached {
 				klog.Warningf("azureDisk - found disk(ToBeDetached): lun %d name %s uri %s", *disk.Lun, diskName, diskURI)
-				return -1, provisioningState, fmt.Errorf("disk(%s) is in ToBeDetached state on node(%s): %s", diskURI, nodeName, consts.DetachInProgress)
+				return -1, provisioningState, fmt.Errorf("disk(%s) is in ToBeDetached state on node(%s): %s", diskURI, nodeName, detachInProgress)
 			} else {
 				// found the disk
 				klog.V(2).Infof("azureDisk - found disk: lun %d name %s uri %s", *disk.Lun, diskName, diskURI)
