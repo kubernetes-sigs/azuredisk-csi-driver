@@ -519,7 +519,7 @@ func (c *controllerCommon) verifyDetach(ctx context.Context, diskName, diskURI s
 func (c *controllerCommon) pollForDetachCompletion(detachCtx context.Context, diskName, diskURI string, nodeName types.NodeName, vmset provider.VMSet) error {
 	// poll on GET VM to verify detach status
 	return kwait.ExponentialBackoffWithContext(detachCtx, defaultBackOff, func(_ context.Context) (bool, error) {
-		vmset.DeleteCacheForNode(detachCtx, string(nodeName))
+		_ = vmset.DeleteCacheForNode(detachCtx, string(nodeName))
 		_, _, errGetLun := c.GetDiskLun(detachCtx, diskName, diskURI, nodeName)
 		if errGetLun != nil {
 			if strings.Contains(errGetLun.Error(), consts.CannotFindDiskLUN) {
@@ -644,11 +644,11 @@ func (c *controllerCommon) GetDiskLun(ctx context.Context, diskName, diskURI str
 			if disk.ToBeDetached != nil && *disk.ToBeDetached {
 				klog.Warningf("azureDisk - found disk(ToBeDetached): lun %d name %s uri %s", *disk.Lun, diskName, diskURI)
 				return -1, provisioningState, fmt.Errorf("disk(%s) is in ToBeDetached state on node(%s): %s", diskURI, nodeName, detachInProgress)
-			} else {
-				// found the disk
-				klog.V(2).Infof("azureDisk - found disk: lun %d name %s uri %s", *disk.Lun, diskName, diskURI)
-				return *disk.Lun, provisioningState, nil
 			}
+			// found the disk
+			klog.V(2).Infof("azureDisk - found disk: lun %d name %s uri %s", *disk.Lun, diskName, diskURI)
+			return *disk.Lun, provisioningState, nil
+
 		}
 	}
 	return -1, provisioningState, fmt.Errorf("%s for disk %s", consts.CannotFindDiskLUN, diskName)
