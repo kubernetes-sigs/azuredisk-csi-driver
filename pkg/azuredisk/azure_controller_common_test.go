@@ -29,6 +29,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/to"
 	armcompute "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute/v6"
 	autorestmocks "github.com/Azure/go-autorest/autorest/mocks"
@@ -1449,6 +1450,369 @@ func TestDetachDiskWithVMSSTimeoutConfiguration(t *testing.T) {
 				actualTimeout := time.Until(capturedCtxDeadline)
 				assert.InDelta(t, expectedTimeout.Seconds(), actualTimeout.Seconds(), 1.0, "Expected early exit timeout")
 			}
+		})
+	}
+}
+
+func TestPollForDetachCompletion(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	testCases := []struct {
+		desc              string
+		diskName          string
+		diskURI           string
+		nodeName          types.NodeName
+		setupMocks        func(*provider.Cloud, *mockvmclient.MockInterface)
+		expectedErr       bool
+		expectedErrString string
+		contextTimeout    time.Duration
+	}{
+		{
+			desc:           "successful detach - disk not found",
+			diskName:       "disk1",
+			diskURI:        "/subscriptions/sub/resourceGroups/rg/providers/Microsoft.Compute/disks/disk1",
+			nodeName:       "vm1",
+			contextTimeout: 30 * time.Second,
+			setupMocks: func(testCloud *provider.Cloud, mockVMClient *mockvmclient.MockInterface) {
+				vms := setTestVirtualMachines(testCloud, map[string]string{"vm1": "PowerState/Running"}, false)
+				vm := vms[0]
+				// Remove all data disks to simulate disk not found
+				vm.Properties.StorageProfile.DataDisks = []*armcompute.DataDisk{}
+				mockVMClient.EXPECT().
+					Get(gomock.Any(), testCloud.ResourceGroup, "vm1", gomock.Any()).
+					Return(&vm, nil).
+					AnyTimes()
+			},
+			expectedErr: false,
+		},
+		{
+			desc:           "detach in progress - eventually succeeds",
+			diskName:       "disk1",
+			diskURI:        "/subscriptions/sub/resourceGroups/rg/providers/Microsoft.Compute/disks/disk1",
+			nodeName:       "vm1",
+			contextTimeout: 30 * time.Second,
+			setupMocks: func(testCloud *provider.Cloud, mockVMClient *mockvmclient.MockInterface) {
+				// First call: disk still attached with detach in progress
+				vms1 := setTestVirtualMachines(testCloud, map[string]string{"vm1": "PowerState/Running"}, false)
+				vm1 := vms1[0]
+				vm1.Properties.StorageProfile.DataDisks = []*armcompute.DataDisk{
+					{
+						Name:         to.Ptr("disk1"),
+						Lun:          to.Ptr(int32(0)),
+						ManagedDisk:  &armcompute.ManagedDiskParameters{ID: to.Ptr("/subscriptions/sub/resourceGroups/rg/providers/Microsoft.Compute/disks/disk1")},
+						ToBeDetached: to.Ptr(true),
+					},
+				}
+				mockVMClient.EXPECT().
+					Get(gomock.Any(), testCloud.ResourceGroup, "vm1", gomock.Any()).
+					Return(&vm1, nil).
+					Times(1)
+
+				// Second call: disk successfully detached
+				vms2 := setTestVirtualMachines(testCloud, map[string]string{"vm1": "PowerState/Running"}, false)
+				vm2 := vms2[0]
+				vm2.Properties.StorageProfile.DataDisks = []*armcompute.DataDisk{} // No disks
+				mockVMClient.EXPECT().
+					Get(gomock.Any(), testCloud.ResourceGroup, "vm1", gomock.Any()).
+					Return(&vm2, nil).
+					AnyTimes()
+			},
+			expectedErr: false,
+		},
+		{
+			desc:           "detach still in progress after multiple polls - eventually succeeds",
+			diskName:       "disk1",
+			diskURI:        "/subscriptions/sub/resourceGroups/rg/providers/Microsoft.Compute/disks/disk1",
+			nodeName:       "vm1",
+			contextTimeout: 30 * time.Second,
+			setupMocks: func(testCloud *provider.Cloud, mockVMClient *mockvmclient.MockInterface) {
+				// First 3 calls: disk still attached (no ToBeDetached flag)
+				vms1 := setTestVirtualMachines(testCloud, map[string]string{"vm1": "PowerState/Running"}, false)
+				vm1 := vms1[0]
+				vm1.Properties.StorageProfile.DataDisks = []*armcompute.DataDisk{
+					{
+						Name:        to.Ptr("disk1"),
+						Lun:         to.Ptr(int32(0)),
+						ManagedDisk: &armcompute.ManagedDiskParameters{ID: to.Ptr("/subscriptions/sub/resourceGroups/rg/providers/Microsoft.Compute/disks/disk1")},
+					},
+				}
+				mockVMClient.EXPECT().
+					Get(gomock.Any(), testCloud.ResourceGroup, "vm1", gomock.Any()).
+					Return(&vm1, nil).
+					Times(3)
+
+				// Fourth call: disk successfully detached
+				vms2 := setTestVirtualMachines(testCloud, map[string]string{"vm1": "PowerState/Running"}, false)
+				vm2 := vms2[0]
+				vm2.Properties.StorageProfile.DataDisks = []*armcompute.DataDisk{} // No disks
+				mockVMClient.EXPECT().
+					Get(gomock.Any(), testCloud.ResourceGroup, "vm1", gomock.Any()).
+					Return(&vm2, nil).
+					AnyTimes()
+			},
+			expectedErr: false,
+		},
+		{
+			desc:           "throttled request - error returned",
+			diskName:       "disk1",
+			diskURI:        "/subscriptions/sub/resourceGroups/rg/providers/Microsoft.Compute/disks/disk1",
+			nodeName:       "vm1",
+			contextTimeout: 30 * time.Second,
+			setupMocks: func(testCloud *provider.Cloud, mockVMClient *mockvmclient.MockInterface) {
+				throttleErr := &azcore.ResponseError{
+					StatusCode: http.StatusTooManyRequests,
+					RawResponse: &http.Response{
+						StatusCode: http.StatusTooManyRequests,
+					},
+				}
+				mockVMClient.EXPECT().
+					Get(gomock.Any(), testCloud.ResourceGroup, "vm1", gomock.Any()).
+					Return(nil, throttleErr).
+					Times(1)
+			},
+			expectedErr:       true,
+			expectedErrString: "429",
+		},
+		{
+			desc:           "vm not found - error returned",
+			diskName:       "disk1",
+			diskURI:        "/subscriptions/sub/resourceGroups/rg/providers/Microsoft.Compute/disks/disk1",
+			nodeName:       "vm1",
+			contextTimeout: 30 * time.Second,
+			setupMocks: func(testCloud *provider.Cloud, mockVMClient *mockvmclient.MockInterface) {
+				notFoundErr := &azcore.ResponseError{
+					StatusCode: http.StatusNotFound,
+					RawResponse: &http.Response{
+						StatusCode: http.StatusNotFound,
+					},
+				}
+				mockVMClient.EXPECT().
+					Get(gomock.Any(), testCloud.ResourceGroup, "vm1", gomock.Any()).
+					Return(nil, notFoundErr).
+					Times(1)
+			},
+			expectedErr:       true,
+			expectedErrString: "not found",
+		},
+		{
+			desc:           "context timeout - error returned",
+			diskName:       "disk1",
+			diskURI:        "/subscriptions/sub/resourceGroups/rg/providers/Microsoft.Compute/disks/disk1",
+			nodeName:       "vm1",
+			contextTimeout: 100 * time.Millisecond,
+			setupMocks: func(testCloud *provider.Cloud, mockVMClient *mockvmclient.MockInterface) {
+				// Keep returning disk as attached, causing timeout
+				vms := setTestVirtualMachines(testCloud, map[string]string{"vm1": "PowerState/Running"}, false)
+				vm := vms[0]
+				vm.Properties.StorageProfile.DataDisks = []*armcompute.DataDisk{
+					{
+						Name:        to.Ptr("disk1"),
+						Lun:         to.Ptr(int32(0)),
+						ManagedDisk: &armcompute.ManagedDiskParameters{ID: to.Ptr("/subscriptions/sub/resourceGroups/rg/providers/Microsoft.Compute/disks/disk1")},
+					},
+				}
+				mockVMClient.EXPECT().
+					Get(gomock.Any(), testCloud.ResourceGroup, "vm1", gomock.Any()).
+					Return(&vm, nil).
+					AnyTimes()
+			},
+			expectedErr:       true,
+			expectedErrString: "context deadline exceeded",
+		},
+		{
+			desc:           "detach with ToBeDetached flag - eventually succeeds",
+			diskName:       "disk1",
+			diskURI:        "/subscriptions/sub/resourceGroups/rg/providers/Microsoft.Compute/disks/disk1",
+			nodeName:       "vm1",
+			contextTimeout: 30 * time.Second,
+			setupMocks: func(testCloud *provider.Cloud, mockVMClient *mockvmclient.MockInterface) {
+				// First call: disk with ToBeDetached=true
+				vms1 := setTestVirtualMachines(testCloud, map[string]string{"vm1": "PowerState/Running"}, false)
+				vm1 := vms1[0]
+				vm1.Properties.StorageProfile.DataDisks = []*armcompute.DataDisk{
+					{
+						Name:         to.Ptr("disk1"),
+						Lun:          to.Ptr(int32(0)),
+						ManagedDisk:  &armcompute.ManagedDiskParameters{ID: to.Ptr("/subscriptions/sub/resourceGroups/rg/providers/Microsoft.Compute/disks/disk1")},
+						ToBeDetached: to.Ptr(true),
+					},
+				}
+				mockVMClient.EXPECT().
+					Get(gomock.Any(), testCloud.ResourceGroup, "vm1", gomock.Any()).
+					Return(&vm1, nil).
+					Times(1)
+
+				// Second call: disk removed
+				vms2 := setTestVirtualMachines(testCloud, map[string]string{"vm1": "PowerState/Running"}, false)
+				vm2 := vms2[0]
+				vm2.Properties.StorageProfile.DataDisks = []*armcompute.DataDisk{} // No disks
+				mockVMClient.EXPECT().
+					Get(gomock.Any(), testCloud.ResourceGroup, "vm1", gomock.Any()).
+					Return(&vm2, nil).
+					AnyTimes()
+			},
+			expectedErr: false,
+		},
+	}
+
+	for _, test := range testCases {
+		t.Run(test.desc, func(t *testing.T) {
+			ctx, cancel := context.WithTimeout(context.Background(), test.contextTimeout)
+			defer cancel()
+
+			testCloud := provider.GetTestCloud(ctrl)
+			mockVMClient := testCloud.ComputeClientFactory.GetVirtualMachineClient().(*mockvmclient.MockInterface)
+
+			// Setup mocks based on test case
+			test.setupMocks(testCloud, mockVMClient)
+
+			// Create controller common
+			common := &controllerCommon{
+				cloud:   testCloud,
+				lockMap: newLockMap(),
+			}
+
+			// Call pollForDetachCompletion
+			err := common.pollForDetachCompletion(ctx, test.diskName, test.diskURI, test.nodeName, testCloud.VMSet)
+
+			// Assert results
+			if test.expectedErr {
+				assert.Error(t, err)
+				if test.expectedErrString != "" {
+					assert.Contains(t, strings.ToLower(err.Error()), strings.ToLower(test.expectedErrString))
+				}
+			} else {
+				assert.NoError(t, err)
+			}
+		})
+	}
+}
+
+func TestPollForDetachCompletionWithCache(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	t.Run("cache is cleared between polls", func(t *testing.T) {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+
+		testCloud := provider.GetTestCloud(ctrl)
+		mockVMClient := testCloud.ComputeClientFactory.GetVirtualMachineClient().(*mockvmclient.MockInterface)
+
+		diskName := "disk1"
+		diskURI := "/subscriptions/sub/resourceGroups/rg/providers/Microsoft.Compute/disks/disk1"
+		nodeName := types.NodeName("vm1")
+
+		// Track how many times Get is called
+		var getCallCount int32
+
+		// First call: disk still attached
+		vms1 := setTestVirtualMachines(testCloud, map[string]string{"vm1": "PowerState/Running"}, false)
+		vm1 := vms1[0]
+		vm1.Properties.StorageProfile.DataDisks = []*armcompute.DataDisk{
+			{
+				Name:        to.Ptr(diskName),
+				Lun:         to.Ptr(int32(0)),
+				ManagedDisk: &armcompute.ManagedDiskParameters{ID: to.Ptr(diskURI)},
+			},
+		}
+
+		// Second call: disk detached
+		vms2 := setTestVirtualMachines(testCloud, map[string]string{"vm1": "PowerState/Running"}, false)
+		vm2 := vms2[0]
+		vm2.Properties.StorageProfile.DataDisks = []*armcompute.DataDisk{} // No disks
+
+		mockVMClient.EXPECT().
+			Get(gomock.Any(), testCloud.ResourceGroup, "vm1", gomock.Any()).
+			DoAndReturn(func(ctx context.Context, resourceGroupName string, vmName string, expand *string) (*armcompute.VirtualMachine, error) {
+				count := atomic.AddInt32(&getCallCount, 1)
+				if count == 1 {
+					return &vm1, nil
+				}
+				return &vm2, nil
+			}).
+			AnyTimes()
+
+		common := &controllerCommon{
+			cloud:   testCloud,
+			lockMap: newLockMap(),
+		}
+
+		err := common.pollForDetachCompletion(ctx, diskName, diskURI, nodeName, testCloud.VMSet)
+		assert.NoError(t, err)
+		// Verify that Get was called at least twice (once with disk, once without)
+		assert.GreaterOrEqual(t, atomic.LoadInt32(&getCallCount), int32(2), "Expected at least 2 GET calls to verify cache refresh")
+	})
+}
+
+func TestPreemptedByForceOperation(t *testing.T) {
+	testCases := []struct {
+		desc     string
+		err      error
+		expected bool
+	}{
+		{
+			desc:     "DataDisksForceDetached error - lowercase",
+			err:      fmt.Errorf("operation failed with error: datadisksforcedetached"),
+			expected: true,
+		},
+		{
+			desc:     "DataDisksForceDetached error - uppercase",
+			err:      fmt.Errorf("operation failed with error: DATADISKSFORCEDETACHED"),
+			expected: true,
+		},
+		{
+			desc:     "DataDisksForceDetached error - mixed case",
+			err:      fmt.Errorf("operation failed with error: DataDisksForceDetached"),
+			expected: true,
+		},
+		{
+			desc:     "DataDisksForceDetached error - in middle of message",
+			err:      fmt.Errorf("The disk operation was cancelled because DataDisksForceDetached was in progress"),
+			expected: true,
+		},
+		{
+			desc:     "DataDisksForceDetached error - Azure specific message",
+			err:      fmt.Errorf("Compute.VirtualMachineScaleSetsClient#Update: Failure responding to request: StatusCode=409 -- Original Error: autorest/azure: Service returned an error. Status=<nil> Code=\"DataDisksForceDetached\" Message=\"The disks were force detached during the operation.\""),
+			expected: true,
+		},
+		{
+			desc:     "Different error - disk not found",
+			err:      fmt.Errorf("disk not found"),
+			expected: false,
+		},
+		{
+			desc:     "Different error - timeout",
+			err:      fmt.Errorf("context deadline exceeded"),
+			expected: false,
+		},
+		{
+			desc:     "Different error - throttled",
+			err:      fmt.Errorf("too many requests"),
+			expected: false,
+		},
+		{
+			desc:     "Different error - similar but not matching",
+			err:      fmt.Errorf("DataDisks operation failed"),
+			expected: false,
+		},
+		{
+			desc:     "Different error - partial match",
+			err:      fmt.Errorf("ForceDetached failed"),
+			expected: false,
+		},
+		{
+			desc:     "Wrapped error with DataDisksForceDetached",
+			err:      fmt.Errorf("detach failed: %w", fmt.Errorf("DataDisksForceDetached")),
+			expected: true,
+		},
+	}
+
+	for _, test := range testCases {
+		t.Run(test.desc, func(t *testing.T) {
+			result := preemptedByForceOperation(test.err)
+			assert.Equal(t, test.expected, result, "Test case: %s", test.desc)
 		})
 	}
 }

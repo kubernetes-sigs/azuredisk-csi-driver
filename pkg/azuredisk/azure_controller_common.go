@@ -64,6 +64,9 @@ const (
 	// default detach operation timeout
 	defaultDetachOperationMinTimeoutInSeconds = 240
 
+	// default timeout for VMSS detach operation before polling on GET VM to verify detach status
+	defaultVMSSDetachTimeoutInSeconds = 20
+
 	// WriteAcceleratorEnabled support for Azure Write Accelerator on Azure Disks
 	// https://docs.microsoft.com/azure/virtual-machines/windows/how-to-enable-write-accelerator
 	WriteAcceleratorEnabled = "writeacceleratorenabled"
@@ -449,7 +452,7 @@ func (c *controllerCommon) DetachDisk(ctx context.Context, diskName, diskURI str
 			return nil
 		}
 
-		// if operation is preemted by a force operation on VM, check if the disk got detached before returning error
+		// if operation is preempted by a force operation on VM, check if the disk got detached before returning error
 		if preemptedByForceOperation(err) {
 			klog.Errorf("azureDisk - DetachDisk(%s) from node %s was preempted by a concurrent force detach operation", diskName, nodeName)
 			return c.verifyDetach(ctx, diskName, diskURI, nodeName)
@@ -457,7 +460,7 @@ func (c *controllerCommon) DetachDisk(ctx context.Context, diskName, diskURI str
 
 		// continue polling on GET VM to verify detach status
 		if errors.Is(err, context.DeadlineExceeded) {
-			klog.Errorf("azureDisk - DetachDisk(%s) from node %s timed out after %v", diskName, nodeName, detachContextTimeout)
+			klog.Errorf("azureDisk - DetachDisk(%s) from node %s timed out after %v", diskName, nodeName, vmssDetachTimeout)
 			err = c.pollForDetachCompletion(detachCtx, diskName, diskURI, nodeName, vmset)
 		}
 

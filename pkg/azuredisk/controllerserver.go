@@ -236,6 +236,7 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 		}
 		localDiskController.AttachDetachInitialDelayInMs = int(d.attachDetachInitialDelayInMs)
 		localDiskController.VMSSDetachTimeoutInSeconds = int(d.vmssDetachTimeoutInSeconds)
+		localDiskController.DetachOperationMinTimeoutInSeconds = int(d.detachOperationMinTimeoutInSeconds)
 
 	}
 	if azureutils.IsAzureStackCloud(localCloud.Config.Cloud, localCloud.Config.DisableAzureStackCloud) {

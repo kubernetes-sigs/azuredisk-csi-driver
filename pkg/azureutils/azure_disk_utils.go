@@ -86,32 +86,31 @@ var (
 )
 
 type ManagedDiskParameters struct {
-	AccountType                 string
-	CachingMode                 v1.AzureDataDiskCachingMode
-	DeviceSettings              map[string]string
-	DiskAccessID                string
-	DiskEncryptionSetID         string
-	DiskEncryptionType          string
-	DiskIOPSReadWrite           string
-	DiskMBPSReadWrite           string
-	DiskName                    string
-	EnableBursting              *bool
-	PerformancePlus             *bool
-	FastForceFailoverTimeoutSec int
-	FsType                      string
-	Location                    string
-	LogicalSectorSize           int
-	MaxShares                   int
-	NetworkAccessPolicy         string
-	PublicNetworkAccess         string
-	PerfProfile                 string
-	SubscriptionID              string
-	ResourceGroup               string
-	Tags                        map[string]string
-	UserAgent                   string
-	VolumeContext               map[string]string
-	WriteAcceleratorEnabled     string
-	Zoned                       string
+	AccountType             string
+	CachingMode             v1.AzureDataDiskCachingMode
+	DeviceSettings          map[string]string
+	DiskAccessID            string
+	DiskEncryptionSetID     string
+	DiskEncryptionType      string
+	DiskIOPSReadWrite       string
+	DiskMBPSReadWrite       string
+	DiskName                string
+	EnableBursting          *bool
+	PerformancePlus         *bool
+	FsType                  string
+	Location                string
+	LogicalSectorSize       int
+	MaxShares               int
+	NetworkAccessPolicy     string
+	PublicNetworkAccess     string
+	PerfProfile             string
+	SubscriptionID          string
+	ResourceGroup           string
+	Tags                    map[string]string
+	UserAgent               string
+	VolumeContext           map[string]string
+	WriteAcceleratorEnabled string
+	Zoned                   string
 }
 
 func GetCachingMode(attributes map[string]string) (armcompute.CachingTypes, error) {
