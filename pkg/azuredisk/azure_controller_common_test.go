@@ -1725,7 +1725,7 @@ func TestPollForDetachCompletionWithCache(t *testing.T) {
 
 		mockVMClient.EXPECT().
 			Get(gomock.Any(), testCloud.ResourceGroup, "vm1", gomock.Any()).
-			DoAndReturn(func(ctx context.Context, resourceGroupName string, vmName string, expand *string) (*armcompute.VirtualMachine, error) {
+			DoAndReturn(func(_ context.Context, _ string, _ string, _ *string) (*armcompute.VirtualMachine, error) {
 				count := atomic.AddInt32(&getCallCount, 1)
 				if count == 1 {
 					return &vm1, nil
