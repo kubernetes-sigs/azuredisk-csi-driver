@@ -1,20 +1,47 @@
-# Get Prometheus metrics from CSI driver
+# Prometheus Metrics for CSI Disk Driver
 
 ## Metrics description
 
-The metrics emitted by the Azure Disk CSI Driver fall broadly into two categories: CSI and Azure Cloud operation latency metrics. The CSI metrics record the latency of the CSI calls made to the driver, e,g, `ControllerPublishVolume`. The Azure Cloud metrics record the latency of Azure Cloud operations perform as part driver operation, e.g. `attach_disk`. The individual operation metrics are recorded in two different [histogram](https://prometheus.io/docs/concepts/metric_types/#histogram) metrics using the labels `request` and/or `source` to differentiate among the operations. The table below describes the values of the individual operation metrics.
+The Azure Disk CSI Driver exposes comprehensive Prometheus metrics for monitoring driver operations, performance, and health. The metrics fall into several categories:
+
+### CSI Metrics
+
+| Metric Name | Type | Labels | Description |
+|-------------|------|--------|-------------|
+| `azuredisk_csi_driver_operations_total` | Counter | `operation`, `success` | Total number of CSI operations (both controller and node) |
+| `azuredisk_csi_driver_operation_duration_seconds` | Histogram | `operation`, `success` | Duration of CSI operations in seconds (basic metric without detailed labels) |
+| `azuredisk_csi_driver_operation_duration_seconds_labeled` | Histogram | `operation`, `success`, `disk_sku`, `caching_mode`, `zone` | Duration of CSI operations in seconds with detailed labels for analysis |
+
+**Operation Types (Controller):**
+- `controller_create_volume` - Create a new disk volume
+- `controller_delete_volume` - Delete a disk volume
+- `controller_modify_volume` - Modify volume properties
+- `controller_publish_volume` - Attach disk to node (VM)
+- `controller_unpublish_volume` - Detach disk from node (VM)
+- `controller_expand_volume` - Expand volume capacity
+- `controller_create_snapshot` - Create a snapshot
+- `controller_delete_snapshot` - Delete a snapshot
+
+**Operation Types (Node):**
+- `node_stage_volume` - Stage volume to global mount path
+- `node_unstage_volume` - Unstage volume from global mount path
+- `node_publish_volume` - Mount volume to pod path
+- `node_unpublish_volume` - Unmount volume from pod path
+- `node_expand_volume` - Expand filesystem on node
+
+**Label Values:**
+- `success`: `true` or `false`
+- `disk_sku`: Disk SKU type (e.g., `Premium_LRS`, `StandardSSD_LRS`, `Standard_LRS`)
+- `caching_mode`: Disk caching mode (e.g., `None`, `ReadOnly`, `ReadWrite`)
+- `zone`: Availability zone (e.g., `1`, `2`, `3`, or empty for non-zonal)
+
+### Azure Cloud API Metrics
+
+The driver also exposes Azure Cloud provider API metrics:
 
 | Name | `request` | `source` | Description |
 |------|-----------|----------|-------------|
-| `cloudprovider_azure_op_duration_seconds` | | | Records the CSI operation metrics |
-| | `azuredisk_csi_driver_controller_create_volume` | `disk.csi.azure.com` | `ControllerCreateVolume` latency |
-| | `azuredisk_csi_driver_controller_delete_volume` | `disk.csi.azure.com` | `ControllerDeleteVolume` latency |
-| | `azuredisk_csi_driver_controller_expand_volume` | `disk.csi.azure.com` | `ControllerExpandVolume` latency |
-| | `azuredisk_csi_driver_controller_create_snapshot` | `disk.csi.azure.com` | `ControllerCreateSnapshot` latency |
-| | `azuredisk_csi_driver_controller_delete_snapshot` | `disk.csi.azure.com` | `ControllerDeleteSnapshot` latency |
-| | `azuredisk_csi_driver_controller_publish_volume` | `disk.csi.azure.com` | `ControllerPublishVolume` latency |
-| | `azuredisk_csi_driver_controller_unpublish_volume` | `disk.csi.azure.com` | `ControllerUnpublishVolume` latency |
-| `cloudprovider_azure_api_request_duration_seconds` | | | Records the Azure Cloud operation metrics |
+| `cloudprovider_azure_api_request_duration_seconds` | | | Records the Azure Cloud API operation metrics |
 | | `disks_create_or_update` | | `create_disk` latency |
 | | `disks_delete` | | `delete_disk` latency |
 | | `disks_update` | | `resize_disk` latency |
@@ -37,61 +64,103 @@ The first creates a `Service` object that exposes the default Azure Disk CSI Dri
 
 ## Direct scraping
 
-To scrape metrics directly from the Azure Disk CSI Driver controller, first get the leader node for one of the CSI sidecars depending on the metrics you wish to observe:
-
-| Sidecar | Lease Lock Name | CSI Metrics | Azure Cloud Metrics |
-|---------|-----------------|-------------|---------------------|
-| `external-provisioner` | `disk-csi-azure-com` | `ControllerCreateVolume` & `ControllerDeleteVolume` | `create_disk` & `delete_disk` |
-| `external-attacher` | `external-attacher-leader-disk-csi-azure-com` | `ControllerPublishVolume` & `ControllerUnpublishVolume` | `attach_disk` & `detach_disk` |
-| `external-resizer` | `external-resizer-disk-csi-azure-com` | `ControllerExpandVolume` | `resize_disk` |
-| `external-snapshotter` | `external-snapshotter-leader-disk-csi-azure-com` | `ControllerCreateSnapshot` & `ControllerDeleteSnapshot` | `create_snapshot` & `delete_snapshot` |
-
-The leader sidecar communicates with the Azure Disk CSI Driver on the same node to manage Azure Managed Disks. Once you determine which set of metrics you want to scrape, use the leader election lease name to find the current leader and set up a local port forwarder to the Azure Disk CSI Driver's metrics port. For example, run the following commands to set up port forwarding to the Azure Disk CSI Driver metrics server in the pod with the `external-attacher` leader:
+To scrape metrics directly from the Azure Disk CSI Driver controller, set up port forwarding to access the metrics endpoint. For example:
 
 ```console
-LEADER_LEASE=external-attacher-leader-disk-csi-azure-com
-LEADER_NODE=$(kubectl get lease -n kube-system "${LEADER_LEASE}" --output jsonpath='{.spec.holderIdentity}')
-LEADER_POD=$(kubectl get pod -n kube-system -l app=csi-azuredisk-controller --output jsonpath="{.items[?(@.spec.nodeName==\"${LEADER_NODE}\")].metadata.name}")
-kubectl port-forward -n kube-system "pods/${LEADER_POD}" 29604:29604 &
+CONTROLLER_POD=$(kubectl get pod -n kube-system -l app=csi-azuredisk-controller --output jsonpath='{.items[0].metadata.name}')
+kubectl port-forward -n kube-system "pods/${CONTROLLER_POD}" 29604:29604 &
 PORTFORWARDER=$!
 ```
 
-This example gets the name of the node holding the CSI `external-attacher` leader election lease lock, finds the name of the Azure Disk CSI Driver pod containing the leader and sets up port forwarding to the metrics server on localhost port 29604. After waiting for the port forwarder to initialize and begin serving requests, you can then get the metrics.
+This sets up port forwarding to the Azure Disk CSI Driver metrics server on localhost port 29604. After waiting for the port forwarder to initialize and begin serving requests, you can then get the metrics.
 
 The format of the data returned by the Azure Disk CSI Driver metrics server is described in [Prometheus Exposition Formats](https://prometheus.io/docs/instrumenting/exposition_formats/).
 
-### Example: Get `ControllerPublishVolume` and `ControllerUnpublishVolume` metrics
+### Example: Query CSI Operations
 
-Once you have set up port forwarding, you can use the following command to get the `ControllerPublishVolume` and `ControlUnpublishVolume` metrics.
+Get total operations count by type and result:
 
 ```console
-curl http://localhost:29604/metrics | grep -E "cloudprovider_azure_op_duration_seconds_(sum|count)" | grep -E "request=\"azuredisk_csi_driver_controller_(un)?publish_volume\""
+curl http://localhost:29604/metrics | grep "azuredisk_csi_driver_operations_total"
 ```
 
-We can calculate the average latency of each operation by dividing its `*_sum` by `*_count` metric. The `*_sum` value is in seconds. The following output shows an average `ControllerPublishVolume` latency of 9.5s and `ControllerUnpublishVolume` of 13.7s.
-
+Sample output:
 ```
-cloudprovider_azure_op_duration_seconds_sum{request="azuredisk_csi_driver_controller_publish_volume",resource_group="edreed-k8s-failover-rg",source="disk.csi.azure.com",subscription_id="d64ddb0c-7399-4529-a2b6-037b33265372"} 181.10639633399998
-cloudprovider_azure_op_duration_seconds_count{request="azuredisk_csi_driver_controller_publish_volume",resource_group="edreed-k8s-failover-rg",source="disk.csi.azure.com",subscription_id="d64ddb0c-7399-4529-a2b6-037b33265372"} 19
-cloudprovider_azure_op_duration_seconds_sum{request="azuredisk_csi_driver_controller_unpublish_volume",resource_group="edreed-k8s-failover-rg",source="disk.csi.azure.com",subscription_id="d64ddb0c-7399-4529-a2b6-037b33265372"} 232.39884008299998
-cloudprovider_azure_op_duration_seconds_count{request="azuredisk_csi_driver_controller_unpublish_volume",resource_group="edreed-k8s-failover-rg",source="disk.csi.azure.com",subscription_id="d64ddb0c-7399-4529-a2b6-037b33265372"} 17
+azuredisk_csi_driver_operations_total{operation="controller_create_volume",success="true"} 15
+azuredisk_csi_driver_operations_total{operation="controller_delete_volume",success="true"} 8
+azuredisk_csi_driver_operations_total{operation="controller_publish_volume",success="true"} 20
+azuredisk_csi_driver_operations_total{operation="controller_publish_volume",success="false"} 2
+azuredisk_csi_driver_operations_total{operation="node_stage_volume",success="true"} 18
+azuredisk_csi_driver_operations_total{operation="node_publish_volume",success="true"} 25
 ```
 
-### Example: Get `attach_disk` and `detach_disk` metrics
+
+### Example: Query Operation Duration with Labels
+
+Get detailed operation metrics including disk_sku, caching_mode, and zone:
+
+```console
+curl http://localhost:29604/metrics | grep "azuredisk_csi_driver_operation_duration_seconds_labeled"
+```
+
+Sample output showing histogram buckets:
+```
+azuredisk_csi_driver_operation_duration_seconds_labeled_bucket{caching_mode="ReadOnly",disk_sku="Premium_LRS",operation="controller_create_volume",success="true",zone="1",le="1"} 5
+azuredisk_csi_driver_operation_duration_seconds_labeled_bucket{caching_mode="ReadOnly",disk_sku="Premium_LRS",operation="controller_create_volume",success="true",zone="1",le="5"} 10
+azuredisk_csi_driver_operation_duration_seconds_labeled_sum{caching_mode="ReadOnly",disk_sku="Premium_LRS",operation="controller_create_volume",success="true",zone="1"} 12.5
+azuredisk_csi_driver_operation_duration_seconds_labeled_count{caching_mode="ReadOnly",disk_sku="Premium_LRS",operation="controller_create_volume",success="true",zone="1"} 10
+```
+
+### Example: Monitor Operation Duration
+
+Query basic operation duration metrics:
+
+```console
+curl http://localhost:29604/metrics | grep "azuredisk_csi_driver_operation_duration_seconds" | grep -v "labeled"
+```
+
+Sample output showing histogram buckets for operations:
+```
+azuredisk_csi_driver_operation_duration_seconds_bucket{operation="controller_create_volume",success="true",le="1"} 8
+azuredisk_csi_driver_operation_duration_seconds_bucket{operation="controller_create_volume",success="true",le="5"} 15
+azuredisk_csi_driver_operation_duration_seconds_bucket{operation="controller_create_volume",success="true",le="10"} 15
+azuredisk_csi_driver_operation_duration_seconds_sum{operation="controller_create_volume",success="true"} 45.234
+azuredisk_csi_driver_operation_duration_seconds_count{operation="controller_create_volume",success="true"} 15
+```
+
+### Example: Get Azure API Metrics for Disk Operations
+
+Query Azure API latencies for disk create, delete, and resize operations:
+
+```console
+curl http://localhost:29604/metrics | grep -E "cloudprovider_azure_api_request_duration_seconds_(sum|count)" | grep -E "request=\"(disks_create_or_update|disks_delete|disks_update)\""
+```
+
+Sample output:
+```
+cloudprovider_azure_api_request_duration_seconds_sum{request="disks_create_or_update",resource_group="mc_myaks_myaks_eastus",subscription_id="12345678-1234-1234-1234-123456789012"} 45.234
+cloudprovider_azure_api_request_duration_seconds_count{request="disks_create_or_update",resource_group="mc_myaks_myaks_eastus",subscription_id="12345678-1234-1234-1234-123456789012"} 15
+cloudprovider_azure_api_request_duration_seconds_sum{request="disks_delete",resource_group="mc_myaks_myaks_eastus",subscription_id="12345678-1234-1234-1234-123456789012"} 23.567
+cloudprovider_azure_api_request_duration_seconds_count{request="disks_delete",resource_group="mc_myaks_myaks_eastus",subscription_id="12345678-1234-1234-1234-123456789012"} 8
+```
+
+### Example: Get `attach_disk` and `detach_disk` Azure API Metrics
+
+Query Azure API latencies for VM attach/detach operations:
 
 ```console
 curl http://localhost:29604/metrics | grep -E "cloudprovider_azure_api_request_duration_seconds_(sum|count)" | grep -E "source=\"(attach_disk|detach_disk)\""
 ```
 
-To calculate the average `attach_disk` latency, we must sum the initiation and completion wait latencies. These are 3.6363432579999997 and 176.880914393, respectively, in the output below. The sum is 180.5172576509999997. We then divide by the count from either `attach_disk` metric since the two latencies represent one total operation. We see 14 `attach_disk` operations, so the average latency is 12.9s. The average `detach_disk` latency is 13.6s.
+To calculate the average `attach_disk` latency, sum the initiation and completion wait latencies, then divide by the count:
 
-```console
-cloudprovider_azure_api_request_duration_seconds_sum{request="vmss_wait_for_update_result",resource_group="edreed-k8s-failover-rg",source="attach_disk",subscription_id="d64ddb0c-7399-4529-a2b6-037b33265372"} 176.880914393
-cloudprovider_azure_api_request_duration_seconds_count{request="vmss_wait_for_update_result",resource_group="edreed-k8s-failover-rg",source="attach_disk",subscription_id="d64ddb0c-7399-4529-a2b6-037b33265372"} 14
-cloudprovider_azure_api_request_duration_seconds_sum{request="vmssvm_update",resource_group="edreed-k8s-failover-rg",source="detach_disk",subscription_id="d64ddb0c-7399-4529-a2b6-037b33265372"} 231.78358075499997
-cloudprovider_azure_api_request_duration_seconds_count{request="vmssvm_update",resource_group="edreed-k8s-failover-rg",source="detach_disk",subscription_id="d64ddb0c-7399-4529-a2b6-037b33265372"} 17
-cloudprovider_azure_api_request_duration_seconds_sum{request="vmssvm_updateasync",resource_group="edreed-k8s-failover-rg",source="attach_disk",subscription_id="d64ddb0c-7399-4529-a2b6-037b33265372"} 3.6363432579999997
-cloudprovider_azure_api_request_duration_seconds_count{request="vmssvm_updateasync",resource_group="edreed-k8s-failover-rg",source="attach_disk",subscription_id="d64ddb0c-7399-4529-a2b6-037b33265372"} 14
+```
+cloudprovider_azure_api_request_duration_seconds_sum{request="vmss_wait_for_update_result",resource_group="mc_myaks_myaks_eastus",source="attach_disk",subscription_id="12345678-1234-1234-1234-123456789012"} 176.880914393
+cloudprovider_azure_api_request_duration_seconds_count{request="vmss_wait_for_update_result",resource_group="mc_myaks_myaks_eastus",source="attach_disk",subscription_id="12345678-1234-1234-1234-123456789012"} 14
+cloudprovider_azure_api_request_duration_seconds_sum{request="vmssvm_update",resource_group="mc_myaks_myaks_eastus",source="detach_disk",subscription_id="12345678-1234-1234-1234-123456789012"} 231.78358075499997
+cloudprovider_azure_api_request_duration_seconds_count{request="vmssvm_update",resource_group="mc_myaks_myaks_eastus",source="detach_disk",subscription_id="12345678-1234-1234-1234-123456789012"} 17
+cloudprovider_azure_api_request_duration_seconds_sum{request="vmssvm_updateasync",resource_group="mc_myaks_myaks_eastus",source="attach_disk",subscription_id="12345678-1234-1234-1234-123456789012"} 3.6363432579999997
+cloudprovider_azure_api_request_duration_seconds_count{request="vmssvm_updateasync",resource_group="mc_myaks_myaks_eastus",source="attach_disk",subscription_id="12345678-1234-1234-1234-123456789012"} 14
 ```
 
 Stop port forwarding with the following command:
@@ -99,3 +168,32 @@ Stop port forwarding with the following command:
 ```console
 kill -9 $PORTFORWARDER
 ```
+
+## Grafana Dashboard
+
+You can create a Grafana dashboard to visualize these metrics. Here are some useful PromQL queries:
+
+### Operation Success Rate
+```promql
+sum(rate(azuredisk_csi_driver_operations_total{success="true"}[5m])) by (operation) / 
+sum(rate(azuredisk_csi_driver_operations_total[5m])) by (operation) * 100
+```
+
+### Average Operation Duration
+```promql
+rate(azuredisk_csi_driver_operation_duration_seconds_sum[5m]) / 
+rate(azuredisk_csi_driver_operation_duration_seconds_count[5m])
+```
+
+### Average Duration by Disk SKU
+```promql
+rate(azuredisk_csi_driver_operation_duration_seconds_labeled_sum[5m]) / 
+rate(azuredisk_csi_driver_operation_duration_seconds_labeled_count[5m]) by (disk_sku)
+```
+
+### Average Duration by Zone
+```promql
+rate(azuredisk_csi_driver_operation_duration_seconds_labeled_sum[5m]) / 
+rate(azuredisk_csi_driver_operation_duration_seconds_labeled_count[5m]) by (zone)
+```
+

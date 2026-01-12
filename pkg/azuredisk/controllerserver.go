@@ -41,10 +41,10 @@ import (
 
 	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
+	csiMetrics "sigs.k8s.io/azuredisk-csi-driver/pkg/metrics"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/optimization"
 	volumehelper "sigs.k8s.io/azuredisk-csi-driver/pkg/util"
 	azureconsts "sigs.k8s.io/cloud-provider-azure/pkg/consts"
-	"sigs.k8s.io/cloud-provider-azure/pkg/metrics"
 	azure "sigs.k8s.io/cloud-provider-azure/pkg/provider"
 )
 
@@ -305,7 +305,7 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 		diskParams.Tags[azure.WriteAcceleratorEnabled] = consts.TrueValue
 	}
 	var sourceID, sourceType, sourceSKU string
-	metricsRequest := "controller_create_volume"
+	metricOperation := "controller_create_volume"
 	content := req.GetVolumeContentSource()
 	if content != nil {
 		if content.GetSnapshot() != nil {
@@ -342,8 +342,7 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 			} else {
 				return nil, status.Errorf(codes.NotFound, "%v", err)
 			}
-
-			metricsRequest = "controller_create_volume_from_snapshot"
+			metricOperation = "controller_create_volume_from_snapshot"
 		} else {
 			sourceID = content.GetVolume().GetVolumeId()
 			sourceType = consts.SourceVolume
@@ -376,7 +375,7 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 			} else {
 				klog.Warningf("failed to get source disk(%s) size, err: %v", sourceID, err)
 			}
-			metricsRequest = "controller_create_volume_from_volume"
+			metricOperation = "controller_create_volume_from_volume"
 		}
 	}
 
@@ -453,10 +452,12 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 	}
 
 	var diskURI string
-	mc := metrics.NewMetricContext(consts.AzureDiskCSIDriverName, metricsRequest, d.cloud.ResourceGroup, d.cloud.SubscriptionID, d.Name)
+	mc := csiMetrics.NewCSIMetricContext(metricOperation)
 	isOperationSucceeded := false
 	defer func() {
-		mc.ObserveOperationWithResult(isOperationSucceeded, consts.VolumeID, diskURI)
+		mc.ObserveWithLabels(isOperationSucceeded,
+			"disk_sku", string(skuName),
+			"zone", diskZone)
 	}()
 
 	diskURI, err = localDiskController.CreateManagedDisk(ctx, volumeOptions)
@@ -506,15 +507,16 @@ func (d *Driver) DeleteVolume(ctx context.Context, req *csi.DeleteVolumeRequest)
 	}
 	defer d.volumeLocks.Release(volumeID)
 
-	mc := metrics.NewMetricContext(consts.AzureDiskCSIDriverName, "controller_delete_volume", d.cloud.ResourceGroup, d.cloud.SubscriptionID, d.Name)
+	mc := csiMetrics.NewCSIMetricContext("controller_delete_volume")
 	isOperationSucceeded := false
 	defer func() {
-		mc.ObserveOperationWithResult(isOperationSucceeded, consts.VolumeID, diskURI)
+		mc.Observe(isOperationSucceeded)
 	}()
 
 	klog.V(2).Infof("deleting azure disk(%s)", diskURI)
 	err := d.diskController.DeleteManagedDisk(ctx, diskURI)
 	klog.V(2).Infof("delete azure disk(%s) returned with %v", diskURI, err)
+
 	isOperationSucceeded = (err == nil)
 	return &csi.DeleteVolumeResponse{}, err
 }
@@ -587,10 +589,11 @@ func (d *Driver) ControllerModifyVolume(ctx context.Context, req *csi.Controller
 		SourceType:         consts.SourceVolume,
 	}
 
-	mc := metrics.NewMetricContext(consts.AzureDiskCSIDriverName, "controller_modify_volume", d.cloud.ResourceGroup, d.cloud.SubscriptionID, d.Name)
+	mc := csiMetrics.NewCSIMetricContext("controller_modify_volume")
 	isOperationSucceeded := false
 	defer func() {
-		mc.ObserveOperationWithResult(isOperationSucceeded, consts.VolumeID, diskURI)
+		mc.ObserveWithLabels(isOperationSucceeded,
+			"disk_sku", string(skuName))
 	}()
 
 	if err = d.diskController.ModifyDisk(ctx, volumeOptions); err != nil {
@@ -600,8 +603,6 @@ func (d *Driver) ControllerModifyVolume(ctx context.Context, req *csi.Controller
 		return nil, status.Errorf(codes.Internal, "%v", err)
 	}
 
-	isOperationSucceeded = true
-
 	// Start migration monitoring if this is a SKU change
 	if monitorSKUMigration {
 		volSizeBytes := int64(*currentDisk.Properties.DiskSizeGB) * 1024 * 1024 * 1024
@@ -610,7 +611,8 @@ func (d *Driver) ControllerModifyVolume(ctx context.Context, req *csi.Controller
 
 	klog.V(2).Infof("modify azure disk(%s) account type(%s) rg(%s) location(%s) successfully", diskParams.DiskName, skuName, diskParams.ResourceGroup, diskParams.Location)
 
-	return &csi.ControllerModifyVolumeResponse{}, err
+	isOperationSucceeded = true
+	return &csi.ControllerModifyVolumeResponse{}, nil
 }
 
 // ControllerPublishVolume attach an azure disk to a required node
@@ -656,10 +658,12 @@ func (d *Driver) ControllerPublishVolume(ctx context.Context, req *csi.Controlle
 		return nil, status.Errorf(codes.Internal, "%v", err)
 	}
 
-	mc := metrics.NewMetricContext(consts.AzureDiskCSIDriverName, "controller_publish_volume", d.cloud.ResourceGroup, d.cloud.SubscriptionID, d.Name)
+	mc := csiMetrics.NewCSIMetricContext("controller_publish_volume")
+	var cachingMode armcompute.CachingTypes
 	isOperationSucceeded := false
 	defer func() {
-		mc.ObserveOperationWithResult(isOperationSucceeded, consts.VolumeID, diskURI, consts.Node, string(nodeName))
+		mc.ObserveWithLabels(isOperationSucceeded,
+			"caching_mode", string(cachingMode))
 	}()
 
 	lun, vmState, err := d.diskController.GetDiskLun(ctx, diskName, diskURI, nodeName)
@@ -692,7 +696,7 @@ func (d *Driver) ControllerPublishVolume(ctx context.Context, req *csi.Controlle
 		if !strings.Contains(err.Error(), azureconsts.CannotFindDiskLUN) {
 			return nil, status.Errorf(codes.Internal, "could not get disk lun for volume %s: %v", diskURI, err)
 		}
-		var cachingMode armcompute.CachingTypes
+
 		if cachingMode, err = azureutils.GetCachingMode(volumeContext); err != nil {
 			return nil, status.Errorf(codes.Internal, "%v", err)
 		}
@@ -713,9 +717,7 @@ func (d *Driver) ControllerPublishVolume(ctx context.Context, req *csi.Controlle
 			d.diskController.AttachDetachInitialDelayInMs = attachDiskInitialDelay
 		}
 		lun, err = d.diskController.AttachDisk(ctx, diskName, diskURI, nodeName, cachingMode, disk, occupiedLuns)
-		if err == nil {
-			klog.V(2).Infof("Attach operation successful: volume %s attached to node %s.", diskName, nodeName)
-		} else {
+		if err != nil {
 			if derr, ok := err.(*volerr.DanglingAttachError); ok {
 				if strings.EqualFold(string(nodeName), string(derr.CurrentNode)) {
 					err := status.Errorf(codes.Internal, "volume %s is actually attached to current node %s, return error", diskURI, nodeName)
@@ -770,10 +772,10 @@ func (d *Driver) ControllerUnpublishVolume(ctx context.Context, req *csi.Control
 		return nil, status.Errorf(codes.Internal, "%v", err)
 	}
 
-	mc := metrics.NewMetricContext(consts.AzureDiskCSIDriverName, "controller_unpublish_volume", d.cloud.ResourceGroup, d.cloud.SubscriptionID, d.Name)
+	mc := csiMetrics.NewCSIMetricContext("controller_unpublish_volume")
 	isOperationSucceeded := false
 	defer func() {
-		mc.ObserveOperationWithResult(isOperationSucceeded, consts.VolumeID, diskURI, consts.Node, string(nodeName))
+		mc.Observe(isOperationSucceeded)
 	}()
 
 	klog.V(2).Infof("Trying to detach volume %s from node %s", diskURI, nodeID)
@@ -1064,7 +1066,7 @@ func (d *Driver) listVolumesByResourceGroup(ctx context.Context, resourceGroup s
 }
 
 // ControllerExpandVolume controller expand volume
-func (d *Driver) ControllerExpandVolume(ctx context.Context, req *csi.ControllerExpandVolumeRequest) (*csi.ControllerExpandVolumeResponse, error) {
+func (d *Driver) ControllerExpandVolume(ctx context.Context, req *csi.ControllerExpandVolumeRequest) (resp *csi.ControllerExpandVolumeResponse, err error) {
 	if len(req.GetVolumeId()) == 0 {
 		return nil, status.Error(codes.InvalidArgument, "Volume ID missing in the request")
 	}
@@ -1079,19 +1081,23 @@ func (d *Driver) ControllerExpandVolume(ctx context.Context, req *csi.Controller
 	requestSize := *resource.NewQuantity(capacityBytes, resource.BinarySI)
 
 	diskURI := req.GetVolumeId()
-	result, rerr := d.diskController.GetDiskByURI(ctx, diskURI)
+	disk, rerr := d.diskController.GetDiskByURI(ctx, diskURI)
 	if rerr != nil {
 		return nil, status.Errorf(codes.Internal, "GetDiskByURI(%s) failed with error(%v)", diskURI, rerr)
 	}
-	if result == nil || result.Properties == nil || result.Properties.DiskSizeGB == nil {
+	if disk == nil || disk.Properties == nil || disk.Properties.DiskSizeGB == nil {
 		return nil, status.Errorf(codes.Internal, "could not get size of the disk(%s)", diskURI)
 	}
-	oldSize := *resource.NewQuantity(int64(*result.Properties.DiskSizeGB), resource.BinarySI)
+	oldSize := *resource.NewQuantity(int64(*disk.Properties.DiskSizeGB), resource.BinarySI)
 
-	mc := metrics.NewMetricContext(consts.AzureDiskCSIDriverName, "controller_expand_volume", d.cloud.ResourceGroup, d.cloud.SubscriptionID, d.Name)
+	var diskSku string
+	if disk.SKU != nil && disk.SKU.Name != nil {
+		diskSku = string(*disk.SKU.Name)
+	}
+	mc := csiMetrics.NewCSIMetricContext("controller_expand_volume")
 	isOperationSucceeded := false
 	defer func() {
-		mc.ObserveOperationWithResult(isOperationSucceeded, consts.VolumeID, diskURI)
+		mc.ObserveWithLabels(isOperationSucceeded, "disk_sku", diskSku)
 	}()
 
 	klog.V(2).Infof("begin to expand azure disk(%s) with new size(%d)", diskURI, requestSize.Value())
@@ -1104,14 +1110,12 @@ func (d *Driver) ControllerExpandVolume(ctx context.Context, req *csi.Controller
 	if !ok {
 		return nil, status.Errorf(codes.Internal, "failed to transform disk size with error(%v)", err)
 	}
-
-	isOperationSucceeded = true
 	klog.V(2).Infof("expand azure disk(%s) successfully, currentSize(%d)", diskURI, currentSize)
 
-	if result.ManagedBy != nil {
-		attachedNode, err := d.cloud.VMSet.GetNodeNameByProviderID(ctx, *result.ManagedBy)
+	if disk.ManagedBy != nil {
+		attachedNode, err := d.cloud.VMSet.GetNodeNameByProviderID(ctx, *disk.ManagedBy)
 		if err == nil {
-			klog.V(2).Infof("delete cache for node (%s, %s) after disk(%s) expanded", attachedNode, *result.ManagedBy, diskURI)
+			klog.V(2).Infof("delete cache for node (%s, %s) after disk(%s) expanded", attachedNode, *disk.ManagedBy, diskURI)
 			if err = d.cloud.VMSet.DeleteCacheForNode(ctx, string(attachedNode)); err != nil {
 				klog.Warningf("failed to delete cache for node %s with error(%v)", attachedNode, err)
 			}
@@ -1120,6 +1124,7 @@ func (d *Driver) ControllerExpandVolume(ctx context.Context, req *csi.Controller
 		}
 	}
 
+	isOperationSucceeded = true
 	return &csi.ControllerExpandVolumeResponse{
 		CapacityBytes:         currentSize,
 		NodeExpansionRequired: true,
@@ -1270,16 +1275,17 @@ func (d *Driver) CreateSnapshot(ctx context.Context, req *csi.CreateSnapshotRequ
 		}
 	}
 
-	metricsRequest := "controller_create_snapshot"
+	metricOperation := "controller_create_snapshot"
 	if crossRegionSnapshotName != "" {
-		metricsRequest = "controller_create_snapshot_cross_region"
+		metricOperation = "controller_create_snapshot_cross_region"
 	}
-	mc := metrics.NewMetricContext(consts.AzureDiskCSIDriverName, metricsRequest, d.cloud.ResourceGroup, d.cloud.SubscriptionID, d.Name)
-	isOperationSucceeded := false
 	isOperationInProgress := false
+
+	mc := csiMetrics.NewCSIMetricContext(metricOperation)
+	isOperationSucceeded := false
 	defer func() {
 		if !isOperationInProgress {
-			mc.ObserveOperationWithResult(isOperationSucceeded, consts.SourceResourceID, sourceVolumeID, consts.SnapshotName, snapshotName)
+			mc.Observe(isOperationSucceeded)
 		}
 	}()
 
@@ -1367,12 +1373,11 @@ func (d *Driver) CreateSnapshot(ctx context.Context, req *csi.CreateSnapshotRequ
 		// replace the last token of csiSnapshot.SnapshotId with crossRegionSnapshotName
 		csiSnapshot.SnapshotId = strings.TrimSuffix(csiSnapshot.SnapshotId, snapshotName) + crossRegionSnapshotName
 	}
-
 	isOperationInProgress = !csiSnapshot.ReadyToUse
-
 	createResp := &csi.CreateSnapshotResponse{
 		Snapshot: csiSnapshot,
 	}
+
 	isOperationSucceeded = true
 	return createResp, nil
 }
@@ -1396,10 +1401,10 @@ func (d *Driver) DeleteSnapshot(ctx context.Context, req *csi.DeleteSnapshotRequ
 		}
 	}
 
-	mc := metrics.NewMetricContext(consts.AzureDiskCSIDriverName, "controller_delete_snapshot", d.cloud.ResourceGroup, d.cloud.SubscriptionID, d.Name)
+	mc := csiMetrics.NewCSIMetricContext("controller_delete_snapshot")
 	isOperationSucceeded := false
 	defer func() {
-		mc.ObserveOperationWithResult(isOperationSucceeded, consts.SnapshotID, snapshotID)
+		mc.Observe(isOperationSucceeded)
 	}()
 
 	klog.V(2).Infof("begin to delete snapshot(%s) under rg(%s)", snapshotName, resourceGroup)
