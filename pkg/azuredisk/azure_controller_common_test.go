@@ -633,6 +633,29 @@ func TestSetDiskLun(t *testing.T) {
 			expectedLun: -1,
 			expectedErr: true,
 		},
+		{
+			desc:     "multiple disks should get deterministic LUN assignment based on sorted order",
+			nodeName: "nodeName",
+			diskURI:  "providers/Microsoft.Compute/disks/pvc-230bbeda-df2e-48d4-8b99-dc9d9bc9e3c1",
+			diskMap: map[string]*provider.AttachDiskOptions{
+				"providers/Microsoft.Compute/disks/pvc-94aa38d1-f83e-48f2-80e8-6c03839c756c": {},
+				"providers/Microsoft.Compute/disks/pvc-230bbeda-df2e-48d4-8b99-dc9d9bc9e3c1": {},
+			},
+			expectedLun: 3, // pvc-230bbeda comes before pvc-94aa38d1 alphabetically, gets first available LUN (3)
+			expectedErr: false,
+		},
+		{
+			desc:     "batch of three disks should get unique sequential LUNs in sorted order",
+			nodeName: "nodeName",
+			diskURI:  "diskURI2",
+			diskMap: map[string]*provider.AttachDiskOptions{
+				"diskURI3": {},
+				"diskURI1": {},
+				"diskURI2": {},
+			},
+			expectedLun: 4, // diskURI2 is second in sorted order (diskURI1, diskURI2, diskURI3), gets LUN 4
+			expectedErr: false,
+		},
 	}
 
 	for i, test := range testCases {
@@ -650,6 +673,17 @@ func TestSetDiskLun(t *testing.T) {
 		lun, err := common.SetDiskLun(context.Background(), types.NodeName(test.nodeName), test.diskURI, test.diskMap, test.occupiedLuns)
 		assert.Equal(t, test.expectedLun, lun, "TestCase[%d]: %s", i, test.desc)
 		assert.Equal(t, test.expectedErr, err != nil, "TestCase[%d]: %s", i, test.desc)
+
+		// For tests with multiple disks, verify all disks get unique LUNs
+		if !test.expectedErr && len(test.diskMap) > 1 {
+			assignedLuns := make(map[int32]bool)
+			for _, opt := range test.diskMap {
+				if opt != nil {
+					assert.False(t, assignedLuns[opt.Lun], "TestCase[%d]: %s - duplicate LUN %d assigned", i, test.desc, opt.Lun)
+					assignedLuns[opt.Lun] = true
+				}
+			}
+		}
 	}
 }
 

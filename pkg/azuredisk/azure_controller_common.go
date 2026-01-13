@@ -21,6 +21,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -713,8 +714,17 @@ func (c *controllerCommon) SetDiskLun(ctx context.Context, nodeName types.NodeNa
 			len(diskLuns), diskMap, len(diskMap), diskURI)
 	}
 
+	// Sort disk URIs to ensure deterministic LUN assignment across multiple attach operations
+	// This prevents the same disk from getting different LUNs in different batches
+	var diskURIs []string
+	for uri := range diskMap {
+		diskURIs = append(diskURIs, uri)
+	}
+	sort.Strings(diskURIs)
+
 	count = 0
-	for uri, opt := range diskMap {
+	for _, uri := range diskURIs {
+		opt := diskMap[uri]
 		if opt == nil {
 			return -1, fmt.Errorf("unexpected nil pointer in diskMap(%v), diskURI(%s)", diskMap, diskURI)
 		}
