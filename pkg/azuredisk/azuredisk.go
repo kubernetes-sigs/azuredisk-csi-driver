@@ -679,7 +679,7 @@ func (d *Driver) removeVolumeAttachmentByDiskURI(ctx context.Context, diskURI st
 	}
 
 	volumeAttachments, err := kubeClient.StorageV1().VolumeAttachments().List(ctx, metav1.ListOptions{
-		TimeoutSeconds: ptr.To(int64(5))})
+		TimeoutSeconds: ptr.To(int64(2))})
 	if err != nil {
 		klog.Warningf("failed to list VolumeAttachments: %v", err)
 		return err
@@ -691,11 +691,13 @@ func (d *Driver) removeVolumeAttachmentByDiskURI(ctx context.Context, diskURI st
 	}
 
 	// Find VolumeAttachment(s) matching the diskURI
+	// Note: In normal operation, there should be only one VolumeAttachment per disk,
+	// but we delete the first match found and return to avoid unnecessary operations
 	for _, va := range volumeAttachments.Items {
 		if va.Spec.Attacher != d.Name {
 			continue
 		}
-		
+
 		// Get the PV to check if its volumeHandle matches the diskURI
 		pvName := ptr.Deref(va.Spec.Source.PersistentVolumeName, "")
 		if pvName == "" {
