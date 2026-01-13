@@ -10,10 +10,10 @@ jobs:
             - name: Set up Go 1.x
               uses: actions/setup-go@v6
               with:
-                go-version: ^1.19
+                go-version: 1.24.6
             - uses: actions/checkout@master
             - name: Run linter
               uses: golangci/golangci-lint-action@v6
               with:
                   version: v1.64
-                  args: -E=gofmt,unused,ineffassign,revive,misspell,asciicheck,bodyclose,dogsled,durationcheck,errname,forbidigo -D=staticcheck --timeout=30m0s
+                  args: -E=gofmt,unused,ineffassign,revive,misspell,copyloopvar,asciicheck,bodyclose,dogsled,dupl,durationcheck,errname,forbidigo -D=staticcheck --timeout=30m0s
