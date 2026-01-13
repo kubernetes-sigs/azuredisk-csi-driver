@@ -668,6 +668,63 @@ func (d *Driver) getUsedLunsFromNode(ctx context.Context, nodeName k8stypes.Node
 	return usedLuns, nil
 }
 
+// removeVolumeAttachmentByDiskURI finds and deletes the VolumeAttachment for a given diskURI
+// This is needed after a disk is detached to prevent stale VolumeAttachment objects from
+// interfering with subsequent attach operations to other nodes
+func (d *Driver) removeVolumeAttachmentByDiskURI(ctx context.Context, diskURI string) error {
+	kubeClient := d.cloud.KubeClient
+	if kubeClient == nil || kubeClient.StorageV1() == nil || kubeClient.StorageV1().VolumeAttachments() == nil {
+		klog.V(2).Infof("kubeClient or kubeClient.StorageV1() or kubeClient.StorageV1().VolumeAttachments() is nil, skip removing VolumeAttachment")
+		return nil
+	}
+
+	volumeAttachments, err := kubeClient.StorageV1().VolumeAttachments().List(ctx, metav1.ListOptions{
+		TimeoutSeconds: ptr.To(int64(5))})
+	if err != nil {
+		klog.Warningf("failed to list VolumeAttachments: %v", err)
+		return err
+	}
+
+	if volumeAttachments == nil {
+		klog.V(2).Infof("volumeAttachments is nil")
+		return nil
+	}
+
+	// Find VolumeAttachment(s) matching the diskURI
+	for _, va := range volumeAttachments.Items {
+		if va.Spec.Attacher != d.Name {
+			continue
+		}
+		
+		// Get the PV to check if its volumeHandle matches the diskURI
+		pvName := ptr.Deref(va.Spec.Source.PersistentVolumeName, "")
+		if pvName == "" {
+			continue
+		}
+
+		pv, err := kubeClient.CoreV1().PersistentVolumes().Get(ctx, pvName, metav1.GetOptions{})
+		if err != nil {
+			klog.V(4).Infof("failed to get PV %s: %v", pvName, err)
+			continue
+		}
+
+		// Check if the PV's CSI volumeHandle matches the diskURI
+		if pv.Spec.CSI != nil && strings.EqualFold(pv.Spec.CSI.VolumeHandle, diskURI) {
+			klog.V(2).Infof("Deleting VolumeAttachment %s for diskURI %s", va.Name, diskURI)
+			err := kubeClient.StorageV1().VolumeAttachments().Delete(ctx, va.Name, metav1.DeleteOptions{})
+			if err != nil {
+				klog.Warningf("failed to delete VolumeAttachment %s: %v", va.Name, err)
+				return err
+			}
+			klog.V(2).Infof("Successfully deleted VolumeAttachment %s for diskURI %s", va.Name, diskURI)
+			return nil
+		}
+	}
+
+	klog.V(2).Infof("No VolumeAttachment found for diskURI %s", diskURI)
+	return nil
+}
+
 // getNodeInfoFromLabels get zone, instanceType from node labels
 func GetNodeInfoFromLabels(ctx context.Context, nodeName string, kubeClient clientset.Interface) (string, string, error) {
 	if kubeClient == nil || kubeClient.CoreV1() == nil {

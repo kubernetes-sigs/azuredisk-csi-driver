@@ -726,6 +726,11 @@ func (d *Driver) ControllerPublishVolume(ctx context.Context, req *csi.Controlle
 				if err = d.diskController.DetachDisk(ctx, diskName, diskURI, derr.CurrentNode); err != nil {
 					return nil, status.Errorf(codes.Internal, "Could not detach volume %s from node %s: %v", diskURI, derr.CurrentNode, err)
 				}
+				// Remove the VolumeAttachment to prevent stale LUN information from interfering with the next attach
+				if err = d.removeVolumeAttachmentByDiskURI(ctx, diskURI); err != nil {
+					klog.Warningf("failed to remove VolumeAttachment for volume %s: %v", diskURI, err)
+					// Don't fail the operation if VolumeAttachment removal fails - just log the warning
+				}
 				klog.V(2).Infof("Trying to attach volume %s to node %s again", diskName, nodeName)
 				lun, err = d.diskController.AttachDisk(ctx, diskName, diskURI, nodeName, cachingMode, disk, occupiedLuns)
 			}
