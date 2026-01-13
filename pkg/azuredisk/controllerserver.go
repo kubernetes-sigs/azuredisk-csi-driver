@@ -235,6 +235,8 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 			},
 		}
 		localDiskController.AttachDetachInitialDelayInMs = int(d.attachDetachInitialDelayInMs)
+		localDiskController.VMSSDetachTimeoutInSeconds = int(d.vmssDetachTimeoutInSeconds)
+		localDiskController.DetachOperationMinTimeoutInSeconds = int(d.detachOperationMinTimeoutInSeconds)
 
 	}
 	if azureutils.IsAzureStackCloud(localCloud.Config.Cloud, localCloud.Config.DisableAzureStackCloud) {
@@ -703,7 +705,7 @@ func (d *Driver) ControllerPublishVolume(ctx context.Context, req *csi.Controlle
 		}
 
 		occupiedLuns := d.getOccupiedLunsFromNode(ctx, nodeName, diskURI)
-		klog.V(2).Infof("Trying to attach volume %s to node %s", diskURI, nodeName)
+		klog.V(2).Infof("Trying to attach volume %s to node %s", diskName, nodeName)
 
 		attachDiskInitialDelay := azureutils.GetAttachDiskInitialDelay(volumeContext)
 		if attachDiskInitialDelay > 0 {
@@ -712,7 +714,7 @@ func (d *Driver) ControllerPublishVolume(ctx context.Context, req *csi.Controlle
 		}
 		lun, err = d.diskController.AttachDisk(ctx, diskName, diskURI, nodeName, cachingMode, disk, occupiedLuns)
 		if err == nil {
-			klog.V(2).Infof("Attach operation successful: volume %s attached to node %s.", diskURI, nodeName)
+			klog.V(2).Infof("Attach operation successful: volume %s attached to node %s.", diskName, nodeName)
 		} else {
 			if derr, ok := err.(*volerr.DanglingAttachError); ok {
 				if strings.EqualFold(string(nodeName), string(derr.CurrentNode)) {
@@ -724,19 +726,19 @@ func (d *Driver) ControllerPublishVolume(ctx context.Context, req *csi.Controlle
 				if err = d.diskController.DetachDisk(ctx, diskName, diskURI, derr.CurrentNode); err != nil {
 					return nil, status.Errorf(codes.Internal, "Could not detach volume %s from node %s: %v", diskURI, derr.CurrentNode, err)
 				}
-				klog.V(2).Infof("Trying to attach volume %s to node %s again", diskURI, nodeName)
+				klog.V(2).Infof("Trying to attach volume %s to node %s again", diskName, nodeName)
 				lun, err = d.diskController.AttachDisk(ctx, diskName, diskURI, nodeName, cachingMode, disk, occupiedLuns)
 			}
 			if err != nil {
-				klog.Errorf("Attach volume %s to instance %s failed with %v", diskURI, nodeName, err)
-				errMsg := fmt.Sprintf("Attach volume %s to instance %s failed with %v", diskURI, nodeName, err)
+				klog.Errorf("Attach volume %s to instance %s failed with %v", diskName, nodeName, err)
+				errMsg := fmt.Sprintf("Attach volume %s to instance %s failed with %v", diskName, nodeName, err)
 				if len(errMsg) > maxErrMsgLength {
 					errMsg = errMsg[:maxErrMsgLength]
 				}
 				return nil, status.Errorf(codes.Internal, "%v", errMsg)
 			}
 		}
-		klog.V(2).Infof("attach volume %s to node %s successfully", diskURI, nodeName)
+		klog.V(2).Infof("attach volume %s to node %s successfully", diskName, nodeName)
 	}
 
 	publishContext := map[string]string{consts.LUN: strconv.Itoa(int(lun))}

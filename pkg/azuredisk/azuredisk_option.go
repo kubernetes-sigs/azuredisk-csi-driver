@@ -50,6 +50,7 @@ type DriverOptions struct {
 	TrafficManagerPort                 int64
 	AttachDetachInitialDelayInMs       int64
 	DetachOperationMinTimeoutInSeconds int64
+	VMSSDetachTimeoutInSeconds         int64
 	VMSSCacheTTLInSeconds              int64
 	ListVMSSWithInstanceView           bool
 	VolStatsCacheExpireInMinutes       int64
@@ -105,6 +106,7 @@ func (o *DriverOptions) AddFlags() *flag.FlagSet {
 	fs.Int64Var(&o.TrafficManagerPort, "traffic-manager-port", 7788, "default traffic manager port")
 	fs.Int64Var(&o.AttachDetachInitialDelayInMs, "attach-detach-initial-delay-ms", 1000, "initial delay in milliseconds for batch disk attach/detach")
 	fs.Int64Var(&o.DetachOperationMinTimeoutInSeconds, "detach-operation-min-timeout-seconds", 240, "minimum detach operation timeout in seconds")
+	fs.Int64Var(&o.VMSSDetachTimeoutInSeconds, "vmss-detach-timeout-seconds", 20, "per-operation timeout in seconds for VMSS disk detach API calls before falling back to polling the Get VM to verify detach status; increase this value if VMSS detach requests frequently time ou")
 	fs.Int64Var(&o.VMSSCacheTTLInSeconds, "vmss-cache-ttl-seconds", -1, "vmss cache TTL in seconds (600 by default)")
 	fs.BoolVar(&o.ListVMSSWithInstanceView, "list-vmss-with-instance-view", false, "boolean flag to enable vmss cache with instance view")
 	fs.Int64Var(&o.VolStatsCacheExpireInMinutes, "vol-stats-cache-expire-in-minutes", 10, "The cache expire time in minutes for volume stats cache")
