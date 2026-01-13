@@ -1,0 +1,5 @@
+# Direct Python dependencies for azuredisk-csi-driver
+# Generate lockfile with: make update-deps
+importlib-metadata
+pyyaml
+yq

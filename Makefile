@@ -287,3 +287,7 @@ e2e-test:
 		bash ./hack/parse-prow-creds.sh;\
 		go test -v -timeout=0 ./test/e2e ${GINKGO_FLAGS};\
 	fi
+
+.PHONY: update-deps
+update-deps:
+	uv pip compile --python-platform linux --generate-hashes hack/requirements.in -o hack/requirements.txt
