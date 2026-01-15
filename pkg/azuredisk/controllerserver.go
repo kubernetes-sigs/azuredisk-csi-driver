@@ -1292,18 +1292,22 @@ func (d *Driver) CreateSnapshot(ctx context.Context, req *csi.CreateSnapshotRequ
 	csiSnapshot, _ := d.getSnapshotByID(ctx, subsID, resourceGroup, snapshotName, "")
 	if csiSnapshot == nil || sourceVolumeID != csiSnapshot.SourceVolumeId {
 		// TODO set extraCreateMetadata in csi external snapshotter to true
-		checkOrReqErr, checkOrReqFn := d.CheckOrRequestFreeze(ctx, sourceVolumeID, snapshotName, tags[consts.SnapshotNamespaceTag])
-
-		if checkOrReqErr != nil {
-			return nil, checkOrReqErr
-		}
-
 		var snapshotCreated bool
-		defer func() {
-			if checkOrReqFn != nil {
-				checkOrReqFn(snapshotCreated)
+		if tags[consts.SnapshotNameTag] != nil {
+			checkOrReqErr, checkOrReqFn := d.CheckOrRequestFreeze(ctx, sourceVolumeID, *tags[consts.SnapshotNameTag], tags[consts.SnapshotNamespaceTag])
+
+			if checkOrReqErr != nil {
+				return nil, checkOrReqErr
 			}
-		}()
+			defer func() {
+				if checkOrReqFn != nil {
+					checkOrReqFn(snapshotCreated)
+				}
+			}()
+
+		} else {
+			klog.V(4).Infof("snapshotName tag is not found, skip CheckOrRequestFreeze for snapshot(%s) under rg(%s)", snapshotName, resourceGroup)
+		}
 
 		if _, err := snapshotClient.CreateOrUpdate(ctx, resourceGroup, snapshotName, snapshot); err != nil {
 			if strings.Contains(err.Error(), "existing disk") {

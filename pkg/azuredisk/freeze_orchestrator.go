@@ -134,27 +134,13 @@ func (freezeOrch *FreezeOrchestrator) isSnapshotStrictMode() bool {
 	return freezeOrch.snapshotConsistencyMode == "strict"
 }
 
-func (d *Driver) CheckOrRequestFreeze(ctx context.Context, sourceVolumeID, snapshotContentName string, snapshotNamespace *string) (error, func(bool)) {
+func (d *Driver) CheckOrRequestFreeze(ctx context.Context, sourceVolumeID, snapshotName string, snapshotNamespace *string) (error, func(bool)) {
 
 	if snapshotNamespace == nil {
 		return nil, nil
 	}
 
 	namespace := *snapshotNamespace
-
-	var snapshotName string
-
-	if d.shouldEnableFreeze() {
-		orchestrator := d.getFreezeOrchestrator()
-		if orchestrator != nil {
-			snapshotContent, err := orchestrator.snapshotClient.SnapshotV1().VolumeSnapshotContents().Get(ctx, snapshotContentName, metav1.GetOptions{})
-			if err != nil {
-				return status.Errorf(codes.FailedPrecondition, "failed to get VolumeSnapshotContent: %v", err), nil
-			}
-
-			snapshotName = snapshotContent.Spec.VolumeSnapshotRef.Name
-		}
-	}
 
 	// Step 1: Check or request filesystem freeze if enabled
 	// Follow CSI pattern: return ready_to_use=false when waiting, ready_to_use=true when done
