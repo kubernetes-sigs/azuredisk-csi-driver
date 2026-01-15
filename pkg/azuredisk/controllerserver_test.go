@@ -36,9 +36,11 @@ import (
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/timestamppb"
 	v1 "k8s.io/api/core/v1"
+	storagev1 "k8s.io/api/storage/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/kubernetes/fake"
 	"k8s.io/client-go/tools/record"
 	"k8s.io/klog/v2"
 	"k8s.io/utils/ptr"
@@ -4683,4 +4685,150 @@ func getFakeDriverWithKubeClient(ctrl *gomock.Controller) FakeDriver {
 	d.getCloud().KubeClient.(*mockkubeclient.MockInterface).EXPECT().CoreV1().Return(corev1).AnyTimes()
 	d.getCloud().KubeClient.CoreV1().(*mockcorev1.MockInterface).EXPECT().PersistentVolumes().Return(persistentvolume).AnyTimes()
 	return d
+}
+
+func TestHasVolumeAttachmentForDiskOnNode(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	d, _ := NewFakeDriver(ctrl)
+	driver := d.(*fakeDriver)
+	client := fake.NewSimpleClientset()
+	driver.getCloud().KubeClient = client
+
+	nodeName := "node-1"
+	otherNode := "node-2"
+	diskURI := testVolumeID
+	otherDiskURI := fmt.Sprintf(consts.ManagedDiskPath, "subs", "rg", "other-disk")
+	inlineDiskURI := fmt.Sprintf(consts.ManagedDiskPath, "subs", "rg", "inline-disk")
+	pvName := "pv-1"
+
+	_, err := client.CoreV1().PersistentVolumes().Create(context.Background(), &v1.PersistentVolume{
+		ObjectMeta: metav1.ObjectMeta{Name: pvName},
+		Spec: v1.PersistentVolumeSpec{
+			PersistentVolumeSource: v1.PersistentVolumeSource{
+				CSI: &v1.CSIPersistentVolumeSource{
+					Driver:       driver.Name,
+					VolumeHandle: diskURI,
+				},
+			},
+		},
+	}, metav1.CreateOptions{})
+	require.NoError(t, err)
+
+	_, err = client.StorageV1().VolumeAttachments().Create(context.Background(), &storagev1.VolumeAttachment{
+		ObjectMeta: metav1.ObjectMeta{Name: "va-1"},
+		Spec: storagev1.VolumeAttachmentSpec{
+			Attacher: driver.Name,
+			NodeName: nodeName,
+			Source: storagev1.VolumeAttachmentSource{
+				PersistentVolumeName: ptr.To(pvName),
+			},
+		},
+	}, metav1.CreateOptions{})
+	require.NoError(t, err)
+
+	_, err = client.CoreV1().PersistentVolumes().Create(context.Background(), &v1.PersistentVolume{
+		ObjectMeta: metav1.ObjectMeta{Name: "pv-2"},
+		Spec: v1.PersistentVolumeSpec{
+			PersistentVolumeSource: v1.PersistentVolumeSource{
+				CSI: &v1.CSIPersistentVolumeSource{
+					Driver:       driver.Name,
+					VolumeHandle: otherDiskURI,
+				},
+			},
+		},
+	}, metav1.CreateOptions{})
+	require.NoError(t, err)
+
+	_, err = client.StorageV1().VolumeAttachments().Create(context.Background(), &storagev1.VolumeAttachment{
+		ObjectMeta: metav1.ObjectMeta{Name: "va-2"},
+		Spec: storagev1.VolumeAttachmentSpec{
+			Attacher: driver.Name,
+			NodeName: nodeName,
+			Source: storagev1.VolumeAttachmentSource{
+				PersistentVolumeName: ptr.To("pv-2"),
+			},
+		},
+	}, metav1.CreateOptions{})
+	require.NoError(t, err)
+
+	_, err = client.StorageV1().VolumeAttachments().Create(context.Background(), &storagev1.VolumeAttachment{
+		ObjectMeta: metav1.ObjectMeta{Name: "va-inline"},
+		Spec: storagev1.VolumeAttachmentSpec{
+			Attacher: driver.Name,
+			NodeName: otherNode,
+			Source: storagev1.VolumeAttachmentSource{
+				InlineVolumeSpec: &v1.PersistentVolumeSpec{
+					PersistentVolumeSource: v1.PersistentVolumeSource{
+						CSI: &v1.CSIPersistentVolumeSource{
+							Driver:       driver.Name,
+							VolumeHandle: diskURI,
+						},
+					},
+				},
+			},
+		},
+	}, metav1.CreateOptions{})
+	require.NoError(t, err)
+
+	_, err = client.StorageV1().VolumeAttachments().Create(context.Background(), &storagev1.VolumeAttachment{
+		ObjectMeta: metav1.ObjectMeta{Name: "va-line"},
+		Spec: storagev1.VolumeAttachmentSpec{
+			Attacher: driver.Name,
+			NodeName: nodeName,
+			Source: storagev1.VolumeAttachmentSource{
+				InlineVolumeSpec: &v1.PersistentVolumeSpec{
+					PersistentVolumeSource: v1.PersistentVolumeSource{
+						CSI: &v1.CSIPersistentVolumeSource{
+							Driver:       driver.Name,
+							VolumeHandle: inlineDiskURI,
+						},
+					},
+				},
+			},
+		},
+	}, metav1.CreateOptions{})
+	require.NoError(t, err)
+
+	missingDiskURI := fmt.Sprintf(consts.ManagedDiskPath, "subs", "rg", "missing-disk")
+	tests := []struct {
+		name    string
+		node    string
+		diskURI string
+		want    bool
+	}{
+		{
+			name:    "returns true when VA on node matches disk",
+			node:    nodeName,
+			diskURI: diskURI,
+			want:    true,
+		},
+		{
+			name:    "returns false when no VA on node matches disk",
+			node:    nodeName,
+			diskURI: missingDiskURI,
+			want:    false,
+		},
+		{
+			name:    "ignores VA on other node",
+			node:    otherNode,
+			diskURI: otherDiskURI,
+			want:    false,
+		},
+		{
+			name:    "returns true when inline VA matches node",
+			node:    nodeName,
+			diskURI: inlineDiskURI,
+			want:    true,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			hasVA, err := driver.hasVolumeAttachmentForDiskOnNode(context.Background(), tc.node, tc.diskURI)
+			require.NoError(t, err)
+			require.Equal(t, tc.want, hasVA)
+		})
+	}
 }
