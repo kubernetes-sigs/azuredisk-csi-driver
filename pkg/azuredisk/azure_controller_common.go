@@ -478,6 +478,12 @@ func (c *controllerCommon) DetachDisk(ctx context.Context, diskName, diskURI str
 		return err
 	}
 
+	err = c.waitForDiskManagedByTobeRemoved(ctx, diskURI)
+	if err != nil {
+		klog.Errorf("azureDisk - waitForDiskManagedByTobeRemoved(%s) failed, err: %v", diskURI, err)
+		return err
+	}
+
 	if !c.DisableDiskLunCheck {
 		// always check disk lun after disk detach complete
 		return c.verifyDetach(ctx, diskName, diskURI, nodeName)
@@ -750,6 +756,7 @@ func (c *controllerCommon) waitForDiskManagedByTobeRemoved(ctx context.Context, 
 	if err != nil {
 		return err
 	}
+	klog.V(2).Infof("azureDisk - waitForDiskManagedByTobeRemoved: diskURI(%s)", diskURI)
 	waitFunc := func(ctx context.Context) (bool, error) {
 		diskclient, err := c.clientFactory.GetDiskClientForSub(subsID)
 		if err != nil {
