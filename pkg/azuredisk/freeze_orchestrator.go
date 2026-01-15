@@ -134,7 +134,7 @@ func (freezeOrch *FreezeOrchestrator) isSnapshotStrictMode() bool {
 	return freezeOrch.snapshotConsistencyMode == "strict"
 }
 
-func (d *Driver) CheckOrRequestFreeze(ctx context.Context, sourceVolumeID, snapshotName string, snapshotNamespace *string) (error, func(bool)) {
+func (d *Driver) CheckOrRequestFreeze(ctx context.Context, sourceVolumeID, snapshotContentName string, snapshotNamespace *string) (error, func(bool)) {
 
 	if snapshotNamespace == nil {
 		return nil, nil
@@ -142,16 +142,28 @@ func (d *Driver) CheckOrRequestFreeze(ctx context.Context, sourceVolumeID, snaps
 
 	namespace := *snapshotNamespace
 
+	var snapshotName string
+
+	if d.shouldEnableFreeze() {
+		orchestrator := d.getFreezeOrchestrator()
+		if orchestrator != nil {
+			snapshotContent, err := orchestrator.snapshotClient.SnapshotV1().VolumeSnapshotContents().Get(ctx, snapshotContentName, metav1.GetOptions{})
+			if err != nil {
+				return status.Errorf(codes.FailedPrecondition, "failed to get VolumeSnapshotContent: %v", err), nil
+			}
+
+			snapshotName = snapshotContent.Spec.VolumeSnapshotRef.Name
+		}
+	}
+
 	// Step 1: Check or request filesystem freeze if enabled
 	// Follow CSI pattern: return ready_to_use=false when waiting, ready_to_use=true when done
 	var freezeState string
-	var freezeComplete bool
 	var freezeSkipped bool
 	if d.shouldEnableFreeze() {
 		orchestrator := d.getFreezeOrchestrator()
 		if orchestrator != nil {
-			var err error
-			freezeState, freezeComplete, err = orchestrator.CheckOrRequestFreeze(ctx, sourceVolumeID, snapshotName, namespace)
+			freezeState, freezeComplete, err := orchestrator.CheckOrRequestFreeze(ctx, sourceVolumeID, snapshotName, namespace)
 			if err != nil {
 				// Error in strict mode or unable to set annotation
 				klog.Errorf("Failed to check/request freeze for snapshot %s: %v", snapshotName, err)
@@ -721,7 +733,7 @@ func getFreezeStateDescription(state string) string {
 // Uses the VolumeAttachment tracker for efficient lookup
 // Returns error if tracker is not initialized to trigger retry
 // Returns nil (no VA found) if tracker initialization failed, allowing fallback without consistency
-func (freezeOrch *FreezeOrchestrator) isVolumeAttached(ctx context.Context, volumeHandle string) (*storagev1.VolumeAttachment, error) {
+func (freezeOrch *FreezeOrchestrator) isVolumeAttached(_ctx context.Context, volumeHandle string) (*storagev1.VolumeAttachment, error) {
 	// Check if tracker initialization failed - if so, proceed without freeze
 	if freezeOrch.vaTrackerInitFailed.Load() {
 		klog.V(4).Infof("VolumeAttachment tracker initialization failed, skipping freeze for volume %s", volumeHandle)
