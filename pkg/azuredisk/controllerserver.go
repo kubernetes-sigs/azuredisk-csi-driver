@@ -1066,7 +1066,7 @@ func (d *Driver) listVolumesByResourceGroup(ctx context.Context, resourceGroup s
 }
 
 // ControllerExpandVolume controller expand volume
-func (d *Driver) ControllerExpandVolume(ctx context.Context, req *csi.ControllerExpandVolumeRequest) (resp *csi.ControllerExpandVolumeResponse, err error) {
+func (d *Driver) ControllerExpandVolume(ctx context.Context, req *csi.ControllerExpandVolumeRequest) (*csi.ControllerExpandVolumeResponse, error) {
 	if len(req.GetVolumeId()) == 0 {
 		return nil, status.Error(codes.InvalidArgument, "Volume ID missing in the request")
 	}

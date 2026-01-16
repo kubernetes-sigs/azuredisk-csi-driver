@@ -21,6 +21,7 @@ import (
 
 	"k8s.io/component-base/metrics"
 	"k8s.io/component-base/metrics/legacyregistry"
+	"k8s.io/klog/v2"
 )
 
 const (
@@ -73,6 +74,7 @@ type CSIMetricContext struct {
 	operation string
 	start     time.Time
 	labels    map[string]string
+	LogLevel  int32
 }
 
 // NewCSIMetricContext creates a new CSI metric context
@@ -81,6 +83,7 @@ func NewCSIMetricContext(operation string) *CSIMetricContext {
 		operation: operation,
 		start:     time.Now(),
 		labels:    make(map[string]string),
+		LogLevel:  3,
 	}
 }
 
@@ -97,8 +100,10 @@ func (mc *CSIMetricContext) WithLabel(key, value string) *CSIMetricContext {
 func (mc *CSIMetricContext) Observe(success bool) {
 	duration := time.Since(mc.start).Seconds()
 	successStr := "false"
+	resultCode := "failed"
 	if success {
 		successStr = "true"
+		resultCode = "succeeded"
 	}
 
 	// Always record basic metrics
@@ -119,6 +124,13 @@ func (mc *CSIMetricContext) Observe(success bool) {
 			zone,
 		).Observe(duration)
 	}
+
+	logger := klog.Background().WithName("logLatency")
+	labelsAndValues := make([]any, 0, len(mc.labels)*2)
+	for k, v := range mc.labels {
+		labelsAndValues = append(labelsAndValues, k, v)
+	}
+	logger.V(int(mc.LogLevel)).Info("Observed Request Latency", append(labelsAndValues, "result_code", resultCode)...)
 }
 
 // ObserveWithLabels records the operation with provided label pairs
