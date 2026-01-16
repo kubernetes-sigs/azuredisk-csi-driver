@@ -748,7 +748,7 @@ func (c *controllerCommon) isMaxDataDiskCountExceeded(ctx context.Context, nodeN
 	return true
 }
 
-// For cases where it an instance is deleted, we assume the disk is detached, but it actually
+// For cases where an instance is deleted, we assume the disk is detached, but it actually
 // takes awhile for disk property to be updated. We do not want to presume such disks to be detached
 // without waiting for disk to be actually detached.
 func (c *controllerCommon) waitForDiskManagedByTobeRemoved(ctx context.Context, diskURI string) error {
