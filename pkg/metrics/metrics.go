@@ -126,11 +126,8 @@ func (mc *CSIMetricContext) Observe(success bool) {
 	}
 
 	logger := klog.Background().WithName("logLatency")
-	labelsAndValues := make([]any, 0, len(mc.labels)*2)
-	for k, v := range mc.labels {
-		labelsAndValues = append(labelsAndValues, k, v)
-	}
-	logger.V(int(mc.LogLevel)).Info("Observed Request Latency", append(labelsAndValues, "result_code", resultCode)...)
+	labelsAndValues := []interface{}{"request", subSystem + "_" + mc.operation, "latency_seconds", duration, "result_code", resultCode}
+	logger.V(int(mc.LogLevel)).Info("Observed Request Latency", labelsAndValues...)
 }
 
 // ObserveWithLabels records the operation with provided label pairs
