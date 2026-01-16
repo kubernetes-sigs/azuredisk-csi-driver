@@ -33,13 +33,13 @@ import (
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/fields"
 	"k8s.io/apimachinery/pkg/types"
 	cloudprovider "k8s.io/cloud-provider"
 	volerr "k8s.io/cloud-provider/volume/errors"
 	"k8s.io/klog/v2"
 	"k8s.io/utils/ptr"
 
+	storagev1 "k8s.io/api/storage/v1"
 	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/optimization"
@@ -884,9 +884,8 @@ func (d *Driver) hasVolumeAttachmentForDiskOnNode(ctx context.Context, nodeName,
 		return false, fmt.Errorf("kubeClient.CoreV1() or kubeClient.CoreV1().PersistentVolumes() is nil")
 	}
 
-	selector := fields.OneTermEqualSelector("spec.nodeName", nodeName).String()
 	volumeAttachments, err := kubeClient.StorageV1().VolumeAttachments().List(ctx, metav1.ListOptions{
-		FieldSelector: selector,
+		TimeoutSeconds: ptr.To(int64(volumeAttachmentListTimeoutSeconds)),
 	})
 	if err != nil {
 		return false, err
@@ -911,8 +910,7 @@ func (d *Driver) hasVolumeAttachmentForDiskOnNode(ctx context.Context, nodeName,
 				return true, nil
 			}
 		}
-		if va.Spec.Source.InlineVolumeSpec != nil && va.Spec.Source.InlineVolumeSpec.CSI != nil &&
-			strings.EqualFold(va.Spec.Source.InlineVolumeSpec.CSI.VolumeHandle, diskURI) {
+		if inlineVolumeSpecMatchesDisk(d.Name, diskURI, &va) {
 			return true, nil
 		}
 	}
@@ -1596,4 +1594,13 @@ func getDiskSizeInBytesFromSnapshot(computeSnapshot *armcompute.Snapshot) (int64
 		return 0, status.Error(codes.NotFound, "Snapshot size not found")
 	}
 	return *computeSnapshot.Properties.DiskSizeBytes, nil
+}
+
+func inlineVolumeSpecMatchesDisk(driverName, diskURI string, va *storagev1.VolumeAttachment) bool {
+	if va.Spec.Source.InlineVolumeSpec != nil && va.Spec.Source.InlineVolumeSpec.CSI != nil &&
+		strings.EqualFold(va.Spec.Source.InlineVolumeSpec.CSI.VolumeHandle, diskURI) &&
+		strings.EqualFold(va.Spec.Source.InlineVolumeSpec.CSI.Driver, driverName) {
+		return true
+	}
+	return false
 }

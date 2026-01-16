@@ -50,6 +50,8 @@ import (
 	"sigs.k8s.io/cloud-provider-azure/pkg/provider"
 )
 
+const testManagedByValue = "some-vm"
+
 func TestCommonAttachDisk(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
@@ -497,7 +499,7 @@ func TestCommonDetachDiskInstanceNotFoundWaitForDiskManagedByRemoved(t *testing.
 		defaultBackOff = oldBackOff
 	}()
 
-	managedBy := "some-vm"
+	managedBy := testManagedByValue
 	testCases := []struct {
 		desc        string
 		managedBy   *string
