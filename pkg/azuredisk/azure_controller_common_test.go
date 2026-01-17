@@ -37,15 +37,20 @@ import (
 	"go.uber.org/mock/gomock"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/wait"
+	cloudprovider "k8s.io/cloud-provider"
 	"k8s.io/klog/v2"
 	"k8s.io/utils/ptr"
 
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
+	"sigs.k8s.io/cloud-provider-azure/pkg/azclient/diskclient/mock_diskclient"
+	"sigs.k8s.io/cloud-provider-azure/pkg/azclient/mock_azclient"
 	mockvmclient "sigs.k8s.io/cloud-provider-azure/pkg/azclient/virtualmachineclient/mock_virtualmachineclient"
 	azcache "sigs.k8s.io/cloud-provider-azure/pkg/cache"
 	"sigs.k8s.io/cloud-provider-azure/pkg/consts"
 	"sigs.k8s.io/cloud-provider-azure/pkg/provider"
 )
+
+const testManagedByValue = "some-vm"
 
 func TestCommonAttachDisk(t *testing.T) {
 	ctrl := gomock.NewController(t)
@@ -330,6 +335,7 @@ func TestForceDetach(t *testing.T) {
 				ForceDetachBackoff:                 test.forceDetachBackoff,
 				DetachOperationMinTimeoutInSeconds: test.detachOperationTimeout,
 				DisableDiskLunCheck:                true, // Disable lun check to simplify test
+				clientFactory:                      testCloud.ComputeClientFactory,
 			}
 
 			diskURI := fmt.Sprintf("/subscriptions/%s/resourceGroups/%s/providers/Microsoft.Compute/disks/%s",
@@ -383,6 +389,12 @@ func TestForceDetach(t *testing.T) {
 				// Expect only one call for regular detach
 				mockVMClient.EXPECT().CreateOrUpdate(gomock.Any(), testCloud.ResourceGroup, gomock.Any(), gomock.Any()).Return(nil, test.firstDetachError).Times(1)
 			}
+
+			diskClient := mock_diskclient.NewMockInterface(ctrl)
+			testCloud.ComputeClientFactory.(*mock_azclient.MockClientFactory).EXPECT().GetDiskClientForSub(gomock.Any()).Return(diskClient, nil).AnyTimes()
+			diskClient.EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any()).Return(&armcompute.Disk{
+				ManagedBy: nil,
+			}, nil).AnyTimes()
 
 			// Create context with custom timeout if specified
 			testCtx := ctx
@@ -446,9 +458,11 @@ func TestCommonDetachDisk(t *testing.T) {
 	for i, test := range testCases {
 		testCloud := provider.GetTestCloud(ctrl)
 		common := &controllerCommon{
-			cloud:              testCloud,
-			lockMap:            newLockMap(),
-			ForceDetachBackoff: true,
+			cloud:                              testCloud,
+			lockMap:                            newLockMap(),
+			ForceDetachBackoff:                 true,
+			DetachOperationMinTimeoutInSeconds: 2,
+			clientFactory:                      testCloud.ComputeClientFactory,
 		}
 		diskURI := fmt.Sprintf("/subscriptions/%s/resourceGroups/%s/providers/Microsoft.Compute/disks/disk-name",
 			testCloud.SubscriptionID, testCloud.ResourceGroup)
@@ -462,8 +476,81 @@ func TestCommonDetachDisk(t *testing.T) {
 		}
 		mockVMClient.EXPECT().CreateOrUpdate(gomock.Any(), testCloud.ResourceGroup, gomock.Any(), gomock.Any()).Return(nil, nil).AnyTimes()
 
+		diskClient := mock_diskclient.NewMockInterface(ctrl)
+		testCloud.ComputeClientFactory.(*mock_azclient.MockClientFactory).EXPECT().GetDiskClientForSub(gomock.Any()).Return(diskClient, nil).AnyTimes()
+		diskClient.EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any()).Return(&armcompute.Disk{
+			ManagedBy: nil,
+		}, nil).AnyTimes()
+
 		err := common.DetachDisk(ctx, test.diskName, diskURI, test.nodeName)
 		assert.Equal(t, test.expectedErr, err != nil, "TestCase[%d]: %s, err: %v", i, test.desc, err)
+	}
+}
+
+func TestCommonDetachDiskInstanceNotFoundWaitForDiskManagedByRemoved(t *testing.T) {
+	oldBackOff := defaultBackOff
+	defaultBackOff = wait.Backoff{
+		Steps:    2,
+		Duration: 10 * time.Millisecond,
+		Factor:   1.0,
+		Jitter:   0.0,
+	}
+	defer func() {
+		defaultBackOff = oldBackOff
+	}()
+
+	managedBy := testManagedByValue
+	testCases := []struct {
+		desc        string
+		managedBy   *string
+		getErr      error
+		expectedErr bool
+	}{
+		{
+			desc:        "no error when ManagedBy cleared",
+			managedBy:   nil,
+			expectedErr: false,
+		},
+		{
+			desc:        "error when disk get fails",
+			managedBy:   nil,
+			getErr:      errors.New("get disk error"),
+			expectedErr: true,
+		},
+		{
+			desc:        "error when ManagedBy remains set",
+			managedBy:   &managedBy,
+			expectedErr: true,
+		},
+	}
+
+	for _, test := range testCases {
+		t.Run(test.desc, func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			defer ctrl.Finish()
+
+			testCloud := provider.GetTestCloud(ctrl)
+			testCloud.UseInstanceMetadata = false
+			mockVMSet := provider.NewMockVMSet(ctrl)
+			testCloud.VMSet = mockVMSet
+			mockVMSet.EXPECT().GetInstanceIDByNodeName(gomock.Any(), gomock.Any()).Return("", cloudprovider.InstanceNotFound).AnyTimes()
+
+			diskClient := mock_diskclient.NewMockInterface(ctrl)
+			testCloud.ComputeClientFactory.(*mock_azclient.MockClientFactory).EXPECT().GetDiskClientForSub(gomock.Any()).Return(diskClient, nil).AnyTimes()
+			diskClient.EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any()).Return(&armcompute.Disk{
+				ManagedBy: test.managedBy,
+			}, test.getErr).AnyTimes()
+
+			common := &controllerCommon{
+				cloud:         testCloud,
+				lockMap:       newLockMap(),
+				clientFactory: testCloud.ComputeClientFactory,
+			}
+			diskURI := fmt.Sprintf("/subscriptions/%s/resourceGroups/%s/providers/Microsoft.Compute/disks/disk-name",
+				testCloud.SubscriptionID, testCloud.ResourceGroup)
+			err := common.DetachDisk(t.Context(), "disk-name", diskURI, "vm1")
+			assert.Equal(t, test.expectedErr, err != nil, "err: %v", err)
+		})
 	}
 }
 
@@ -1243,20 +1330,40 @@ func TestConcurrentDetachDisk(t *testing.T) {
 	defer cancel()
 	testCloud := provider.GetTestCloud(ctrl)
 	common := &controllerCommon{
-		cloud:                        testCloud,
-		lockMap:                      newLockMap(),
-		ForceDetachBackoff:           true,
-		AttachDetachInitialDelayInMs: 1000,
-		DisableDiskLunCheck:          true,
+		cloud:                              testCloud,
+		lockMap:                            newLockMap(),
+		ForceDetachBackoff:                 true,
+		AttachDetachInitialDelayInMs:       1000,
+		DetachOperationMinTimeoutInSeconds: 2,
+
+		DisableDiskLunCheck: true,
+		clientFactory:       testCloud.ComputeClientFactory,
 	}
 	expectedVM := setTestVirtualMachines(testCloud, map[string]string{"vm1": "PowerState/Running"}, false)
 	mockVMClient := testCloud.ComputeClientFactory.GetVirtualMachineClient().(*mockvmclient.MockInterface)
+
+	oldDefaultBackOff := defaultBackOff
+	defaultBackOff = wait.Backoff{
+		Steps:    2,
+		Duration: 10 * time.Millisecond,
+		Factor:   1.0,
+		Jitter:   0.1,
+	}
+	t.Cleanup(func() {
+		defaultBackOff = oldDefaultBackOff
+	})
 
 	// Mock Get to always return the expected VM
 	mockVMClient.EXPECT().
 		Get(gomock.Any(), testCloud.ResourceGroup, *expectedVM[0].Name, gomock.Any()).
 		Return(&expectedVM[0], nil).
 		AnyTimes()
+
+	diskClient := mock_diskclient.NewMockInterface(ctrl)
+	testCloud.ComputeClientFactory.(*mock_azclient.MockClientFactory).EXPECT().GetDiskClientForSub(gomock.Any()).Return(diskClient, nil).AnyTimes()
+	diskClient.EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any()).Return(&armcompute.Disk{
+		ManagedBy: nil,
+	}, nil).AnyTimes()
 
 	// Use a counter to simulate different return values for CreateOrUpdate
 	// First call should succeed, subsequent calls should fail
@@ -1414,6 +1521,7 @@ func TestDetachDiskWithVMSSTimeoutConfiguration(t *testing.T) {
 				DetachOperationMinTimeoutInSeconds: test.detachOperationTimeout,
 				ForceDetachBackoff:                 false,
 				DisableDiskLunCheck:                true,
+				clientFactory:                      testCloud.ComputeClientFactory,
 			}
 
 			diskName := "disk1"
@@ -1426,6 +1534,12 @@ func TestDetachDiskWithVMSSTimeoutConfiguration(t *testing.T) {
 			for _, vm := range expectedVMs {
 				mockVMClient.EXPECT().Get(gomock.Any(), testCloud.ResourceGroup, *vm.Name, gomock.Any()).Return(&vm, nil).AnyTimes()
 			}
+
+			diskClient := mock_diskclient.NewMockInterface(ctrl)
+			testCloud.ComputeClientFactory.(*mock_azclient.MockClientFactory).EXPECT().GetDiskClientForSub(gomock.Any()).Return(diskClient, nil).AnyTimes()
+			diskClient.EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any()).Return(&armcompute.Disk{
+				ManagedBy: nil,
+			}, nil).AnyTimes()
 
 			// Capture the context passed to CreateOrUpdate to verify timeout
 			var capturedCtxDeadline time.Time
