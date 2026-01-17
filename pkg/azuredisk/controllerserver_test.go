@@ -29,6 +29,7 @@ import (
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/to"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute/v6"
 	"github.com/container-storage-interface/spec/lib/go/csi"
+	snapshotv1 "github.com/kubernetes-csi/external-snapshotter/client/v4/apis/volumesnapshot/v1"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
@@ -36,6 +37,7 @@ import (
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/timestamppb"
 	v1 "k8s.io/api/core/v1"
+	storagev1 "k8s.io/api/storage/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -43,10 +45,14 @@ import (
 	"k8s.io/klog/v2"
 	"k8s.io/utils/ptr"
 	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
+	"sigs.k8s.io/azuredisk-csi-driver/pkg/azuredisk/freeze"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azuredisk/mockcorev1"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azuredisk/mockkubeclient"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azuredisk/mockpersistentvolume"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azuredisk/mockpersistentvolumeclaim"
+	"sigs.k8s.io/azuredisk-csi-driver/pkg/azuredisk/mocksnapshotclient"
+	"sigs.k8s.io/azuredisk-csi-driver/pkg/azuredisk/mocksnapshotv1"
+	"sigs.k8s.io/azuredisk-csi-driver/pkg/azuredisk/mockvolumesnapshot"
 	volumehelper "sigs.k8s.io/azuredisk-csi-driver/pkg/util"
 	"sigs.k8s.io/cloud-provider-azure/pkg/azclient/diskclient/mock_diskclient"
 	"sigs.k8s.io/cloud-provider-azure/pkg/azclient/mock_azclient"
@@ -2878,7 +2884,7 @@ func RunTestCreateSnapshot(t *testing.T, fakeDriverFn func(t *gomock.Controller)
 				mockSnapshotClient.EXPECT().CreateOrUpdate(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, nil).AnyTimes()
 				if d.GetWaitForSnapshotReady() {
 					gomock.InOrder(
-						mockSnapshotClient.EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any()).Return(snapshot, nil).Times(1),
+						mockSnapshotClient.EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any()).Return(snapshot, nil).Times(2),
 						mockSnapshotClient.EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, fmt.Errorf("get snapshot error")).AnyTimes(),
 					)
 				} else {
@@ -2928,7 +2934,7 @@ func RunTestCreateSnapshot(t *testing.T, fakeDriverFn func(t *gomock.Controller)
 					gomock.InOrder(
 						mockSnapshotClient.EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, nil).Times(1),
 						mockSnapshotClient.EXPECT().CreateOrUpdate(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, nil).Times(1),
-						mockSnapshotClient.EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any()).Return(snapshot, nil).Times(2),
+						mockSnapshotClient.EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any()).Return(snapshot, nil).Times(3),
 						mockSnapshotClient.EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, nil).Times(1),
 						mockSnapshotClient.EXPECT().CreateOrUpdate(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, fmt.Errorf("test")).Times(1),
 					)
@@ -2936,7 +2942,7 @@ func RunTestCreateSnapshot(t *testing.T, fakeDriverFn func(t *gomock.Controller)
 					gomock.InOrder(
 						mockSnapshotClient.EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, nil).Times(1),
 						mockSnapshotClient.EXPECT().CreateOrUpdate(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, nil).Times(1),
-						mockSnapshotClient.EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any()).Return(snapshot, nil).Times(1),
+						mockSnapshotClient.EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any()).Return(snapshot, nil).Times(2),
 						mockSnapshotClient.EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, nil).Times(1),
 						mockSnapshotClient.EXPECT().CreateOrUpdate(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, fmt.Errorf("test")).Times(1),
 					)
@@ -2983,7 +2989,7 @@ func RunTestCreateSnapshot(t *testing.T, fakeDriverFn func(t *gomock.Controller)
 					gomock.InOrder(
 						mockSnapshotClient.EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, nil).Times(1),
 						mockSnapshotClient.EXPECT().CreateOrUpdate(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, nil).Times(1),
-						mockSnapshotClient.EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any()).Return(snapshot, nil).Times(2),
+						mockSnapshotClient.EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any()).Return(snapshot, nil).Times(3),
 						mockSnapshotClient.EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, nil).Times(1),
 						mockSnapshotClient.EXPECT().CreateOrUpdate(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, fmt.Errorf("existing disk")).Times(1),
 					)
@@ -2991,7 +2997,7 @@ func RunTestCreateSnapshot(t *testing.T, fakeDriverFn func(t *gomock.Controller)
 					gomock.InOrder(
 						mockSnapshotClient.EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, nil).Times(1),
 						mockSnapshotClient.EXPECT().CreateOrUpdate(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, nil).Times(1),
-						mockSnapshotClient.EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any()).Return(snapshot, nil).Times(1),
+						mockSnapshotClient.EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any()).Return(snapshot, nil).Times(2),
 						mockSnapshotClient.EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, nil).Times(1),
 						mockSnapshotClient.EXPECT().CreateOrUpdate(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, fmt.Errorf("existing disk")).Times(1),
 					)
@@ -3035,7 +3041,7 @@ func RunTestCreateSnapshot(t *testing.T, fakeDriverFn func(t *gomock.Controller)
 					},
 					ID: &snapshotID,
 				}
-				mockSnapshotClient.EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, nil).Times(1)
+				mockSnapshotClient.EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, nil).Times(2)
 				mockSnapshotClient.EXPECT().CreateOrUpdate(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, nil).AnyTimes()
 				if d.GetWaitForSnapshotReady() {
 					gomock.InOrder(
@@ -3095,14 +3101,14 @@ func RunTestCreateSnapshot(t *testing.T, fakeDriverFn func(t *gomock.Controller)
 				mockSnapshotClient.EXPECT().CreateOrUpdate(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, nil).AnyTimes()
 				if d.GetWaitForSnapshotReady() {
 					gomock.InOrder(
-						mockSnapshotClient.EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any()).Return(snapshot, nil).Times(2),
+						mockSnapshotClient.EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any()).Return(snapshot, nil).Times(3),
 						mockSnapshotClient.EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, nil).Times(1),
 						mockSnapshotClient.EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any()).Return(snapshot, nil).Times(1),
 						mockSnapshotClient.EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, fmt.Errorf("get snapshot error")).AnyTimes(),
 					)
 				} else {
 					gomock.InOrder(
-						mockSnapshotClient.EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any()).Return(snapshot, nil).Times(1),
+						mockSnapshotClient.EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any()).Return(snapshot, nil).Times(2),
 						mockSnapshotClient.EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, nil).Times(1),
 						mockSnapshotClient.EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, fmt.Errorf("get snapshot error")).AnyTimes(),
 					)
@@ -3405,13 +3411,13 @@ func RunTestCreateSnapshot(t *testing.T, fakeDriverFn func(t *gomock.Controller)
 							snapshot.Name = ptr.To(localSnapshotName)
 							snapshot.Properties.ProvisioningState = ptr.To("updating")
 							return snapshot, nil
-						}).Times(1),
+						}).Times(2),
 						mockSnapshotClient.EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(func(_ context.Context, _ string, _ string) (*armcompute.Snapshot, error) {
 							snapshot.ID = ptr.To(fmt.Sprintf("%s%s", snapshotURI, localSnapshotName))
 							snapshot.Name = ptr.To(localSnapshotName)
 							snapshot.Properties.ProvisioningState = ptr.To("succeeded")
 							return snapshot, nil
-						}).Times(2),
+						}).Times(3),
 						mockSnapshotClient.EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, nil).Times(1),
 						mockSnapshotClient.EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(func(_ context.Context, _ string, _ string) (*armcompute.Snapshot, error) {
 							snapshot.ID = ptr.To(fmt.Sprintf("%s%s", snapshotURI, snapshotName))
@@ -3424,7 +3430,7 @@ func RunTestCreateSnapshot(t *testing.T, fakeDriverFn func(t *gomock.Controller)
 							snapshot.Name = ptr.To(localSnapshotName)
 							snapshot.Properties.ProvisioningState = ptr.To("succeeded")
 							return snapshot, nil
-						}).Times(2),
+						}).Times(3),
 						mockSnapshotClient.EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(func(_ context.Context, _ string, _ string) (*armcompute.Snapshot, error) {
 							snapshot.ID = ptr.To(fmt.Sprintf("%s%s", snapshotURI, snapshotName))
 							snapshot.Name = ptr.To(snapshotName)
@@ -3443,6 +3449,7 @@ func RunTestCreateSnapshot(t *testing.T, fakeDriverFn func(t *gomock.Controller)
 						} else {
 							actualresponse, err = d.CreateSnapshot(context.Background(), req)
 							if err != nil {
+								println("Error while polling snapshot:", err.Error())
 								break
 							}
 						}
@@ -3522,6 +3529,832 @@ func RunTestCreateSnapshot(t *testing.T, fakeDriverFn func(t *gomock.Controller)
 	for _, tc := range testCases {
 		t.Run(tc.name, tc.testFunc)
 	}
+}
+
+// TestCreateSnapshot_FreezeIntegration tests the freeze integration paths in CreateSnapshot
+func TestCreateSnapshot_FreezeIntegration(t *testing.T) {
+	t.Run("freeze disabled - snapshot proceeds without freeze", func(t *testing.T) {
+		cntl := gomock.NewController(t)
+		defer cntl.Finish()
+		d, err := NewFakeDriver(cntl)
+		if err != nil {
+			t.Fatalf("NewFakeDriver failed: %v", err)
+		}
+
+		// Ensure freeze is disabled
+		d.(*fakeDriver).enableSnapshotConsistency = false
+
+		// Mock snapshot client
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+		mockSnapshotClient := mock_snapshotclient.NewMockInterface(ctrl)
+		d.getClientFactory().(*mock_azclient.MockClientFactory).EXPECT().GetSnapshotClientForSub(gomock.Any()).Return(mockSnapshotClient, nil).AnyTimes()
+
+		// Setup successful snapshot creation
+		mockSnapshotClient.EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, nil).Times(1)
+		provisioningState := "succeeded"
+		diskSize := int32(10)
+		snapshotID := "test-snapshot-id"
+		snapshot := &armcompute.Snapshot{
+			Properties: &armcompute.SnapshotProperties{
+				TimeCreated:       &time.Time{},
+				ProvisioningState: &provisioningState,
+				DiskSizeGB:        &diskSize,
+			},
+			ID: &snapshotID,
+		}
+		mockSnapshotClient.EXPECT().CreateOrUpdate(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, nil).Times(1)
+		mockSnapshotClient.EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any()).Return(snapshot, nil).AnyTimes()
+
+		req := &csi.CreateSnapshotRequest{
+			SourceVolumeId: testVolumeID,
+			Name:           "test-snapshot",
+			Parameters: map[string]string{
+				consts.ResourceGroupField: "rg",
+			},
+		}
+
+		resp, err := d.CreateSnapshot(context.Background(), req)
+		if err != nil {
+			t.Errorf("CreateSnapshot should succeed when freeze is disabled: %v", err)
+		}
+		if resp == nil {
+			t.Error("CreateSnapshot should return response")
+		}
+	})
+
+	t.Run("freeze enabled but no kube client - snapshot proceeds", func(t *testing.T) {
+		cntl := gomock.NewController(t)
+		defer cntl.Finish()
+		d, err := NewFakeDriver(cntl)
+		if err != nil {
+			t.Fatalf("NewFakeDriver failed: %v", err)
+		}
+
+		// Enable freeze but remove kube client
+		d.(*fakeDriver).enableSnapshotConsistency = true
+		d.(*fakeDriver).cloud = &azure.Cloud{} // No KubeClient
+
+		// Mock snapshot client
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+		mockSnapshotClient := mock_snapshotclient.NewMockInterface(ctrl)
+		d.getClientFactory().(*mock_azclient.MockClientFactory).EXPECT().GetSnapshotClientForSub(gomock.Any()).Return(mockSnapshotClient, nil).AnyTimes()
+
+		// Setup successful snapshot creation
+		mockSnapshotClient.EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, nil).Times(1)
+		provisioningState := "succeeded"
+		diskSize := int32(10)
+		snapshotID := "test-snapshot-id"
+		snapshot := &armcompute.Snapshot{
+			Properties: &armcompute.SnapshotProperties{
+				TimeCreated:       &time.Time{},
+				ProvisioningState: &provisioningState,
+				DiskSizeGB:        &diskSize,
+			},
+			ID: &snapshotID,
+		}
+		mockSnapshotClient.EXPECT().CreateOrUpdate(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, nil).Times(1)
+		mockSnapshotClient.EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any()).Return(snapshot, nil).AnyTimes()
+
+		req := &csi.CreateSnapshotRequest{
+			SourceVolumeId: testVolumeID,
+			Name:           "test-snapshot",
+			Parameters: map[string]string{
+				consts.ResourceGroupField: "rg",
+			},
+		}
+
+		resp, err := d.CreateSnapshot(context.Background(), req)
+		if err != nil {
+			t.Errorf("CreateSnapshot should succeed when no kube client: %v", err)
+		}
+		if resp == nil {
+			t.Error("CreateSnapshot should return response")
+		}
+	})
+
+	t.Run("shouldEnableFreeze returns correct values", func(t *testing.T) {
+		cntl := gomock.NewController(t)
+		defer cntl.Finish()
+		d, err := NewFakeDriver(cntl)
+		if err != nil {
+			t.Fatalf("NewFakeDriver failed: %v", err)
+		}
+
+		// Test with freeze disabled
+		d.(*fakeDriver).enableSnapshotConsistency = false
+		if d.(*fakeDriver).shouldEnableFreeze() {
+			t.Error("shouldEnableFreeze should return false when disabled")
+		}
+
+		// Test with freeze enabled and kube client
+		d.(*fakeDriver).enableSnapshotConsistency = true
+		// Ensure cloud has KubeClient (fake driver doesn't set it by default)
+		if d.(*fakeDriver).cloud.KubeClient == nil {
+			d.(*fakeDriver).cloud.KubeClient = d.(*fakeDriver).kubeClient
+		}
+		if !d.(*fakeDriver).shouldEnableFreeze() {
+			t.Error("shouldEnableFreeze should return true when enabled with kube client")
+		}
+
+		// Test with freeze enabled but no kube client
+		d.(*fakeDriver).cloud.KubeClient = nil
+		if d.(*fakeDriver).shouldEnableFreeze() {
+			t.Error("shouldEnableFreeze should return false when no kube client")
+		}
+	})
+
+	t.Run("getFreezeOrchestrator returns orchestrator or nil", func(t *testing.T) {
+		cntl := gomock.NewController(t)
+		defer cntl.Finish()
+		d, err := NewFakeDriver(cntl)
+		if err != nil {
+			t.Fatalf("NewFakeDriver failed: %v", err)
+		}
+
+		// Test with kube client - ensure cloud has KubeClient and initialize orchestrator
+		if d.(*fakeDriver).cloud.KubeClient == nil {
+			d.(*fakeDriver).cloud.KubeClient = d.(*fakeDriver).kubeClient
+		}
+		d.(*fakeDriver).freezeOrchestrator = NewFreezeOrchestrator(d.(*fakeDriver).kubeClient, "best-effort", 5)
+		orchestrator := d.(*fakeDriver).getFreezeOrchestrator()
+		if orchestrator == nil {
+			t.Error("getFreezeOrchestrator should return orchestrator when kube client exists")
+		}
+
+		// Test without kube client - orchestrator already created but should still return it
+		d.(*fakeDriver).cloud.KubeClient = nil
+		orchestrator = d.(*fakeDriver).getFreezeOrchestrator()
+		// Note: getFreezeOrchestrator just returns the field, doesn't check cloud.KubeClient
+		// So it will still return the orchestrator even if cloud.KubeClient is nil
+		if orchestrator == nil {
+			t.Error("getFreezeOrchestrator returns the orchestrator field directly")
+		}
+	})
+
+	t.Run("freeze enabled - freeze not complete - returns Unavailable", func(t *testing.T) {
+		cntl := gomock.NewController(t)
+		defer cntl.Finish()
+		d, err := NewFakeDriver(cntl)
+		if err != nil {
+			t.Fatalf("NewFakeDriver failed: %v", err)
+		}
+
+		// Enable freeze and setup kube client
+		driver := d.(*fakeDriver)
+		driver.enableSnapshotConsistency = true
+		driver.snapshotConsistencyMode = "best-effort"
+		if driver.cloud.KubeClient == nil {
+			driver.cloud.KubeClient = driver.kubeClient
+		}
+
+		// Create PersistentVolume
+		pvName := "test-pv"
+		pv := &v1.PersistentVolume{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: pvName,
+			},
+			Spec: v1.PersistentVolumeSpec{
+				PersistentVolumeSource: v1.PersistentVolumeSource{
+					CSI: &v1.CSIPersistentVolumeSource{
+						Driver:       "disk.csi.azure.com",
+						VolumeHandle: testVolumeID,
+					},
+				},
+			},
+		}
+		_, err = driver.kubeClient.CoreV1().PersistentVolumes().Create(context.Background(), pv, metav1.CreateOptions{})
+		if err != nil {
+			t.Fatalf("Failed to create PersistentVolume: %v", err)
+		}
+
+		// Create VolumeAttachment (without freeze complete annotation)
+		volumeAttachment := &storagev1.VolumeAttachment{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: "test-va",
+			},
+			Spec: storagev1.VolumeAttachmentSpec{
+				Attacher: "disk.csi.azure.com",
+				NodeName: driver.NodeID,
+				Source: storagev1.VolumeAttachmentSource{
+					PersistentVolumeName: ptr.To(pvName),
+				},
+			},
+			Status: storagev1.VolumeAttachmentStatus{
+				Attached: true,
+			},
+		}
+		_, err = driver.kubeClient.StorageV1().VolumeAttachments().Create(context.Background(), volumeAttachment, metav1.CreateOptions{})
+		if err != nil {
+			t.Fatalf("Failed to create VolumeAttachment: %v", err)
+		}
+
+		// Initialize freeze orchestrator and set snapshot client
+		driver.freezeOrchestrator = NewFreezeOrchestrator(driver.kubeClient, driver.snapshotConsistencyMode, driver.fsFreezeWaitTimeoutInMins)
+		driver.freezeOrchestrator.bootstrapComplete = true
+
+		// Bootstrap VolumeAttachment tracker (initialize the tracker without starting informer)
+		err = driver.freezeOrchestrator.BootstrapVolumeAttachmentTracking(context.Background())
+		if err != nil {
+			t.Fatalf("Failed to bootstrap VolumeAttachment tracker: %v", err)
+		}
+
+		// Bootstrap VolumeAttachment tracker (initialize the tracker without starting informer)
+		err = driver.freezeOrchestrator.BootstrapVolumeAttachmentTracking(context.Background())
+		if err != nil {
+			t.Fatalf("Failed to bootstrap VolumeAttachment tracker: %v", err)
+		}
+
+		// Mock VolumeSnapshot CRD client operations
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+
+		// Create mock snapshot clientset hierarchy
+		mockSnapshotClientset := mocksnapshotclient.NewMockInterface(ctrl)
+		mockSnapshotV1 := mocksnapshotv1.NewMockSnapshotV1Interface(ctrl)
+		mockVolumeSnapshot := mockvolumesnapshot.NewMockInterface(ctrl)
+
+		// Set up mock call chain: snapshotClient.SnapshotV1().VolumeSnapshots(namespace)
+		mockSnapshotClientset.EXPECT().SnapshotV1().Return(mockSnapshotV1).AnyTimes()
+		mockSnapshotV1.EXPECT().VolumeSnapshots("default").Return(mockVolumeSnapshot).AnyTimes()
+
+		// Mock Get() to return a VolumeSnapshot without freeze-complete annotation
+		volumeSnapshot := &snapshotv1.VolumeSnapshot{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "test-snapshot",
+				Namespace: "default",
+			},
+		}
+		mockVolumeSnapshot.EXPECT().Get(gomock.Any(), "test-snapshot", gomock.Any()).Return(volumeSnapshot, nil).AnyTimes()
+
+		// Mock Update() to capture annotation setting
+		mockVolumeSnapshot.EXPECT().Update(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
+			func(ctx context.Context, vs *snapshotv1.VolumeSnapshot, opts metav1.UpdateOptions) (*snapshotv1.VolumeSnapshot, error) {
+				return vs, nil
+			},
+		).AnyTimes()
+
+		// Set snapshot client in freeze orchestrator
+		driver.freezeOrchestrator.SetSnapshotClient(mockSnapshotClientset)
+
+		// Mock Azure snapshot client (no snapshot should be created since freeze is not complete)
+		mockAzureSnapshotClient := mock_snapshotclient.NewMockInterface(ctrl)
+		driver.clientFactory.(*mock_azclient.MockClientFactory).EXPECT().GetSnapshotClientForSub(gomock.Any()).Return(mockAzureSnapshotClient, nil).AnyTimes()
+		// Get is called by getSnapshotByID to check if snapshot already exists
+		mockAzureSnapshotClient.EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, nil).AnyTimes()
+
+		req := &csi.CreateSnapshotRequest{
+			SourceVolumeId: testVolumeID,
+			Name:           "test-snapshot",
+			Parameters: map[string]string{
+				consts.ResourceGroupField:         "rg",
+				consts.VolumeSnapshotNamespaceKey: "default",
+			},
+		}
+
+		resp, err := driver.CreateSnapshot(context.Background(), req)
+
+		// Should return Unavailable error when freeze is not complete
+		if err == nil {
+			t.Error("CreateSnapshot should return error when freeze is not complete")
+		}
+		if status.Code(err) != codes.Unavailable {
+			t.Errorf("Expected Unavailable error, got: %v", err)
+		}
+		if resp != nil {
+			t.Error("CreateSnapshot should not return response when freeze incomplete")
+		}
+	})
+
+	t.Run("freeze enabled - freeze complete - snapshot proceeds", func(t *testing.T) {
+		cntl := gomock.NewController(t)
+		defer cntl.Finish()
+		d, err := NewFakeDriver(cntl)
+		if err != nil {
+			t.Fatalf("NewFakeDriver failed: %v", err)
+		}
+
+		// Enable freeze and setup kube client
+		driver := d.(*fakeDriver)
+		driver.enableSnapshotConsistency = true
+		driver.snapshotConsistencyMode = "best-effort"
+		if driver.cloud.KubeClient == nil {
+			driver.cloud.KubeClient = driver.kubeClient
+		}
+
+		snapshotName := "test-snapshot"
+		pvName := "test-pv"
+
+		// Create PersistentVolume
+		pv := &v1.PersistentVolume{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: pvName,
+			},
+			Spec: v1.PersistentVolumeSpec{
+				PersistentVolumeSource: v1.PersistentVolumeSource{
+					CSI: &v1.CSIPersistentVolumeSource{
+						Driver:       "disk.csi.azure.com",
+						VolumeHandle: testVolumeID,
+					},
+				},
+			},
+		}
+		_, err = driver.kubeClient.CoreV1().PersistentVolumes().Create(context.Background(), pv, metav1.CreateOptions{})
+		if err != nil {
+			t.Fatalf("Failed to create PersistentVolume: %v", err)
+		}
+
+		// Create VolumeAttachment with freeze complete state
+		volumeAttachment := &storagev1.VolumeAttachment{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: "test-va",
+				Annotations: map[string]string{
+					freeze.AnnotationFreezeRequired: time.Now().Format(time.RFC3339),
+					freeze.AnnotationFreezeState:    "frozen",
+				},
+			},
+			Spec: storagev1.VolumeAttachmentSpec{
+				Attacher: "disk.csi.azure.com",
+				NodeName: driver.NodeID,
+				Source: storagev1.VolumeAttachmentSource{
+					PersistentVolumeName: ptr.To(pvName),
+				},
+			},
+			Status: storagev1.VolumeAttachmentStatus{
+				Attached: true,
+			},
+		}
+		_, err = driver.kubeClient.StorageV1().VolumeAttachments().Create(context.Background(), volumeAttachment, metav1.CreateOptions{})
+		if err != nil {
+			t.Fatalf("Failed to create VolumeAttachment: %v", err)
+		}
+
+		// Mock snapshot client - should be called since freeze is complete
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+		mockSnapshotClient := mock_snapshotclient.NewMockInterface(ctrl)
+		driver.clientFactory.(*mock_azclient.MockClientFactory).EXPECT().GetSnapshotClientForSub(gomock.Any()).Return(mockSnapshotClient, nil).AnyTimes()
+
+		// Setup successful snapshot creation
+		mockSnapshotClient.EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, nil).Times(1)
+		provisioningState := "succeeded"
+		diskSize := int32(10)
+		snapshotID := "test-snapshot-id"
+		snapshot := &armcompute.Snapshot{
+			Properties: &armcompute.SnapshotProperties{
+				TimeCreated:       &time.Time{},
+				ProvisioningState: &provisioningState,
+				DiskSizeGB:        &diskSize,
+			},
+			ID: &snapshotID,
+		}
+		mockSnapshotClient.EXPECT().CreateOrUpdate(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, nil).Times(1)
+		mockSnapshotClient.EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any()).Return(snapshot, nil).AnyTimes()
+
+		req := &csi.CreateSnapshotRequest{
+			SourceVolumeId: testVolumeID,
+			Name:           snapshotName,
+			Parameters: map[string]string{
+				consts.ResourceGroupField: "rg",
+			},
+		}
+
+		resp, err := driver.CreateSnapshot(context.Background(), req)
+		if err != nil {
+			t.Errorf("CreateSnapshot should succeed when freeze is complete: %v", err)
+		}
+		if resp == nil {
+			t.Error("CreateSnapshot should return response")
+		}
+
+		// Note: ReleaseFreeze is called in a defer, which may remove the annotation
+		// The cleanup happens asynchronously, so we don't validate annotation removal here
+	})
+
+	t.Run("freeze enabled strict mode - freeze failed - returns error", func(t *testing.T) {
+		cntl := gomock.NewController(t)
+		defer cntl.Finish()
+		d, err := NewFakeDriver(cntl)
+		if err != nil {
+			t.Fatalf("NewFakeDriver failed: %v", err)
+		}
+
+		// Enable freeze in strict mode
+		driver := d.(*fakeDriver)
+		driver.enableSnapshotConsistency = true
+		driver.snapshotConsistencyMode = "strict"
+		if driver.cloud.KubeClient == nil {
+			driver.cloud.KubeClient = driver.kubeClient
+		}
+		// Initialize freeze orchestrator
+		driver.freezeOrchestrator = NewFreezeOrchestrator(driver.kubeClient, driver.snapshotConsistencyMode, driver.fsFreezeWaitTimeoutInMins)
+		driver.freezeOrchestrator.bootstrapComplete = true
+
+		// Bootstrap VolumeAttachment tracker (initialize the tracker without starting informer)
+		err = driver.freezeOrchestrator.BootstrapVolumeAttachmentTracking(context.Background())
+		if err != nil {
+			t.Fatalf("Failed to bootstrap VolumeAttachment tracker: %v", err)
+		}
+
+		// Bootstrap VolumeAttachment tracker (initialize the tracker without starting informer)
+		err = driver.freezeOrchestrator.BootstrapVolumeAttachmentTracking(context.Background())
+		if err != nil {
+			t.Fatalf("Failed to bootstrap VolumeAttachment tracker: %v", err)
+		}
+
+		snapshotName := "test-snapshot-strict"
+		pvName := "test-pv-strict"
+
+		// Create PersistentVolume
+		pv := &v1.PersistentVolume{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: pvName,
+			},
+			Spec: v1.PersistentVolumeSpec{
+				PersistentVolumeSource: v1.PersistentVolumeSource{
+					CSI: &v1.CSIPersistentVolumeSource{
+						Driver:       "disk.csi.azure.com",
+						VolumeHandle: testVolumeID,
+					},
+				},
+			},
+		}
+		_, err = driver.kubeClient.CoreV1().PersistentVolumes().Create(context.Background(), pv, metav1.CreateOptions{})
+		if err != nil {
+			t.Fatalf("Failed to create PersistentVolume: %v", err)
+		}
+
+		// Create VolumeAttachment with freeze error state
+		volumeAttachment := &storagev1.VolumeAttachment{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: "test-va-strict",
+				Annotations: map[string]string{
+					freeze.AnnotationFreezeRequired: time.Now().Format(time.RFC3339),
+					freeze.AnnotationFreezeState:    freeze.FreezeStateFailed,
+				},
+			},
+			Spec: storagev1.VolumeAttachmentSpec{
+				Attacher: "disk.csi.azure.com",
+				NodeName: driver.NodeID,
+				Source: storagev1.VolumeAttachmentSource{
+					PersistentVolumeName: ptr.To(pvName),
+				},
+			},
+			Status: storagev1.VolumeAttachmentStatus{
+				Attached: true,
+			},
+		}
+		_, err = driver.kubeClient.StorageV1().VolumeAttachments().Create(context.Background(), volumeAttachment, metav1.CreateOptions{})
+		if err != nil {
+			t.Fatalf("Failed to create VolumeAttachment: %v", err)
+		}
+
+		// Re-bootstrap to add this VolumeAttachment to the tracker
+		driver.freezeOrchestrator.vaTrackerInitialized.Store(false)
+		err = driver.freezeOrchestrator.BootstrapVolumeAttachmentTracking(context.Background())
+		if err != nil {
+			t.Fatalf("Failed to re-bootstrap VolumeAttachment tracker: %v", err)
+		}
+
+		// Re-bootstrap to add this VolumeAttachment to the tracker
+		driver.freezeOrchestrator.vaTrackerInitialized.Store(false)
+		err = driver.freezeOrchestrator.BootstrapVolumeAttachmentTracking(context.Background())
+		if err != nil {
+			t.Fatalf("Failed to re-bootstrap VolumeAttachment tracker: %v", err)
+		}
+
+		// Mock snapshot client (no snapshot should be created since freeze failed in strict mode)
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+		mockSnapshotClient := mock_snapshotclient.NewMockInterface(ctrl)
+		driver.clientFactory.(*mock_azclient.MockClientFactory).EXPECT().GetSnapshotClientForSub(gomock.Any()).Return(mockSnapshotClient, nil).AnyTimes()
+		// Get is called by getSnapshotByID to check if snapshot already exists
+		mockSnapshotClient.EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, nil).AnyTimes()
+
+		req := &csi.CreateSnapshotRequest{
+			SourceVolumeId: testVolumeID,
+			Name:           snapshotName,
+			Parameters: map[string]string{
+				consts.ResourceGroupField:         "rg",
+				consts.VolumeSnapshotNamespaceKey: "default",
+			},
+		}
+
+		resp, err := driver.CreateSnapshot(context.Background(), req)
+
+		// Should return error in strict mode when freeze failed
+		if err == nil {
+			t.Error("CreateSnapshot should return error in strict mode when freeze failed")
+		}
+		if resp != nil {
+			t.Error("CreateSnapshot should not return response when freeze failed in strict mode")
+		}
+	})
+
+	t.Run("freeze enabled best-effort - freeze failed - snapshot proceeds with warning", func(t *testing.T) {
+		cntl := gomock.NewController(t)
+		defer cntl.Finish()
+		d, err := NewFakeDriver(cntl)
+		if err != nil {
+			t.Fatalf("NewFakeDriver failed: %v", err)
+		}
+
+		// Enable freeze in best-effort mode
+		driver := d.(*fakeDriver)
+		driver.enableSnapshotConsistency = true
+		driver.snapshotConsistencyMode = "best-effort"
+		if driver.cloud.KubeClient == nil {
+			driver.cloud.KubeClient = driver.kubeClient
+		}
+
+		snapshotName := "test-snapshot-besteffort"
+		pvName := "test-pv-besteffort"
+
+		// Create PersistentVolume
+		pv := &v1.PersistentVolume{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: pvName,
+			},
+			Spec: v1.PersistentVolumeSpec{
+				PersistentVolumeSource: v1.PersistentVolumeSource{
+					CSI: &v1.CSIPersistentVolumeSource{
+						Driver:       "disk.csi.azure.com",
+						VolumeHandle: testVolumeID,
+					},
+				},
+			},
+		}
+		_, err = driver.kubeClient.CoreV1().PersistentVolumes().Create(context.Background(), pv, metav1.CreateOptions{})
+		if err != nil {
+			t.Fatalf("Failed to create PersistentVolume: %v", err)
+		}
+
+		// Create VolumeAttachment with freeze error state
+		volumeAttachment := &storagev1.VolumeAttachment{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: "test-va-besteffort",
+				Annotations: map[string]string{
+					freeze.AnnotationFreezeRequired: time.Now().Format(time.RFC3339),
+					freeze.AnnotationFreezeState:    "error: filesystem busy",
+				},
+			},
+			Spec: storagev1.VolumeAttachmentSpec{
+				Attacher: "disk.csi.azure.com",
+				NodeName: driver.NodeID,
+				Source: storagev1.VolumeAttachmentSource{
+					PersistentVolumeName: ptr.To(pvName),
+				},
+			},
+			Status: storagev1.VolumeAttachmentStatus{
+				Attached: true,
+			},
+		}
+		_, err = driver.kubeClient.StorageV1().VolumeAttachments().Create(context.Background(), volumeAttachment, metav1.CreateOptions{})
+		if err != nil {
+			t.Fatalf("Failed to create VolumeAttachment: %v", err)
+		}
+
+		// Mock snapshot client - should be called in best-effort mode even with freeze error
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+		mockSnapshotClient := mock_snapshotclient.NewMockInterface(ctrl)
+		driver.clientFactory.(*mock_azclient.MockClientFactory).EXPECT().GetSnapshotClientForSub(gomock.Any()).Return(mockSnapshotClient, nil).AnyTimes()
+
+		// Setup successful snapshot creation
+		mockSnapshotClient.EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, nil).Times(1)
+		provisioningState := "succeeded"
+		diskSize := int32(10)
+		snapshotID := "test-snapshot-id"
+		snapshot := &armcompute.Snapshot{
+			Properties: &armcompute.SnapshotProperties{
+				TimeCreated:       &time.Time{},
+				ProvisioningState: &provisioningState,
+				DiskSizeGB:        &diskSize,
+			},
+			ID: &snapshotID,
+		}
+		mockSnapshotClient.EXPECT().CreateOrUpdate(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, nil).Times(1)
+		mockSnapshotClient.EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any()).Return(snapshot, nil).AnyTimes()
+
+		req := &csi.CreateSnapshotRequest{
+			SourceVolumeId: testVolumeID,
+			Name:           snapshotName,
+			Parameters: map[string]string{
+				consts.ResourceGroupField: "rg",
+			},
+		}
+
+		resp, err := driver.CreateSnapshot(context.Background(), req)
+
+		// Should succeed in best-effort mode even when freeze failed
+		if err != nil {
+			t.Errorf("CreateSnapshot should succeed in best-effort mode even with freeze error: %v", err)
+		}
+		if resp == nil {
+			t.Error("CreateSnapshot should return response in best-effort mode")
+		}
+	})
+
+	t.Run("freeze flow - first call triggers freeze and returns Unavailable, second call completes after freeze", func(t *testing.T) {
+		cntl := gomock.NewController(t)
+		defer cntl.Finish()
+		d, err := NewFakeDriver(cntl)
+		if err != nil {
+			t.Fatalf("NewFakeDriver failed: %v", err)
+		}
+
+		// Enable freeze in best-effort mode
+		driver := d.(*fakeDriver)
+		driver.enableSnapshotConsistency = true
+		driver.snapshotConsistencyMode = "best-effort"
+		if driver.cloud.KubeClient == nil {
+			driver.cloud.KubeClient = driver.kubeClient
+		}
+		// Initialize freeze orchestrator
+		driver.freezeOrchestrator = NewFreezeOrchestrator(driver.kubeClient, driver.snapshotConsistencyMode, driver.fsFreezeWaitTimeoutInMins)
+		driver.freezeOrchestrator.bootstrapComplete = true
+
+		// Bootstrap VolumeAttachment tracker (initialize the tracker without starting informer)
+		err = driver.freezeOrchestrator.BootstrapVolumeAttachmentTracking(context.Background())
+		if err != nil {
+			t.Fatalf("Failed to bootstrap VolumeAttachment tracker: %v", err)
+		}
+
+		// Bootstrap VolumeAttachment tracker (initialize the tracker without starting informer)
+		err = driver.freezeOrchestrator.BootstrapVolumeAttachmentTracking(context.Background())
+		if err != nil {
+			t.Fatalf("Failed to bootstrap VolumeAttachment tracker: %v", err)
+		}
+
+		// Mock VolumeSnapshot CRD client operations
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+
+		// Create mock snapshot clientset hierarchy
+		mockSnapshotClientset := mocksnapshotclient.NewMockInterface(ctrl)
+		mockSnapshotV1 := mocksnapshotv1.NewMockSnapshotV1Interface(ctrl)
+		mockVolumeSnapshot := mockvolumesnapshot.NewMockInterface(ctrl)
+
+		// Set up mock call chain: snapshotClient.SnapshotV1().VolumeSnapshots(namespace)
+		mockSnapshotClientset.EXPECT().SnapshotV1().Return(mockSnapshotV1).AnyTimes()
+		mockSnapshotV1.EXPECT().VolumeSnapshots("default").Return(mockVolumeSnapshot).AnyTimes()
+
+		// Mock Get() to return a VolumeSnapshot without freeze-complete annotation initially
+		volumeSnapshot := &snapshotv1.VolumeSnapshot{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "test-snapshot-retry",
+				Namespace: "default",
+			},
+		}
+		mockVolumeSnapshot.EXPECT().Get(gomock.Any(), "test-snapshot-retry", gomock.Any()).Return(volumeSnapshot, nil).AnyTimes()
+
+		// Mock Update() to capture annotation setting
+		mockVolumeSnapshot.EXPECT().Update(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
+			func(ctx context.Context, vs *snapshotv1.VolumeSnapshot, opts metav1.UpdateOptions) (*snapshotv1.VolumeSnapshot, error) {
+				return vs, nil
+			},
+		).AnyTimes()
+
+		// Set snapshot client in freeze orchestrator
+		driver.freezeOrchestrator.SetSnapshotClient(mockSnapshotClientset)
+
+		snapshotName := "test-snapshot-retry"
+		pvName := "test-pv-retry"
+
+		// Create PersistentVolume
+		pv := &v1.PersistentVolume{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: pvName,
+			},
+			Spec: v1.PersistentVolumeSpec{
+				PersistentVolumeSource: v1.PersistentVolumeSource{
+					CSI: &v1.CSIPersistentVolumeSource{
+						Driver:       "disk.csi.azure.com",
+						VolumeHandle: testVolumeID,
+					},
+				},
+			},
+		}
+		_, err = driver.kubeClient.CoreV1().PersistentVolumes().Create(context.Background(), pv, metav1.CreateOptions{})
+		if err != nil {
+			t.Fatalf("Failed to create PersistentVolume: %v", err)
+		}
+
+		// Create VolumeAttachment without freeze state (simulates initial state)
+		volumeAttachment := &storagev1.VolumeAttachment{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: "test-va-retry",
+			},
+			Spec: storagev1.VolumeAttachmentSpec{
+				Attacher: "disk.csi.azure.com",
+				NodeName: driver.NodeID,
+				Source: storagev1.VolumeAttachmentSource{
+					PersistentVolumeName: ptr.To(pvName),
+				},
+			},
+			Status: storagev1.VolumeAttachmentStatus{
+				Attached: true,
+			},
+		}
+		_, err = driver.kubeClient.StorageV1().VolumeAttachments().Create(context.Background(), volumeAttachment, metav1.CreateOptions{})
+		if err != nil {
+			t.Fatalf("Failed to create VolumeAttachment: %v", err)
+		}
+
+		// Re-bootstrap to add this VolumeAttachment to the tracker
+		driver.freezeOrchestrator.vaTrackerInitialized.Store(false)
+		err = driver.freezeOrchestrator.BootstrapVolumeAttachmentTracking(context.Background())
+		if err != nil {
+			t.Fatalf("Failed to re-bootstrap VolumeAttachment tracker: %v", err)
+		}
+
+		// Re-bootstrap to add this VolumeAttachment to the tracker
+		driver.freezeOrchestrator.vaTrackerInitialized.Store(false)
+		err = driver.freezeOrchestrator.BootstrapVolumeAttachmentTracking(context.Background())
+		if err != nil {
+			t.Fatalf("Failed to re-bootstrap VolumeAttachment tracker: %v", err)
+		}
+
+		// Mock Azure snapshot client
+		mockAzureSnapshotClient := mock_snapshotclient.NewMockInterface(ctrl)
+		driver.clientFactory.(*mock_azclient.MockClientFactory).EXPECT().GetSnapshotClientForSub(gomock.Any()).Return(mockAzureSnapshotClient, nil).AnyTimes()
+		// First call: Get() returns nil (snapshot doesn't exist yet)
+		mockAzureSnapshotClient.EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, nil).Times(1)
+
+		req := &csi.CreateSnapshotRequest{
+			SourceVolumeId: testVolumeID,
+			Name:           snapshotName,
+			Parameters: map[string]string{
+				consts.ResourceGroupField:         "rg",
+				consts.VolumeSnapshotNamespaceKey: "default",
+			},
+		}
+
+		// FIRST CALL: Freeze is triggered but not complete yet
+		resp, err := driver.CreateSnapshot(context.Background(), req)
+
+		// Should return Unavailable error (freeze not complete)
+		if err == nil {
+			t.Error("First CreateSnapshot call should return error when freeze is not complete")
+		}
+		if status.Code(err) != codes.Unavailable {
+			t.Errorf("First call expected Unavailable error, got: %v", err)
+		}
+		if resp != nil {
+			t.Error("First call should not return response when freeze incomplete")
+		}
+
+		// Verify freeze-required annotation was added by the orchestrator
+		va, err := driver.kubeClient.StorageV1().VolumeAttachments().Get(context.Background(), "test-va-retry", metav1.GetOptions{})
+		if err != nil {
+			t.Fatalf("Failed to get VolumeAttachment after first call: %v", err)
+		}
+		if _, exists := va.Annotations[freeze.AnnotationFreezeRequired]; !exists {
+			t.Error("Freeze-required annotation should be set after first CreateSnapshot call")
+		}
+
+		// Simulate node driver completing the freeze (update VolumeAttachment)
+		va.Annotations[freeze.AnnotationFreezeState] = freeze.FreezeStateFrozen
+		_, err = driver.kubeClient.StorageV1().VolumeAttachments().Update(context.Background(), va, metav1.UpdateOptions{})
+		if err != nil {
+			t.Fatalf("Failed to update VolumeAttachment with freeze complete: %v", err)
+		}
+
+		// Setup mock for successful snapshot creation (for second call)
+		provisioningState := "succeeded"
+		diskSize := int32(10)
+		snapshotID := "test-snapshot-retry-id"
+		completionPercent := float32(100.0)
+		snapshot := &armcompute.Snapshot{
+			Properties: &armcompute.SnapshotProperties{
+				TimeCreated:       &time.Time{},
+				ProvisioningState: &provisioningState,
+				DiskSizeGB:        &diskSize,
+				CompletionPercent: &completionPercent,
+			},
+			ID: &snapshotID,
+		}
+		// Second call sequence: Get (returns nil), CreateOrUpdate, Get multiple times (returns snapshot)
+		mockAzureSnapshotClient.EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, nil).Times(1)
+		mockAzureSnapshotClient.EXPECT().CreateOrUpdate(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, nil).Times(1)
+		// After CreateOrUpdate, Get should return the completed snapshot (called multiple times by waitForSnapshotReady)
+		mockAzureSnapshotClient.EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any()).Return(snapshot, nil).MinTimes(1)
+
+		// SECOND CALL: Freeze is now complete, snapshot should proceed
+		resp, err = driver.CreateSnapshot(context.Background(), req)
+
+		// Should succeed now that freeze is complete
+		if err != nil {
+			t.Errorf("Second CreateSnapshot call should succeed when freeze is complete: %v", err)
+		}
+		if resp == nil {
+			t.Error("Second call should return response")
+		}
+		if resp != nil && !resp.Snapshot.ReadyToUse {
+			t.Error("Snapshot should be ready to use after successful creation")
+		}
+	})
 }
 
 func TestDeleteSnapshot(t *testing.T) {
