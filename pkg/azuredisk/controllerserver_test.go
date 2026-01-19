@@ -325,8 +325,9 @@ func TestCreateVolume(t *testing.T) {
 				d, _ := NewFakeDriver(cntl)
 				mp := make(map[string]string)
 				mp["tags"] = "unit=test"
+				snapshotID := "/subscriptions/subs/resourceGroups/rg/providers/Microsoft.Compute/snapshots/unit-test"
 				volumeSnapshotSource := &csi.VolumeContentSource_SnapshotSource{
-					SnapshotId: "unit-test",
+					SnapshotId: snapshotID,
 				}
 				volumeContentSourceSnapshotSource := &csi.VolumeContentSource_Snapshot{
 					Snapshot: volumeSnapshotSource,
@@ -343,8 +344,16 @@ func TestCreateVolume(t *testing.T) {
 				disk := &armcompute.Disk{
 					Properties: &armcompute.DiskProperties{},
 				}
+				snapshot := &armcompute.Snapshot{
+					Properties: &armcompute.SnapshotProperties{
+						DiskSizeBytes: ptr.To(int64(10737418240)), // 10GB in bytes
+					},
+				}
 				diskClient := mock_diskclient.NewMockInterface(cntl)
+				snapshotClient := mock_snapshotclient.NewMockInterface(cntl)
 				d.getClientFactory().(*mock_azclient.MockClientFactory).EXPECT().GetDiskClientForSub(gomock.Any()).Return(diskClient, nil).AnyTimes()
+				d.getClientFactory().(*mock_azclient.MockClientFactory).EXPECT().GetSnapshotClientForSub(gomock.Any()).Return(snapshotClient, nil).AnyTimes()
+				snapshotClient.EXPECT().Get(gomock.Any(), "rg", "unit-test").Return(snapshot, nil).AnyTimes()
 				diskClient.EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any()).Return(disk, nil).AnyTimes()
 				diskClient.EXPECT().CreateOrUpdate(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, fmt.Errorf("test")).AnyTimes()
 				_, err := d.CreateVolume(context.Background(), req)
