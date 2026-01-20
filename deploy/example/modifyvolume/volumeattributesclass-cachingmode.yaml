@@ -1,0 +1,16 @@
+---
+apiVersion: storage.k8s.io/v1alpha1
+kind: VolumeAttributesClass
+metadata:
+  name: azure-disk-caching-readonly
+driverName: disk.csi.azure.com
+parameters:
+  cachingMode: "ReadOnly"
+---
+apiVersion: storage.k8s.io/v1alpha1
+kind: VolumeAttributesClass
+metadata:
+  name: azure-disk-caching-none
+driverName: disk.csi.azure.com
+parameters:
+  cachingMode: "None"

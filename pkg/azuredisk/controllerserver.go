@@ -546,6 +546,14 @@ func (d *Driver) ControllerModifyVolume(ctx context.Context, req *csi.Controller
 		return nil, status.Errorf(codes.InvalidArgument, "Failed parsing disk parameters: %v", err)
 	}
 
+	// Validate cachingMode if provided
+	if diskParams.CachingMode != "" {
+		if _, err := azureutils.NormalizeCachingMode(diskParams.CachingMode); err != nil {
+			return nil, status.Errorf(codes.InvalidArgument, "Invalid caching mode: %v", err)
+		}
+		klog.V(2).Infof("cachingMode(%s) will be applied on next volume attachment", diskParams.CachingMode)
+	}
+
 	// normalize values
 	skuName, err := azureutils.NormalizeStorageAccountType(diskParams.AccountType, d.cloud.Config.Cloud, d.cloud.Config.DisableAzureStackCloud)
 	if err != nil {
@@ -570,6 +578,21 @@ func (d *Driver) ControllerModifyVolume(ctx context.Context, req *csi.Controller
 			if currentDisk.Properties != nil && currentDisk.Properties.DiskSizeGB != nil &&
 				currentDisk.Properties.CompletionPercent != nil && *currentDisk.Properties.CompletionPercent < float32(100.0) {
 				monitorSKUMigration = fromSKU == armcompute.DiskStorageAccountTypesPremiumV2LRS
+			}
+		}
+	}
+
+	// Determine the target SKU (either the new one or the current one)
+	targetSKU := skuName
+	if targetSKU == "" && currentDisk != nil && currentDisk.SKU != nil && currentDisk.SKU.Name != nil {
+		targetSKU = *currentDisk.SKU.Name
+	}
+
+	// Validate cachingMode compatibility with target SKU
+	if diskParams.CachingMode != "" && targetSKU != "" {
+		if targetSKU == armcompute.DiskStorageAccountTypesPremiumV2LRS || targetSKU == armcompute.DiskStorageAccountTypesUltraSSDLRS {
+			if !strings.EqualFold(string(diskParams.CachingMode), string(v1.AzureDataDiskCachingNone)) {
+				return nil, status.Errorf(codes.InvalidArgument, "cachingMode %s is not supported for %s, only None is supported", diskParams.CachingMode, targetSKU)
 			}
 		}
 	}

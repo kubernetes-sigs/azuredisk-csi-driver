@@ -99,5 +99,18 @@ userAgent | User agent used for [customer usage attribution](https://docs.micros
 subscriptionID | specify Azure subscription ID in which Azure disk will be created  | Azure subscription ID | No | if not empty, `resourceGroup` must be provided, `incremental` must set as `false`
 location | specify Azure region in which Azure disk snapshot will be created, region name should only have lower-case letter or digit number. | `eastus2`, `westus`, etc. | No | if empty, driver will use the same region name as current k8s cluster
 
+## `VolumeAttributesClass`
+
+> Feature Status: GA from Kubernetes 1.34, supported from Azure Disk CSI driver v1.30.2
+>
+> For more information, see the [ModifyVolume feature example](../deploy/example/modifyvolume/README.md)
+
+Name | Meaning | Available Value | Mandatory | Default value
+--- | --- | --- | --- | ---
+DiskIOPSReadWrite | [UltraSSD](https://learn.microsoft.com/en-us/azure/virtual-machines/disks-types#ultra-disks), [PremiumV2_LRS](https://learn.microsoft.com/en-us/azure/virtual-machines/disks-types#premium-ssd-v2-preview) disk IOPS capability | | No | 
+DiskMBpsReadWrite | [UltraSSD](https://learn.microsoft.com/en-us/azure/virtual-machines/disks-types#ultra-disks), [PremiumV2_LRS](https://learn.microsoft.com/en-us/azure/virtual-machines/disks-types#premium-ssd-v2-preview) disk throughput capability | | No | 
+skuName | azure disk storage account type (alias: `storageAccountType`) | `Standard_LRS`, `Premium_LRS`, `StandardSSD_LRS`, `Premium_ZRS`, `StandardSSD_ZRS`, `PremiumV2_LRS` | No | <br>Note: Changing to or from UltraSSD_LRS is not permitted
+cachingMode | [Azure Data Disk Host Cache Setting](https://docs.microsoft.com/en-us/azure/virtual-machines/windows/premium-storage-performance#disk-caching) | `None`, `ReadOnly`, `ReadWrite` | No | <br>Note: PremiumV2_LRS and UltraSSD_LRS only support `None` caching mode. The new caching mode will be applied when the volume is re-attached to a node.
+
 ### Tips
   - If there are CVEs in the `livenessprobe` and `csi-node-driver-registrar` sidecar images, you can run `kubectl edit ds -n kube-system csi-azuredisk-node` to change the `imagePullPolicy` to `Always` for both sidecar containers. This will cause the CSI driver to restart and pull the latest patched images, thereby resolving the CVEs in these sidecar components.
