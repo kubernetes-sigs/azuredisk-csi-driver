@@ -2,7 +2,34 @@
 
 ## Metrics description
 
-The metrics emitted by the Azure Disk CSI Driver fall broadly into two categories: CSI and Azure Cloud operation latency metrics. The CSI metrics record the latency of the CSI calls made to the driver, e,g, `ControllerPublishVolume`. The Azure Cloud metrics record the latency of Azure Cloud operations perform as part driver operation, e.g. `attach_disk`. The individual operation metrics are recorded in two different [histogram](https://prometheus.io/docs/concepts/metric_types/#histogram) metrics using the labels `request` and/or `source` to differentiate among the operations. The table below describes the values of the individual operation metrics.
+The metrics emitted by the Azure Disk CSI Driver fall broadly into three categories: CSI driver-specific metrics, CSI operation latency metrics (via cloud-provider-azure), and Azure Cloud API metrics. The tables below describe the available metrics.
+
+### CSI Driver Metrics
+
+These metrics are native to the Azure Disk CSI Driver and provide detailed operation tracking.
+
+| Metric Name | Type | Labels | Description |
+|-------------|------|--------|-------------|
+| `azuredisk_csi_driver_operations_total` | Counter | `operation`, `success` | Total number of CSI operations |
+| `azuredisk_csi_driver_operation_duration_seconds` | Histogram | `operation`, `success` | Duration of CSI operations in seconds |
+| `azuredisk_csi_driver_operation_duration_seconds_labeled` | Histogram | `operation`, `success`, `disk_sku`, `caching_mode`, `zone` | Duration of CSI operations with additional disk-specific labels |
+
+**Operation values:**
+- Controller: `controller_create_volume`, `controller_delete_volume`, `controller_modify_volume`, `controller_publish_volume`, `controller_unpublish_volume`, `controller_expand_volume`, `controller_create_snapshot`, `controller_delete_snapshot`
+- Node: `node_stage_volume`, `node_unstage_volume`, `node_publish_volume`, `node_unpublish_volume`, `node_expand_volume`
+
+**Labels by operation** (for `_labeled` metric):
+
+| Operation | `disk_sku` | `caching_mode` | `zone` |
+|-----------|------------|----------------|--------|
+| `controller_create_volume` | ✓ | | ✓ |
+| `controller_modify_volume` | ✓ | | |
+| `controller_publish_volume` | | ✓ | |
+| `controller_expand_volume` | ✓ | | |
+
+> **Note:** Operations not listed above emit the labeled metric with empty strings for `disk_sku`, `caching_mode`, and `zone`.
+
+### CSI Operation Latency Metrics (via cloud-provider-azure)
 
 | Name | `request` | `source` | Description |
 |------|-----------|----------|-------------|
@@ -14,6 +41,11 @@ The metrics emitted by the Azure Disk CSI Driver fall broadly into two categorie
 | | `azuredisk_csi_driver_controller_delete_snapshot` | `disk.csi.azure.com` | `ControllerDeleteSnapshot` latency |
 | | `azuredisk_csi_driver_controller_publish_volume` | `disk.csi.azure.com` | `ControllerPublishVolume` latency |
 | | `azuredisk_csi_driver_controller_unpublish_volume` | `disk.csi.azure.com` | `ControllerUnpublishVolume` latency |
+
+### Azure Cloud API Metrics
+
+| Name | `request` | `source` | Description |
+|------|-----------|----------|-------------|
 | `cloudprovider_azure_api_request_duration_seconds` | | | Records the Azure Cloud operation metrics |
 | | `disks_create_or_update` | | `create_disk` latency |
 | | `disks_delete` | | `delete_disk` latency |
