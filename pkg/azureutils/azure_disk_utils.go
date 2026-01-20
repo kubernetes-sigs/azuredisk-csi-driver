@@ -144,7 +144,7 @@ func ValidateCachingModeForSKU(cachingMode v1.AzureDataDiskCachingMode, skuName 
 	return nil
 }
 
-// GetAttachDiskInitialDelay gttachDiskInitialDelay from attributes
+// GetAttachDiskInitialDelay attachDiskInitialDelay from attributes
 // return -1 if not found
 func GetAttachDiskInitialDelay(attributes map[string]string) int {
 	for k, v := range attributes {

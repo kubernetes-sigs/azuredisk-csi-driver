@@ -584,8 +584,8 @@ func (d *Driver) ControllerModifyVolume(ctx context.Context, req *csi.Controller
 
 	// Determine the effective SKU for validation (either the new one or the current one)
 	effectiveSKU := skuName
-	if effectiveSKU == "" && currentDisk != nil && currentDisk.SKU != nil && currentDisk.SKU.Name != nil {
-		effectiveSKU = *currentDisk.SKU.Name
+	if effectiveSKU == "" {
+		effectiveSKU = getDiskSKUName(currentDisk)
 	}
 
 	// Validate cachingMode compatibility with effective SKU
@@ -1549,6 +1549,14 @@ func getSnapshotSKUFromSnapshot(computeSnapshot *armcompute.Snapshot) (string, e
 		return "", status.Error(codes.NotFound, "Snapshot SKU property not found")
 	}
 	return string(*computeSnapshot.SKU.Name), nil
+}
+
+// getDiskSKUName safely extracts the SKU name from a disk, returning an empty SKU if the disk is nil or has no SKU
+func getDiskSKUName(disk *armcompute.Disk) armcompute.DiskStorageAccountTypes {
+	if disk != nil && disk.SKU != nil && disk.SKU.Name != nil {
+		return *disk.SKU.Name
+	}
+	return ""
 }
 
 // getDiskSizeInBytes retrieves the size of the disk and returns the size or if any error occurs
