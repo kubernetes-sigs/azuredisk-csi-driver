@@ -582,18 +582,16 @@ func (d *Driver) ControllerModifyVolume(ctx context.Context, req *csi.Controller
 		}
 	}
 
-	// Determine the target SKU (either the new one or the current one)
-	targetSKU := skuName
-	if targetSKU == "" && currentDisk != nil && currentDisk.SKU != nil && currentDisk.SKU.Name != nil {
-		targetSKU = *currentDisk.SKU.Name
+	// Determine the effective SKU for validation (either the new one or the current one)
+	effectiveSKU := skuName
+	if effectiveSKU == "" && currentDisk != nil && currentDisk.SKU != nil && currentDisk.SKU.Name != nil {
+		effectiveSKU = *currentDisk.SKU.Name
 	}
 
-	// Validate cachingMode compatibility with target SKU
-	if diskParams.CachingMode != "" && targetSKU != "" {
-		if targetSKU == armcompute.DiskStorageAccountTypesPremiumV2LRS || targetSKU == armcompute.DiskStorageAccountTypesUltraSSDLRS {
-			if !strings.EqualFold(string(diskParams.CachingMode), string(v1.AzureDataDiskCachingNone)) {
-				return nil, status.Errorf(codes.InvalidArgument, "cachingMode %s is not supported for %s, only None is supported", diskParams.CachingMode, targetSKU)
-			}
+	// Validate cachingMode compatibility with effective SKU
+	if diskParams.CachingMode != "" && effectiveSKU != "" {
+		if err := azureutils.ValidateCachingModeForSKU(diskParams.CachingMode, effectiveSKU); err != nil {
+			return nil, status.Errorf(codes.InvalidArgument, "%v", err)
 		}
 	}
 
