@@ -12,22 +12,11 @@ These metrics are native to the Azure Disk CSI Driver and provide detailed opera
 |-------------|------|--------|-------------|
 | `azuredisk_csi_driver_operations_total` | Counter | `operation`, `success` | Total number of CSI operations |
 | `azuredisk_csi_driver_operation_duration_seconds` | Histogram | `operation`, `success` | Duration of CSI operations in seconds |
-| `azuredisk_csi_driver_operation_duration_seconds_labeled` | Histogram | `operation`, `success`, `disk_sku`, `caching_mode`, `zone` | Duration of CSI operations with additional disk-specific labels |
+| `azuredisk_csi_driver_operation_duration_seconds_labeled` | Histogram | `operation`, `success`, `disk_sku` | Duration of CSI operations with additional disk-specific labels |
 
 **Operation values:**
 - Controller: `controller_create_volume`, `controller_delete_volume`, `controller_modify_volume`, `controller_publish_volume`, `controller_unpublish_volume`, `controller_expand_volume`, `controller_create_snapshot`, `controller_delete_snapshot`
 - Node: `node_stage_volume`, `node_unstage_volume`, `node_publish_volume`, `node_unpublish_volume`, `node_expand_volume`
-
-**Labels by operation** (for `_labeled` metric):
-
-| Operation | `disk_sku` | `caching_mode` | `zone` |
-|-----------|------------|----------------|--------|
-| `controller_create_volume` | ✓ | | ✓ |
-| `controller_modify_volume` | ✓ | | |
-| `controller_publish_volume` | | ✓ | |
-| `controller_expand_volume` | ✓ | | |
-
-> **Note:** Operations not listed above emit the labeled metric with empty strings for `disk_sku`, `caching_mode`, and `zone`.
 
 ### CSI Operation Latency Metrics (via cloud-provider-azure)
 
