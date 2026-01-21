@@ -1058,7 +1058,7 @@ func TestNodeExpandVolume(t *testing.T) {
 		WindowsError: status.Errorf(codes.NotFound, "error reading link for mount D:\\a\\azuredisk-csi-driver\\azuredisk-csi-driver\\pkg\\azuredisk\\target_test. target  err: readlink D:\\a\\azuredisk-csi-driver\\azuredisk-csi-driver\\pkg\\azuredisk\\target_test: The file or directory is not a reparse point."),
 	}
 	blockSizeErr := testutil.TestError{
-		DefaultError: status.Error(codes.FailedPrecondition, "NodeExpandVolume: block device size did not match requested size: rpc error: code = Internal desc = block volume at path test size check failed: current 0 GiB < requested 15 GiB"),
+		DefaultError: status.Error(codes.Unavailable, "NodeExpandVolume: block device size did not match requested size: rpc error: code = Internal desc = block volume at path test size check failed: current 0 GiB < requested 15 GiB"),
 		WindowsError: status.Errorf(codes.NotFound, "error reading link for mount D:\\a\\azuredisk-csi-driver\\azuredisk-csi-driver\\pkg\\azuredisk\\target_test. target  err: readlink D:\\a\\azuredisk-csi-driver\\azuredisk-csi-driver\\pkg\\azuredisk\\target_test: The file or directory is not a reparse point."),
 	}
 	resizeErr := testutil.TestError{
