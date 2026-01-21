@@ -156,17 +156,6 @@ func (d *Driver) startSKUMigrationMonitor(
 
 // CreateVolume provisions an azure disk
 func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest) (*csi.CreateVolumeResponse, error) {
-	var skuName armcompute.DiskStorageAccountTypes
-	var diskZone string
-	metricsRequest := "controller_create_volume"
-	csiMC := csiMetrics.NewCSIMetricContext(metricsRequest)
-	isOperationSucceeded := false
-	defer func() {
-		csiMC.ObserveWithLabels(isOperationSucceeded,
-			"disk_sku", string(skuName),
-			"zone", diskZone)
-	}()
-
 	if err := d.ValidateControllerServiceRequest(csi.ControllerServiceCapability_RPC_CREATE_DELETE_VOLUME); err != nil {
 		klog.Errorf("invalid create volume req: %v", req)
 		return nil, err
@@ -267,7 +256,7 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 	}
 
 	// normalize values
-	skuName, err = azureutils.NormalizeStorageAccountType(diskParams.AccountType, localCloud.Config.Cloud, localCloud.Config.DisableAzureStackCloud)
+	skuName, err := azureutils.NormalizeStorageAccountType(diskParams.AccountType, localCloud.Config.Cloud, localCloud.Config.DisableAzureStackCloud)
 	if err != nil {
 		return nil, status.Error(codes.InvalidArgument, err.Error())
 	}
@@ -294,7 +283,7 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 		return nil, status.Error(codes.InvalidArgument, err.Error())
 	}
 
-	diskZone = azureutils.PickAvailabilityZone(req.GetAccessibilityRequirements(), diskParams.Location, topologyKey)
+	diskZone := azureutils.PickAvailabilityZone(req.GetAccessibilityRequirements(), diskParams.Location, topologyKey)
 	if diskParams.Location == "" {
 		diskParams.Location = d.cloud.Location
 		region := azureutils.GetRegionFromAvailabilityZone(diskZone)
@@ -317,6 +306,7 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 		diskParams.Tags[azure.WriteAcceleratorEnabled] = consts.TrueValue
 	}
 	var sourceID, sourceType, sourceSKU string
+	metricsRequest := "controller_create_volume"
 	content := req.GetVolumeContentSource()
 	if content != nil {
 		if content.GetSnapshot() != nil {
@@ -390,6 +380,12 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 			metricsRequest = "controller_create_volume_from_volume"
 		}
 	}
+
+	csiMC := csiMetrics.NewCSIMetricContext(metricsRequest)
+	isOperationSucceeded := false
+	defer func() {
+		csiMC.ObserveWithLabels(isOperationSucceeded, "disk_sku", string(skuName))
+	}()
 
 	if strings.HasSuffix(strings.ToLower(string(skuName)), "zrs") {
 		klog.V(2).Infof("diskZone(%s) is reset as empty since disk(%s) is ZRS(%s)", diskZone, diskParams.DiskName, skuName)
@@ -543,15 +539,6 @@ func (d *Driver) ControllerGetVolume(context.Context, *csi.ControllerGetVolumeRe
 
 // ControllerModifyVolume modify volume
 func (d *Driver) ControllerModifyVolume(ctx context.Context, req *csi.ControllerModifyVolumeRequest) (*csi.ControllerModifyVolumeResponse, error) {
-	metricsRequest := "controller_modify_volume"
-	var skuName armcompute.DiskStorageAccountTypes
-	csiMC := csiMetrics.NewCSIMetricContext(metricsRequest)
-	isOperationSucceeded := false
-	defer func() {
-		csiMC.ObserveWithLabels(isOperationSucceeded,
-			"disk_sku", string(skuName))
-	}()
-
 	volumeID := req.GetVolumeId()
 	if len(volumeID) == 0 {
 		return nil, status.Error(codes.InvalidArgument, "Volume ID missing in the request")
@@ -573,13 +560,20 @@ func (d *Driver) ControllerModifyVolume(ctx context.Context, req *csi.Controller
 	}
 
 	// normalize values
-	skuName, err = azureutils.NormalizeStorageAccountType(diskParams.AccountType, d.cloud.Config.Cloud, d.cloud.Config.DisableAzureStackCloud)
+	skuName, err := azureutils.NormalizeStorageAccountType(diskParams.AccountType, d.cloud.Config.Cloud, d.cloud.Config.DisableAzureStackCloud)
 	if err != nil {
 		return nil, status.Error(codes.InvalidArgument, err.Error())
 	}
 	if diskParams.AccountType == "" {
 		skuName = ""
 	}
+
+	metricsRequest := "controller_modify_volume"
+	csiMC := csiMetrics.NewCSIMetricContext(metricsRequest)
+	isOperationSucceeded := false
+	defer func() {
+		csiMC.ObserveWithLabels(isOperationSucceeded, "disk_sku", string(skuName))
+	}()
 
 	// Check if this is a SKU migration
 	var fromSKU armcompute.DiskStorageAccountTypes
@@ -641,11 +635,9 @@ func (d *Driver) ControllerModifyVolume(ctx context.Context, req *csi.Controller
 func (d *Driver) ControllerPublishVolume(ctx context.Context, req *csi.ControllerPublishVolumeRequest) (*csi.ControllerPublishVolumeResponse, error) {
 	metricsRequest := "controller_publish_volume"
 	csiMC := csiMetrics.NewCSIMetricContext(metricsRequest)
-	var cachingMode armcompute.CachingTypes
 	isOperationSucceeded := false
 	defer func() {
-		csiMC.ObserveWithLabels(isOperationSucceeded,
-			"caching_mode", string(cachingMode))
+		csiMC.Observe(isOperationSucceeded)
 	}()
 
 	diskURI := req.GetVolumeId()
@@ -724,7 +716,7 @@ func (d *Driver) ControllerPublishVolume(ctx context.Context, req *csi.Controlle
 		if !strings.Contains(err.Error(), azureconsts.CannotFindDiskLUN) {
 			return nil, status.Errorf(codes.Internal, "could not get disk lun for volume %s: %v", diskURI, err)
 		}
-
+		var cachingMode armcompute.CachingTypes
 		if cachingMode, err = azureutils.GetCachingMode(volumeContext); err != nil {
 			return nil, status.Errorf(codes.Internal, "%v", err)
 		}

@@ -151,9 +151,7 @@ func TestCSIMetricContext_ObserveWithLabels(t *testing.T) {
 
 	// Test observation with labels
 	mc.ObserveWithLabels(true,
-		"disk_sku", "Premium_LRS",
-		"caching_mode", "ReadOnly",
-		"zone", "eastus-1")
+		"disk_sku", "Premium_LRS")
 
 	// Verify that both basic and labeled metrics were recorded
 	families, err := legacyregistry.DefaultGatherer.Gather()
@@ -183,9 +181,7 @@ func TestCSIMetricContext_ObserveWithLabels(t *testing.T) {
 					labelMap[label.GetName()] = label.GetValue()
 				}
 
-				if labelMap["disk_sku"] != "Premium_LRS" ||
-					labelMap["caching_mode"] != "ReadOnly" ||
-					labelMap["zone"] != "eastus-1" {
+				if labelMap["disk_sku"] != "Premium_LRS" {
 					t.Errorf("expected labeled metric with correct labels, got: %v", labelMap)
 				}
 			}
@@ -291,9 +287,7 @@ func BenchmarkCSIMetricContext_ObserveWithLabels(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		mc := NewCSIMetricContext("benchmark_test")
 		mc.ObserveWithLabels(true,
-			"disk_sku", "Premium_LRS",
-			"caching_mode", "ReadOnly",
-			"zone", "eastus-1")
+			"disk_sku", "Premium_LRS")
 	}
 }
 
