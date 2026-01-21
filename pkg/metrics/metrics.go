@@ -48,7 +48,7 @@ var (
 			Buckets:        []float64{0.1, 0.5, 1, 2.5, 5, 10, 15, 30, 60, 120, 300},
 			StabilityLevel: metrics.ALPHA,
 		},
-		[]string{"operation", "success", "disk_sku", "caching_mode", "zone"},
+		[]string{"operation", "success", "disk_sku"},
 	)
 
 	operationTotal = metrics.NewCounterVec(
@@ -108,15 +108,11 @@ func (mc *CSIMetricContext) Observe(success bool) {
 	// Record detailed metrics if labels are present
 	if len(mc.labels) > 0 {
 		diskSku := mc.labels["disk_sku"]
-		cachingMode := mc.labels["caching_mode"]
-		zone := mc.labels["zone"]
 
 		operationDurationWithLabels.WithLabelValues(
 			mc.operation,
 			successStr,
 			diskSku,
-			cachingMode,
-			zone,
 		).Observe(duration)
 	}
 }
