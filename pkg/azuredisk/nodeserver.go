@@ -579,7 +579,7 @@ func (d *Driver) NodeExpandVolume(_ context.Context, req *csi.NodeExpandVolumeRe
 
 	currentBlockSizeBytes, err := d.validateBlockDeviceSize(actualDevicePath, requestGiB)
 	if err != nil {
-		return nil, status.Errorf(codes.FailedPrecondition, "NodeExpandVolume: block device size did not match requested size: %v", err)
+		return nil, status.Errorf(codes.Unavailable, "NodeExpandVolume: block device size did not match requested size: %v", err)
 	}
 
 	klog.V(2).Infof("NodeExpandVolume: block device size verified (%d bytes >= %d GiB requested), proceeding with filesystem resize",
