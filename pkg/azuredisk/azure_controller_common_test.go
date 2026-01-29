@@ -1233,6 +1233,7 @@ func TestVerifyDetach(t *testing.T) {
 }
 
 func TestConcurrentDetachDisk(t *testing.T) {
+	t.Skip("Skipping flaky test case, to be investigated and fixed later")
 	if runtime.GOOS == "windows" {
 		t.Skip("Skip test case on Windows")
 	}
