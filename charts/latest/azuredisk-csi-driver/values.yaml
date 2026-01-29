@@ -206,7 +206,8 @@ driver:
 linux:
   enabled: true
   dsName: csi-azuredisk-node # daemonset name
-  kubelet: /var/lib/kubelet
+  kubeletDir: /var/lib/kubelet # kubelet root directory for plugins and registry
+  kubelet: /var/lib/kubelet/pods # restricted mountpoint directory for pod volumes (security)
   distro: debian # available values: debian, fedora
   enablePerfOptimization: true
   otelTracing:
