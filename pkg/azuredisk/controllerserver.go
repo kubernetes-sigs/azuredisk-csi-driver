@@ -39,6 +39,7 @@ import (
 	"k8s.io/klog/v2"
 	"k8s.io/utils/ptr"
 
+	storagev1 "k8s.io/api/storage/v1"
 	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
 	csiMetrics "sigs.k8s.io/azuredisk-csi-driver/pkg/metrics"
@@ -744,6 +745,15 @@ func (d *Driver) ControllerPublishVolume(ctx context.Context, req *csi.Controlle
 					klog.Warningf("%v", err)
 					return nil, err
 				}
+				hasVA, checkErr := d.hasVolumeAttachmentForDiskOnNode(ctx, string(derr.CurrentNode), diskURI)
+				if checkErr != nil {
+					return nil, status.Errorf(codes.Internal, "failed to check VolumeAttachments for volume %s on node %s: %v", diskURI, derr.CurrentNode, checkErr)
+				}
+				if hasVA {
+					err := status.Errorf(codes.FailedPrecondition, "volume %s still has VolumeAttachments on node %s, refusing dangling detach", diskURI, derr.CurrentNode)
+					klog.Warningf("%v", err)
+					return nil, err
+				}
 				klog.Warningf("volume %s is already attached to node %s, try detach first", diskURI, derr.CurrentNode)
 				if err = d.diskController.DetachDisk(ctx, diskName, diskURI, derr.CurrentNode); err != nil {
 					return nil, status.Errorf(codes.Internal, "Could not detach volume %s from node %s: %v", diskURI, derr.CurrentNode, err)
@@ -890,6 +900,49 @@ func (d *Driver) getOccupiedLunsFromNode(ctx context.Context, nodeName types.Nod
 		}
 	}
 	return occupiedLuns
+}
+
+// hasVolumeAttachmentForDiskOnNode checks if a VolumeAttachment exists for the given disk on the specified node.
+func (d *Driver) hasVolumeAttachmentForDiskOnNode(ctx context.Context, nodeName, diskURI string) (bool, error) {
+	kubeClient := d.cloud.KubeClient
+	if kubeClient == nil || kubeClient.StorageV1() == nil || kubeClient.StorageV1().VolumeAttachments() == nil {
+		return false, fmt.Errorf("kubeClient or kubeClient.StorageV1() or kubeClient.StorageV1().VolumeAttachments() is nil")
+	}
+	if kubeClient.CoreV1() == nil || kubeClient.CoreV1().PersistentVolumes() == nil {
+		return false, fmt.Errorf("kubeClient.CoreV1() or kubeClient.CoreV1().PersistentVolumes() is nil")
+	}
+
+	volumeAttachments, err := kubeClient.StorageV1().VolumeAttachments().List(ctx, metav1.ListOptions{
+		TimeoutSeconds: ptr.To(int64(volumeAttachmentListTimeoutSeconds)),
+	})
+	if err != nil {
+		return false, err
+	}
+
+	for _, va := range volumeAttachments.Items {
+		if va.Spec.Attacher != d.Name {
+			continue
+		}
+		// some clients such as fake clients may not honor the FieldSelector
+		if va.Spec.NodeName != nodeName {
+			continue
+		}
+		if va.Spec.Source.PersistentVolumeName != nil {
+			pvName := *va.Spec.Source.PersistentVolumeName
+			pv, err := kubeClient.CoreV1().PersistentVolumes().Get(ctx, pvName, metav1.GetOptions{})
+			if err != nil {
+				return false, err
+			}
+			if pv.Spec.CSI != nil && pv.Spec.CSI.Driver == d.Name &&
+				strings.EqualFold(pv.Spec.CSI.VolumeHandle, diskURI) {
+				return true, nil
+			}
+		}
+		if inlineVolumeSpecMatchesDisk(d.Name, diskURI, &va) {
+			return true, nil
+		}
+	}
+	return false, nil
 }
 
 // ControllerGetCapabilities returns the capabilities of the Controller plugin
@@ -1593,4 +1646,13 @@ func getDiskSizeInBytesFromSnapshot(computeSnapshot *armcompute.Snapshot) (int64
 		return 0, status.Error(codes.NotFound, "Snapshot size not found")
 	}
 	return *computeSnapshot.Properties.DiskSizeBytes, nil
+}
+
+func inlineVolumeSpecMatchesDisk(driverName, diskURI string, va *storagev1.VolumeAttachment) bool {
+	if va.Spec.Source.InlineVolumeSpec != nil && va.Spec.Source.InlineVolumeSpec.CSI != nil &&
+		strings.EqualFold(va.Spec.Source.InlineVolumeSpec.CSI.VolumeHandle, diskURI) &&
+		strings.EqualFold(va.Spec.Source.InlineVolumeSpec.CSI.Driver, driverName) {
+		return true
+	}
+	return false
 }

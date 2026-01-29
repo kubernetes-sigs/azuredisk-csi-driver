@@ -36,6 +36,7 @@ import (
 	"k8s.io/utils/ptr"
 
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
+	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/util"
 	"sigs.k8s.io/cloud-provider-azure/pkg/azclient"
 	azcache "sigs.k8s.io/cloud-provider-azure/pkg/cache"
@@ -372,7 +373,7 @@ func (c *controllerCommon) DetachDisk(ctx context.Context, diskName, diskURI str
 			// if host doesn't exist, no need to detach
 			klog.Warningf("azureDisk - failed to get azure instance id(%s), DetachDisk(%s) will assume disk is already detached",
 				nodeName, diskURI)
-			return nil
+			return c.waitForDiskManagedByTobeRemoved(ctx, diskURI)
 		}
 		klog.Warningf("failed to get azure instance id (%v)", err)
 		return fmt.Errorf("failed to get azure instance id for node %q: %w", nodeName, err)
@@ -449,7 +450,7 @@ func (c *controllerCommon) DetachDisk(ctx context.Context, diskName, diskURI str
 			// if host doesn't exist, no need to detach
 			klog.Warningf("azureDisk - got InstanceNotFoundError(%v), DetachDisk(%s) will assume disk is already detached",
 				err, diskURI)
-			return nil
+			return c.waitForDiskManagedByTobeRemoved(ctx, diskURI)
 		}
 
 		// if operation is preempted by a force operation on VM, check if the disk got detached before returning error
@@ -473,6 +474,12 @@ func (c *controllerCommon) DetachDisk(ctx context.Context, diskName, diskURI str
 	// return the detach result directly if the lun cannot be checked
 	if err != nil {
 		klog.Errorf("azureDisk - detach disk(%s) failed, err: %v", diskName, err)
+		return err
+	}
+
+	err = c.waitForDiskManagedByTobeRemoved(ctx, diskURI)
+	if err != nil {
+		klog.Errorf("azureDisk - waitForDiskManagedByTobeRemoved(%s) failed, err: %v", diskURI, err)
 		return err
 	}
 
@@ -738,6 +745,39 @@ func (c *controllerCommon) isMaxDataDiskCountExceeded(ctx context.Context, nodeN
 		return false
 	}
 	return true
+}
+
+// For cases where an instance is deleted, we assume the disk is detached, but it actually
+// takes a while for disk property to be updated. We do not want to presume such disks to be detached
+// without waiting for disk to be actually detached.
+func (c *controllerCommon) waitForDiskManagedByTobeRemoved(ctx context.Context, diskURI string) error {
+	subsID, resourceGroup, diskName, err := azureutils.GetInfoFromURI(diskURI)
+	if err != nil {
+		return err
+	}
+	klog.V(2).Infof("azureDisk - waitForDiskManagedByTobeRemoved: diskURI(%s)", diskURI)
+	var disk *armcompute.Disk
+	waitFunc := func(ctx context.Context) (bool, error) {
+		diskclient, err := c.clientFactory.GetDiskClientForSub(subsID)
+		if err != nil {
+			return false, fmt.Errorf("error making diskClient while verifying detach: %w", err)
+		}
+		disk, err = diskclient.Get(ctx, resourceGroup, diskName)
+		if err != nil {
+			return false, fmt.Errorf("error getting disk: %w", err)
+		}
+
+		if disk.ManagedBy == nil {
+			return true, nil
+		}
+
+		return false, nil
+	}
+	err = kwait.ExponentialBackoffWithContext(ctx, defaultBackOff, waitFunc)
+	if err != nil && disk != nil && disk.ManagedBy != nil {
+		klog.Errorf("error in - waitForDiskManagedByTobeRemoved, disk %s still has ManagedBy (VM resource ID) %s", diskURI, *disk.ManagedBy)
+	}
+	return err
 }
 
 func getValidCreationData(subscriptionID, resourceGroup string, options *ManagedDiskOptions) (armcompute.CreationData, error) {
