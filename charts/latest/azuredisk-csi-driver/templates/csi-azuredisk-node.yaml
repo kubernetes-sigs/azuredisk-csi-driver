@@ -96,7 +96,7 @@ spec:
             - name: ADDRESS
               value: /csi/csi.sock
             - name: DRIVER_REG_SOCK_PATH
-              value: {{ .Values.linux.kubeletDir }}/plugins/{{ .Values.driver.name }}/csi.sock
+              value: {{ .Values.linux.kubelet }}/plugins/{{ .Values.driver.name }}/csi.sock
           volumeMounts:
             - name: socket-dir
               mountPath: /csi
@@ -202,7 +202,7 @@ spec:
           volumeMounts:
             - mountPath: /csi
               name: socket-dir
-            - mountPath: {{ .Values.linux.kubelet }}
+            - mountPath: {{ .Values.linux.kubelet }}/pods
               mountPropagation: Bidirectional
               name: mountpoint-dir
             - mountPath: /etc/kubernetes/
@@ -226,15 +226,15 @@ spec:
           resources: {{- toYaml .Values.linux.resources.azuredisk | nindent 12 }}
       volumes:
         - hostPath:
-            path: {{ .Values.linux.kubeletDir }}/plugins/{{ .Values.driver.name }}
+            path: {{ .Values.linux.kubelet }}/plugins/{{ .Values.driver.name }}
             type: DirectoryOrCreate
           name: socket-dir
         - hostPath:
-            path: {{ .Values.linux.kubelet }}
+            path: {{ .Values.linux.kubelet }}/pods
             type: DirectoryOrCreate
           name: mountpoint-dir
         - hostPath:
-            path: {{ .Values.linux.kubeletDir }}/plugins_registry/
+            path: {{ .Values.linux.kubelet }}/plugins_registry/
             type: DirectoryOrCreate
           name: registration-dir
         - hostPath:
