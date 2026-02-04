@@ -19,6 +19,7 @@ package azuredisk
 import (
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -644,7 +645,16 @@ func (d *Driver) ensureMountPoint(target string) (bool, error) {
 
 	if !notMnt {
 		// testing original mount point, make sure the mount link is valid
-		_, err := os.ReadDir(target)
+		// Use ReadDir(1) instead of full os.ReadDir to avoid expensive directory listing
+		f, err := os.Open(target)
+		if err == nil {
+			defer f.Close()
+			_, err = f.ReadDir(1)
+			// EOF means empty directory, which is valid
+			if err == io.EOF {
+				err = nil
+			}
+		}
 		if err == nil {
 			klog.V(2).Infof("already mounted to target %s", target)
 			return !notMnt, nil
