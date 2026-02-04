@@ -32,6 +32,16 @@ declare -g -A PVCS_MIGRATION_INPROGRESS_MARKED_CACHE
 declare -A _UNIQUE_ZONES=()
 declare -g -a SNAPSHOTS_ARRAY
 
+# ---------- Batch Caches (optimization) ----------
+declare -g -A PVC_JSON_CACHE 2>/dev/null || true
+declare -g -A PV_JSON_CACHE 2>/dev/null || true
+declare -g ALL_PVCS_JSON=""           # Raw JSON of all PVCs with migration label
+declare -g ALL_PVS_JSON=""            # Raw JSON of all PVs
+declare -g -A PVC_JSON_CACHE=()       # ns/pvcname -> JSON
+declare -g -A PV_JSON_CACHE=()        # pvname -> JSON
+declare -g BATCH_CACHE_LOADED=false
+declare -g -A SC_JSON_CACHE=()
+
 # ----------- Common configurations -----------
 MIG_SUFFIX="${MIG_SUFFIX:-csi}"
 AUDIT_ENABLE="${AUDIT_ENABLE:-true}"
@@ -46,7 +56,15 @@ POLL_INTERVAL="${POLL_INTERVAL:-120}"
 WAIT_FOR_WORKLOAD="${WAIT_FOR_WORKLOAD:-true}"
 MIGRATION_FORCE_INPROGRESS_AFTER_MINUTES="${MIGRATION_FORCE_INPROGRESS_AFTER_MINUTES:-3}"
 ONE_SC_FOR_MULTIPLE_ZONES="${ONE_SC_FOR_MULTIPLE_ZONES:-true}"
-SINGLE_ZONE_USE_GENERIC_PV2_SC="${SINGLE_ZONE_USE_GENERIC_PV2_SC:-true}"
+# Default SINGLE_ZONE_USE_GENERIC_PV2_SC to false if MIGRATION_LABEL is non-default (batched runs),
+# otherwise true (single full run)
+if [[ -z "${SINGLE_ZONE_USE_GENERIC_PV2_SC:-}" ]]; then
+  if [[ "$MIGRATION_LABEL" != "disk.csi.azure.com/pv2migration=true" ]]; then
+    SINGLE_ZONE_USE_GENERIC_PV2_SC="false"
+  else
+    SINGLE_ZONE_USE_GENERIC_PV2_SC="true"
+  fi
+fi
 
 # In-place rollback keys
 ROLLBACK_PVC_YAML_ANN="${ROLLBACK_PVC_YAML_ANN:-disk.csi.azure.com/rollback-pvc-yaml}"
@@ -65,6 +83,7 @@ BIND_TIMEOUT_SECONDS="${BIND_TIMEOUT_SECONDS:-60}"
 MONITOR_TIMEOUT_MINUTES="${MONITOR_TIMEOUT_MINUTES:-300}"
 WORKLOAD_DETACH_TIMEOUT_MINUTES="${WORKLOAD_DETACH_TIMEOUT_MINUTES:-5}"
 EXIT_ON_WORKLOAD_DETACH_TIMEOUT="${EXIT_ON_WORKLOAD_DETACH_TIMEOUT:-false}"
+ROLLBACK_ON_TIMEOUT="${ROLLBACK_ON_TIMEOUT:-true}"
 
 # ---------- Kubectl retry configurations ----------
 KUBECTL_MAX_RETRIES="${KUBECTL_MAX_RETRIES:-5}"
@@ -218,6 +237,16 @@ name_snapshot(){ local pv="$1"; echo "ss-$(name_csi_pv "$pv")"; }
 name_pv2_pvc() { local pvc="$1"; echo "${pvc}-${MIG_SUFFIX}-pv2"; }
 name_pv1_sc()  { local sc="$1"; sc=$(get_srcsc_of_sc "$sc"); echo "${sc}-pv1"; }
 name_pv2_sc()  { local sc="$1"; sc=$(get_srcsc_of_sc "$sc"); echo "${sc}-pv2"; }
+
+# ---------- Array Utilities ----------
+# Helper: safe length (avoids accidental nounset trip if future refactor removes a declare)
+safe_array_len() {
+  # usage: safe_array_len arrayName
+  local name="$1"
+  declare -p "$name" &>/dev/null || { echo 0; return; }
+  # indirect expansion
+  eval "echo \${#${name}[@]}"
+}
 
 # ---------- Utilities ----------
 require_bins() {
@@ -524,24 +553,46 @@ get_sc_of_pvc() {
     return 0
   fi
 
-  sc=$(kcmd get pvc "$pvc" -n "$ns" -o jsonpath="{.metadata.annotations.${ZONE_SC_ANNOTATION_KEY//./\\.}}" 2>/dev/null || true)
-  if [[ -z $sc ]]; then
-    sc=$(kcmd get pvc "$pvc" -n "$ns" -o jsonpath='{.spec.storageClassName}' 2>/dev/null || true)
+  # Try to use batch cache first if available
+  local pvc_json sc
+  pvc_json=$(get_cached_pvc_json "$ns" "$pvc" 2>/dev/null || echo "")
+  if [[ -n "$pvc_json" ]]; then
+    sc=$(echo "$pvc_json" | jq -r --arg key "$ZONE_SC_ANNOTATION_KEY" '
+      .metadata.annotations[$key] // .spec.storageClassName // empty
+    ')
+  else
+    # Fallback to single API call if cache miss
+    local pvc_json_fallback
+    pvc_json_fallback=$(kcmd get pvc "$pvc" -n "$ns" -o json 2>/dev/null || echo "")
+    if [[ -n "$pvc_json_fallback" ]]; then
+      sc=$(echo "$pvc_json_fallback" | jq -r --arg key "$ZONE_SC_ANNOTATION_KEY" '
+        .metadata.annotations[$key] // .spec.storageClassName // empty
+      ')
+    fi
   fi
   PVC_SC_CACHE["$ns/$pvc"]="$sc"
   printf '%s' "$sc"
 }
 
 create_csi_pv_pvc() {
-  local pvc="$1" ns="$2" pv="$3" size="$4" mode="$5" sc="$6" diskURI="$7" inplace="${8:-false}"
+  local pvc="$1" ns="$2" pv="$3" size="$4" mode="$5" sc="$6" diskURI="$7" inplace="${8:-false}" fsType="${9:-}"
   local csi_pv csi_pvc
   local encoded_spec encoded_pv
   local pv_before
   local migration_label_exists=false
+  local src_pvc_json
 
-  # check if MIGRATION_LABEL_KEY exists on source pvc and its value is MIGRATION_LABEL_VALUE
-  if kcmd get pvc "$pvc" -n "$ns" -o json | jq -e --arg key "$MIGRATION_LABEL_KEY" --arg value "$MIGRATION_LABEL_VALUE" '.metadata.labels[$key]==$value' >/dev/null; then
-    migration_label_exists=true
+  # Use passed fsType, or fall back to StorageClass if not provided
+  if [[ -z "$fsType" ]]; then
+    fsType=$(kcmd get sc "$sc" -o jsonpath='{.parameters.fsType}' 2>/dev/null || true)
+  fi
+
+  # Use cached PVC JSON for migration label check
+  src_pvc_json=$(get_cached_pvc_json "$ns" "$pvc")
+  if [[ -n "$src_pvc_json" ]]; then
+    local lbl_val
+    lbl_val=$(echo "$src_pvc_json" | jq -r --arg key "$MIGRATION_LABEL_KEY" '.metadata.labels[$key] // empty')
+    [[ "$lbl_val" == "$MIGRATION_LABEL_VALUE" ]] && migration_label_exists=true
   fi
 
   csi_pv="$(name_csi_pv "$pv")"
@@ -549,9 +600,24 @@ create_csi_pv_pvc() {
   if $inplace; then
     csi_pvc="$pvc"
   fi
-  if kcmd get pvc "$csi_pvc" -n "$ns" >/dev/null 2>&1; then
-    kcmd get pvc "$csi_pvc" -n "$ns" -o json | jq -e --arg key "$CREATED_BY_LABEL_KEY" --arg tool "$MIGRATION_TOOL_ID" '.metadata.labels[$key]==$tool' >/dev/null \
-      && { info "Intermediate PVC $ns/$csi_pvc exists"; return; }
+
+  # Check if intermediate/target PVC already exists
+  local existing_pvc_json=""
+  if $inplace; then
+    # For inplace, we already have the source PVC cached (same as csi_pvc)
+    existing_pvc_json="$src_pvc_json"
+  else
+    # For non-inplace, query once for intermediate PVC
+    existing_pvc_json=$(kcmd get pvc "$csi_pvc" -n "$ns" -o json 2>/dev/null || true)
+  fi
+
+  if [[ -n "$existing_pvc_json" ]]; then
+    local created_by
+    created_by=$(echo "$existing_pvc_json" | jq -r --arg key "$CREATED_BY_LABEL_KEY" '.metadata.labels[$key] // empty')
+    if [[ "$created_by" == "$MIGRATION_TOOL_ID" ]]; then
+      info "Intermediate PVC $ns/$csi_pvc exists"
+      return
+    fi
     if ! $inplace; then
       warn "Intermediate PVC $ns/$csi_pvc exists but missing label"
       return
@@ -609,6 +675,7 @@ spec:
   csi:
     driver: disk.csi.azure.com
     volumeHandle: $diskURI
+$( [[ -n "$fsType" ]] && echo "    fsType: $fsType" )
     volumeAttributes:
       csi.storage.k8s.io/pv/name: $csi_pv
       csi.storage.k8s.io/pvc/name: $csi_pvc
@@ -648,21 +715,12 @@ EOF
     audit_add "PersistentVolumeClaim" "$csi_pvc" "$ns" "create" "kubectl delete pvc $csi_pvc -n $ns" "intermediate=true sc=$sc"
 
     if $inplace; then
-      # remove ROLLBACK_PVC_YAML_ANN annotation from pvc
-      kcmd annotate pvc "$csi_pvc" -n "$ns" "${ROLLBACK_PVC_YAML_ANN}-" --overwrite >/dev/null 2>&1 || true
-      kcmd annotate pvc "$csi_pvc" -n "$ns" "${ROLLBACK_ORIG_PV_ANN}-" --overwrite >/dev/null 2>&1 || true
+      # remove ROLLBACK annotations from pvc in single call
+      kcmd annotate pvc "$csi_pvc" -n "$ns" "${ROLLBACK_PVC_YAML_ANN}-" "${ROLLBACK_ORIG_PV_ANN}-" --overwrite >/dev/null 2>&1 || true
     fi
   fi
 
-  if wait_pvc_bound "$ns" "$csi_pvc" "$BIND_TIMEOUT_SECONDS"; then
-    ok "PVC $ns/$csi_pvc bound"
-    audit_add "PersistentVolumeClaim" "$csi_pvc" "$ns" "bound" "kubectl describe pvc $csi_pvc -n $ns" "csi=true"
-    return 0
-  fi
-
-  warn "Intermediate PVC $ns/$csi_pvc not bound within timeout (${BIND_TIMEOUT_SECONDS}s)"
-  audit_add "PersistentVolumeClaim" "$csi_pvc" "$ns" "bind-timeout" "kubectl describe pvc $csi_pvc -n $ns" "csi=true timeout=${BIND_TIMEOUT_SECONDS}s"
-  return 2
+  return 0
 }
 
 create_pvc_from_snapshot() {
@@ -679,15 +737,27 @@ create_pvc_from_snapshot() {
     inplace=true
   fi
 
-  # check if MIGRATION_LABEL_KEY exists on source pvc and its value is MIGRATION_LABEL_VALUE
-  if kcmd get pvc "$pvc" -n "$ns" -o json | jq -e --arg key "$MIGRATION_LABEL_KEY" --arg value "$MIGRATION_LABEL_VALUE" '.metadata.labels[$key]==$value' >/dev/null; then
-    migration_label_exists=true
+  # Fetch source PVC JSON once and reuse for label check and pv_before
+  local src_pvc_json
+  src_pvc_json=$(kcmd get pvc "$pvc" -n "$ns" -o json 2>/dev/null || true)
+  if [[ -n "$src_pvc_json" ]]; then
+    local lbl_val
+    lbl_val=$(echo "$src_pvc_json" | jq -r --arg key "$MIGRATION_LABEL_KEY" '.metadata.labels[$key] // empty')
+    [[ "$lbl_val" == "$MIGRATION_LABEL_VALUE" ]] && migration_label_exists=true
   fi
 
-  if kcmd get pvc "$destpvc" -n "$ns" >/dev/null 2>&1; then
-    kcmd get pvc "$destpvc" -n "$ns" -o json | jq -e --arg key "$CREATED_BY_LABEL_KEY" --arg tool "$MIGRATION_TOOL_ID" '.metadata.labels[$key]==$tool' >/dev/null \
-      && { info "PVC $ns/$destpvc exists"; return; }
-    if ! $inplace; then
+  # For inplace mode, dest PVC == source PVC, so skip conflict check (we'll delete it anyway)
+  if ! $inplace; then
+    if kcmd get pvc "$destpvc" -n "$ns" >/dev/null 2>&1; then
+      # Check if it was created by our tool (safe to reuse)
+      local dest_pvc_json
+      dest_pvc_json=$(kcmd get pvc "$destpvc" -n "$ns" -o json 2>/dev/null || true)
+      local created_by
+      created_by=$(echo "$dest_pvc_json" | jq -r --arg key "$CREATED_BY_LABEL_KEY" '.metadata.labels[$key] // empty')
+      if [[ "$created_by" == "$MIGRATION_TOOL_ID" ]]; then
+        info "PVC $ns/$destpvc exists (created by migration tool)"
+        return
+      fi
       warn "PVC $ns/$destpvc exists but missing label"
       return
     fi
@@ -696,9 +766,10 @@ create_pvc_from_snapshot() {
   encoded_spec=""
   encoded_pv=""
   pv_before=""
-  if [[ "$destpvc" == "$pvc" ]]; then
-    inplace=true
-    pv_before=$(get_pv_of_pvc "$ns" "$pvc")
+  if $inplace; then
+    # Use already-fetched cached PVC JSON for pv_before (avoid kubectl call)
+    pv_before=$(echo "$src_pvc_json" | jq -r '.spec.volumeName // empty')
+    [[ -z "$pv_before" ]] && pv_before=$(get_pv_of_pvc "$ns" "$pvc")  # fallback
 
     backup_pvc "$pvc" "$ns" || {
         warn "PVC (snapshot creation path) backup failed $ns/$pvc"
@@ -757,15 +828,7 @@ EOF
     audit_add "PersistentVolumeClaim" "$destpvc" "$ns" "create" "kubectl delete pvc $destpvc -n $ns" "sc=${sc} snapshot=${snapshot}"
   fi
 
-  if wait_pvc_bound "$ns" "$destpvc" "$BIND_TIMEOUT_SECONDS"; then
-    ok "PVC $ns/$destpvc bound"
-    audit_add "PersistentVolumeClaim" "$destpvc" "$ns" "bound" "kubectl describe pvc $destpvc -n $ns" "sc=${sc}"
-    return 0
-  fi
-
-  warn "PVC $ns/$destpvc not bound within timeout (${BIND_TIMEOUT_SECONDS}s)"
-  audit_add "PersistentVolumeClaim" "$destpvc" "$ns" "bind-timeout" "kubectl describe pvc $destpvc -n $ns" "sc=${sc} timeout=${BIND_TIMEOUT_SECONDS}s"
-  return 2
+  return 0 
 }
 
 # ---------- RBAC Check ----------
@@ -854,22 +917,61 @@ migration_rbac_check() {
   return 0
 }
 
+# Get cached StorageClass JSON
+get_cached_sc_json() {
+  local sc="$1"
+  local cached_val
+  eval "cached_val=\${SC_JSON_CACHE[\$sc]:-}"
+  if [[ -n "$cached_val" ]]; then
+    echo "$cached_val"
+  else
+    local json
+    json=$(kcmd get sc "$sc" -o json 2>/dev/null || echo "")
+    if [[ -n "$json" ]]; then
+      eval "SC_JSON_CACHE[\$sc]=\$json"
+    fi
+    echo "$json"
+  fi
+}
+
 # ------------- Helper Functions -------------
 check_premium_lrs() {
-  local pvc="$1" ns="$2" sc sku sat
-  sc=$(kcmd get pvc "$pvc" -n "$ns" -o jsonpath='{.spec.storageClassName}' 2>/dev/null || true)
+  local pvc="$1" ns="$2" sc sku sat pvc_json sc_json
+  
+  # Use cached PVC JSON
+  pvc_json=$(get_cached_pvc_json "$ns" "$pvc")
+  if [[ -n "$pvc_json" ]]; then
+    sc=$(echo "$pvc_json" | jq -r '.spec.storageClassName // empty')
+  else
+    sc=$(kcmd get pvc "$pvc" -n "$ns" -o jsonpath='{.spec.storageClassName}' 2>/dev/null || true)
+  fi
   [[ -z "$sc" ]] && return 1
-  sku=$(kcmd get sc "$sc" -o jsonpath='{.parameters.skuName}' 2>/dev/null || true)
-  sat=$(kcmd get sc "$sc" -o jsonpath='{.parameters.storageaccounttype}' 2>/dev/null || true)
+  
+  # Use cached SC JSON
+  sc_json=$(get_cached_sc_json "$sc")
+  if [[ -n "$sc_json" ]]; then
+    sku=$(echo "$sc_json" | jq -r '.parameters.skuName // empty')
+    sat=$(echo "$sc_json" | jq -r '.parameters.storageaccounttype // empty')
+  else
+    sku=$(kcmd get sc "$sc" -o jsonpath='{.parameters.skuName}' 2>/dev/null || true)
+    sat=$(kcmd get sc "$sc" -o jsonpath='{.parameters.storageaccounttype}' 2>/dev/null || true)
+  fi
   [[ -z "$sku" && -z "$sat" ]] && return 1
   { [[ -z "$sku" || "$sku" == "Premium_LRS" ]] && [[ -z "$sat" || "$sat" == "Premium_LRS" ]]; }
 }
 
 check_premiumv2_lrs() {
   local ns="$1" pvc="$2"
-  local val vac
-  vac="$(kcmd get pvc "$pvc" -n "$ns" -o jsonpath='{.spec.volumeAttributesClassName}' || true)"
-  if [[ ! -z "$vac" ]]; then
+  local val vac pvc_json
+  
+  # Use cached PVC JSON
+  pvc_json=$(get_cached_pvc_json "$ns" "$pvc")
+  if [[ -n "$pvc_json" ]]; then
+    vac=$(echo "$pvc_json" | jq -r '.spec.volumeAttributesClassName // empty')
+  else
+    vac="$(kcmd get pvc "$pvc" -n "$ns" -o jsonpath='{.spec.volumeAttributesClassName}' || true)"
+  fi
+  if [[ -n "$vac" ]]; then
     val="$(kcmd get volumeattributesclass.storage.k8s.io "$vac" -o jsonpath='{.parameters.skuName}')"
     [[ "$val" == "PremiumV2_LRS" ]] && return 0
   fi
@@ -948,6 +1050,7 @@ apply_storage_class_variant() {
       | map(select(.key != "skuName"
                    and .key != "storageaccounttype"
                    and .key != "cachingMode"
+                   and .key != "cachingmode"
                    and (.key | test("encryption";"i") | not)))
       | map("  " + .key + ": \"" + (.value|tostring) + "\"")
       | join("\n")
@@ -1040,9 +1143,13 @@ EOF
 create_variants_for_sources() {
   local sources=("$@")
   for sc in "${sources[@]}"; do
-    local sku sat
-    sku=$(kcmd get sc "$sc" -o jsonpath='{.parameters.skuName}' 2>/dev/null || true)
-    sat=$(kcmd get sc "$sc" -o jsonpath='{.parameters.storageaccounttype}' 2>/dev/null || true)
+    # Fetch SC JSON once and extract both parameters
+    local sc_json sku sat
+    sc_json=$(kcmd get sc "$sc" -o json 2>/dev/null || true)
+    if [[ -n "$sc_json" ]]; then
+      sku=$(echo "$sc_json" | jq -r '.parameters.skuName // empty')
+      sat=$(echo "$sc_json" | jq -r '.parameters.storageaccounttype // empty')
+    fi
     if [[ -n "$sku" || -n "$sat" ]]; then
       if ! { [[ -z "$sku" || "$sku" == "Premium_LRS" ]] && [[ -z "$sat" || "$sat" == "Premium_LRS" ]]; }; then
         warn "Source SC $sc not Premium_LRS (skuName=$sku storageaccounttype=$sat) – skipping variants"
@@ -1118,20 +1225,24 @@ detect_generic_pv2_mode() {
         for pvc_entry in "${MIG_PVCS[@]}"; do
             local _ns="${pvc_entry%%|*}"
             local _name="${pvc_entry##*|}"
-            local _pv="$(kcmd get pvc "$_name" -n "$_ns" -o jsonpath='{.spec.volumeName}' 2>/dev/null || true)"
+            
+            # Use cached PVC data
+            local _pvc_json=$(get_cached_pvc_json "$_ns" "$_name")
+            local _pv=$(echo "$_pvc_json" | jq -r '.spec.volumeName // empty')
             [[ -z "$_pv" ]] && continue
             local _zone="$(extract_zone_from_pv_nodeaffinity "$_pv" || true)"
             if [[ -n "$_zone" ]]; then
                 _UNIQUE_ZONES["$_zone"]=1
             fi
 
-            is_created_by_migrator=$(is_pvc_in_migration "$_name" "$_ns")
+            # Use cached migration check functions
+            is_created_by_migrator=$(is_pvc_in_migration_cached "$_name" "$_ns")
             if [[ $is_created_by_migrator == "true" ]]; then
                info "skipping detect_generic_pv2_mode as the migration have already kicked in"
                return
             fi
 
-            is_migration=$(is_pvc_created_by_migration_tool "$_name" "$_ns")
+            is_migration=$(is_pvc_created_by_migration_tool_cached "$_name" "$_ns")
             if [[ $is_migration == "true" ]]; then
                 info "skipping detect_generic_pv2_mode as there are pvcs created by migration tool"
                 return
@@ -1147,12 +1258,136 @@ detect_generic_pv2_mode() {
     fi
 }
 
-populate_pvcs() {
+# Load all PVCs and PVs JSON into memory for fast lookups
+load_batch_cache() {
+  [[ "$BATCH_CACHE_LOADED" == "true" ]] && return 0
+  
+  info "Loading batch cache for PVCs and PVs..."
+ 
+  # Fetch all PVCs with migration label as JSON
   if [[ -z "$NAMESPACE" ]]; then
-    mapfile -t MIG_PVCS < <(kcmd get pvc --all-namespaces -l "$MIGRATION_LABEL" -o jsonpath='{range .items[*]}{.metadata.namespace}{"|"}{.metadata.name}{"\n"}{end}')
+    ALL_PVCS_JSON=$(kcmd get pvc --all-namespaces -l "$MIGRATION_LABEL" -o json 2>/dev/null || echo '{"items":[]}')
   else
-    mapfile -t MIG_PVCS < <(kcmd get pvc -n "$NAMESPACE" -l "$MIGRATION_LABEL" -o jsonpath='{range .items[*]}{.metadata.namespace}{"|"}{.metadata.name}{"\n"}{end}')
+    ALL_PVCS_JSON=$(kcmd get pvc -n "$NAMESPACE" -l "$MIGRATION_LABEL" -o json 2>/dev/null || echo '{"items":[]}')
   fi
+  
+  # Fetch all PVs as JSON
+  ALL_PVS_JSON=$(kcmd get pv -o json 2>/dev/null || echo '{"items":[]}')
+  
+  # Populate PVC cache (key format: ns_pvcname)
+  local pvc_count=0
+  local ns pvc_name cache_key
+  while IFS= read -r line; do
+    [[ -z "$line" ]] && continue
+    ns=$(echo "$line" | jq -r '.metadata.namespace')
+    pvc_name=$(echo "$line" | jq -r '.metadata.name')
+    cache_key="${ns}_${pvc_name}"
+    eval "PVC_JSON_CACHE[\$cache_key]=\$line"
+    pvc_count=$((pvc_count + 1))
+  done < <(echo "$ALL_PVCS_JSON" | jq -c '.items[]')
+  
+  # Populate PV cache
+  local pv_count=0
+  local pv_name
+  while IFS= read -r line; do
+    [[ -z "$line" ]] && continue
+    pv_name=$(echo "$line" | jq -r '.metadata.name')
+    eval "PV_JSON_CACHE[\$pv_name]=\$line"
+    pv_count=$((pv_count + 1))
+  done < <(echo "$ALL_PVS_JSON" | jq -c '.items[]')
+  
+  BATCH_CACHE_LOADED=true
+  info "Batch cache loaded: $pvc_count PVCs, $pv_count PVs"
+}
+
+# Get cached PVC JSON (falls back to kubectl if not cached)
+get_cached_pvc_json() {
+  local ns="$1" pvc="$2"
+  local cache_key="${ns}_${pvc}"
+  local cached_val
+  eval "cached_val=\${PVC_JSON_CACHE[\$cache_key]:-}"
+  if [[ -n "$cached_val" ]]; then
+    echo "$cached_val"
+  else
+    local json
+    json=$(kcmd get pvc "$pvc" -n "$ns" -o json 2>/dev/null || echo "")
+    if [[ -n "$json" ]]; then
+      eval "PVC_JSON_CACHE[\$cache_key]=\$json"
+    fi
+    echo "$json"
+  fi
+}
+
+# Get cached PV JSON (falls back to kubectl if not cached)
+get_cached_pv_json() {
+  local pv="$1"
+  local cached_val
+  eval "cached_val=\${PV_JSON_CACHE[\$pv]:-}"
+  if [[ -n "$cached_val" ]]; then
+    echo "$cached_val"
+  else
+    local json
+    json=$(kcmd get pv "$pv" -o json 2>/dev/null || echo "")
+    if [[ -n "$json" ]]; then
+      eval "PV_JSON_CACHE[\$pv]=\$json"
+    fi
+    echo "$json"
+  fi
+}
+
+# Invalidate PVC cache entry (call after mutating a PVC)
+invalidate_pvc_cache() {
+  local ns="$1" pvc="$2"
+  local cache_key="${ns}_${pvc}"
+  eval "unset 'PVC_JSON_CACHE[\$cache_key]'"
+}
+
+# Get PV name from cached PVC
+get_pv_from_cached_pvc() {
+  local ns="$1" pvc="$2"
+  local pvc_json
+  pvc_json=$(get_cached_pvc_json "$ns" "$pvc")
+  [[ -z "$pvc_json" ]] && return 1
+  echo "$pvc_json" | jq -r '.spec.volumeName // empty'
+}
+
+# Check if PVC is created by migration tool (using cache)
+is_pvc_created_by_migration_tool_cached() {
+  local pvc="$1" ns="$2"
+  local pvc_json
+  pvc_json=$(get_cached_pvc_json "$ns" "$pvc")
+  [[ -z "$pvc_json" ]] && { echo "false"; return; }
+  local createdby
+  createdby=$(echo "$pvc_json" | jq -r --arg key "$CREATED_BY_LABEL_KEY" '.metadata.labels[$key] // empty')
+  if [[ "$createdby" == "$MIGRATION_TOOL_ID" ]]; then
+    echo "true"
+  else
+    echo "false"
+  fi
+}
+
+# Check if PVC is in migration (using cache)
+is_pvc_in_migration_cached() {
+  local pvc="$1" ns="$2"
+  local pvc_json
+  pvc_json=$(get_cached_pvc_json "$ns" "$pvc")
+  [[ -z "$pvc_json" ]] && { echo "false"; return; }
+  local inprog
+  inprog=$(echo "$pvc_json" | jq -r --arg key "$MIGRATION_INPROGRESS_LABEL_KEY" '.metadata.labels[$key] // empty')
+  if [[ "$inprog" == "true" ]]; then
+    echo "true"
+  else
+    echo "false"
+  fi
+}
+
+populate_pvcs() {
+  # Load batch cache first
+  load_batch_cache
+  
+  # Extract PVC list from cached JSON
+  mapfile -t MIG_PVCS < <(echo "$ALL_PVCS_JSON" | jq -r '.items[] | "\(.metadata.namespace)|\(.metadata.name)"')
+  
   total_found=${#MIG_PVCS[@]}
   if (( total_found == 0 )); then
     warn "No PVCs found with label $MIGRATION_LABEL"
@@ -1164,17 +1399,25 @@ populate_pvcs() {
     MIG_PVCS=("${MIG_PVCS[@]:0:MAX_PVCS}")
   fi
 
-  # Size filtering (< MAX_PVC_CAPACITY_GIB)
+  # Size filtering using cached data (< MAX_PVC_CAPACITY_GIB)
   local filtered=() skipped_large=0
   for entry in "${MIG_PVCS[@]}"; do
     local ns="${entry%%|*}" pvc="${entry##*|}"
-    local pv size gi
-    pv=$(kcmd get pvc "$pvc" -n "$ns" -o jsonpath='{.spec.volumeName}' 2>/dev/null || true)
+    local pv size gi pvc_json pv_json
+    
+    # Use cached PVC JSON
+    pvc_json=$(get_cached_pvc_json "$ns" "$pvc")
+    pv=$(echo "$pvc_json" | jq -r '.spec.volumeName // empty')
+    
     if [[ -z "$pv" ]]; then
       warn "Skipping $ns/$pvc (not bound, no PV yet)"
       continue
     fi
-    size=$(kcmd get pv "$pv" -o jsonpath='{.spec.capacity.storage}' 2>/dev/null || true)
+    
+    # Use cached PV JSON
+    pv_json=$(get_cached_pv_json "$pv")
+    size=$(echo "$pv_json" | jq -r '.spec.capacity.storage // empty')
+    
     gi=$(size_to_gi_ceiling "$size")
     if (( gi >= MAX_PVC_CAPACITY_GIB )); then
       warn "Skipping $ns/$pvc size=$size (~${gi}Gi) >= threshold ${MAX_PVC_CAPACITY_GIB}Gi"
@@ -1196,9 +1439,20 @@ populate_pvcs() {
 
 create_unique_storage_classes() {
   for entry in "${MIG_PVCS[@]}"; do
+    local sc
     ns="${entry%%|*}" pvc="${entry##*|}"
     # if $pvc has ZONE_SC_ANNOTATION_KEY annotation, use it otherwise use .spec.storageClassName
-    sc=$(get_sc_of_pvc "$pvc" "$ns")
+    pvc_json=$(get_cached_pvc_json "$ns" "$pvc")
+    if [[ -n "$pvc_json" ]]; then
+      sc=$(echo "$pvc_json" | jq -r --arg key "$ZONE_SC_ANNOTATION_KEY" '
+        .metadata.annotations[$key] // .spec.storageClassName // empty
+      ')
+      if [[ -z "$sc" ]]; then
+        sc=$(echo "$pvc_json" | jq -r '.spec.storageClassName // empty')
+      fi
+    else
+      sc=$(kcmd get pvc "$pvc" -n "$ns" -o jsonpath='{.spec.storageClassName}' 2>/dev/null || true)
+    fi
     [[ -n "$sc" ]] && SC_SET["$sc"]=1
   done
   SOURCE_SCS=("${!SC_SET[@]}")
@@ -1262,28 +1516,51 @@ attrclass_feature_gate_confirm() {
 run_prerequisites_checks() {
   info "Running migration pre-requisites validation..."
   (( ${#MIG_PVCS[@]} > 50 )) && PREREQ_ISSUES+=("Selected PVC count (${#MIG_PVCS[@]}) > recommended batch (50)")
+  
+  # Ensure batch cache is loaded for optimized lookups
+  load_batch_cache
+  
   declare -A _SC_JSON_CACHE
   for ENTRY in "${MIG_PVCS[@]}"; do
-    local ns="${ENTRY%%|*}" pvc="${ENTRY##*|}" pv sc size zone sc_json
-    pv=$(kcmd get pvc "$pvc" -n "$ns" -o jsonpath='{.spec.volumeName}' 2>/dev/null || true)
+    local ns="${ENTRY%%|*}" pvc="${ENTRY##*|}" pv sc size sc_json pvc_json pv_json
+    
+    # Use cached PVC JSON
+    pvc_json=$(get_cached_pvc_json "$ns" "$pvc")
+    if [[ -z "$pvc_json" ]]; then
+      PREREQ_ISSUES+=("PVC/$ns/$pvc not found")
+      continue
+    fi
+    
+    pv=$(echo "$pvc_json" | jq -r '.spec.volumeName // empty')
     [[ -z "$pv" ]] && { PREREQ_ISSUES+=("PVC/$ns/$pvc not bound"); continue; }
-    sc=$(get_sc_of_pvc "$pvc" "$ns")
-    size=$(kcmd get pv "$pv" -o jsonpath='{.spec.capacity.storage}' 2>/dev/null || true)
+    
+    # Get SC from cached PVC (check annotation first, then spec)
+    sc=$(echo "$pvc_json" | jq -r --arg key "$ZONE_SC_ANNOTATION_KEY" '
+      .metadata.annotations[$key] // .spec.storageClassName // empty
+    ')
+    
+    # Use cached PV JSON
+    pv_json=$(get_cached_pv_json "$pv")
+    if [[ -z "$pv_json" ]]; then
+      PREREQ_ISSUES+=("PV/$pv not found")
+      continue
+    fi
+    
+    size=$(echo "$pv_json" | jq -r '.spec.capacity.storage // empty')
     [[ -z "$sc" ]] && PREREQ_ISSUES+=("PVC/$ns/$pvc missing storageClassName")
     [[ -z "$size" ]] && PREREQ_ISSUES+=("PV/$pv capacity missing")
+    
     if [[ -n "$sc" ]]; then
       if [[ -z "${_SC_JSON_CACHE[$sc]:-}" ]]; then
         _SC_JSON_CACHE[$sc]=$(kcmd get sc "$sc" -o json 2>/dev/null || echo "")
       fi
       sc_json="${_SC_JSON_CACHE[$sc]}"
       if [[ -n "$sc_json" ]]; then
-        local cachingMode enableBursting diskEncryptionType logicalSector perfProfile
-        cachingMode=$(echo "$sc_json" | jq -r '.parameters.cachingMode // empty')
+        local enableBursting diskEncryptionType logicalSector perfProfile
         enableBursting=$(echo "$sc_json" | jq -r '.parameters.enableBursting // empty')
         diskEncryptionType=$(echo "$sc_json" | jq -r '.parameters.diskEncryptionType // empty')
         logicalSector=$(echo "$sc_json" | jq -r '.parameters.LogicalSectorSize // empty')
         perfProfile=$(echo "$sc_json" | jq -r '.parameters.perfProfile // empty')
-        [[ -n "$cachingMode" && "${cachingMode,,}" != "none" ]] && PREREQ_ISSUES+=("SC/$sc cachingMode=$cachingMode (must be none)")
         [[ -n "$enableBursting" && "${enableBursting,,}" != "false" ]] && PREREQ_ISSUES+=("SC/$sc enableBursting=$enableBursting")
         [[ "$diskEncryptionType" == "EncryptionAtRestWithPlatformAndCustomerKeys" ]] && PREREQ_ISSUES+=("SC/$sc double encryption unsupported")
         [[ -n "$logicalSector" && "$logicalSector" != "512" ]] && PREREQ_ISSUES+=("SC/$sc LogicalSectorSize=$logicalSector (expected 512)")
@@ -1292,16 +1569,122 @@ run_prerequisites_checks() {
         PREREQ_ISSUES+=("SC/$sc not retrievable")
       fi
     fi
-    local intree
-    intree=$(kcmd get pv "$pv" -o jsonpath='{.spec.azureDisk.diskURI}' 2>/dev/null || true)
+    
+    # Check provisioning type from cached PV JSON
+    local intree drv
+    intree=$(echo "$pv_json" | jq -r '.spec.azureDisk.diskURI // empty')
     if [[ -z "$intree" ]]; then
-      local drv
-      drv=$(kcmd get pv "$pv" -o jsonpath='{.spec.csi.driver}' 2>/dev/null || true)
+      drv=$(echo "$pv_json" | jq -r '.spec.csi.driver // empty')
       [[ "$drv" != "disk.csi.azure.com" ]] && PREREQ_ISSUES+=("PV/$pv unknown provisioning type")
     fi
   done
   attrclass_feature_gate_confirm
   info "NOTE: PremiumV2 quota not auto-checked."
+}
+
+# Optimized conflict detection using batch cache
+# Supports all modes: dual, inplace, attrclass
+# Usage: ensure_no_foreign_conflicts
+ensure_no_foreign_conflicts() {
+  info "Checking for pre-existing conflicting objects not created by this tool..."
+  
+  # Ensure batch cache is loaded
+  load_batch_cache
+  
+  # Check VolumeSnapshotClass ownership (common to all modes)
+  if kcmd get volumesnapshotclass "$SNAPSHOT_CLASS" >/dev/null 2>&1; then
+    if ! kcmd get volumesnapshotclass "$SNAPSHOT_CLASS" -o json | jq -e \
+         --arg k "$CREATED_BY_LABEL_KEY" --arg v "$MIGRATION_TOOL_ID" \
+         '.metadata.labels[$k]==$v' >/dev/null; then
+      CONFLICT_ISSUES+=("VolumeSnapshotClass/$SNAPSHOT_CLASS (missing label)")
+    fi
+  fi
+  
+  # VolumeAttributesClass ownership check (attrclass mode only)
+  if [[ "$MODE" == "attrclass" && -n "${ATTR_CLASS_NAME:-}" ]]; then
+    if kcmd get volumeattributesclass "${ATTR_CLASS_NAME}" >/dev/null 2>&1; then
+      if ! kcmd get volumeattributesclass "${ATTR_CLASS_NAME}" -o json | jq -e \
+          --arg k "$CREATED_BY_LABEL_KEY" --arg v "$MIGRATION_TOOL_ID" '.metadata.labels[$k]==$v' >/dev/null; then
+        CONFLICT_ISSUES+=("VolumeAttributesClass/${ATTR_CLASS_NAME} (exists without label ${CREATED_BY_LABEL_KEY}=${MIGRATION_TOOL_ID})")
+      fi
+    fi
+  fi
+  
+  for ENTRY in "${MIG_PVCS[@]}"; do
+    local ns="${ENTRY%%|*}" pvc="${ENTRY##*|}"
+    local pv pv_json pvc_json diskuri snap int_pvc int_pv pv2_pvc
+    
+    # Use cached PVC JSON
+    pvc_json=$(get_cached_pvc_json "$ns" "$pvc")
+    [[ -z "$pvc_json" ]] && continue
+    
+    pv=$(echo "$pvc_json" | jq -r '.spec.volumeName // empty')
+    [[ -z "$pv" ]] && continue
+    
+    # Use cached PV JSON
+    pv_json=$(get_cached_pv_json "$pv")
+    
+    # Mode-specific checks
+    case "$MODE" in
+      dual)
+        # Check pv2 PVC
+        pv2_pvc="$(name_pv2_pvc "$pvc")"
+        if kcmd get pvc "$pv2_pvc" -n "$ns" >/dev/null 2>&1; then
+          if ! kcmd get pvc "$pv2_pvc" -n "$ns" -o json | jq -e \
+               --arg k "$CREATED_BY_LABEL_KEY" --arg v "$MIGRATION_TOOL_ID" \
+               '.metadata.labels[$k]==$v' >/dev/null; then
+            CONFLICT_ISSUES+=("PVC/$ns/$pv2_pvc (pv2) missing label")
+          fi
+        fi
+        
+        # Check intermediate PVC/PV for in-tree volumes
+        diskuri=$(echo "$pv_json" | jq -r '.spec.azureDisk.diskURI // empty')
+        if [[ -n "$diskuri" ]]; then
+          int_pvc="$(name_csi_pvc "$pvc")"
+          int_pv="$(name_csi_pv "$pv")"
+          if kcmd get pvc "$int_pvc" -n "$ns" >/dev/null 2>&1; then
+            kcmd get pvc "$int_pvc" -n "$ns" -o json | jq -e \
+               --arg k "$CREATED_BY_LABEL_KEY" --arg v "$MIGRATION_TOOL_ID" \
+               '.metadata.labels[$k]==$v' >/dev/null || \
+               CONFLICT_ISSUES+=("PVC/$ns/$int_pvc (intermediate) missing label")
+          fi
+          if kcmd get pv "$int_pv" >/dev/null 2>&1; then
+            kcmd get pv "$int_pv" -o json | jq -e \
+               --arg k "$CREATED_BY_LABEL_KEY" --arg v "$MIGRATION_TOOL_ID" \
+               '.metadata.labels[$k]==$v' >/dev/null || \
+               CONFLICT_ISSUES+=("PV/$int_pv (intermediate) missing label")
+          fi
+        fi
+        ;;
+      attrclass)
+        # Check volumeAttributesClassName conflict
+        local current_attr
+        current_attr=$(echo "$pvc_json" | jq -r '.spec.volumeAttributesClassName // empty')
+        if [[ -n "$current_attr" && "$current_attr" != "${ATTR_CLASS_NAME:-}" ]]; then
+          CONFLICT_ISSUES+=("PVC/${ns}/${pvc} has volumeAttributesClassName=${current_attr} (expected empty or ${ATTR_CLASS_NAME:-})")
+        fi
+        ;;
+      inplace)
+        # inplace mode: only snapshot check (done below)
+        ;;
+    esac
+    
+    # Check snapshot ownership (common to all modes)
+    snap="$(name_snapshot "$pv")"
+    if kcmd get volumesnapshot "$snap" -n "$ns" >/dev/null 2>&1; then
+      kcmd get volumesnapshot "$snap" -n "$ns" -o json | jq -e \
+         --arg k "$CREATED_BY_LABEL_KEY" --arg v "$MIGRATION_TOOL_ID" \
+         '.metadata.labels[$k]==$v' >/dev/null || \
+         CONFLICT_ISSUES+=("VolumeSnapshot/$ns/$snap missing label")
+    fi
+  done
+  
+  if (( $(safe_array_len CONFLICT_ISSUES) > 0 )); then
+    err "Conflict check failed ($(safe_array_len CONFLICT_ISSUES) items)."
+    printf '  - %s\n' "${CONFLICT_ISSUES[@]}"
+    exit 1
+  fi
+  ok "No conflicting pre-existing objects detected."
 }
 
 # ensure_volume_snapshot <namespace> <source_pvc> <snapshot_name>
@@ -1321,13 +1704,19 @@ ensure_volume_snapshot() {
   local recreate_on_stale="${SNAPSHOT_RECREATE_ON_STALE:-false}"
 
   local exists=false stale=false recreated=false reasons=()
-  if kcmd get volumesnapshot "$snap" -n "$ns" >/dev/null 2>&1; then
+  local snap_json
+  snap_json=$(kcmd get volumesnapshot "$snap" -n "$ns" -o json 2>/dev/null || echo "")
+  if [[ -n "$snap_json" ]]; then
     exists=true
-    # Gather current snapshot metadata
+    # Extract all needed fields from single JSON fetch
     local prev_rv creation_ts creation_epoch now_epoch current_rv
-    prev_rv=$(kcmd get volumesnapshot "$snap" -n "$ns" -o jsonpath='{.metadata.annotations.disk\.csi\.azure\.com/source-pvc-rv}' 2>/dev/null || true)
-    creation_ts=$(kcmd get volumesnapshot "$snap" -n "$ns" -o jsonpath='{.metadata.creationTimestamp}' 2>/dev/null || true)
-    current_rv=$(kcmd get pvc "$source_pvc" -n "$ns" -o jsonpath='{.metadata.resourceVersion}' 2>/dev/null || true)
+    prev_rv=$(echo "$snap_json" | jq -r '.metadata.annotations["disk.csi.azure.com/source-pvc-rv"] // empty')
+    creation_ts=$(echo "$snap_json" | jq -r '.metadata.creationTimestamp // empty')
+    
+    # Get current PVC resourceVersion from cache or kubectl
+    local pvc_json
+    pvc_json=$(get_cached_pvc_json "$ns" "$source_pvc")
+    current_rv=$(echo "$pvc_json" | jq -r '.metadata.resourceVersion // empty')
 
     if [[ -n "$creation_ts" && $max_age -gt 0 ]]; then
       creation_epoch=$(date -d "$creation_ts" +%s 2>/dev/null || echo 0)
@@ -1354,8 +1743,9 @@ ensure_volume_snapshot() {
     fi
 
     if [[ "$exists" == "true" && "$stale" == "false" ]]; then
+      # Use already-fetched snap_json for ready check
       local ready
-      ready=$(kcmd get volumesnapshot "$snap" -n "$ns" -o jsonpath='{.status.readyToUse}' 2>/dev/null || true)
+      ready=$(echo "$snap_json" | jq -r '.status.readyToUse // empty')
       if [[ "$ready" == "true" ]]; then
         info "Snapshot $ns/$snap ready (reused)"
         return 0
@@ -1366,8 +1756,12 @@ ensure_volume_snapshot() {
 
   if [[ "$exists" == "false" ]]; then
     info "Creating snapshot $ns/$snap from $source_pvc"
+    # Use cached PVC JSON for source_rv (already fetched above or fetch now)
     local source_rv
-    source_rv=$(kcmd get pvc "$source_pvc" -n "$ns" -o jsonpath='{.metadata.resourceVersion}' 2>/dev/null || true)
+    if [[ -z "${pvc_json:-}" ]]; then
+      pvc_json=$(get_cached_pvc_json "$ns" "$source_pvc")
+    fi
+    source_rv=$(echo "$pvc_json" | jq -r '.metadata.resourceVersion // empty')
     if ! kapply_retry <<EOF
 apiVersion: snapshot.storage.k8s.io/v1
 kind: VolumeSnapshot
@@ -1398,7 +1792,7 @@ EOF
 
 # --- Snapshot routines ---
 create_snapshot() {
-  local snap=$1 source_pvc="$2" ns="$3" pv="$4"
+  local snap=$1 source_pvc="$2" ns="$3"
   set +e
   ensure_volume_snapshot "$ns" "$source_pvc" "$snap"
   rc=$?
