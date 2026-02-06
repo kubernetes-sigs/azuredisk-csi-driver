@@ -1312,6 +1312,94 @@ func TestControllerModifyVolume(t *testing.T) {
 			multipleMigrationsToRecover:             true,
 			simulateMigrationCompletionAfterRestart: true,
 		},
+		{
+			desc: "success modify cachingMode to ReadOnly",
+			req: &csi.ControllerModifyVolumeRequest{
+				VolumeId: testVolumeID,
+				MutableParameters: map[string]string{
+					consts.CachingModeField: "ReadOnly",
+				},
+			},
+			oldSKU:                 to.Ptr(armcompute.DiskStorageAccountTypesPremiumLRS),
+			expectedResp:           &csi.ControllerModifyVolumeResponse{},
+			expectMigrationStarted: false,
+		},
+		{
+			desc: "success modify cachingMode to None",
+			req: &csi.ControllerModifyVolumeRequest{
+				VolumeId: testVolumeID,
+				MutableParameters: map[string]string{
+					consts.CachingModeField: "None",
+				},
+			},
+			oldSKU:                 to.Ptr(armcompute.DiskStorageAccountTypesStandardLRS),
+			expectedResp:           &csi.ControllerModifyVolumeResponse{},
+			expectMigrationStarted: false,
+		},
+		{
+			desc: "fail modify cachingMode with invalid value",
+			req: &csi.ControllerModifyVolumeRequest{
+				VolumeId: testVolumeID,
+				MutableParameters: map[string]string{
+					consts.CachingModeField: "InvalidMode",
+				},
+			},
+			expectedResp:           nil,
+			expectedErrCode:        codes.InvalidArgument,
+			expectMigrationStarted: false,
+		},
+		{
+			desc: "fail modify cachingMode for PremiumV2_LRS with non-None value",
+			req: &csi.ControllerModifyVolumeRequest{
+				VolumeId: testVolumeID,
+				MutableParameters: map[string]string{
+					consts.CachingModeField: "ReadOnly",
+				},
+			},
+			oldSKU:                 to.Ptr(armcompute.DiskStorageAccountTypesPremiumV2LRS),
+			expectedResp:           nil,
+			expectedErrCode:        codes.InvalidArgument,
+			expectMigrationStarted: false,
+		},
+		{
+			desc: "success modify cachingMode to None for PremiumV2_LRS",
+			req: &csi.ControllerModifyVolumeRequest{
+				VolumeId: testVolumeID,
+				MutableParameters: map[string]string{
+					consts.CachingModeField: "None",
+				},
+			},
+			oldSKU:                 to.Ptr(armcompute.DiskStorageAccountTypesPremiumV2LRS),
+			expectedResp:           &csi.ControllerModifyVolumeResponse{},
+			expectMigrationStarted: false,
+		},
+		{
+			desc: "success modify cachingMode and SKU together",
+			req: &csi.ControllerModifyVolumeRequest{
+				VolumeId: testVolumeID,
+				MutableParameters: map[string]string{
+					consts.CachingModeField: "ReadOnly",
+					consts.SkuNameField:     string(armcompute.DiskStorageAccountTypesPremiumLRS),
+				},
+			},
+			oldSKU:                 to.Ptr(armcompute.DiskStorageAccountTypesStandardLRS),
+			expectedResp:           &csi.ControllerModifyVolumeResponse{},
+			expectMigrationStarted: false,
+		},
+		{
+			desc: "fail modify cachingMode when changing to PremiumV2_LRS with non-None caching",
+			req: &csi.ControllerModifyVolumeRequest{
+				VolumeId: testVolumeID,
+				MutableParameters: map[string]string{
+					consts.CachingModeField: "ReadOnly",
+					consts.SkuNameField:     string(armcompute.DiskStorageAccountTypesPremiumV2LRS),
+				},
+			},
+			oldSKU:                 to.Ptr(armcompute.DiskStorageAccountTypesPremiumLRS),
+			expectedResp:           nil,
+			expectedErrCode:        codes.InvalidArgument,
+			expectMigrationStarted: false,
+		},
 	}
 
 	for _, test := range tests {
