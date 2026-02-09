@@ -709,7 +709,7 @@ EOF
   then
     audit_add "PersistentVolume" "$csi_pv" "" "create-failed" "N/A" "intermediate=true sourceDiskURI=$diskURI reason=applyFailure"
     audit_add "PersistentVolumeClaim" "$csi_pvc" "$ns" "create-failed" "N/A" "intermediate=true sc=$sc reason=applyFailure"
-    return
+    return 1
   else
     audit_add "PersistentVolume" "$csi_pv" "" "create" "kubectl delete pv $csi_pv" "intermediate=true sourceDiskURI=$diskURI"
     audit_add "PersistentVolumeClaim" "$csi_pvc" "$ns" "create" "kubectl delete pvc $csi_pvc -n $ns" "intermediate=true sc=$sc"
@@ -820,12 +820,11 @@ spec:
     name: $snapshot
 EOF
   then
-    audit_add "PersistentVolume" "$destpvc" "" "create-failed" "N/A" "intermediate=true reason=applyFailure"
     audit_add "PersistentVolumeClaim" "$destpvc" "$ns" "create-failed" "N/A" "inplace=$inplace sc=$sc reason=applyFailure"
     return 1
   else
     audit_add "PersistentVolumeClaim" "$destpvc" "$ns" "create" "kubectl delete pvc $destpvc -n $ns" "inplace=$inplace sc=${sc} snapshot=${snapshot}"
-    audit_add "PersistentVolumeClaim" "$destpvc" "$ns" "create" "kubectl delete pvc $destpvc -n $ns" "sc=${sc} snapshot=${snapshot}"
+    invalidate_pvc_cache "$ns" "$destpvc"
   fi
 
   return 0 
@@ -920,15 +919,14 @@ migration_rbac_check() {
 # Get cached StorageClass JSON
 get_cached_sc_json() {
   local sc="$1"
-  local cached_val
-  eval "cached_val=\${SC_JSON_CACHE[\$sc]:-}"
+  local cached_val="${SC_JSON_CACHE[$sc]:-}"
   if [[ -n "$cached_val" ]]; then
     echo "$cached_val"
   else
     local json
     json=$(kcmd get sc "$sc" -o json 2>/dev/null || echo "")
     if [[ -n "$json" ]]; then
-      eval "SC_JSON_CACHE[\$sc]=\$json"
+      SC_JSON_CACHE["$sc"]="$json"
     fi
     echo "$json"
   fi
@@ -1047,10 +1045,7 @@ apply_storage_class_variant() {
   params_filtered=$(echo "$params_json" | jq -r '
       .parameters
       | to_entries
-      | map(select(.key != "skuName"
-                   and .key != "storageaccounttype"
-                   and .key != "cachingMode"
-                   and .key != "cachingmode"
+      | map(select((.key | test("^(skuName|storageaccounttype|cachingMode)$";"i") | not)
                    and (.key | test("encryption";"i") | not)))
       | map("  " + .key + ": \"" + (.value|tostring) + "\"")
       | join("\n")
@@ -1271,28 +1266,41 @@ load_batch_cache() {
     ALL_PVCS_JSON=$(kcmd get pvc -n "$NAMESPACE" -l "$MIGRATION_LABEL" -o json 2>/dev/null || echo '{"items":[]}')
   fi
   
-  # Fetch all PVs as JSON
-  ALL_PVS_JSON=$(kcmd get pv -o json 2>/dev/null || echo '{"items":[]}')
-  
-  # Populate PVC cache (key format: ns_pvcname)
+  # Populate PVC cache and collect PV names referenced by selected PVCs
   local pvc_count=0
-  local ns pvc_name cache_key
+  local ns pvc_name cache_key line
+  local -a _pv_names=()
+  local -A _seen_pv_names=()
+  local _pv_name_from_pvc
   while IFS= read -r line; do
     [[ -z "$line" ]] && continue
     ns=$(echo "$line" | jq -r '.metadata.namespace')
     pvc_name=$(echo "$line" | jq -r '.metadata.name')
     cache_key="${ns}_${pvc_name}"
-    eval "PVC_JSON_CACHE[\$cache_key]=\$line"
+    PVC_JSON_CACHE["$cache_key"]="$line"
     pvc_count=$((pvc_count + 1))
+    # Collect PV name if present
+    _pv_name_from_pvc=$(echo "$line" | jq -r '.spec.volumeName // empty')
+    if [[ -n "$_pv_name_from_pvc" && -z "${_seen_pv_names[$_pv_name_from_pvc]:-}" ]]; then
+      _pv_names+=("$_pv_name_from_pvc")
+      _seen_pv_names["$_pv_name_from_pvc"]=1
+    fi
   done < <(echo "$ALL_PVCS_JSON" | jq -c '.items[]')
   
-  # Populate PV cache
+  # Fetch only PVs referenced by the selected PVCs as JSON
   local pv_count=0
   local pv_name
+  if (( ${#_pv_names[@]} > 0 )); then
+    ALL_PVS_JSON=$(kcmd get pv "${_pv_names[@]}" -o json 2>/dev/null || echo '{"items":[]}')
+  else
+    ALL_PVS_JSON='{"items":[]}'
+  fi
+  
+  # Populate PV cache
   while IFS= read -r line; do
     [[ -z "$line" ]] && continue
     pv_name=$(echo "$line" | jq -r '.metadata.name')
-    eval "PV_JSON_CACHE[\$pv_name]=\$line"
+    PV_JSON_CACHE["$pv_name"]="$line"
     pv_count=$((pv_count + 1))
   done < <(echo "$ALL_PVS_JSON" | jq -c '.items[]')
   
@@ -1304,15 +1312,14 @@ load_batch_cache() {
 get_cached_pvc_json() {
   local ns="$1" pvc="$2"
   local cache_key="${ns}_${pvc}"
-  local cached_val
-  eval "cached_val=\${PVC_JSON_CACHE[\$cache_key]:-}"
+  local cached_val="${PVC_JSON_CACHE[$cache_key]:-}"
   if [[ -n "$cached_val" ]]; then
     echo "$cached_val"
   else
     local json
     json=$(kcmd get pvc "$pvc" -n "$ns" -o json 2>/dev/null || echo "")
     if [[ -n "$json" ]]; then
-      eval "PVC_JSON_CACHE[\$cache_key]=\$json"
+      PVC_JSON_CACHE["$cache_key"]="$json"
     fi
     echo "$json"
   fi
@@ -1321,15 +1328,14 @@ get_cached_pvc_json() {
 # Get cached PV JSON (falls back to kubectl if not cached)
 get_cached_pv_json() {
   local pv="$1"
-  local cached_val
-  eval "cached_val=\${PV_JSON_CACHE[\$pv]:-}"
+  local cached_val="${PV_JSON_CACHE[$pv]:-}"
   if [[ -n "$cached_val" ]]; then
     echo "$cached_val"
   else
     local json
     json=$(kcmd get pv "$pv" -o json 2>/dev/null || echo "")
     if [[ -n "$json" ]]; then
-      eval "PV_JSON_CACHE[\$pv]=\$json"
+      PV_JSON_CACHE["$pv"]="$json"
     fi
     echo "$json"
   fi
@@ -1339,7 +1345,7 @@ get_cached_pv_json() {
 invalidate_pvc_cache() {
   local ns="$1" pvc="$2"
   local cache_key="${ns}_${pvc}"
-  eval "unset 'PVC_JSON_CACHE[\$cache_key]'"
+  unset 'PVC_JSON_CACHE[$cache_key]'
 }
 
 # Get PV name from cached PVC

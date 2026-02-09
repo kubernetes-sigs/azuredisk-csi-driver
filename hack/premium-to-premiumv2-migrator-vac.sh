@@ -155,6 +155,9 @@ for ENTRY in "${MIG_PVCS[@]}"; do
   
   # Use cached PVC JSON for label check and PV lookup
   pvc_json=$(get_cached_pvc_json "$pvc_ns" "$pvc")
+  if [[ -z "$pvc_json" ]]; then
+    warn "PVC $pvc_ns/$pvc not yet available; skip"; continue
+  fi
   lbl=$(echo "$pvc_json" | jq -r --arg key "$MIGRATION_DONE_LABEL_KEY" '.metadata.labels[$key] // empty')
   [[ "$lbl" == "$MIGRATION_DONE_LABEL_VALUE" ]] && { info "Already migrated $pvc_ns/$pvc"; continue; }
 

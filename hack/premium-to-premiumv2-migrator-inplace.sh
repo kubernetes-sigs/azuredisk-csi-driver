@@ -26,6 +26,7 @@ declare -a MIG_PVCS
 declare -a PREREQ_ISSUES
 declare -a CONFLICT_ISSUES
 declare -a ROLLBACK_FAILURES
+declare -a PV2_BIND_TIMEOUTS
 declare -a NON_DETACHED_PVCS        # PVCs skipped because workload still attached
 declare -A NON_DETACHED_SET         # membership map ns|pvc -> 1
 
@@ -34,6 +35,7 @@ MIG_PVCS=()
 PREREQ_ISSUES=()
 CONFLICT_ISSUES=()
 ROLLBACK_FAILURES=()
+PV2_BIND_TIMEOUTS=()
 NON_DETACHED_PVCS=()
 NON_DETACHED_SET=()
 
@@ -186,6 +188,9 @@ for ENTRY in "${MIG_PVCS[@]}"; do
 
   # Use cached PVC JSON for label check and PV lookup
   pvc_json=$(get_cached_pvc_json "$pvc_ns" "$pvc")
+  if [[ -z "$pvc_json" ]]; then
+    warn "PVC $pvc_ns/$pvc not yet available"; continue
+  fi
   DONE_LABEL=$(echo "$pvc_json" | jq -r --arg key "$MIGRATION_DONE_LABEL_KEY" '.metadata.labels[$key] // empty')
   [[ "$DONE_LABEL" == "$MIGRATION_DONE_LABEL_VALUE" ]] && { info "Already migrated $pvc_ns/$pvc"; continue; }
 
@@ -222,7 +227,7 @@ for ENTRY in "${MIG_PVCS[@]}"; do
     # note: we dont set inplace=true because the main migration loop will do that in create_pvc_from_snapshot
     create_csi_pv_pvc "$pvc" "$pvc_ns" "$pv" "$size" "$mode" "${scpv1}" "$diskuri" false "$fstype" || { warn "Failed to create CSI PV/PVC for $pvc_ns/$pvc"; continue; }
     snapshot_source_pvc="$(name_csi_pvc "$pvc")"
-    INTERMEDIATE_PVCS+=("${pvc_ns}|${pvc}")
+    INTERMEDIATE_PVCS+=("${pvc_ns}|${snapshot_source_pvc}")
   else
     [[ "$csi_driver" != "disk.csi.azure.com" ]] && { warn "Unknown PV driver for $pv"; continue; }
     scpv2="$(name_pv2_sc "$sc")"
@@ -250,7 +255,7 @@ done
 
 for ENTRY in "${PVC_SNAPSHOTS[@]}"; do
   IFS='|' read -r pvc_ns snapshot pvc snapshot_source_pvc <<< "$ENTRY"
-  create_snapshot "$snapshot" "$snapshot_source_pvc" "$pvc_ns" || { warn "Snapshot failed $pvc_ns/$pvc"; continue; }
+  create_snapshot "$snapshot" "$snapshot_source_pvc" "$pvc_ns" || { warn "Snapshot failed $pvc_ns/$snapshot_source_pvc"; continue; }
 done
 
 wait_for_snapshots_ready
@@ -268,7 +273,6 @@ for ENTRY in "${SOURCE_SNAPSHOTS[@]}"; do
   pv_json=$(get_cached_pv_json "$pv")
   mode=$(echo "$pv_json" | jq -r '.spec.volumeMode // "Filesystem"')
   size=$(echo "$pv_json" | jq -r '.spec.capacity.storage // empty')
-  diskuri=$(echo "$pv_json" | jq -r '.spec.azureDisk.diskURI // empty')
   sc=$(get_sc_of_pvc "$pvc" "$pvc_ns")
   scpv2="$(name_pv2_sc "$sc")"
 
@@ -295,6 +299,10 @@ done
 SOURCE_SNAPSHOTS=("${PVC_SNAPSHOTS[@]}")
 for ENTRY in "${SOURCE_SNAPSHOTS[@]}"; do
   IFS='|' read -r pvc_ns snapshot pvc snapshot_source_pvc <<< "$ENTRY"
+
+  # Get storage class of the source PVC from cached JSON for accurate auditing
+  pvc_json=$(get_cached_pvc_json "$pvc_ns" "$pvc")
+  sc=$(echo "$pvc_json" | jq -r '.spec.storageClassName // empty')
 
   if wait_pvc_bound "$pvc_ns" "$pvc" "$BIND_TIMEOUT_SECONDS"; then
     ok "PVC $pvc_ns/$pvc bound"
@@ -399,6 +407,12 @@ done
 # ------------- Summary & Audit -------------
 echo
 info "Summary:"
+if (( ${#PV2_BIND_TIMEOUTS[@]} > 0 )); then
+  echo
+  warn "pv2 PVC bind timeouts:"
+  printf '  - %s\n' "${PV2_BIND_TIMEOUTS[@]}"
+fi
+
 if (( ${#ROLLBACK_FAILURES[@]} > 0 )); then
   echo
   warn "Rollback failures:"

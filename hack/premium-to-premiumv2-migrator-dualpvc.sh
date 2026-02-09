@@ -119,6 +119,9 @@ for ENTRY in "${MIG_PVCS[@]}"; do
 
   # Use cached PVC JSON for label check and PV lookup
   pvc_json=$(get_cached_pvc_json "$pvc_ns" "$pvc")
+  if [[ -z "$pvc_json" ]]; then
+    warn "PVC $pvc_ns/$pvc not yet available"; continue
+  fi
   DONE_LABEL=$(echo "$pvc_json" | jq -r --arg key "$MIGRATION_DONE_LABEL_KEY" '.metadata.labels[$key] // empty')
   [[ "$DONE_LABEL" == "$MIGRATION_DONE_LABEL_VALUE" ]] && { info "Already migrated $pvc_ns/$pvc"; continue; }
 
@@ -151,7 +154,7 @@ for ENTRY in "${MIG_PVCS[@]}"; do
   if [[ -n "$diskuri" ]]; then
     if [[ -z "$sc" || -z "$size" ]]; then warn "Missing sc/size for in-tree $pvc_ns/$pvc"; continue; fi
     scpv1="$(name_pv1_sc "$sc")"
-    create_csi_pv_pvc "$pvc" "$pvc_ns" "$pv" "$size" "$mode" "${scpv1}" "$diskuri" false "$fstype"
+    create_csi_pv_pvc "$pvc" "$pvc_ns" "$pv" "$size" "$mode" "${scpv1}" "$diskuri" false "$fstype" || { warn "Failed to create CSI PV/PVC for $pvc_ns/$pvc"; continue; }
     snapshot_source_pvc="$(name_csi_pvc "$pvc")"
     INTERMEDIATE_PVCS+=("${pvc_ns}|${snapshot_source_pvc}")
   else
@@ -206,8 +209,7 @@ for ENTRY in "${SOURCE_SNAPSHOTS[@]}"; do
   run_without_errexit create_pvc_from_snapshot "$pvc" "$pvc_ns" "$pv" "$size" "$mode" "$scpv2" "$pv2_pvc" "$snapshot"
   case "$LAST_RUN_WITHOUT_ERREXIT_RC" in
     0) ;; # success
-    1) PV2_CREATE_FAILURES+=("${pvc_ns}/${pvc}") ;;
-    2) PV2_BIND_TIMEOUTS+=("${pvc_ns}/${pvc}") ;;
+    *) PV2_CREATE_FAILURES+=("${pvc_ns}/${pvc}") ;;
   esac
 done
 
@@ -215,6 +217,10 @@ SOURCE_SNAPSHOTS=("${PVC_SNAPSHOTS[@]}")
 for ENTRY in "${SOURCE_SNAPSHOTS[@]}"; do
   IFS='|' read -r pvc_ns snapshot pvc snapshot_source_pvc <<< "$ENTRY"
   pv2_pvc="$(name_pv2_pvc "$pvc")"
+
+  # Get storage class of the source PVC from cached JSON for accurate auditing
+  pvc_json=$(get_cached_pvc_json "$pvc_ns" "$pv2_pvc")
+  sc=$(echo "$pvc_json" | jq -r '.spec.storageClassName // empty')
 
   if wait_pvc_bound "$pvc_ns" "$pv2_pvc" "$BIND_TIMEOUT_SECONDS"; then
     ok "PVC $pvc_ns/$pv2_pvc bound"
@@ -224,7 +230,7 @@ for ENTRY in "${SOURCE_SNAPSHOTS[@]}"; do
 
   warn "PVC $pvc_ns/$pv2_pvc not bound within timeout (${BIND_TIMEOUT_SECONDS}s)"
   audit_add "PersistentVolumeClaim" "$pv2_pvc" "$pvc_ns" "bind-timeout" "kubectl describe pvc $pv2_pvc -n $pvc_ns" "sc=${sc} timeout=${BIND_TIMEOUT_SECONDS}s"
-  PV2_BIND_TIMEOUTS+=("${pvc_ns}/${pvc}")
+  PV2_BIND_TIMEOUTS+=("${pvc_ns}/${pv2_pvc}")
 done
 
 # ------------- Monitoring Loop -------------
@@ -252,6 +258,10 @@ while true; do
 
     # Fetch pv2 PVC JSON once per iteration
     pv2_pvc_json=$(kcmd get pvc "$pv2_pvc" -n "$pvc_ns" -o json 2>/dev/null || true)
+    if [[ -z "$pv2_pvc_json" ]]; then
+      info "pv2 PVC $pvc_ns/$pv2_pvc not yet available"; ALL_DONE=false
+      continue
+    fi
     STATUS=$(echo "$pv2_pvc_json" | jq -r '.status.phase // empty')
     [[ "$STATUS" != "Bound" ]] && ALL_DONE=false
     reason=$(extract_event_reason "$pvc_ns" "$pv2_pvc")

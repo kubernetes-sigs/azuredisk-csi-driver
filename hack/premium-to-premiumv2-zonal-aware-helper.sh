@@ -158,6 +158,17 @@ determine_zone_for_pvc() {
     
     # Use cached PVC data
     pvc_json=$(get_cached_pvc_json "$pvc_ns" "$pvc_name")
+    if [[ -z "$pvc_json" ]]; then
+      warn "Failed to get PVC $pvc_ns/$pvc_name"
+      return 3
+    fi
+    
+    # Validate that pvc_json is valid JSON before parsing with jq
+    if ! echo "$pvc_json" | jq -e . >/dev/null 2>&1; then
+      warn "PVC $pvc_ns/$pvc_name returned invalid JSON"
+      return 3
+    fi
+    
     sc_name=$(echo "$pvc_json" | jq -r '.spec.storageClassName // empty')
     pv_name=$(echo "$pvc_json" | jq -r '.spec.volumeName // empty')
     
