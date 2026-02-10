@@ -142,8 +142,12 @@ func (d *Driver) NodeStageVolume(ctx context.Context, req *csi.NodeStageVolumeRe
 	var lun string
 	// Check if this volume is using the QAD path.
 	// If yes, increment the qad-counter and make an HTTP request to the QAD wireserver endpoint.
-	if pv, isUsingQAD, err := d.isUsingQADPath(ctx, volumeID); isUsingQAD && err == nil {
-		blobUrl := pv.Annotations[consts.BlobURLAnnotation]
+	pv, isUsingQAD, err := d.isUsingQADPath(ctx, volumeID)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "NodeStageVolume: failed to determine if volume %s is using QAD path: %v", volumeID, err)
+	}
+	if isUsingQAD {
+		blobURL := pv.Annotations[consts.BlobURLAnnotation]
 		qadCounterVal, err := incrementQADCounterAnnotation(d.kubeClient, pv)
 		if err != nil {
 			klog.Errorf("NodeStageVolume: failed to increment qad-counter for volume %s: %v", volumeID, err)
@@ -152,7 +156,7 @@ func (d *Driver) NodeStageVolume(ctx context.Context, req *csi.NodeStageVolumeRe
 		klog.V(2).Infof("NodeStageVolume: volume %s is using QAD path, making POST call to wireserver with qad-counter %d", volumeID, qadCounterVal)
 
 		attachTimer := time.Now()
-		attachResponse, err := attachOrDetachDisk(ctx, *d.httpClient, volumeID, d.cloud.AADClientID, blobUrl, qadCounterVal, "ATTACH")
+		attachResponse, err := attachOrDetachDisk(ctx, *d.httpClient, volumeID, d.cloud.AADClientID, blobURL, qadCounterVal, "ATTACH")
 
 		if err != nil {
 			klog.Errorf("NodeStageVolume: failed to make POST call to wireserver for volume %s: %v", volumeID, err)
