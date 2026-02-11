@@ -78,51 +78,8 @@ info "Max PVCs: $MAX_PVCS  MIG_SUFFIX=$MIG_SUFFIX  WAIT_FOR_WORKLOAD=$WAIT_FOR_W
 ensure_snapshot_class   # from common lib
 ensure_volume_attributes_class
 
-# --- Conflict / prerequisite logic reused only here (kept local) ---
-ensure_no_foreign_conflicts() {
-  info "Checking for pre-existing conflicting objects not created by this tool..."
-  if kcmd get volumesnapshotclass "$SNAPSHOT_CLASS" >/dev/null 2>&1; then
-    if ! kcmd get volumesnapshotclass "$SNAPSHOT_CLASS" -o json | jq -e \
-         --arg k "$CREATED_BY_LABEL_KEY" --arg v "$MIGRATION_TOOL_ID" \
-         '.metadata.labels[$k]==$v' >/dev/null; then
-      CONFLICT_ISSUES+=("VolumeSnapshotClass/$SNAPSHOT_CLASS (missing label)")
-    fi
-  fi
-
-  # VolumeAttributesClass ownership check
-  if kcmd get volumeattributesclass "${ATTR_CLASS_NAME}" >/dev/null 2>&1; then
-    if ! kcmd get volumeattributesclass "${ATTR_CLASS_NAME}" -o json | jq -e \
-        --arg k "$CREATED_BY_LABEL_KEY" --arg v "$MIGRATION_TOOL_ID" '.metadata.labels[$k]==$v' >/dev/null; then
-      CONFLICT_ISSUES+=("VolumeAttributesClass/${ATTR_CLASS_NAME} (exists without label ${CREATED_BY_LABEL_KEY}=${MIGRATION_TOOL_ID})")
-    fi
-  fi
-
-  for ENTRY in "${MIG_PVCS[@]}"; do
-    local ns="${ENTRY%%|*}" pvc="${ENTRY##*|}"
-    local pv snap
-    pv=$(kcmd get pvc "$pvc" -n "$ns" -o jsonpath='{.spec.volumeName}' 2>/dev/null || true)
-    [[ -z "$pv" ]] && continue
-    snap="$(name_snapshot "$pv")"
-    if kcmd get volumesnapshot "$snap" -n "$ns" >/dev/null 2>&1; then
-      kcmd get volumesnapshot "$snap" -n "$ns" -o json | jq -e \
-         --arg k "$CREATED_BY_LABEL_KEY" --arg v "$MIGRATION_TOOL_ID" \
-         '.metadata.labels[$k]==$v' >/dev/null || \
-         CONFLICT_ISSUES+=("VolumeSnapshot/$ns/$snap missing label")
-    fi
-    local current_attr
-    current_attr=$(kcmd get pvc "$pvc" -n "$ns" -o jsonpath='{.spec.volumeAttributesClassName}' 2>/dev/null || true)
-    if [[ -n "$current_attr" && "$current_attr" != "$ATTR_CLASS_NAME" ]]; then
-      CONFLICT_ISSUES+=("PVC/${ns}/${pvc} has volumeAttributesClassName=${current_attr} (expected empty or ${ATTR_CLASS_NAME})")
-    fi
-  done
-
-  if (( $(safe_array_len CONFLICT_ISSUES) > 0 )); then
-    err "Conflict check failed ($(safe_array_len CONFLICT_ISSUES) items)."
-    printf '  - %s\n' "${CONFLICT_ISSUES[@]}"
-    exit 1
-  fi
-  ok "No conflicting pre-existing objects detected."
-}
+# ensure_no_foreign_conflicts is now provided by lib-premiumv2-migration-common.sh
+# It uses batch cache for optimized lookups and supports MODE=attrclass
 
 # ---------------- Pre-Requisite Validation (mirrors dual script) ----------------
 print_combined_validation_report_and_exit_if_needed() {
@@ -186,58 +143,25 @@ migrate_pvc_attributes_class() {
   audit_add "PersistentVolumeClaim" "$pvc" "$ns" "attrclass-applied" "kubectl describe pvc $pvc -n $ns" "pv=$pv targetSku=${TARGET_SKU}"
 }
 
-trigger_snapshot() {
-  local ns="$1" pvc="$2"
-  info "Processing PVC $ns/$pvc"
-  local pv
-  pv="$(get_pv_of_pvc "$ns" "$pvc")"
-  if [[ -z "$pv" ]]; then
-    warn "Skip $ns/$pvc (no PV yet)"
-    return
-  fi
-
-  # Mark in-progress early
-  kubectl label pvc "$pvc" -n "$ns" --overwrite "${MIGRATION_INPROGRESS_LABEL_KEY}=${MIGRATION_INPROGRESS_LABEL_VALUE}" >/dev/null 2>&1 || true
-
-  if is_in_tree_pv "$pv"; then
-    mode=$(kcmd get pv "$pv" -o jsonpath='{.spec.volumeMode}' 2>/dev/null || true)
-    sc=$(get_sc_of_pvc "$pvc" "$ns")
-    diskuri=$(kcmd get pv "$pv" -o jsonpath='{.spec.azureDisk.diskURI}' 2>/dev/null || true)
-    scpv1="$(name_pv1_sc "$sc")"
-
-    info "In-tree PV ($pv) -> converting"
-    create_csi_pv_pvc "$pvc" "$ns" "$pv" "$size" "$mode" "${scpv1}" "$diskuri" true || {
-      err "Failed to create CSI PV/PVC for $ns/$pvc"
-      audit_add "PersistentVolumeClaim" "$pvc" "$ns" "convert-failed" "N/A" "phase=intree-create-csi"
-      return
-    }
-    pv="$(get_pv_of_pvc "$ns" "$pvc")"
-  else
-    backup_pvc "$pvc" "$ns" || {
-      warn "PVC backup failed $ns/$pvc"
-    }
-  fi
-
-  snapshot="$(name_snapshot "$pv")"
-  create_snapshot "$snapshot" "$pvc" "$pvc_ns" "$pv" || {
-    warn "Snapshot failed $pvc_ns/$pvc"
-    return
-  }
-}
-
-
 info "Candidate PVCs:"
 printf '  %s\n' "${MIG_PVCS[@]}"
 
 # -------- Initial Mutation Pass (apply attr class / conversion) = migration loop --------
 declare -a PVC_SNAPSHOTS
+declare -a INTERMEDIATE_PVCS
 for ENTRY in "${MIG_PVCS[@]}"; do
   pvc_ns="${ENTRY%%|*}"
   pvc="${ENTRY##*|}"
-  lbl=$(kcmd get pvc "$pvc" -n "$pvc_ns" -o go-template="{{ index .metadata.labels \"${MIGRATION_DONE_LABEL_KEY}\" }}" 2>/dev/null || true)
+  
+  # Use cached PVC JSON for label check and PV lookup
+  pvc_json=$(get_cached_pvc_json "$pvc_ns" "$pvc")
+  if [[ -z "$pvc_json" ]]; then
+    warn "PVC $pvc_ns/$pvc not yet available; skip"; continue
+  fi
+  lbl=$(echo "$pvc_json" | jq -r --arg key "$MIGRATION_DONE_LABEL_KEY" '.metadata.labels[$key] // empty')
   [[ "$lbl" == "$MIGRATION_DONE_LABEL_VALUE" ]] && { info "Already migrated $pvc_ns/$pvc"; continue; }
 
-  pv="$(get_pv_of_pvc "$pvc_ns" "$pvc")"
+  pv=$(echo "$pvc_json" | jq -r '.spec.volumeName // empty')
   if [[ -z "$pv" ]]; then
     warn "PVC lost PV binding? $pvc_ns/$pvc. Skipping migration for now."
     continue
@@ -262,20 +186,52 @@ for ENTRY in "${MIG_PVCS[@]}"; do
 
   ensure_reclaim_policy_retain "$pv"
 
-  mode=$(kcmd get pv "$pv" -o jsonpath='{.spec.volumeMode}' 2>/dev/null || true)
-  sc=$(kcmd get pv "$pv" -o jsonpath='{.spec.storageClassName}' 2>/dev/null || true)
-  size=$(kcmd get pv "$pv" -o jsonpath='{.spec.capacity.storage}' 2>/dev/null || true)
-  diskuri=$(kcmd get pv "$pv" -o jsonpath='{.spec.azureDisk.diskURI}' 2>/dev/null || true)
+  # Use cached PV JSON and extract all needed fields
+  pv_json=$(get_cached_pv_json "$pv")
+  mode=$(echo "$pv_json" | jq -r '.spec.volumeMode // "Filesystem"')
+  size=$(echo "$pv_json" | jq -r '.spec.capacity.storage // empty')
+  diskuri=$(echo "$pv_json" | jq -r '.spec.azureDisk.diskURI // empty')
+  fstype=$(echo "$pv_json" | jq -r '.spec.azureDisk.fsType // empty')
+  csi_driver=$(echo "$pv_json" | jq -r '.spec.csi.driver // empty')
 
-  trigger_snapshot "$pvc_ns" "$pvc"
-  PVC_SNAPSHOTS+=("${pvc_ns}|${pvc}")
+  if [[ -n "$diskuri" ]]; then
+    sc=$(get_sc_of_pvc "$pvc" "$pvc_ns")
+    if [[ -z "$sc" || -z "$size" ]]; then warn "Missing sc/size for in-tree $pvc_ns/$pvc"; continue; fi
+    scpv1="$(name_pv1_sc "$sc")"
+    kcmd get sc "${scpv1}" >/dev/null 2>&1 || { warn "Missing ${scpv1}"; continue; }
+    create_csi_pv_pvc "$pvc" "$pvc_ns" "$pv" "$size" "$mode" "${scpv1}" "$diskuri" true "$fstype" || { warn "Failed to create CSI PV/PVC for $pvc_ns/$pvc"; continue; }
+    INTERMEDIATE_PVCS+=("${pvc_ns}|${pvc}")
+  else
+    [[ "$csi_driver" != "disk.csi.azure.com" ]] && { warn "Unknown PV driver for $pv"; continue; }
+  fi
+
+  snapshot="$(name_snapshot "$pv")"
+  PVC_SNAPSHOTS+=("${pvc_ns}|${snapshot}|${pvc}") 
+done
+
+for ENTRY in "${INTERMEDIATE_PVCS[@]}"; do
+  IFS='|' read -r ns pvc <<< "$ENTRY"
+  if wait_pvc_bound "$ns" "$pvc" "$BIND_TIMEOUT_SECONDS"; then
+    ok "PVC $ns/$pvc bound"
+    audit_add "PersistentVolumeClaim" "$pvc" "$ns" "bound" "kubectl describe pvc $pvc -n $ns" "csi=true"
+    continue
+  fi
+
+  warn "Intermediate PVC $ns/$pvc not bound within timeout (${BIND_TIMEOUT_SECONDS}s)"
+  audit_add "PersistentVolumeClaim" "$pvc" "$ns" "bind-timeout" "kubectl describe pvc $pvc -n $ns" "csi=true timeout=${BIND_TIMEOUT_SECONDS}s"
+  warn "Failed to create CSI PV/PVC for $ns/$pvc"
+done
+
+for ENTRY in "${PVC_SNAPSHOTS[@]}"; do
+  IFS='|' read -r pvc_ns snapshot pvc <<< "$ENTRY"
+  create_snapshot "$snapshot" "$pvc" "$pvc_ns" || { warn "Snapshot failed $pvc_ns/$pvc"; continue; }
 done
 
 wait_for_snapshots_ready
 
 SOURCE_SNAPSHOTS=("${PVC_SNAPSHOTS[@]}")
 for ENTRY in "${SOURCE_SNAPSHOTS[@]}"; do
-  ns="${ENTRY%%|*}" pvc="${ENTRY##*|}"
+  IFS='|' read -r ns snapshot pvc <<< "$ENTRY"
   migrate_pvc_attributes_class "$ns" "$pvc"
 done
 
@@ -295,13 +251,16 @@ while true; do
       continue
     fi
 
-    # Already done?
-    lbl=$(kcmd get pvc "$pvc" -n "$ns" -o go-template="{{ index .metadata.labels \"${MIGRATION_DONE_LABEL_KEY}\" }}" || true)
+    # Fetch PVC JSON once per iteration and extract needed fields
+    pvc_json=$(kcmd get pvc "$pvc" -n "$ns" -o json 2>/dev/null || true)
+    [[ -z "$pvc_json" ]] && { warn "Could not fetch PVC $ns/$pvc"; continue; }
+
+    lbl=$(echo "$pvc_json" | jq -r --arg key "$MIGRATION_DONE_LABEL_KEY" '.metadata.labels[$key] // empty')
     if [[ "$lbl" == "$MIGRATION_DONE_LABEL_VALUE" || "$lbl" == "$MIGRATION_DONE_LABEL_VALUE_FALSE" ]]; then
       continue
     fi
 
-    pv="$(get_pv_of_pvc "$ns" "$pvc")"
+    pv=$(echo "$pvc_json" | jq -r '.spec.volumeName // empty')
     if [[ -z "$pv" ]]; then
       warn "PVC lost PV binding? $ns/$pvc"
       continue
@@ -332,9 +291,13 @@ while true; do
 
     # Force in-progress label on PV after threshold if no events
     if [[ -n "$pv" && $MIGRATION_FORCE_INPROGRESS_AFTER_MINUTES -gt 0 ]]; then
-      inprog=$(kcmd get pv "$pv" -o go-template="{{ index .metadata.labels \"${MIGRATION_INPROGRESS_LABEL_KEY}\" }}" 2>/dev/null || true)
+      # Fetch PV JSON once and extract needed fields
+      pv_json=$(kcmd get pv "$pv" -o json 2>/dev/null || true)
+      [[ -z "$pv_json" ]] && continue
+
+      inprog=$(echo "$pv_json" | jq -r --arg key "$MIGRATION_INPROGRESS_LABEL_KEY" '.metadata.labels[$key] // empty')
       if [[ "$inprog" != "$MIGRATION_INPROGRESS_LABEL_VALUE" ]]; then
-        cts=$(kcmd get pvc "$pvc" -n "$ns" -o jsonpath='{.metadata.creationTimestamp}' 2>/dev/null || true)
+        cts=$(echo "$pvc_json" | jq -r '.metadata.creationTimestamp // empty')
         if [[ -n "$cts" ]]; then
           creation_epoch=$(date -d "$cts" +%s 2>/dev/null || echo 0)
           now_epoch=$(date +%s)

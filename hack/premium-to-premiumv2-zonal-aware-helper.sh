@@ -60,11 +60,15 @@ load_zone_mapping() {
 
 # Extract zone from StorageClass allowedTopologies
 # Returns the zone if exactly one is found, empty string otherwise
+# Args: <sc_name> [sc_json]
 extract_zone_from_storageclass() {
     local sc_name="$1"
-    local sc_json zones_json zone_count
+    local sc_json="${2:-}"
+    local zones_json zone_count
     
-    sc_json=$(kcmd get sc "$sc_name" -o json 2>/dev/null || true)
+    if [[ -z "$sc_json" ]]; then
+        sc_json=$(kcmd get sc "$sc_name" -o json 2>/dev/null || true)
+    fi
     [[ -z "$sc_json" ]] && return 1
     
     zones_json=$(echo "$sc_json" | jq -r '
@@ -90,15 +94,16 @@ extract_zone_from_storageclass() {
     fi
 }
 
-# Extract zone from PV nodeAffinity
+# Extract zone from PV nodeAffinity (uses cache if available)
 # Returns the zone if exactly one matching zone expression is found
 # Only considers recognized zone keys to avoid accidentally pulling region or other topology labels.
 extract_zone_from_pv_nodeaffinity() {
     local pv_name="$1"
     local pv_json zone_count
     
-    pv_json=$(kcmd get pv "$pv_name" -o json 2>/dev/null || true)
-    [[ -z "$pv_json" ]] && return 1
+    # Use cached PV data if available
+    pv_json=$(get_cached_pv_json "$pv_name")
+    [[ -z "$pv_json" || "$pv_json" == "null" ]] && return 1
     
     # Extract zones from nodeAffinity restricted to zone keys
     local zones_json
@@ -122,23 +127,26 @@ extract_zone_from_pv_nodeaffinity() {
     fi
 }
 
-# Get disk URI from PV (handles both in-tree and CSI)
+# Get disk URI from PV (handles both in-tree and CSI, uses cache)
 get_disk_uri_from_pv() {
     local pv_name="$1"
-    local disk_uri
+    local pv_json disk_uri
+    
+    # Use cached PV data
+    pv_json=$(get_cached_pv_json "$pv_name")
     
     # Try in-tree first
-    disk_uri=$(kcmd get pv "$pv_name" -o jsonpath='{.spec.azureDisk.diskURI}' 2>/dev/null || true)
+    disk_uri=$(echo "$pv_json" | jq -r '.spec.azureDisk.diskURI // empty')
     
     if [[ -z "$disk_uri" ]]; then
         # Try CSI
-        disk_uri=$(kcmd get pv "$pv_name" -o jsonpath='{.spec.csi.volumeHandle}' 2>/dev/null || true)
+        disk_uri=$(echo "$pv_json" | jq -r '.spec.csi.volumeHandle // empty')
     fi
     
     echo "$disk_uri"
 }
 
-# Determine zone for a PVC (updated priority: PV nodeAffinity first)
+# Determine zone for a PVC (updated priority: PV nodeAffinity first, uses cache)
 # Exit codes:
 #   0 -> zone from PV nodeAffinity
 #   1 -> zone from StorageClass allowedTopologies
@@ -146,10 +154,23 @@ get_disk_uri_from_pv() {
 #   3 -> failed to determine zone
 determine_zone_for_pvc() {
     local pvc_name="$1" pvc_ns="$2"
-    local sc_name pv_name zone disk_uri rc
+    local sc_name pv_name zone disk_uri rc pvc_json
     
-    sc_name=$(kcmd get pvc "$pvc_name" -n "$pvc_ns" -o jsonpath='{.spec.storageClassName}' 2>/dev/null || true)
-    pv_name=$(kcmd get pvc "$pvc_name" -n "$pvc_ns" -o jsonpath='{.spec.volumeName}' 2>/dev/null || true)
+    # Use cached PVC data
+    pvc_json=$(get_cached_pvc_json "$pvc_ns" "$pvc_name")
+    if [[ -z "$pvc_json" ]]; then
+      warn "Failed to get PVC $pvc_ns/$pvc_name"
+      return 3
+    fi
+    
+    # Validate that pvc_json is valid JSON before parsing with jq
+    if ! echo "$pvc_json" | jq -e . >/dev/null 2>&1; then
+      warn "PVC $pvc_ns/$pvc_name returned invalid JSON"
+      return 3
+    fi
+    
+    sc_name=$(echo "$pvc_json" | jq -r '.spec.storageClassName // empty')
+    pv_name=$(echo "$pvc_json" | jq -r '.spec.volumeName // empty')
     
     [[ -z "$sc_name" ]] && { warn "PVC $pvc_ns/$pvc_name has no storageClassName"; return 3; }
     [[ -z "$pv_name" ]] && { warn "PVC $pvc_ns/$pvc_name has no bound PV"; return 3; }
@@ -186,15 +207,18 @@ determine_zone_for_pvc() {
 create_zone_specific_storageclass() {
     local orig_sc="$1" zone="$2" sku="${3:-Premium_LRS}" zone_sc_name=${4:-"${orig_sc}-${zone}"}
     
-    if kcmd get sc "$zone_sc_name" >/dev/null 2>&1; then
+    # Single fetch for existence + details
+    local sc_json
+    sc_json=$(kcmd get sc "$zone_sc_name" -o json 2>/dev/null || true)
+    if [[ -n "$sc_json" ]]; then
         # Check if this StorageClass was created by our migration script
-        local created_by existing_sku existing_zone
-        created_by=$(kcmd get sc "$zone_sc_name" -o jsonpath="{.metadata.labels.${CREATED_BY_LABEL_KEY//./\\.}}" 2>/dev/null || true)
+        local created_by existing_sku existing_zone zones_json zone_count
+        created_by=$(echo "$sc_json" | jq -r --arg key "${CREATED_BY_LABEL_KEY}" '.metadata.labels[$key] // empty')
         
         if [[ "$created_by" == "$MIGRATION_TOOL_ID" ]]; then
             # Verify it matches our expected configuration
-            existing_sku=$(kcmd get sc "$zone_sc_name" -o jsonpath='{.parameters.skuName}' 2>/dev/null || true)
-            existing_zone=$(extract_zone_from_storageclass "$zone_sc_name")
+            existing_sku=$(echo "$sc_json" | jq -r '.parameters.skuName // empty')
+            existing_zone=$(extract_zone_from_storageclass "$zone_sc_name" "$sc_json" || true)
 
             if [[ "$existing_sku" == "$sku" && "$existing_zone" == "$zone" ]]; then
                 info "Zone-specific StorageClass $zone_sc_name already exists (created by migration script, sku=$existing_sku, zone=$existing_zone)"
@@ -342,12 +366,10 @@ create_zone_specific_storageclass() {
     local allowed_topologies_yaml
     allowed_topologies_yaml="allowedTopologies:
 - matchLabelExpressions:
-  - key: topology.kubernetes.io/zone
+  - key: topology.disk.csi.azure.com/zone
     values: [\"$zone\"]"
     
-    info "  AllowedTopologies: Zone-specific constraint set to $zone"
-    
-   
+    info "  AllowedTopologies: Zone-specific constraint set to $zone" 
     info "Creating zone-specific StorageClass $zone_sc_name with comprehensive property preservation"
     
     # Build the complete zone-specific StorageClass YAML
@@ -414,6 +436,9 @@ annotate_pvc_with_zone_storageclass() {
         return 1
     fi
     
+    # Invalidate cache since we mutated the PVC
+    invalidate_pvc_cache "$pvc_ns" "$pvc_name"
+    
     audit_add "PersistentVolumeClaim" "$pvc_name" "$pvc_ns" "annotate" \
         "kubectl annotate pvc $pvc_name -n $pvc_ns ${ZONE_SC_ANNOTATION_KEY}-" \
         "zoneStorageClass=$zone_sc zone=$zone"
@@ -422,7 +447,7 @@ annotate_pvc_with_zone_storageclass() {
     return 0
 }
 
-# Process a single PVC for zone-aware migration
+# Process a single PVC for zone-aware migration (uses cache)
 process_pvc_for_zone_migration() {
     local pvc_entry="$1"  # Format: namespace|pvcname
     local pvc_ns="${pvc_entry%%|*}"
@@ -430,8 +455,10 @@ process_pvc_for_zone_migration() {
     
     info "Processing PVC $pvc_ns/$pvc_name for zone-aware migration"
     
-    local existing_annotation
-    existing_annotation=$(kcmd get pvc "$pvc_name" -n "$pvc_ns" -o jsonpath="{.metadata.annotations.${ZONE_SC_ANNOTATION_KEY//./\\.}}" 2>/dev/null || true)
+    # Use cached PVC data for annotation check
+    local pvc_json existing_annotation
+    pvc_json=$(get_cached_pvc_json "$pvc_ns" "$pvc_name")
+    existing_annotation=$(echo "$pvc_json" | jq -r ".metadata.annotations[\"${ZONE_SC_ANNOTATION_KEY}\"] // empty")
     if [[ -n "$existing_annotation" ]]; then
         info "PVC $pvc_ns/$pvc_name already annotated with zone-specific StorageClass: $existing_annotation (skipping)"
         return 0
@@ -457,8 +484,9 @@ process_pvc_for_zone_migration() {
             ;;
     esac
 
+    # Use cached PVC data for storageClassName
     local orig_sc
-    orig_sc=$(kcmd get pvc "$pvc_name" -n "$pvc_ns" -o jsonpath='{.spec.storageClassName}' 2>/dev/null || true)
+    orig_sc=$(echo "$pvc_json" | jq -r '.spec.storageClassName // empty')
     [[ -z "$orig_sc" ]] && { err "PVC $pvc_ns/$pvc_name has no storageClassName"; return 2; }
     
     local zone_sc
@@ -522,23 +550,25 @@ process_pvcs_for_zone_preparation() {
         local pvc_ns="${pvc_entry%%|*}"
         local pvc_name="${pvc_entry##*|}"
 
-        is_created_by_migrator=$(is_pvc_in_migration "$pvc_name" "$pvc_ns")
+        # Use cached migration check functions
+        is_created_by_migrator=$(is_pvc_in_migration_cached "$pvc_name" "$pvc_ns")
         if [[ $is_created_by_migrator == "true" ]]; then
             info "Skipping PVC $pvc_ns/$pvc_name (created by migration tool)"
             skipped=$((skipped + 1))
             continue
         fi
 
-        is_migration=$(is_pvc_created_by_migration_tool "$pvc_name" "$pvc_ns")
+        is_migration=$(is_pvc_created_by_migration_tool_cached "$pvc_name" "$pvc_ns")
         if [[ $is_migration == "true" ]]; then
             info "Skipping PVC $pvc_ns/$pvc_name (already in migration)"
             skipped=$((skipped + 1))
             continue
         fi
 
-        # Check if PVC already has zone-specific StorageClass annotation
-        local existing_annotation
-        existing_annotation=$(kcmd get pvc "$pvc_name" -n "$pvc_ns" -o jsonpath="{.metadata.annotations.${ZONE_SC_ANNOTATION_KEY//./\\.}}" 2>/dev/null || true)
+        # Check if PVC already has zone-specific StorageClass annotation (use cache)
+        local existing_annotation pvc_json
+        pvc_json=$(get_cached_pvc_json "$pvc_ns" "$pvc_name")
+        existing_annotation=$(echo "$pvc_json" | jq -r ".metadata.annotations[\"${ZONE_SC_ANNOTATION_KEY}\"] // empty")
         if [[ -n "$existing_annotation" ]]; then
             info "Skipping PVC $pvc_ns/$pvc_name (already has zone annotation: $existing_annotation)"
             skipped=$((skipped + 1))
