@@ -14,18 +14,21 @@
 
 PKG = sigs.k8s.io/azuredisk-csi-driver
 GIT_COMMIT ?= $(shell git rev-parse HEAD)
-REGISTRY ?= andyzhangx
+REGISTRY = mcr.microsoft.com/oss/v2/kubernetes-csi
 REGISTRY_NAME ?= $(shell echo $(REGISTRY) | sed "s/.azurecr.io//g")
 IMAGE_NAME ?= azuredisk-csi
 PLUGIN_NAME = azurediskplugin
-IMAGE_VERSION ?= v1.35.0
+IMAGE_VERSION = v1.34.1
 CHART_VERSION ?= latest
 CLOUD ?= AzurePublicCloud
 # Use a custom version for E2E tests if we are testing in CI
 ifdef CI
 ifndef PUBLISH
-override IMAGE_VERSION := $(IMAGE_VERSION)-$(GIT_COMMIT)
+override IMAGE_VERSION := $(IMAGE_VERSION)
 endif
+endif
+ifdef WINDOWS_USE_HOST_PROCESS_CONTAINERS
+override IMAGE_VERSION = v1.34.1
 endif
 CSI_IMAGE_TAG ?= $(REGISTRY)/$(IMAGE_NAME):$(IMAGE_VERSION)
 CSI_IMAGE_TAG_LATEST = $(REGISTRY)/$(IMAGE_NAME):latest
@@ -98,11 +101,6 @@ sanity-test: azuredisk
 
 .PHONY: e2e-bootstrap
 e2e-bootstrap: install-helm
-ifdef WINDOWS_USE_HOST_PROCESS_CONTAINERS
-	(docker pull $(CSI_IMAGE_TAG) && docker pull $(CSI_IMAGE_TAG)-windows-hp)  || make container-all push-manifest
-else
-	docker pull $(CSI_IMAGE_TAG) || make container-all push-manifest
-endif
 ifdef TEST_WINDOWS
 	helm install azuredisk-csi-driver charts/${CHART_VERSION}/azuredisk-csi-driver --namespace kube-system --wait --timeout=15m -v=5 --debug \
 		${E2E_HELM_OPTIONS} \
