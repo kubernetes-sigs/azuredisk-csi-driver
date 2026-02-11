@@ -110,6 +110,8 @@ const (
 	// define tag value delimiter and default is comma
 	TagValueDelimiterField = "tagvaluedelimiter"
 	AzureDiskDriverTag     = "kubernetes-azure-dd"
+	// time out for freeze
+	DefaultFreezeWaitTimeoutMinutes = 2
 )
 
 var (
