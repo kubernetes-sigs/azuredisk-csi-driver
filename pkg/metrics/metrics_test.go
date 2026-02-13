@@ -1,5 +1,5 @@
 /*
-Copyright 2025 The Kubernetes Authors.
+Copyright 2026 The Kubernetes Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -33,6 +33,14 @@ func TestCSIMetricContext_NewCSIMetricContext(t *testing.T) {
 
 	if mc.labels == nil {
 		t.Error("expected labels map to be initialized")
+	}
+
+	if mc.volumeContext == nil {
+		t.Error("expected volumeContext to be initialized")
+	}
+
+	if mc.logLevel != 3 {
+		t.Errorf("expected default logLevel 3, got %d", mc.logLevel)
 	}
 
 	if mc.start.IsZero() {
@@ -151,7 +159,7 @@ func TestCSIMetricContext_ObserveWithLabels(t *testing.T) {
 
 	// Test observation with labels
 	mc.ObserveWithLabels(true,
-		"disk_sku", "Premium_LRS")
+		StorageAccountType, "Premium_LRS")
 
 	// Verify that both basic and labeled metrics were recorded
 	families, err := legacyregistry.DefaultGatherer.Gather()
@@ -181,7 +189,7 @@ func TestCSIMetricContext_ObserveWithLabels(t *testing.T) {
 					labelMap[label.GetName()] = label.GetValue()
 				}
 
-				if labelMap["disk_sku"] != "Premium_LRS" {
+				if labelMap[StorageAccountType] != "Premium_LRS" {
 					t.Errorf("expected labeled metric with correct labels, got: %v", labelMap)
 				}
 			}
@@ -204,7 +212,7 @@ func TestCSIMetricContext_ObserveWithInvalidLabels(t *testing.T) {
 	mc := NewCSIMetricContext("test_operation")
 
 	// Test with odd number of label parameters (should fallback to basic observe)
-	mc.ObserveWithLabels(true, "disk_sku", "Premium_LRS", "orphan_key")
+	mc.ObserveWithLabels(true, StorageAccountType, "Premium_LRS", "orphan_key")
 
 	// Should still record basic metrics but not labeled metrics
 	families, err := legacyregistry.DefaultGatherer.Gather()
@@ -263,6 +271,104 @@ func TestCSIMetricContext_ChainedLabels(t *testing.T) {
 	}
 }
 
+func TestCSIMetricContext_WithBasicVolumeInfo(t *testing.T) {
+	mc := NewCSIMetricContext("test_operation")
+
+	mc.WithBasicVolumeInfo("ResourceGroup1", "sub-123", "source-disk")
+
+	// Check volumeContext contains expected values
+	expected := []interface{}{
+		"resource_group", "resourcegroup1", // should be lowercased
+		"subscription_id", "sub-123",
+		"source", "source-disk",
+	}
+
+	if len(mc.volumeContext) != len(expected) {
+		t.Errorf("expected volumeContext length %d, got %d", len(expected), len(mc.volumeContext))
+	}
+
+	for i, v := range expected {
+		if mc.volumeContext[i] != v {
+			t.Errorf("expected volumeContext[%d] = %v, got %v", i, v, mc.volumeContext[i])
+		}
+	}
+}
+
+func TestCSIMetricContext_WithBasicVolumeInfo_EmptyValues(t *testing.T) {
+	mc := NewCSIMetricContext("test_operation")
+
+	// Test with empty values - should not add them
+	mc.WithBasicVolumeInfo("", "", "")
+
+	if len(mc.volumeContext) != 0 {
+		t.Errorf("expected empty volumeContext, got %v", mc.volumeContext)
+	}
+}
+
+func TestCSIMetricContext_WithAdditionalVolumeInfo(t *testing.T) {
+	mc := NewCSIMetricContext("test_operation")
+
+	mc.WithAdditionalVolumeInfo("volumeid", "vol-123", "disk_name", "my-disk")
+
+	expected := []interface{}{
+		"volumeid", "vol-123",
+		"disk_name", "my-disk",
+	}
+
+	if len(mc.volumeContext) != len(expected) {
+		t.Errorf("expected volumeContext length %d, got %d", len(expected), len(mc.volumeContext))
+	}
+
+	for i, v := range expected {
+		if mc.volumeContext[i] != v {
+			t.Errorf("expected volumeContext[%d] = %v, got %v", i, v, mc.volumeContext[i])
+		}
+	}
+}
+
+func TestCSIMetricContext_WithAdditionalVolumeInfo_OddPairs(t *testing.T) {
+	mc := NewCSIMetricContext("test_operation")
+
+	// Test with odd number of pairs - should not add anything
+	mc.WithAdditionalVolumeInfo("volumeid", "vol-123", "orphan")
+
+	if len(mc.volumeContext) != 0 {
+		t.Errorf("expected empty volumeContext with odd pairs, got %v", mc.volumeContext)
+	}
+}
+
+func TestCSIMetricContext_WithLogLevel(t *testing.T) {
+	mc := NewCSIMetricContext("test_operation")
+
+	mc.WithLogLevel(5)
+
+	if mc.logLevel != 5 {
+		t.Errorf("expected logLevel 5, got %d", mc.logLevel)
+	}
+}
+
+func TestCSIMetricContext_MethodChaining(t *testing.T) {
+	mc := NewCSIMetricContext("test_operation")
+
+	// Test full method chaining
+	mc.WithBasicVolumeInfo("rg", "sub", "src").
+		WithAdditionalVolumeInfo("key", "value").
+		WithLabel(StorageAccountType, "Premium_LRS").
+		WithLogLevel(2)
+
+	if len(mc.volumeContext) != 8 { // 6 from basic + 2 from additional
+		t.Errorf("expected volumeContext length 8, got %d", len(mc.volumeContext))
+	}
+
+	if mc.labels[StorageAccountType] != "Premium_LRS" {
+		t.Errorf("expected %s label, got %v", StorageAccountType, mc.labels)
+	}
+
+	if mc.logLevel != 2 {
+		t.Errorf("expected logLevel 2, got %d", mc.logLevel)
+	}
+}
+
 func TestCSIMetricContext_EmptyLabels(t *testing.T) {
 	mc := NewCSIMetricContext("test_operation")
 
@@ -287,7 +393,7 @@ func BenchmarkCSIMetricContext_ObserveWithLabels(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		mc := NewCSIMetricContext("benchmark_test")
 		mc.ObserveWithLabels(true,
-			"disk_sku", "Premium_LRS")
+			StorageAccountType, "Premium_LRS")
 	}
 }
 
