@@ -25,7 +25,7 @@ import (
 	"time"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/to"
-	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute/v6"
+	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute/v7"
 	"github.com/container-storage-interface/spec/lib/go/csi"
 
 	"google.golang.org/grpc/codes"
@@ -1199,6 +1199,7 @@ func (d *Driver) CreateSnapshot(ctx context.Context, req *csi.CreateSnapshotRequ
 	// set incremental snapshot as true by default
 	incremental := true
 	var subsID, resourceGroup, dataAccessAuthMode, networkAccessPolicy, publicNetworkAccess, tagValueDelimiter string
+	var instantAccessDurationMinutes *int64
 	var err error
 	localCloud := d.cloud
 	location := d.cloud.Location
@@ -1241,6 +1242,15 @@ func (d *Driver) CreateSnapshot(ctx context.Context, req *csi.CreateSnapshotRequ
 			tags[consts.SnapshotNamespaceTag] = ptr.To(v)
 		case consts.VolumeSnapshotContentNameKey:
 			// ignore the key
+		case consts.InstantAccessDurationMinutes:
+			temp, err := strconv.ParseInt(v, 10, 64)
+			if err != nil {
+				return nil, status.Errorf(codes.InvalidArgument, "invalid value(%s) for %s: %v", v, consts.InstantAccessDurationMinutes, err)
+			}
+			if temp < 60 || temp > 300 {
+				return nil, status.Errorf(codes.InvalidArgument, "invalid value(%d) for %s: must be between 60 and 300 minutes", temp, consts.InstantAccessDurationMinutes)
+			}
+			instantAccessDurationMinutes = &temp
 		default:
 			return nil, status.Errorf(codes.Internal, "AzureDisk - invalid option %s in VolumeSnapshotClass", k)
 		}
@@ -1271,8 +1281,9 @@ func (d *Driver) CreateSnapshot(ctx context.Context, req *csi.CreateSnapshotRequ
 	snapshot := armcompute.Snapshot{
 		Properties: &armcompute.SnapshotProperties{
 			CreationData: &armcompute.CreationData{
-				CreateOption:     to.Ptr(armcompute.DiskCreateOptionCopy),
-				SourceResourceID: &sourceVolumeID,
+				CreateOption:                 to.Ptr(armcompute.DiskCreateOptionCopy),
+				SourceResourceID:             &sourceVolumeID,
+				InstantAccessDurationMinutes: instantAccessDurationMinutes,
 			},
 			Incremental: &incremental,
 		},

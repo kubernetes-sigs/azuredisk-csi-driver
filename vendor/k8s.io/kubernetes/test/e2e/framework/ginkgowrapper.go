@@ -221,8 +221,14 @@ func registerInSuite(ginkgoCall func(string, ...interface{}) bool, args []interf
 					ginkgoArgs = append(ginkgoArgs, ginkgo.Label("BetaOffByDefault"))
 				}
 			}
-			if fullLabel == "Serial" {
+			switch fullLabel {
+			case "Serial":
 				ginkgoArgs = append(ginkgoArgs, ginkgo.Serial)
+			case "Slow":
+				// Start slow tests first. This avoids the risk
+				// that they get started towards the end of a
+				// run and then make the run longer overall.
+				ginkgoArgs = append(ginkgoArgs, ginkgo.SpecPriority(1))
 			}
 		case ginkgo.Offset:
 			offset = arg
@@ -266,6 +272,9 @@ var (
 func validateSpecs(specs types.SpecReports) {
 	checked := sets.New[call]()
 
+	// Each full test name should only be used once.
+	specNames := make(map[string][]types.SpecReport)
+
 	for _, spec := range specs {
 		for i, text := range spec.ContainerHierarchyTexts {
 			c := call{
@@ -286,6 +295,34 @@ func validateSpecs(specs types.SpecReports) {
 		if !checked.Has(c) {
 			validateText(spec.LeafNodeLocation, spec.LeafNodeText, spec.LeafNodeLabels)
 			checked.Insert(c)
+		}
+
+		// Track what the same name is used for. The empty name is used more
+		// than once for special nodes (e.g. ReportAfterSuite).
+		fullText := spec.FullText()
+		if fullText != "" {
+			specNames[fullText] = append(specNames[fullText], spec)
+		}
+	}
+
+	for fullText, specs := range specNames {
+		if len(specs) > 1 {
+			// The exact same It call might be made twice, in which case full
+			// text and location are the same in two different specs. We show
+			// that as "<location> (2x)"
+			locationCounts := make(map[string]int)
+			for _, spec := range specs {
+				locationCounts[spec.LeafNodeLocation.String()]++
+			}
+			var locationTexts []string
+			for locationText, count := range locationCounts {
+				text := locationText
+				if count > 1 {
+					text += fmt.Sprintf(" (%dx)", count)
+				}
+				locationTexts = append(locationTexts, text)
+			}
+			recordTextBug(specs[0].LeafNodeLocation, fmt.Sprintf("full test name is not unique: %q (%s)", fullText, strings.Join(locationTexts, ", ")))
 		}
 	}
 }
@@ -343,7 +380,7 @@ func recordTextBug(location types.CodeLocation, message string) {
 	RecordBug(Bug{FileName: location.FileName, LineNumber: location.LineNumber, Message: message})
 }
 
-// WithEnvironment specifies that a certain test or group of tests only works
+// WithFeature specifies that a certain test or group of tests only works
 // with a feature available. The return value must be passed as additional
 // argument to [framework.It], [framework.Describe], [framework.Context].
 //
@@ -444,7 +481,7 @@ func withEnvironment(name Environment) interface{} {
 	return newLabel("Environment", string(name))
 }
 
-// WithConformace specifies that a certain test or group of tests must pass in
+// WithConformance specifies that a certain test or group of tests must pass in
 // all conformant Kubernetes clusters. The return value must be passed as
 // additional argument to [framework.It], [framework.Describe],
 // [framework.Context].
@@ -515,9 +552,10 @@ func withSerial() interface{} {
 	return newLabel("Serial")
 }
 
-// WithSlow specifies that a certain test or group of tests must not run in
-// parallel with other tests. The return value must be passed as additional
-// argument to [framework.It], [framework.Describe], [framework.Context].
+// WithSlow specifies that a certain test, or each test within a group of
+// tests, is slow (is expected to take longer than 5 minutes to run in CI).
+// The return value must be passed as additional argument to [framework.It],
+// [framework.Describe], [framework.Context].
 func WithSlow() interface{} {
 	return withSlow()
 }

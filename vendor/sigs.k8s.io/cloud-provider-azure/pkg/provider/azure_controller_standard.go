@@ -23,7 +23,7 @@ import (
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/to"
 
-	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute/v6"
+	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute/v7"
 
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/klog/v2"
@@ -128,9 +128,9 @@ func (as *availabilitySet) DeleteCacheForNode(ctx context.Context, nodeName stri
 	logger := log.FromContextOrBackground(ctx).WithName("DeleteCacheForNode")
 	err := as.vmCache.Delete(nodeName)
 	if err == nil {
-		logger.V(2).Info("DeleteCacheForNode successfully", "nodeName", nodeName)
+		logger.V(2).Info("Succeed", "nodeName", nodeName)
 	} else {
-		logger.Error(err, "DeleteCacheForNode failed", "node", nodeName)
+		logger.Error(err, "failed", "nodeName", nodeName)
 	}
 	return err
 }
