@@ -21,7 +21,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute/v6"
+	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute/v7"
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -54,7 +54,9 @@ func GenerateCSISnapshot(sourceVolumeID string, snapshot *armcompute.Snapshot) (
 	// This is needed because of Premium V2 disks & Ultra disks, which take some time to be ready to use after creation.
 	// In case of Premium V1 disks, the snapshot is ready to use immediately after creation and so we won't have that
 	// completionPercent field in the properties. Hence we will treat it 100% if CompletionPercent is nil.
-	if ready {
+	// If instantAccessDurationMinutes is set, the snapshot is an instant access snapshot and can be used immediately
+	// without waiting for CompletionPercent to reach 100.
+	if ready && (snapshot.Properties.CreationData == nil || snapshot.Properties.CreationData.InstantAccessDurationMinutes == nil) {
 		completionPercent := float32(0.0)
 		if snapshot.Properties.CompletionPercent == nil {
 			// If CompletionPercent is nil, it means the snapshot is complete
