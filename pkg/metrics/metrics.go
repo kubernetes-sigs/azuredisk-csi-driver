@@ -1,5 +1,5 @@
 /*
-Copyright 2025 The Kubernetes Authors.
+Copyright 2026 The Kubernetes Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -17,24 +17,28 @@ limitations under the License.
 package metrics
 
 import (
+	"strings"
 	"time"
 
 	"k8s.io/component-base/metrics"
 	"k8s.io/component-base/metrics/legacyregistry"
+	klog "k8s.io/klog/v2"
 )
 
 const (
 	subSystem = "azuredisk_csi_driver"
+
+	// Label keys for metrics
+	StorageAccountType = "storage_account_type"
 )
 
 var (
-	// CSI operation metrics
 	operationDuration = metrics.NewHistogramVec(
 		&metrics.HistogramOpts{
 			Subsystem:      subSystem,
 			Name:           "operation_duration_seconds",
 			Help:           "Histogram of CSI operation duration in seconds",
-			Buckets:        []float64{0.1, 0.5, 1, 2.5, 5, 10, 15, 30, 60, 120, 300},
+			Buckets:        []float64{0.1, 0.2, 0.5, 1, 5, 10, 15, 20, 30, 40, 50, 60, 100, 200, 300},
 			StabilityLevel: metrics.ALPHA,
 		},
 		[]string{"operation", "success"},
@@ -45,10 +49,10 @@ var (
 			Subsystem:      subSystem,
 			Name:           "operation_duration_seconds_labeled",
 			Help:           "Histogram of CSI operation duration with additional labels",
-			Buckets:        []float64{0.1, 0.5, 1, 2.5, 5, 10, 15, 30, 60, 120, 300},
+			Buckets:        []float64{0.1, 0.2, 0.5, 1, 5, 10, 15, 20, 30, 40, 50, 60, 100, 200, 300},
 			StabilityLevel: metrics.ALPHA,
 		},
-		[]string{"operation", "success", "disk_sku"},
+		[]string{"operation", "success", StorageAccountType},
 	)
 
 	operationTotal = metrics.NewCounterVec(
@@ -70,18 +74,48 @@ func init() {
 
 // CSIMetricContext represents the context for CSI operation metrics
 type CSIMetricContext struct {
-	operation string
-	start     time.Time
-	labels    map[string]string
+	operation     string
+	volumeContext []interface{}
+	start         time.Time
+	labels        map[string]string
+	logLevel      int32
 }
 
 // NewCSIMetricContext creates a new CSI metric context
 func NewCSIMetricContext(operation string) *CSIMetricContext {
 	return &CSIMetricContext{
-		operation: operation,
-		start:     time.Now(),
-		labels:    make(map[string]string),
+		operation:     operation,
+		volumeContext: []interface{}{},
+		start:         time.Now(),
+		labels:        make(map[string]string),
+		logLevel:      3,
 	}
+}
+
+// WithBasicVolumeInfo adds the standard volume-related context to the metric context
+func (mc *CSIMetricContext) WithBasicVolumeInfo(resourceGroup, subscriptionID, source string) *CSIMetricContext {
+	if resourceGroup != "" {
+		mc.volumeContext = append(mc.volumeContext, "resource_group", strings.ToLower(resourceGroup))
+	}
+	if subscriptionID != "" {
+		mc.volumeContext = append(mc.volumeContext, "subscription_id", subscriptionID)
+	}
+	if source != "" {
+		mc.volumeContext = append(mc.volumeContext, "source", source)
+	}
+	return mc
+}
+
+// WithAdditionalVolumeInfo adds additional volume-related context as key-value pairs
+// e.g., WithAdditionalVolumeInfo("volumeid", "vol-123")
+func (mc *CSIMetricContext) WithAdditionalVolumeInfo(keyValuePairs ...string) *CSIMetricContext {
+	if len(keyValuePairs)%2 != 0 {
+		return mc
+	}
+	for i := 0; i < len(keyValuePairs); i += 2 {
+		mc.volumeContext = append(mc.volumeContext, keyValuePairs[i], keyValuePairs[i+1])
+	}
+	return mc
 }
 
 // WithLabel adds a label to the metric context
@@ -90,6 +124,12 @@ func (mc *CSIMetricContext) WithLabel(key, value string) *CSIMetricContext {
 		mc.labels = make(map[string]string)
 	}
 	mc.labels[key] = value
+	return mc
+}
+
+// WithLogLevel sets the log level for the metric context
+func (mc *CSIMetricContext) WithLogLevel(level int32) *CSIMetricContext {
+	mc.logLevel = level
 	return mc
 }
 
@@ -107,14 +147,22 @@ func (mc *CSIMetricContext) Observe(success bool) {
 
 	// Record detailed metrics if labels are present
 	if len(mc.labels) > 0 {
-		diskSku := mc.labels["disk_sku"]
+		storageAccountType := mc.labels[StorageAccountType]
 
 		operationDurationWithLabels.WithLabelValues(
 			mc.operation,
 			successStr,
-			diskSku,
+			storageAccountType,
 		).Observe(duration)
 	}
+
+	logger := klog.Background().WithName("logLatency").V(int(mc.logLevel))
+	if !logger.Enabled() {
+		return
+	}
+
+	keysAndValues := []interface{}{"latency_seconds", duration, "request", subSystem + "_" + mc.operation, "success", successStr}
+	logger.Info("Observed Request Latency", append(keysAndValues, mc.volumeContext...)...)
 }
 
 // ObserveWithLabels records the operation with provided label pairs
