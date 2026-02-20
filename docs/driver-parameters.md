@@ -98,6 +98,7 @@ tags | azure disk [tags](https://docs.microsoft.com/en-us/azure/azure-resource-m
 userAgent | User agent used for [customer usage attribution](https://docs.microsoft.com/en-us/azure/marketplace/azure-partner-customer-usage-attribution) | | No  | Generated Useragent formatted `driverName/driverVersion compiler/version (OS-ARCH)`
 subscriptionID | specify Azure subscription ID in which Azure disk will be created  | Azure subscription ID | No | if not empty, `resourceGroup` must be provided, `incremental` must set as `false`
 location | specify Azure region in which Azure disk snapshot will be created, region name should only have lower-case letter or digit number. | `eastus2`, `westus`, etc. | No | if empty, driver will use the same region name as current k8s cluster
+instantAccessDurationMinutes | enable [instant access snapshots](https://learn.microsoft.com/en-us/azure/virtual-machines/disks-instant-access-snapshots) for PremiumV2 or UltraSSD disks | `60` to `300` | No |
 
 ### Tips
   - If there are CVEs in the `livenessprobe` and `csi-node-driver-registrar` sidecar images, you can run `kubectl edit ds -n kube-system csi-azuredisk-node` to change the `imagePullPolicy` to `Always` for both sidecar containers. This will cause the CSI driver to restart and pull the latest patched images, thereby resolving the CVEs in these sidecar components.

@@ -22,7 +22,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute/v6"
+	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute/v7"
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	"github.com/stretchr/testify/assert"
 	"google.golang.org/grpc/codes"
@@ -261,6 +261,118 @@ func TestGenerateCSISnapshot(t *testing.T) {
 					SourceVolumeId: sourceVolumeID,
 					CreationTime:   tp,
 					ReadyToUse:     true,
+				}
+				if !reflect.DeepEqual(expectedresponse, response) || err != nil {
+					t.Errorf("actualresponse: (%+v), expectedresponse: (%+v)\n", response, expectedresponse)
+					t.Errorf("err:%v", err)
+				}
+			},
+		},
+		{
+			name: "instant access snapshot ready even when completion percent < 100",
+			testFunc: func(t *testing.T) {
+				provisioningState := "succeeded"
+				DiskSize := int32(10)
+				snapshotID := "test-ia"
+				completionPercent := float32(50.0)
+				now := time.Now()
+				instantAccessMinutes := int64(60)
+				snapshot := &armcompute.Snapshot{
+					Name: ptr.To(fmt.Sprintf("snapshot-%s", snapshotID)),
+					Properties: &armcompute.SnapshotProperties{
+						TimeCreated:       &now,
+						ProvisioningState: &provisioningState,
+						DiskSizeGB:        &DiskSize,
+						CompletionPercent: &completionPercent,
+						CreationData: &armcompute.CreationData{
+							InstantAccessDurationMinutes: &instantAccessMinutes,
+						},
+					},
+					ID: &snapshotID,
+				}
+				sourceVolumeID := "unit-test"
+				response, err := GenerateCSISnapshot(sourceVolumeID, snapshot)
+				tp := timestamppb.New(*snapshot.Properties.TimeCreated)
+				expectedresponse := &csi.Snapshot{
+					SizeBytes:      volumehelper.GiBToBytes(int64(*snapshot.Properties.DiskSizeGB)),
+					SnapshotId:     *snapshot.ID,
+					SourceVolumeId: sourceVolumeID,
+					CreationTime:   tp,
+					ReadyToUse:     true,
+				}
+				if !reflect.DeepEqual(expectedresponse, response) || err != nil {
+					t.Errorf("actualresponse: (%+v), expectedresponse: (%+v)\n", response, expectedresponse)
+					t.Errorf("err:%v", err)
+				}
+			},
+		},
+		{
+			name: "instant access snapshot ready when completion percent is nil",
+			testFunc: func(t *testing.T) {
+				provisioningState := "succeeded"
+				DiskSize := int32(10)
+				snapshotID := "test-ia-nil-completion"
+				now := time.Now()
+				instantAccessMinutes := int64(120)
+				snapshot := &armcompute.Snapshot{
+					Name: ptr.To(fmt.Sprintf("snapshot-%s", snapshotID)),
+					Properties: &armcompute.SnapshotProperties{
+						TimeCreated:       &now,
+						ProvisioningState: &provisioningState,
+						DiskSizeGB:        &DiskSize,
+						CreationData: &armcompute.CreationData{
+							InstantAccessDurationMinutes: &instantAccessMinutes,
+						},
+					},
+					ID: &snapshotID,
+				}
+				sourceVolumeID := "unit-test"
+				response, err := GenerateCSISnapshot(sourceVolumeID, snapshot)
+				tp := timestamppb.New(*snapshot.Properties.TimeCreated)
+				expectedresponse := &csi.Snapshot{
+					SizeBytes:      volumehelper.GiBToBytes(int64(*snapshot.Properties.DiskSizeGB)),
+					SnapshotId:     *snapshot.ID,
+					SourceVolumeId: sourceVolumeID,
+					CreationTime:   tp,
+					ReadyToUse:     true,
+				}
+				if !reflect.DeepEqual(expectedresponse, response) || err != nil {
+					t.Errorf("actualresponse: (%+v), expectedresponse: (%+v)\n", response, expectedresponse)
+					t.Errorf("err:%v", err)
+				}
+			},
+		},
+		{
+			name: "instant access snapshot not ready when provisioning state is not succeeded",
+			testFunc: func(t *testing.T) {
+				provisioningState := "updating"
+				DiskSize := int32(10)
+				snapshotID := "test-ia-updating"
+				completionPercent := float32(50.0)
+				now := time.Now()
+				instantAccessMinutes := int64(60)
+				snapshot := &armcompute.Snapshot{
+					Name: ptr.To(fmt.Sprintf("snapshot-%s", snapshotID)),
+					Properties: &armcompute.SnapshotProperties{
+						TimeCreated:       &now,
+						ProvisioningState: &provisioningState,
+						DiskSizeGB:        &DiskSize,
+						CompletionPercent: &completionPercent,
+						CreationData: &armcompute.CreationData{
+							InstantAccessDurationMinutes: &instantAccessMinutes,
+						},
+					},
+					ID: &snapshotID,
+				}
+				sourceVolumeID := "unit-test"
+				response, err := GenerateCSISnapshot(sourceVolumeID, snapshot)
+				tp := timestamppb.New(*snapshot.Properties.TimeCreated)
+				expectedresponse := &csi.Snapshot{
+					SizeBytes:      volumehelper.GiBToBytes(int64(*snapshot.Properties.DiskSizeGB)),
+					SnapshotId:     *snapshot.ID,
+					SourceVolumeId: sourceVolumeID,
+					CreationTime:   tp,
+					ReadyToUse:     false,
 				}
 				if !reflect.DeepEqual(expectedresponse, response) || err != nil {
 					t.Errorf("actualresponse: (%+v), expectedresponse: (%+v)\n", response, expectedresponse)
