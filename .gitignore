@@ -71,3 +71,4 @@ cscope.*
 
 # golangci-lint
 /bin/*
+pkg/azuredisk/fake-cred-file.json

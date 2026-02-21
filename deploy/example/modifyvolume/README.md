@@ -9,6 +9,10 @@ To learn more about this feature, please refer to the [Kubernetes documentation 
 - `DiskMBpsReadWrite`: disk throughput
 - `skuName`:  disk type
 > Changing the `skuName` to or from UltraSSD_LRS is not permitted. For additional information, please consult the following resource [Change the disk type of an Azure managed disk](https://learn.microsoft.com/en-us/azure/virtual-machines/disks-convert-types)
+- `cachingMode`: [Azure Data Disk Host Cache Setting](https://docs.microsoft.com/en-us/azure/virtual-machines/windows/premium-storage-performance#disk-caching)
+  - Supported values: `None`, `ReadOnly`, `ReadWrite`
+  - Note: `PremiumV2_LRS` and `UltraSSD_LRS` only support `None` caching mode
+  - The new caching mode will be applied when the volume is re-attached to a node
 
 Here is an example of the `VolumeAttributesClass` used to update the disk IOPS and throughput on an Azure PremiumV2 disk:
 

@@ -548,6 +548,14 @@ func (d *Driver) ControllerModifyVolume(ctx context.Context, req *csi.Controller
 		return nil, status.Errorf(codes.InvalidArgument, "Failed parsing disk parameters: %v", err)
 	}
 
+	// Validate cachingMode if provided
+	if diskParams.CachingMode != "" {
+		if _, err := azureutils.NormalizeCachingMode(diskParams.CachingMode); err != nil {
+			return nil, status.Errorf(codes.InvalidArgument, "Invalid caching mode: %v", err)
+		}
+		klog.V(2).Infof("cachingMode(%s) will be applied on next volume attachment", diskParams.CachingMode)
+	}
+
 	// normalize values
 	skuName, err := azureutils.NormalizeStorageAccountType(diskParams.AccountType, d.cloud.Config.Cloud, d.cloud.Config.DisableAzureStackCloud)
 	if err != nil {
@@ -573,6 +581,19 @@ func (d *Driver) ControllerModifyVolume(ctx context.Context, req *csi.Controller
 				currentDisk.Properties.CompletionPercent != nil && *currentDisk.Properties.CompletionPercent < float32(100.0) {
 				monitorSKUMigration = fromSKU == armcompute.DiskStorageAccountTypesPremiumV2LRS
 			}
+		}
+	}
+
+	// Determine the effective SKU for validation (either the new one or the current one)
+	effectiveSKU := skuName
+	if effectiveSKU == "" {
+		effectiveSKU = getDiskSKUName(currentDisk)
+	}
+
+	// Validate cachingMode compatibility with effective SKU
+	if diskParams.CachingMode != "" && effectiveSKU != "" {
+		if err := azureutils.ValidateCachingModeForSKU(diskParams.CachingMode, effectiveSKU); err != nil {
+			return nil, status.Errorf(codes.InvalidArgument, "%v", err)
 		}
 	}
 
@@ -1594,6 +1615,14 @@ func getSnapshotSKUFromSnapshot(computeSnapshot *armcompute.Snapshot) (string, e
 		return "", status.Error(codes.NotFound, "Snapshot SKU property not found")
 	}
 	return string(*computeSnapshot.SKU.Name), nil
+}
+
+// getDiskSKUName safely extracts the SKU name from a disk, returning an empty SKU if the disk is nil or has no SKU
+func getDiskSKUName(disk *armcompute.Disk) armcompute.DiskStorageAccountTypes {
+	if disk != nil && disk.SKU != nil && disk.SKU.Name != nil {
+		return *disk.SKU.Name
+	}
+	return ""
 }
 
 // getDiskSizeInBytes retrieves the size of the disk and returns the size or if any error occurs
