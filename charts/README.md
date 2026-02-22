@@ -119,19 +119,19 @@ The following table lists the configurable parameters of the latest Azure Disk C
 | `image.azuredisk.tag`                             | azuredisk-csi-driver container image tag                      | ``                                                       |
 | `image.azuredisk.pullPolicy`                      | azuredisk-csi-driver image pull policy                     | `IfNotPresent`                                                 |
 | `image.csiProvisioner.repository`                 | csi-provisioner container image                               | `/oss/kubernetes-csi/csi-provisioner`         |
-| `image.csiProvisioner.tag`                        | csi-provisioner container image tag                           | `v6.1.0`                                                       |
+| `image.csiProvisioner.tag`                        | csi-provisioner container image tag                           | `v6.1.1`                                                       |
 | `image.csiProvisioner.pullPolicy`                 | csi-provisioner image pull policy                          | `IfNotPresent`                                                 |
 | `image.csiAttacher.repository`                    | csi-attacher container image                                  | `/oss/kubernetes-csi/csi-attacher`            |
-| `image.csiAttacher.tag`                           | csi-attacher container image tag                              | `v4.8.1`                                                       |
+| `image.csiAttacher.tag`                           | csi-attacher container image tag                              | `v4.11.0`                                                       |
 | `image.csiAttacher.pullPolicy`                    | csi-attacher image pull policy                             | `IfNotPresent`                                                 |
 | `image.csiResizer.repository`                     | csi-resizer container image                                   | `/oss/kubernetes-csi/csi-resizer`             |
-| `image.csiResizer.tag`                            | csi-resizer container image tag                               | `v2.0.0`                                                       |
+| `image.csiResizer.tag`                            | csi-resizer container image tag                               | `v2.1.0`                                                       |
 | `image.csiResizer.pullPolicy`                     | csi-resizer image pull policy                              | `IfNotPresent`                                                 |
 | `image.livenessProbe.repository`                  | liveness-probe container image                                | `/oss/kubernetes-csi/livenessprobe`           |
-| `image.livenessProbe.tag`                         | liveness-probe container image tag                            | `v2.17.0`                                                       |
+| `image.livenessProbe.tag`                         | liveness-probe container image tag                            | `v2.18.0`                                                       |
 | `image.livenessProbe.pullPolicy`                  | liveness-probe image pull policy                           | `IfNotPresent`                                                 |
 | `image.nodeDriverRegistrar.repository`            | csi-node-driver-registrar container image                     | `/oss/kubernetes-csi/csi-node-driver-registrar` |
-| `image.nodeDriverRegistrar.tag`                   | csi-node-driver-registrar container image tag                 | `v2.15.0`                                                       |
+| `image.nodeDriverRegistrar.tag`                   | csi-node-driver-registrar container image tag                 | `v2.16.0`                                                       |
 | `image.nodeDriverRegistrar.pullPolicy`            | csi-node-driver-registrar image pull policy                | `IfNotPresent`                                                 |
 | `imagePullSecrets`                                | Specify docker-registry secret names as an array           | [] (does not add image pull secrets to deployed pods)        |                                       |
 | `serviceAccount.create`                           | whether create service account of csi-azuredisk-controller, csi-azuredisk-node, and snapshot-controller| `true`                                                    |
@@ -196,10 +196,10 @@ The following table lists the configurable parameters of the latest Azure Disk C
 | `node.logLevel`                                   | node driver log level                                      |`5`                                                           |
 | `snapshot.enabled`                                | whether enable snapshot feature                            | `false`                                                        |
 | `snapshot.image.csiSnapshotter.repository`        | csi-snapshotter container image                               | `/oss/kubernetes-csi/csi-snapshotter`         |
-| `snapshot.image.csiSnapshotter.tag`               | csi-snapshotter container image tag                           | `v8.4.0`                                                       |
+| `snapshot.image.csiSnapshotter.tag`               | csi-snapshotter container image tag                           | `v8.5.0`                                                       |
 | `snapshot.image.csiSnapshotter.pullPolicy`        | csi-snapshotter image pull policy                          | `IfNotPresent`                                                 |
 | `snapshot.image.csiSnapshotController.repository` | snapshot-controller container image                           | `/oss/kubernetes-csi/snapshot-controller`     |
-| `snapshot.image.csiSnapshotController.tag`        | snapshot-controller container image tag                       | `v8.4.0`                                                      |
+| `snapshot.image.csiSnapshotController.tag`        | snapshot-controller container image tag                       | `v8.5.0`                                                      |
 | `snapshot.image.csiSnapshotController.pullPolicy` | snapshot-controller image pull policy                      | `IfNotPresent`                                                 |
 | `snapshot.snapshotController.name`                | snapshot controller name                                   | `csi-snapshot-controller`                                                           |
 | `snapshot.snapshotController.replicas`            | the replicas of snapshot-controller                        | `2`                                                            |
