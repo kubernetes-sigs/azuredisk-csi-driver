@@ -373,7 +373,7 @@ func (c *controllerCommon) DetachDisk(ctx context.Context, diskName, diskURI str
 			// if host doesn't exist, no need to detach
 			klog.Warningf("azureDisk - failed to get azure instance id(%s), DetachDisk(%s) will assume disk is already detached",
 				nodeName, diskURI)
-			return c.waitForDiskManagedByTobeRemoved(ctx, diskURI)
+			return c.waitForDiskManagedByTobeRemoved(ctx, diskURI, nodeName)
 		}
 		klog.Warningf("failed to get azure instance id (%v)", err)
 		return fmt.Errorf("failed to get azure instance id for node %q: %w", nodeName, err)
@@ -450,7 +450,7 @@ func (c *controllerCommon) DetachDisk(ctx context.Context, diskName, diskURI str
 			// if host doesn't exist, no need to detach
 			klog.Warningf("azureDisk - got InstanceNotFoundError(%v), DetachDisk(%s) will assume disk is already detached",
 				err, diskURI)
-			return c.waitForDiskManagedByTobeRemoved(ctx, diskURI)
+			return c.waitForDiskManagedByTobeRemoved(ctx, diskURI, nodeName)
 		}
 
 		// if operation is preempted by a force operation on VM, check if the disk got detached before returning error
@@ -477,7 +477,7 @@ func (c *controllerCommon) DetachDisk(ctx context.Context, diskName, diskURI str
 		return err
 	}
 
-	err = c.waitForDiskManagedByTobeRemoved(ctx, diskURI)
+	err = c.waitForDiskManagedByTobeRemoved(ctx, diskURI, nodeName)
 	if err != nil {
 		klog.Errorf("azureDisk - waitForDiskManagedByTobeRemoved(%s) failed, err: %v", diskURI, err)
 		return err
@@ -750,12 +750,14 @@ func (c *controllerCommon) isMaxDataDiskCountExceeded(ctx context.Context, nodeN
 // For cases where an instance is deleted, we assume the disk is detached, but it actually
 // takes a while for disk property to be updated. We do not want to presume such disks to be detached
 // without waiting for disk to be actually detached.
-func (c *controllerCommon) waitForDiskManagedByTobeRemoved(ctx context.Context, diskURI string) error {
+// nodeName is the name of the node that was deleted. If the disk's ManagedBy field no longer
+// references this node (either nil or pointing to a different node), the detach is considered complete.
+func (c *controllerCommon) waitForDiskManagedByTobeRemoved(ctx context.Context, diskURI string, nodeName types.NodeName) error {
 	subsID, resourceGroup, diskName, err := azureutils.GetInfoFromURI(diskURI)
 	if err != nil {
 		return err
 	}
-	klog.V(2).Infof("azureDisk - waitForDiskManagedByTobeRemoved: diskURI(%s)", diskURI)
+	klog.V(2).Infof("azureDisk - waitForDiskManagedByTobeRemoved: diskURI(%s), nodeName(%s)", diskURI, nodeName)
 	var disk *armcompute.Disk
 	waitFunc := func(ctx context.Context) (bool, error) {
 		diskclient, err := c.clientFactory.GetDiskClientForSub(subsID)
@@ -768,6 +770,13 @@ func (c *controllerCommon) waitForDiskManagedByTobeRemoved(ctx context.Context, 
 		}
 
 		if disk.ManagedBy == nil {
+			return true, nil
+		}
+
+		// If ManagedBy no longer references the original node, the disk has been detached
+		// from the deleted node (possibly re-attached to another node). Consider detach complete.
+		if !strings.HasSuffix(strings.ToLower(*disk.ManagedBy), "/"+strings.ToLower(string(nodeName))) {
+			klog.V(2).Infof("azureDisk - waitForDiskManagedByTobeRemoved: disk %s ManagedBy (%s) no longer references node %s, detach considered complete", diskURI, *disk.ManagedBy, nodeName)
 			return true, nil
 		}
 

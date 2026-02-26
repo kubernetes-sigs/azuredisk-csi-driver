@@ -500,6 +500,7 @@ func TestCommonDetachDiskInstanceNotFoundWaitForDiskManagedByRemoved(t *testing.
 	}()
 
 	managedBy := testManagedByValue
+	sameNodeManagedBy := "/subscriptions/sub/resourceGroups/rg/providers/Microsoft.Compute/virtualMachines/vm1"
 	testCases := []struct {
 		desc        string
 		managedBy   *string
@@ -518,8 +519,13 @@ func TestCommonDetachDiskInstanceNotFoundWaitForDiskManagedByRemoved(t *testing.
 			expectedErr: true,
 		},
 		{
-			desc:        "error when ManagedBy remains set",
+			desc:        "no error when ManagedBy is set to a different node (disk re-attached elsewhere)",
 			managedBy:   &managedBy,
+			expectedErr: false,
+		},
+		{
+			desc:        "error when ManagedBy still references the same deleted node",
+			managedBy:   &sameNodeManagedBy,
 			expectedErr: true,
 		},
 	}
