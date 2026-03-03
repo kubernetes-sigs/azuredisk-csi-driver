@@ -23,9 +23,9 @@
 # Key env vars:
 #   MIGRATION_MODE        - Required. One of: inplace, dual, attrclass
 #   BATCH_SIZE            - PVCs per sub-batch (default: 1)
-#   BATCH_CONCURRENCY     - Max parallel batches (default: min(50, num_pvcs))
+#   BATCH_CONCURRENCY     - Max parallel batches (default: min(50, eligible_pvcs))
 #   DRY_RUN               - If "true", print plan and exit (default: false)
-#   CHECKPOINT_FILE       - Path to checkpoint JSON (default: migration-checkpoint.json)
+#   CHECKPOINT_FILE       - Path to checkpoint JSON (default: migration-batch-logs/migration-checkpoint.json)
 #   MIGRATION_LABEL       - PVC selector label (default: disk.csi.azure.com/pv2migration=true)
 #   NAMESPACE             - If set, scope discovery to this namespace
 #   BATCH_LOG_DIR         - Directory for per-batch logs (default: migration-batch-logs)
@@ -52,12 +52,25 @@ source "${SCRIPT_DIR}/lib-premiumv2-migration-common.sh"
 MIGRATION_MODE="${MIGRATION_MODE:-}"
 BATCH_SIZE="${BATCH_SIZE:-1}"
 BATCH_CONCURRENCY="${BATCH_CONCURRENCY:-}"  # Computed later if empty
+
+# Validate BATCH_SIZE and BATCH_CONCURRENCY are positive integers when set.
+if ! [[ "$BATCH_SIZE" =~ ^[1-9][0-9]*$ ]]; then
+  err "BATCH_SIZE must be a positive integer (>=1), got: '${BATCH_SIZE}'"
+  exit 1
+fi
+if [[ -n "$BATCH_CONCURRENCY" ]] && ! [[ "$BATCH_CONCURRENCY" =~ ^[1-9][0-9]*$ ]]; then
+  err "BATCH_CONCURRENCY must be a positive integer (>=1), got: '${BATCH_CONCURRENCY}'"
+  exit 1
+fi
 DRY_RUN="${DRY_RUN:-false}"
 CHECKPOINT_FILE="${CHECKPOINT_FILE:-migration-checkpoint.json}"
 BATCH_LOG_DIR="${BATCH_LOG_DIR:-migration-batch-logs}"
 BATCH_LABEL_KEY="disk.csi.azure.com/pv2migration-batch"
 ORIG_MIGRATION_LABEL="${MIGRATION_LABEL}"
-CHECKPOINT_FILE="${BATCH_LOG_DIR}/${CHECKPOINT_FILE}"
+# Only prepend BATCH_LOG_DIR if CHECKPOINT_FILE is not an absolute path.
+if [[ "$CHECKPOINT_FILE" != /* ]]; then
+  CHECKPOINT_FILE="${BATCH_LOG_DIR}/${CHECKPOINT_FILE}"
+fi
 
 # ==================== Validation ====================
 
@@ -293,16 +306,25 @@ run_preflight() {
 # ==================== Concurrent Executor ====================
 
 # Apply temporary batch label to PVCs so the mode script discovers only them.
+# Returns non-zero if any PVC fails to be labeled (caller should fail the batch
+# to avoid marking unlabeled PVCs as done).
 label_batch_pvcs() {
   local batch_id="$1"
   shift
   local -a entries=("$@")
+  local any_failed=0
   for entry in "${entries[@]}"; do
     local ns="${entry%%|*}"
     local pvc="${entry##*|}"
-    kcmd label pvc "$pvc" -n "$ns" "${BATCH_LABEL_KEY}=${batch_id}" --overwrite >/dev/null 2>&1 || \
+    if ! kcmd label pvc "$pvc" -n "$ns" "${BATCH_LABEL_KEY}=${batch_id}" --overwrite >/dev/null 2>&1; then
       warn "Failed to label PVC ${ns}/${pvc} with batch=${batch_id}"
+      any_failed=1
+    fi
   done
+  if (( any_failed != 0 )); then
+    warn "One or more PVCs failed to receive batch label ${batch_id}; failing batch."
+    return 1
+  fi
 }
 
 # Remove temporary batch label from PVCs.
@@ -337,22 +359,36 @@ run_batch() {
     checkpoint_set_status "${ns}/${pvc}" "in_progress" "$batch_pid"
   done
 
-  # Apply scoped label
-  label_batch_pvcs "$batch_id" "${entries[@]}"
+  # Apply scoped label. If any PVC fails to be labeled, mark the batch as
+  # failed and clean up partial labels so we don't leave orphans behind.
+  # Note: capture exit code directly via || to avoid if-! which inverts $?.
+  local label_rc=0
+  label_batch_pvcs "$batch_id" "${entries[@]}" || label_rc=$?
+  if (( label_rc != 0 )); then
+    warn "Batch ${batch_id}: failed to apply labels (exit code ${label_rc})"
+    for entry in "${entries[@]}"; do
+      local ns="${entry%%|*}"
+      local pvc="${entry##*|}"
+      checkpoint_set_status "${ns}/${pvc}" "failed"
+    done
+    unlabel_batch_pvcs "$batch_id" "${entries[@]}" || true
+    return "$label_rc"
+  fi
 
   # Invoke the existing mode script with scoped label.
   # Each batch gets its own working directory for audit logs, PVC backups, etc.
-  # Env vars are set via prefix syntax so they only apply to this subprocess
-  # and don't leak back to the wrapper or other batches.
+  # Uses env(1) so variables are scoped to the subprocess and don't leak back
+  # to the wrapper or other batches; a subshell avoids bash -c quoting issues.
   info "Batch ${batch_id}: starting (${#entries[@]} PVCs) -> ${batch_dir}"
   set +e
-  MIGRATION_LABEL="${BATCH_LABEL_KEY}=${batch_id}" \
-  MAX_PVCS="${BATCH_SIZE}" \
-  AUDIT_ENABLE="${AUDIT_ENABLE:-true}" \
-  AUDIT_LOG_FILE="${batch_dir}/audit.log" \
-  PVC_BACKUP_DIR="${batch_dir}/pvc-backups" \
-  ZONE_MAPPING_FILE="${batch_dir}/disk-zone-mapping.txt" \
-    bash -c "cd '${batch_dir}' && bash '${MODE_SCRIPT}'" >>"$batch_log" 2>&1
+  env \
+    MIGRATION_LABEL="${BATCH_LABEL_KEY}=${batch_id}" \
+    MAX_PVCS="${BATCH_SIZE}" \
+    AUDIT_ENABLE="${AUDIT_ENABLE:-true}" \
+    AUDIT_LOG_FILE="${batch_dir}/audit.log" \
+    PVC_BACKUP_DIR="${batch_dir}/pvc-backups" \
+    ZONE_MAPPING_FILE="${batch_dir}/disk-zone-mapping.txt" \
+    bash -c 'cd "$1" && bash "$2"' _ "$batch_dir" "$MODE_SCRIPT" >>"$batch_log" 2>&1
   rc=$?
   set -e
 
@@ -410,12 +446,14 @@ execute_batches() {
     local pid
     for pid in "${!PID_BATCH[@]}"; do
       if ! kill -0 "$pid" 2>/dev/null; then
-        local wrc=0
+        # Capture the exit status directly (not via if-!, which inverts $?).
         # wait only works for child processes; adopted PIDs from a previous
-        # wrapper instance are not children of this shell.
-        if wait "$pid" 2>/dev/null; then
-          wrc=$?
-        fi
+        # wrapper instance are not children of this shell (wait returns 127).
+        local wrc=0
+        wait "$pid" 2>/dev/null && wrc=0 || wrc=$?
+        # For non-child PIDs, wait returns 127; treat that as non-failure
+        # to preserve existing semantics for adopted PIDs.
+        [[ $wrc -eq 127 ]] && wrc=0
         (( wrc != 0 )) && failed=$(( failed + 1 ))
         completed=$(( completed + 1 ))
         running=$(( running - 1 ))
@@ -431,11 +469,17 @@ execute_batches() {
       reap_finished
     done
 
-    # Parse entries for this batch
+    # Parse entries for this batch (safely default missing indices for
+    # non-contiguous batch IDs, e.g. after an interrupted run).
+    local batch_blob="${BATCH_ENTRIES[$bidx]-}"
+    if [[ -z "$batch_blob" ]]; then
+      continue
+    fi
+
     local -a entries=()
     while IFS= read -r line; do
       [[ -n "$line" ]] && entries+=("$line")
-    done <<< "${BATCH_ENTRIES[$bidx]}"
+    done <<< "$batch_blob"
 
     # Skip if a previous run's process is still alive for these PVCs.
     local stale_pid=""
@@ -565,7 +609,7 @@ main() {
       echo "  batch ${bidx}: ${ns}/${pvc}"
     done
     echo
-    ok "Dry run complete. No mutations performed."
+    ok "Dry run complete. No Kubernetes resource mutations were performed (local logs/checkpoints may have been created)."
     exit 0
   fi
 
