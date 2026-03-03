@@ -114,7 +114,9 @@ func (c *WmiMethod) Execute(inParam, outParam WmiMethodParamCollection) (result 
 		return
 	}
 	defer returnRaw.Clear()
-	result.ReturnValue = returnRaw.Value().(int32)
+	if retVal, ok := returnRaw.Value().(int32); ok {
+		result.ReturnValue = retVal
+	}
 	log.Printf("[WMI] - Return [%d] ", result.ReturnValue)
 
 	for _, outp := range outParam {

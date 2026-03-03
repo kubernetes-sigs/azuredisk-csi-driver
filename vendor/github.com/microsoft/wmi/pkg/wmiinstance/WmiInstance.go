@@ -204,7 +204,11 @@ func (c *WmiInstance) Equals(instance *WmiInstance) bool {
 		return false
 	}
 
-	return value.(bool)
+	boolVal, ok := value.(bool)
+	if !ok {
+		return false
+	}
+	return boolVal
 }
 
 // Clone
@@ -309,7 +313,11 @@ func (c *WmiInstance) InvokeMethodWithReturn(methodName string, params ...interf
 		return 0, nil
 	}
 
-	return results[0].(int32), nil
+	val, ok := results[0].(int32)
+	if !ok {
+		return 0, nil
+	}
+	return val, nil
 }
 
 // GetAllRelatedWithQuery returns all related instances matching the query

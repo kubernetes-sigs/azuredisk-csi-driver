@@ -135,7 +135,11 @@ func (job *WmiJob) PercentComplete() (uint16, error) {
 	if err != nil {
 		return 0, err
 	}
-	return uint16(retValue.(int32)), nil
+	val, ok := retValue.(int32)
+	if !ok {
+		return 0, fmt.Errorf("failed to get PercentComplete property value")
+	}
+	return uint16(val), nil
 }
 
 func (job *WmiJob) GetJobState() (js JobState) {
@@ -192,7 +196,10 @@ func (job *WmiJob) GetException() error {
 		fallthrough
 	case JobState_Exception:
 		errorCodeVal, _ := job.GetProperty("ErrorCode")
-		errorCode := uint16(errorCodeVal.(int32))
+		var errorCode uint16
+		if ecVal, ok := errorCodeVal.(int32); ok {
+			errorCode = uint16(ecVal)
+		}
 		errorDescriptionVal, _ := job.GetProperty("ErrorDescription")
 		errorDescription, _ := errorDescriptionVal.(string)
 		errorSummaryDescriptionVal, _ := job.GetProperty("ErrorSummaryDescription")

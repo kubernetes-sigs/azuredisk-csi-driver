@@ -57,11 +57,11 @@ func GetHostSessionWithCredentials(namespaceName string, whost *host.WmiHost, cr
 func GetSession(namespaceName string, serverName string, domain string, userName string, password string) (*wmi.WmiSession, error) {
 	sessionsMapId := strings.Join([]string{namespaceName, serverName, domain}, "_")
 	if sessionsMap[sessionsMapId] == nil {
-		var err error
-		sessionsMap[sessionsMapId], err = createSession(namespaceName, serverName, domain, userName, password)
+		s, err := createSession(namespaceName, serverName, domain, userName, password)
 		if err != nil {
 			return nil, err
 		}
+		sessionsMap[sessionsMapId] = s
 	}
 
 	return sessionsMap[sessionsMapId], nil

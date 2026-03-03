@@ -62,12 +62,12 @@ func GetWmiInstanceManager(hostname, namespaceName, userName, password, domainNa
 		return val, nil
 	}
 
-	var err error
-	instanceManagerMap[mapId], err = newWmiInstanceManager(hostname, namespaceName, userName, password, domainName)
+	im, err := newWmiInstanceManager(hostname, namespaceName, userName, password, domainName)
 	if err != nil {
 		return nil, err
 	}
-	return instanceManagerMap[mapId], nil
+	instanceManagerMap[mapId] = im
+	return im, nil
 }
 
 func (im *WmiInstanceManager) CreateInstance(className string) (*wmi.WmiInstance, error) {
