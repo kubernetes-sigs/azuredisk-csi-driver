@@ -146,4 +146,4 @@ A: Re-run the wrapper. PVCs not marked `done` are automatically retried.
 A: Edit the checkpoint file and change its status to `done`, or remove the migration label from the PVC.
 
 **Q: How do I reset and start over?**
-A: Delete the checkpoint file: `rm migration-checkpoint.json`
+A: Delete the checkpoint file: `rm migration-batch-logs/migration-checkpoint.json`

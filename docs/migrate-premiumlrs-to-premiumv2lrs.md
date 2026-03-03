@@ -261,11 +261,11 @@ Change the label (or add additional selectors externally) to control scope. Only
 |----------|---------|--------------------|
 | `MIG_SUFFIX` | `csi` | Suffix for intermediate & pv2 naming (`<pvc>-<suffix>[-pv2]`) – keep stable. |
 | `MAX_PVCS` | `50` | Upper bound per run; script truncates beyond this to avoid huge batches. |
-| `MAX_PVC_CAPACITY_GIB` | `2048` | Skip PVCs at or above this (safety / PremiumV2 size comfort). |
+| `MAX_PVC_CAPACITY_GIB` | `2048` | Skip PVCs at or above this (safety / PremiumV2 size comfort). Also determines the default `MONITOR_TIMEOUT_MINUTES` when that variable is not explicitly set (see below). |
 | `WAIT_FOR_WORKLOAD` | `true` | If true, tries to ensure detachment before migration (in-place more critical). |
 | `WORKLOAD_DETACH_TIMEOUT_MINUTES` | `5` | >0 to enforce a max wait for volume detach. |
 | `BIND_TIMEOUT_SECONDS` | `60` | Wait for new pv2 PVC binding. |
-| `MONITOR_TIMEOUT_MINUTES` | `300` | Global migration monitor upper bound. |
+| `MONITOR_TIMEOUT_MINUTES` | *(derived)* | Global migration monitor upper bound. When not explicitly set, automatically derived from `MAX_PVC_CAPACITY_GIB`: ≤ 2048 GiB → 600 min (10 h), ≤ 4096 GiB → 720 min (12 h), ≤ 16384 GiB → 960 min (16 h), ≤ 65536 GiB → 1140 min (19 h). An explicit value always takes precedence. |
 | `MIGRATION_FORCE_INPROGRESS_AFTER_MINUTES` | `3` | Force a migration-inprogress label on original PV if events lag (in both modes). |
 | `BACKUP_ORIGINAL_PVC` | `true` | In-place only: store raw YAML (under `PVC_BACKUP_DIR`). |
 | `PVC_BACKUP_DIR` | `pvc-backups` | Backup directory root. |
@@ -774,6 +774,9 @@ Open a PR if you extend; keep safety-first defaults.
 # Common overrides:
 export MAX_PVCS=10
 export MIG_SUFFIX=csi
+# MONITOR_TIMEOUT_MINUTES is auto-derived from MAX_PVC_CAPACITY_GIB:
+#   ≤2048 GiB → 600 min, ≤4096 → 720, ≤16384 → 960, ≤65536 → 1140
+# Set explicitly only to override the automatic value:
 export MONITOR_TIMEOUT_MINUTES=180
 export BIND_TIMEOUT_SECONDS=120
 export WORKLOAD_DETACH_TIMEOUT_MINUTES=15
