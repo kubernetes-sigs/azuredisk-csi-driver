@@ -6,7 +6,7 @@ image:
     pullPolicy: IfNotPresent
   csiProvisioner:
     repository: /oss/v2/kubernetes-csi/csi-provisioner
-    tag: v6.1.1
+    tag: v6.2.0
     pullPolicy: IfNotPresent
   csiAttacher:
     repository: /oss/v2/kubernetes-csi/csi-attacher
@@ -45,7 +45,6 @@ controller:
   # featureGates:
   #   csiProvisioner: 
   #     - Topology=true                # Enables topology-aware volume provisioning
-  #     - HonorPVReclaimPolicy=true    # Honors the reclaim policy set on PersistentVolumes
   #     - VolumeAttributesClass=true   # Enables support for VolumeAttributesClass
   #   csiResizer:
   #     - RecoverVolumeExpansionFailure=true  # Enables recovery from volume expansion failures
@@ -53,7 +52,6 @@ controller:
   featureGates:
     csiProvisioner:
       - Topology=true
-      - HonorPVReclaimPolicy=true
       - VolumeAttributesClass=true
     csiResizer:
       - RecoverVolumeExpansionFailure=true
