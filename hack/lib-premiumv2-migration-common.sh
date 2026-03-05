@@ -54,6 +54,10 @@ ROLLBACK_ORIG_PV_ANN="${ROLLBACK_ORIG_PV_ANN:-disk.csi.azure.com/rollback-orig-p
 
 # Maximum PVC size (in GiB) eligible for migration (default 2TiB = 2048GiB). PVCs >= this are skipped.
 MAX_PVC_CAPACITY_GIB="${MAX_PVC_CAPACITY_GIB:-2048}"
+if ! [[ "$MAX_PVC_CAPACITY_GIB" =~ ^[0-9]+$ ]]; then
+  echo "$(date +'%Y-%m-%dT%H:%M:%S') [ERROR] MAX_PVC_CAPACITY_GIB must be a non-negative integer, got: '${MAX_PVC_CAPACITY_GIB}'" >&2
+  exit 1
+fi
 declare -a AUDIT_LINES=()
 MIGRATION_LABEL_KEY="${MIGRATION_LABEL%%=*}"
 MIGRATION_LABEL_VALUE="${MIGRATION_LABEL#*=}"
@@ -62,7 +66,19 @@ PVC_BACKUP_DIR="${PVC_BACKUP_DIR:-pvc-backups}"
 
 # ---------- Timeouts ----------
 BIND_TIMEOUT_SECONDS="${BIND_TIMEOUT_SECONDS:-60}"
-MONITOR_TIMEOUT_MINUTES="${MONITOR_TIMEOUT_MINUTES:-300}"
+if [[ -z "${MONITOR_TIMEOUT_MINUTES:-}" ]]; then
+  if (( MAX_PVC_CAPACITY_GIB <= 2048 )); then
+    MONITOR_TIMEOUT_MINUTES=600
+  elif (( MAX_PVC_CAPACITY_GIB <= 4096 )); then
+    MONITOR_TIMEOUT_MINUTES=720
+  elif (( MAX_PVC_CAPACITY_GIB <= 16384 )); then
+    MONITOR_TIMEOUT_MINUTES=960
+  elif (( MAX_PVC_CAPACITY_GIB <= 65536 )); then
+    MONITOR_TIMEOUT_MINUTES=1140
+  else
+    MONITOR_TIMEOUT_MINUTES=1140   # cap at 64 TB timeout
+  fi
+fi
 WORKLOAD_DETACH_TIMEOUT_MINUTES="${WORKLOAD_DETACH_TIMEOUT_MINUTES:-5}"
 EXIT_ON_WORKLOAD_DETACH_TIMEOUT="${EXIT_ON_WORKLOAD_DETACH_TIMEOUT:-false}"
 
@@ -222,7 +238,7 @@ name_pv2_sc()  { local sc="$1"; sc=$(get_srcsc_of_sc "$sc"); echo "${sc}-pv2"; }
 # ---------- Utilities ----------
 require_bins() {
   local missing=()
-  for b in kubectl jq base64; do
+  for b in kubectl jq base64 flock; do
     command -v "$b" >/dev/null 2>&1 || missing+=("$b")
   done
   if (( ${#missing[@]} > 0 )); then
