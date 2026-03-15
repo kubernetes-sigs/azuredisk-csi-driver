@@ -130,7 +130,21 @@ func GetCachingMode(attributes map[string]string) (armcompute.CachingTypes, erro
 	return armcompute.CachingTypes(cachingMode), err
 }
 
-// GetAttachDiskInitialDelay gttachDiskInitialDelay from attributes
+// ValidateCachingModeForSKU validates that the cachingMode is compatible with the given SKU.
+// PremiumV2_LRS and UltraSSD_LRS only support None caching mode.
+func ValidateCachingModeForSKU(cachingMode v1.AzureDataDiskCachingMode, skuName armcompute.DiskStorageAccountTypes) error {
+	if cachingMode == "" {
+		return nil
+	}
+	if skuName == armcompute.DiskStorageAccountTypesPremiumV2LRS || skuName == armcompute.DiskStorageAccountTypesUltraSSDLRS {
+		if !strings.EqualFold(string(cachingMode), string(v1.AzureDataDiskCachingNone)) {
+			return fmt.Errorf("cachingMode %s is not supported for %s, only None is supported", cachingMode, skuName)
+		}
+	}
+	return nil
+}
+
+// GetAttachDiskInitialDelay attachDiskInitialDelay from attributes
 // return -1 if not found
 func GetAttachDiskInitialDelay(attributes map[string]string) int {
 	for k, v := range attributes {
@@ -686,8 +700,8 @@ func ParseDiskParameters(parameters map[string]string) (ManagedDiskParameters, e
 	}
 
 	if strings.EqualFold(diskParams.AccountType, string(armcompute.DiskStorageAccountTypesPremiumV2LRS)) {
-		if diskParams.CachingMode != "" && !strings.EqualFold(string(diskParams.CachingMode), string(v1.AzureDataDiskCachingNone)) {
-			return diskParams, fmt.Errorf("cachingMode %s is not supported for %s", diskParams.CachingMode, armcompute.DiskStorageAccountTypesPremiumV2LRS)
+		if err := ValidateCachingModeForSKU(diskParams.CachingMode, armcompute.DiskStorageAccountTypesPremiumV2LRS); err != nil {
+			return diskParams, err
 		}
 	}
 

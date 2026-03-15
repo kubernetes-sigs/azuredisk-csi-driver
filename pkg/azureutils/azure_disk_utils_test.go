@@ -2506,3 +2506,72 @@ func TestParseDiskParametersForKey(t *testing.T) {
 		})
 	}
 }
+
+func TestValidateCachingModeForSKU(t *testing.T) {
+	tests := []struct {
+		name        string
+		cachingMode v1.AzureDataDiskCachingMode
+		skuName     armcompute.DiskStorageAccountTypes
+		expectError bool
+	}{
+		{
+			name:        "empty cachingMode is valid",
+			cachingMode: "",
+			skuName:     armcompute.DiskStorageAccountTypesPremiumV2LRS,
+			expectError: false,
+		},
+		{
+			name:        "None caching with PremiumV2_LRS is valid",
+			cachingMode: v1.AzureDataDiskCachingNone,
+			skuName:     armcompute.DiskStorageAccountTypesPremiumV2LRS,
+			expectError: false,
+		},
+		{
+			name:        "ReadOnly caching with PremiumV2_LRS is invalid",
+			cachingMode: v1.AzureDataDiskCachingReadOnly,
+			skuName:     armcompute.DiskStorageAccountTypesPremiumV2LRS,
+			expectError: true,
+		},
+		{
+			name:        "ReadWrite caching with PremiumV2_LRS is invalid",
+			cachingMode: v1.AzureDataDiskCachingReadWrite,
+			skuName:     armcompute.DiskStorageAccountTypesPremiumV2LRS,
+			expectError: true,
+		},
+		{
+			name:        "None caching with UltraSSD_LRS is valid",
+			cachingMode: v1.AzureDataDiskCachingNone,
+			skuName:     armcompute.DiskStorageAccountTypesUltraSSDLRS,
+			expectError: false,
+		},
+		{
+			name:        "ReadOnly caching with UltraSSD_LRS is invalid",
+			cachingMode: v1.AzureDataDiskCachingReadOnly,
+			skuName:     armcompute.DiskStorageAccountTypesUltraSSDLRS,
+			expectError: true,
+		},
+		{
+			name:        "ReadOnly caching with Premium_LRS is valid",
+			cachingMode: v1.AzureDataDiskCachingReadOnly,
+			skuName:     armcompute.DiskStorageAccountTypesPremiumLRS,
+			expectError: false,
+		},
+		{
+			name:        "ReadWrite caching with Standard_LRS is valid",
+			cachingMode: v1.AzureDataDiskCachingReadWrite,
+			skuName:     armcompute.DiskStorageAccountTypesStandardLRS,
+			expectError: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := ValidateCachingModeForSKU(tt.cachingMode, tt.skuName)
+			if tt.expectError {
+				assert.Error(t, err, "expected error for test: %s", tt.name)
+			} else {
+				assert.NoError(t, err, "expected no error for test: %s", tt.name)
+			}
+		})
+	}
+}
