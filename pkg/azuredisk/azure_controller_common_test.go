@@ -501,26 +501,54 @@ func TestCommonDetachDiskInstanceNotFoundWaitForDiskManagedByRemoved(t *testing.
 
 	managedBy := testManagedByValue
 	testCases := []struct {
-		desc        string
-		managedBy   *string
-		getErr      error
-		expectedErr bool
+		desc               string
+		nodeName           types.NodeName
+		managedBy          *string
+		attachedNodeName   types.NodeName
+		getNodeNameByIDErr error
+		getErr             error
+		expectedErr        bool
 	}{
 		{
 			desc:        "no error when ManagedBy cleared",
+			nodeName:    "vm1",
 			managedBy:   nil,
 			expectedErr: false,
 		},
 		{
 			desc:        "error when disk get fails",
+			nodeName:    "vm1",
 			managedBy:   nil,
 			getErr:      errors.New("get disk error"),
 			expectedErr: true,
 		},
 		{
-			desc:        "error when ManagedBy remains set",
-			managedBy:   &managedBy,
-			expectedErr: true,
+			desc:             "error when ManagedBy remains set and resolves to same node",
+			nodeName:         "vm1",
+			managedBy:        &managedBy,
+			attachedNodeName: "vm1",
+			expectedErr:      true,
+		},
+		{
+			desc:             "error when ManagedBy remains set and resolves to same node with different casing",
+			nodeName:         "VM1",
+			managedBy:        &managedBy,
+			attachedNodeName: "vm1",
+			expectedErr:      true,
+		},
+		{
+			desc:             "no error when ManagedBy resolves to different node",
+			nodeName:         "vm1",
+			managedBy:        &managedBy,
+			attachedNodeName: "vm2",
+			expectedErr:      false,
+		},
+		{
+			desc:               "error when ManagedBy remains set and instance cannot be resolved",
+			nodeName:           "vm1",
+			managedBy:          &managedBy,
+			getNodeNameByIDErr: cloudprovider.InstanceNotFound,
+			expectedErr:        true,
 		},
 	}
 
@@ -534,6 +562,9 @@ func TestCommonDetachDiskInstanceNotFoundWaitForDiskManagedByRemoved(t *testing.
 			mockVMSet := provider.NewMockVMSet(ctrl)
 			testCloud.VMSet = mockVMSet
 			mockVMSet.EXPECT().GetInstanceIDByNodeName(gomock.Any(), gomock.Any()).Return("", cloudprovider.InstanceNotFound).AnyTimes()
+			if test.managedBy != nil && test.getErr == nil {
+				mockVMSet.EXPECT().GetNodeNameByProviderID(gomock.Any(), *test.managedBy).Return(test.attachedNodeName, test.getNodeNameByIDErr).AnyTimes()
+			}
 
 			diskClient := mock_diskclient.NewMockInterface(ctrl)
 			testCloud.ComputeClientFactory.(*mock_azclient.MockClientFactory).EXPECT().GetDiskClientForSub(gomock.Any()).Return(diskClient, nil).AnyTimes()
@@ -548,7 +579,7 @@ func TestCommonDetachDiskInstanceNotFoundWaitForDiskManagedByRemoved(t *testing.
 			}
 			diskURI := fmt.Sprintf("/subscriptions/%s/resourceGroups/%s/providers/Microsoft.Compute/disks/disk-name",
 				testCloud.SubscriptionID, testCloud.ResourceGroup)
-			err := common.DetachDisk(t.Context(), "disk-name", diskURI, "vm1")
+			err := common.DetachDisk(t.Context(), "disk-name", diskURI, test.nodeName)
 			assert.Equal(t, test.expectedErr, err != nil, "err: %v", err)
 		})
 	}
@@ -896,30 +927,55 @@ func TestGetValidCreationData(t *testing.T) {
 
 func TestIsInstanceNotFoundError(t *testing.T) {
 	testCases := []struct {
-		errMsg         string
+		desc           string
+		err            error
 		expectedResult bool
 	}{
 		{
-			errMsg:         "",
+			desc:           "empty error message",
+			err:            fmt.Errorf(""),
 			expectedResult: false,
 		},
 		{
-			errMsg:         "other error",
+			desc:           "unrelated error message",
+			err:            fmt.Errorf("other error"),
 			expectedResult: false,
 		},
 		{
-			errMsg:         "The provided instanceId 857 is not an active Virtual Machine Scale Set VM instanceId.",
+			desc:           "VMSS instance not active error message",
+			err:            fmt.Errorf("the provided instanceId 857 is not an active Virtual Machine Scale Set VM instanceId"),
 			expectedResult: true,
 		},
 		{
-			errMsg:         `compute.VirtualMachineScaleSetVMsClient#Update: Failure sending request: StatusCode=400 -- Original Error: Code="InvalidParameter" Message="The provided instanceId 1181 is not an active Virtual Machine Scale Set VM instanceId." Target="instanceIds"`,
+			desc:           "VMSS instance not active error wrapped in request failure",
+			err:            fmt.Errorf(`compute.VirtualMachineScaleSetVMsClient#Update: Failure sending request: StatusCode=400 -- Original Error: Code="InvalidParameter" Message="The provided instanceId 1181 is not an active Virtual Machine Scale Set VM instanceId." Target="instanceIds"`),
 			expectedResult: true,
+		},
+		{
+			desc: "Azure SDK ResponseError with 404 status code",
+			err: &azcore.ResponseError{
+				StatusCode: http.StatusNotFound,
+				RawResponse: &http.Response{
+					StatusCode: http.StatusNotFound,
+				},
+			},
+			expectedResult: true,
+		},
+		{
+			desc: "Azure SDK ResponseError with non-404 status code",
+			err: &azcore.ResponseError{
+				StatusCode: http.StatusBadRequest,
+				RawResponse: &http.Response{
+					StatusCode: http.StatusBadRequest,
+				},
+			},
+			expectedResult: false,
 		},
 	}
 
 	for i, test := range testCases {
-		result := isInstanceNotFoundError(fmt.Errorf("%v", test.errMsg))
-		assert.Equal(t, test.expectedResult, result, "TestCase[%d]", i, result)
+		result := isInstanceNotFoundError(test.err)
+		assert.Equal(t, test.expectedResult, result, "TestCase[%d]: %s", i, test.desc)
 	}
 }
 
