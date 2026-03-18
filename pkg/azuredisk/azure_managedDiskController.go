@@ -54,6 +54,7 @@ func NewManagedDiskController(provider *provider.Cloud) *ManagedDiskController {
 		lockMap:                            newLockMap(),
 		AttachDetachInitialDelayInMs:       defaultAttachDetachInitialDelayInMs,
 		DetachOperationMinTimeoutInSeconds: defaultDetachOperationMinTimeoutInSeconds,
+		WaitForDetachDiskComplete:          true,
 		clientFactory:                      provider.ComputeClientFactory,
 	}
 	getter := func(_ context.Context, _ string) (interface{}, error) { return nil, nil }
