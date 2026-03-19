@@ -108,7 +108,8 @@ type controllerCommon struct {
 	ForceDetachBackoff         bool
 	WaitForDetach              bool
 	CheckDiskCountForBatching  bool
-	// WaitForDetachDiskComplete controls whether detach waits for disk.ManagedBy to be cleared.
+	// WaitForDetachDiskComplete controls whether detach waits until the disk is no longer managed by the detach target node:
+	// either disk.ManagedBy is cleared, or it remains set but points to a different node than the original detach target.
 	WaitForDetachDiskComplete bool
 	// a timed cache for disk attach hitting max data disk count, <nodeName, "">
 	hitMaxDataDiskCountCache azcache.Resource
