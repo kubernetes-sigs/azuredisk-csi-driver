@@ -1,4 +1,4 @@
-# Azure Disk CSI driver for Kubernetes
+# Azure Disk CSI Driver for Kubernetes
 
 ![linux build status](https://github.com/kubernetes-sigs/azuredisk-csi-driver/actions/workflows/linux.yml/badge.svg)
 ![windows build status](https://github.com/kubernetes-sigs/azuredisk-csi-driver/actions/workflows/windows.yml/badge.svg)
@@ -6,52 +6,97 @@
 [![FOSSA Status](https://app.fossa.io/api/projects/git%2Bgithub.com%2Fkubernetes-sigs%2Fazuredisk-csi-driver.svg?type=shield)](https://app.fossa.io/projects/git%2Bgithub.com%2Fkubernetes-sigs%2Fazuredisk-csi-driver?ref=badge_shield)
 [![Artifact Hub](https://img.shields.io/endpoint?url=https://artifacthub.io/badge/repository/azuredisk-csi-driver)](https://artifacthub.io/packages/search?repo=azuredisk-csi-driver)
 
-### About
-This driver allows Kubernetes to access [Azure Disk](https://azure.microsoft.com/en-us/services/storage/disks/) volume, csi plugin name: `disk.csi.azure.com`, supported accessModes: `ReadWriteOnce`
+## About
 
-Disclaimer: Deploying this driver manually is not an officially supported Microsoft product. For a fully managed and supported experience on Kubernetes, use [AKS with the managed Azure disk csi driver](https://learn.microsoft.com/en-us/azure/aks/azure-disk-csi).
+This driver allows Kubernetes to access [Azure Disk](https://azure.microsoft.com/en-us/services/storage/disks/) volumes.
 
-### Project status: GA
+- **CSI plugin name:** `disk.csi.azure.com`
+- **Supported access mode:** `ReadWriteOnce`
+- **Project status:** GA
 
-### Container Images & Kubernetes Compatibility
-|Driver Version  |Image                                                      | supported k8s version |
-|----------------|-----------------------------------------------------------|-----------------------|
-|`master` branch |mcr.microsoft.com/k8s/csi/azuredisk-csi:latest             | 1.21+                 |
-|v1.34.2         |mcr.microsoft.com/oss/v2/kubernetes-csi/azuredisk-csi:v1.34.2 | 1.21+                 |
-|v1.33.8         |mcr.microsoft.com/oss/v2/kubernetes-csi/azuredisk-csi:v1.33.8 | 1.21+                 |
-|v1.32.12        |mcr.microsoft.com/oss/v2/kubernetes-csi/azuredisk-csi:v1.32.12 | 1.21+                 |
+> [!NOTE]
+> Deploying this driver manually is not an officially supported Microsoft product. For a fully managed and supported experience on Kubernetes, use [AKS with the managed Azure Disk CSI driver](https://learn.microsoft.com/en-us/azure/aks/azure-disk-csi).
 
-### Driver parameters
+## Container Images & Kubernetes Compatibility
 
-Please refer to [`disk.csi.azure.com` driver parameters](./docs/driver-parameters.md)
-> storage class `disk.csi.azure.com` parameters are compatible with built-in [azuredisk](https://kubernetes.io/docs/concepts/storage/volumes/#azuredisk) plugin
+| Driver Version | Image                                                                | Supported K8s Version |
+|----------------|----------------------------------------------------------------------|-----------------------|
+| master branch  | `mcr.microsoft.com/k8s/csi/azuredisk-csi:latest`                    | 1.21+                 |
+| v1.34.2        | `mcr.microsoft.com/oss/v2/kubernetes-csi/azuredisk-csi:v1.34.2`     | 1.21+                 |
+| v1.33.8        | `mcr.microsoft.com/oss/v2/kubernetes-csi/azuredisk-csi:v1.33.8`     | 1.21+                 |
+| v1.32.12       | `mcr.microsoft.com/oss/v2/kubernetes-csi/azuredisk-csi:v1.32.12`    | 1.21+                 |
 
-### Prerequisite
+## Driver Parameters
 
-- The driver depends on [cloud provider config file](https://github.com/kubernetes/cloud-provider-azure/blob/master/docs/cloud-provider-config.md) (here is [config example](./deploy/example/azure.json)), config file path on different platforms:
-   - [AKS](https://docs.microsoft.com/en-us/azure/aks/), [capz](https://github.com/kubernetes-sigs/cluster-api-provider-azure), [aks-engine](https://github.com/Azure/aks-engine): `/etc/kubernetes/azure.json`
-   - [Azure RedHat OpenShift](https://docs.openshift.com/container-platform/4.11/storage/container_storage_interface/persistent-storage-csi-azure.html): `/etc/kubernetes/cloud.conf`
- - <details> <summary>specify a different config file path via configmap</summary></br>create configmap "azure-cred-file" before driver starts up</br><pre>kubectl create configmap azure-cred-file --from-literal=path="/etc/kubernetes/cloud.conf" --from-literal=path-windows="C:\\k\\cloud.conf" -n kube-system</pre></details>
-- <details> <summary>edge zone support in cloud provider config</summary></br>`extendedLocationType` and `extendedLocationName` should be added into cloud provider config file, available values of `extendedLocationName` are `attatlanta1`, `attdallas1`, `attnewyork1`, `attdetroit1`</br><pre>```"extendedLocationType": "edgezone","extendedLocationName": "attatlanta1",```</pre></details>
- - Cloud provider config can also be specified via kubernetes secret, check details [here](./docs/read-from-secret.md)
- - Make sure identity used by driver has `Contributor` role on node resource group
-   - When install open source driver on the cluster, ensure agentpool service principal or managed service identity is assigned to the `Contributor` role on the resource group used to store managed disks.
+Please refer to [`disk.csi.azure.com` driver parameters](./docs/driver-parameters.md).
 
-### Install driver on a Kubernetes cluster
- - install by [helm charts](./charts)
- - install by [kubectl](./docs/install-azuredisk-csi-driver.md)
- - install open source CSI driver on following platforms:
-    - [AKS](./docs/install-driver-on-aks.md)
-    - [Azure RedHat OpenShift](https://github.com/ezYakaEagle442/aro-pub-storage/blob/master/setup-store-CSI-driver-azure-disk.md)
- - install managed CSI driver on following platforms:
-   - [AKS](https://learn.microsoft.com/en-us/azure/aks/csi-storage-drivers)
-   - [Azure RedHat OpenShift](https://docs.openshift.com/container-platform/4.11/storage/container_storage_interface/persistent-storage-csi-azure.html)
+> Storage class `disk.csi.azure.com` parameters are compatible with the built-in [azuredisk](https://kubernetes.io/docs/concepts/storage/volumes/#azuredisk) plugin.
 
-### Examples
+## Prerequisites
+
+The driver depends on a [cloud provider config file](https://github.com/kubernetes/cloud-provider-azure/blob/master/docs/cloud-provider-config.md) ([config example](./deploy/example/azure.json)). Config file paths on different clusters:
+
+| Platform | Config Path |
+|----------|-------------|
+| [AKS](https://docs.microsoft.com/en-us/azure/aks/), [CAPZ](https://github.com/kubernetes-sigs/cluster-api-provider-azure), [aks-engine](https://github.com/Azure/aks-engine) | `/etc/kubernetes/azure.json` |
+| [Azure Red Hat OpenShift](https://docs.openshift.com/container-platform/4.11/storage/container_storage_interface/persistent-storage-csi-azure.html) | `/etc/kubernetes/cloud.conf` |
+
+<details>
+<summary>Specify a different config file path via ConfigMap</summary>
+
+Create the ConfigMap `azure-cred-file` before the driver starts up:
+
+```bash
+kubectl create configmap azure-cred-file \
+  --from-literal=path="/etc/kubernetes/cloud.conf" \
+  --from-literal=path-windows="C:\\k\\cloud.conf" \
+  -n kube-system
+```
+
+</details>
+
+<details>
+<summary>Edge zone support in cloud provider config</summary>
+
+Add `extendedLocationType` and `extendedLocationName` to the cloud provider config file. Available values for `extendedLocationName`: `attatlanta1`, `attdallas1`, `attnewyork1`, `attdetroit1`.
+
+```json
+"extendedLocationType": "edgezone",
+"extendedLocationName": "attatlanta1",
+```
+
+</details>
+
+- Cloud provider config can also be specified via a Kubernetes Secret — see [details](./docs/read-from-secret.md).
+- Ensure the identity used by the driver has the `Contributor` role on the node resource group.
+  - When installing the open source driver, ensure the agentpool service principal or managed service identity is assigned the `Contributor` role on the resource group used to store managed disks.
+
+## Installation
+
+Install the driver on a Kubernetes cluster:
+
+- Install by [Helm charts](./charts)
+- Install by [kubectl](./docs/install-azuredisk-csi-driver.md)
+
+**Install open source CSI driver:**
+
+| Platform | Guide |
+|----------|-------|
+| AKS | [Install on AKS](./docs/install-driver-on-aks.md) |
+| Azure Red Hat OpenShift | [Install on ARO](https://github.com/ezYakaEagle442/aro-pub-storage/blob/master/setup-store-CSI-driver-azure-disk.md) |
+
+**Install managed CSI driver:**
+
+| Platform | Guide |
+|----------|-------|
+| AKS | [AKS CSI storage drivers](https://learn.microsoft.com/en-us/azure/aks/csi-storage-drivers) |
+| Azure Red Hat OpenShift | [ARO CSI Azure Disk](https://docs.openshift.com/container-platform/4.11/storage/container_storage_interface/persistent-storage-csi-azure.html) |
+
+## Examples
 
 - [Basic usage](./deploy/example/e2e_usage.md)
 
-### Features
+## Features
 
 - [Topology (Availability Zone)](./deploy/example/topology)
   - [ZRS disk support](./deploy/example/topology#zrs-disk-support)
@@ -66,29 +111,27 @@ Please refer to [`disk.csi.azure.com` driver parameters](./docs/driver-parameter
 - [Workload identity](./docs/workload-identity.md)
 - [Advanced disk performance tuning (Preview)](./docs/perf-profiles.md)
 
-### Troubleshooting
+## Troubleshooting
 
 - [CSI driver troubleshooting guide](./docs/csi-debug.md)
 
-### Support
+## Support
 
-- Please see our [support policy][support-policy]
+Please see our [support policy](support.md).
 
-### Limitations
+## Limitations
 
-- Please refer to [Azure Disk CSI Driver Limitations](./docs/limitations.md)
+Please refer to [Azure Disk CSI Driver Limitations](./docs/limitations.md).
 
-## Kubernetes Development
+## Development
 
-- Please refer to [development guide](./docs/csi-dev.md)
+Please refer to the [development guide](./docs/csi-dev.md).
 
-### View CI Results
+## CI Results
 
-- Check testgrid [provider-azure-azuredisk-csi-driver](https://testgrid.k8s.io/provider-azure-azuredisk-csi-driver) dashboard.
+Check the TestGrid [provider-azure-azuredisk-csi-driver](https://testgrid.k8s.io/provider-azure-azuredisk-csi-driver) dashboard.
 
-### Links
+## Links
 
 - [Kubernetes CSI Documentation](https://kubernetes-csi.github.io/docs/)
 - [Container Storage Interface (CSI) Specification](https://github.com/container-storage-interface/spec)
-
-[support-policy]: support.md
