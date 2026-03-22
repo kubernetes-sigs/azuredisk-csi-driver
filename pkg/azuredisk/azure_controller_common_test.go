@@ -573,9 +573,10 @@ func TestCommonDetachDiskInstanceNotFoundWaitForDiskManagedByRemoved(t *testing.
 			}, test.getErr).AnyTimes()
 
 			common := &controllerCommon{
-				cloud:         testCloud,
-				lockMap:       newLockMap(),
-				clientFactory: testCloud.ComputeClientFactory,
+				cloud:                     testCloud,
+				lockMap:                   newLockMap(),
+				clientFactory:             testCloud.ComputeClientFactory,
+				WaitForDetachDiskComplete: true,
 			}
 			diskURI := fmt.Sprintf("/subscriptions/%s/resourceGroups/%s/providers/Microsoft.Compute/disks/disk-name",
 				testCloud.SubscriptionID, testCloud.ResourceGroup)
@@ -583,6 +584,26 @@ func TestCommonDetachDiskInstanceNotFoundWaitForDiskManagedByRemoved(t *testing.
 			assert.Equal(t, test.expectedErr, err != nil, "err: %v", err)
 		})
 	}
+}
+
+func TestWaitForDiskManagedByToBeRemovedDisabled(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	testCloud := provider.GetTestCloud(ctrl)
+	testCloud.UseInstanceMetadata = false
+
+	common := &controllerCommon{
+		cloud:                     testCloud,
+		lockMap:                   newLockMap(),
+		clientFactory:             testCloud.ComputeClientFactory,
+		WaitForDetachDiskComplete: false,
+	}
+
+	diskURI := fmt.Sprintf("/subscriptions/%s/resourceGroups/%s/providers/Microsoft.Compute/disks/disk-name",
+		testCloud.SubscriptionID, testCloud.ResourceGroup)
+	err := common.waitForDiskManagedByTobeRemoved(t.Context(), diskURI, "vm1")
+	assert.NoError(t, err)
 }
 
 func TestCommonUpdateVM(t *testing.T) {

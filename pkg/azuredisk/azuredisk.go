@@ -137,6 +137,7 @@ type Driver struct {
 	checkDiskCountForBatching          bool
 	forceDetachBackoff                 bool
 	waitForDetach                      bool
+	waitForDetachDiskComplete          bool
 	endpoint                           string
 	disableAVSetNodes                  bool
 	removeNotReadyTaint                bool
@@ -198,6 +199,7 @@ func NewDriver(options *DriverOptions) *Driver {
 	driver.checkDiskCountForBatching = options.CheckDiskCountForBatching
 	driver.forceDetachBackoff = options.ForceDetachBackoff
 	driver.waitForDetach = options.WaitForDetach
+	driver.waitForDetachDiskComplete = options.WaitForDetachDiskComplete
 	driver.endpoint = options.Endpoint
 	driver.disableAVSetNodes = options.DisableAVSetNodes
 	driver.removeNotReadyTaint = options.RemoveNotReadyTaint
@@ -288,6 +290,7 @@ func NewDriver(options *DriverOptions) *Driver {
 		driver.diskController.AttachDetachInitialDelayInMs = int(driver.attachDetachInitialDelayInMs)
 		driver.diskController.ForceDetachBackoff = driver.forceDetachBackoff
 		driver.diskController.WaitForDetach = driver.waitForDetach
+		driver.diskController.WaitForDetachDiskComplete = driver.waitForDetachDiskComplete
 		driver.diskController.CheckDiskCountForBatching = driver.checkDiskCountForBatching
 		driver.diskController.DetachOperationMinTimeoutInSeconds = int(driver.detachOperationMinTimeoutInSeconds)
 		driver.diskController.VMSSDetachTimeoutInSeconds = int(driver.vmssDetachTimeoutInSeconds)
