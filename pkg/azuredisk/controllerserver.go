@@ -53,7 +53,7 @@ const (
 	waitForSnapshotReadyInterval     = 5 * time.Second
 	waitForSnapshotReadyTimeout      = 10 * time.Minute
 	maxErrMsgLength                  = 990
-	checkDiskLunThrottleLatency      = 1 * time.Second
+	checkDiskLunThrottleLatency      = 10 * time.Second
 	maxSnapshotSizeDifferenceAllowed = 50 // in GiB
 )
 
