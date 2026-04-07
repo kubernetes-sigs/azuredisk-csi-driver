@@ -64,6 +64,8 @@ spec:
             - --csi-address=$(ADDRESS)
             - --kubelet-registration-path=$(DRIVER_REG_SOCK_PATH)
             - --v=2
+            # Note: healthcheck is always enabled in the static manifest (assumes hostNetwork: true).
+            # For configurable healthcheck, use the Helm chart with nodeDriverRegistrar.livenessProbe.enabled.
             - --http-endpoint=localhost:29607
           env:
             - name: ADDRESS
