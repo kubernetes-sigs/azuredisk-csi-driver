@@ -93,7 +93,11 @@ spec:
             - --kubelet-registration-path=$(DRIVER_REG_SOCK_PATH)
             - --v=2
 {{- if .Values.nodeDriverRegistrar.livenessProbe.enabled }}
+{{- if .Values.linux.hostNetwork }}
             - --http-endpoint=localhost:{{ .Values.nodeDriverRegistrar.healthPort }}
+{{- else }}
+            - --http-endpoint=:{{ .Values.nodeDriverRegistrar.healthPort }}
+{{- end }}
 {{- end }}
           env:
             - name: ADDRESS
@@ -113,7 +117,9 @@ spec:
               protocol: TCP
           livenessProbe:
             httpGet:
+{{- if .Values.linux.hostNetwork }}
               host: localhost
+{{- end }}
               path: /healthz
               port: healthz
             initialDelaySeconds: {{ .Values.nodeDriverRegistrar.livenessProbe.initialDelaySeconds }}
