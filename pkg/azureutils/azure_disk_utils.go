@@ -271,7 +271,7 @@ func GetDiskLUN(deviceInfo string) (int32, error) {
 		}
 	}
 
-	lun, err := strconv.Atoi(diskLUN)
+	lun, err := strconv.ParseInt(diskLUN, 10, 32)
 	if err != nil {
 		return -1, err
 	}
