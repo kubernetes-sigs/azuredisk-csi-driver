@@ -193,6 +193,12 @@ The following table lists the configurable parameters of the latest Azure Disk C
 | `node.maxUnavailable`                             | `maxUnavailable` value of driver node daemonset            | `1`
 | `node.metricsPort`                          | metrics port of driver node daemonset                   | `29605`                                                        |
 | `node.livenessProbe.healthPort`                   | health check port for liveness probe                       | `29603` |
+| `nodeDriverRegistrar.healthPort`                        | health check port for node-driver-registrar liveness probe                                                 | `29607`                                                 |
+| `nodeDriverRegistrar.livenessProbe.enabled`             | enable node-driver-registrar liveness probe                                                                | `true`                                                  |
+| `nodeDriverRegistrar.livenessProbe.initialDelaySeconds` | node-driver-registrar liveness probe initialDelaySeconds                                                   | `20`                                                    |
+| `nodeDriverRegistrar.livenessProbe.timeoutSeconds`      | node-driver-registrar liveness probe timeoutSeconds                                                        | `10`                                                    |
+| `nodeDriverRegistrar.livenessProbe.periodSeconds`       | node-driver-registrar liveness probe periodSeconds                                                         | `5`                                                     |
+| `nodeDriverRegistrar.livenessProbe.failureThreshold`    | node-driver-registrar liveness probe failureThreshold                                                      | `2`                                                     |
 | `node.logLevel`                                   | node driver log level                                      |`5`                                                           |
 | `snapshot.enabled`                                | whether enable snapshot feature                            | `false`                                                        |
 | `snapshot.image.csiSnapshotter.repository`        | csi-snapshotter container image                               | `/oss/kubernetes-csi/csi-snapshotter`         |
