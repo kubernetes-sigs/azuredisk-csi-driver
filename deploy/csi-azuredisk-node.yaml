@@ -64,6 +64,9 @@ spec:
             - --csi-address=$(ADDRESS)
             - --kubelet-registration-path=$(DRIVER_REG_SOCK_PATH)
             - --v=2
+            # Note: healthcheck is always enabled in the static manifest (assumes hostNetwork: true).
+            # For configurable healthcheck, use the Helm chart with nodeDriverRegistrar.livenessProbe.enabled.
+            - --http-endpoint=localhost:29607
           env:
             - name: ADDRESS
               value: /csi/csi.sock
@@ -74,6 +77,19 @@ spec:
               mountPath: /csi
             - name: registration-dir
               mountPath: /registration
+          ports:
+            - name: healthz
+              containerPort: 29607
+              protocol: TCP
+          livenessProbe:
+            httpGet:
+              host: localhost
+              path: /healthz
+              port: healthz
+            initialDelaySeconds: 20
+            timeoutSeconds: 10
+            periodSeconds: 5
+            failureThreshold: 2
           resources:
             limits:
               memory: 100Mi
