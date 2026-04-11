@@ -1312,6 +1312,54 @@ func TestControllerModifyVolume(t *testing.T) {
 			multipleMigrationsToRecover:             true,
 			simulateMigrationCompletionAfterRestart: true,
 		},
+		{
+			desc: "success with valid cachingMode ReadOnly",
+			req: &csi.ControllerModifyVolumeRequest{
+				VolumeId: testVolumeID,
+				MutableParameters: map[string]string{
+					consts.CachingModeField: "ReadOnly",
+				},
+			},
+			oldSKU:                 to.Ptr(armcompute.DiskStorageAccountTypesPremiumLRS),
+			expectedResp:           &csi.ControllerModifyVolumeResponse{},
+			expectMigrationStarted: false,
+		},
+		{
+			desc: "success with valid cachingMode None",
+			req: &csi.ControllerModifyVolumeRequest{
+				VolumeId: testVolumeID,
+				MutableParameters: map[string]string{
+					consts.CachingModeField: "None",
+				},
+			},
+			oldSKU:                 to.Ptr(armcompute.DiskStorageAccountTypesPremiumLRS),
+			expectedResp:           &csi.ControllerModifyVolumeResponse{},
+			expectMigrationStarted: false,
+		},
+		{
+			desc: "success with valid cachingMode ReadWrite",
+			req: &csi.ControllerModifyVolumeRequest{
+				VolumeId: testVolumeID,
+				MutableParameters: map[string]string{
+					consts.CachingModeField: "ReadWrite",
+				},
+			},
+			oldSKU:                 to.Ptr(armcompute.DiskStorageAccountTypesPremiumLRS),
+			expectedResp:           &csi.ControllerModifyVolumeResponse{},
+			expectMigrationStarted: false,
+		},
+		{
+			desc: "fail with invalid cachingMode",
+			req: &csi.ControllerModifyVolumeRequest{
+				VolumeId: testVolumeID,
+				MutableParameters: map[string]string{
+					consts.CachingModeField: "WriteOnly",
+				},
+			},
+			expectedResp:           nil,
+			expectedErrCode:        codes.InvalidArgument,
+			expectMigrationStarted: false,
+		},
 	}
 
 	for _, test := range tests {

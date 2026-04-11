@@ -549,6 +549,30 @@ func (d *Driver) ControllerModifyVolume(ctx context.Context, req *csi.Controller
 		return nil, status.Errorf(codes.InvalidArgument, "Failed parsing disk parameters: %v", err)
 	}
 
+	// Validate and apply cachingMode if specified in mutable parameters.
+	var cachingMode armcompute.CachingTypes
+	if diskParams.CachingMode != "" {
+		normalizedCachingMode, err := azureutils.NormalizeCachingMode(diskParams.CachingMode)
+		if err != nil {
+			return nil, status.Error(codes.InvalidArgument, err.Error())
+		}
+		cachingMode = armcompute.CachingTypes(normalizedCachingMode)
+
+		// Enforce caching limits: disks >= 4 TiB only support None
+		if currentDisk != nil && currentDisk.Properties != nil &&
+			currentDisk.Properties.DiskSizeGB != nil && *currentDisk.Properties.DiskSizeGB >= 4096 &&
+			cachingMode != armcompute.CachingTypesNone {
+			return nil, status.Errorf(codes.InvalidArgument, "cachingMode %s is not supported for disks >= 4 TiB, only None is allowed", cachingMode)
+		}
+
+		// PremiumV2_LRS only supports None caching
+		if currentDisk != nil && currentDisk.SKU != nil && currentDisk.SKU.Name != nil &&
+			*currentDisk.SKU.Name == armcompute.DiskStorageAccountTypesPremiumV2LRS &&
+			cachingMode != armcompute.CachingTypesNone {
+			return nil, status.Errorf(codes.InvalidArgument, "cachingMode %s is not supported for PremiumV2_LRS disks, only None is allowed", cachingMode)
+		}
+	}
+
 	// normalize values
 	skuName, err := azureutils.NormalizeStorageAccountType(diskParams.AccountType, d.cloud.Config.Cloud, d.cloud.Config.DisableAzureStackCloud)
 	if err != nil {
@@ -588,6 +612,7 @@ func (d *Driver) ControllerModifyVolume(ctx context.Context, req *csi.Controller
 		StorageAccountType: skuName,
 		SourceResourceID:   diskURI,
 		SourceType:         consts.SourceVolume,
+		CachingMode:        cachingMode,
 	}
 
 	mc := csiMetrics.NewCSIMetricContext("controller_modify_volume").WithBasicVolumeInfo(d.cloud.ResourceGroup, d.cloud.SubscriptionID, d.Name)
