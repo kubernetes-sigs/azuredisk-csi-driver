@@ -40,7 +40,7 @@ require (
 	k8s.io/cloud-provider v0.35.0
 	k8s.io/component-base v0.35.0
 	k8s.io/klog/v2 v2.140.0
-	k8s.io/kubernetes v1.35.3
+	k8s.io/kubernetes v1.35.4
 	k8s.io/mount-utils v0.34.0-alpha.0.0.20250505161257-5984695ef68d
 	k8s.io/pod-security-admission v0.33.4
 	k8s.io/utils v0.0.0-20251002143259-bc988d571ff4
@@ -100,7 +100,7 @@ require (
 	github.com/json-iterator/go v1.1.12 // indirect
 	github.com/kylelemons/godebug v1.1.0 // indirect
 	github.com/mailru/easyjson v0.9.0 // indirect
-	github.com/moby/spdystream v0.5.0 // indirect
+	github.com/moby/spdystream v0.5.1 // indirect
 	github.com/moby/sys/mountinfo v0.7.2 // indirect
 	github.com/modern-go/concurrent v0.0.0-20180306012644-bacd9c7ef1dd // indirect
 	github.com/modern-go/reflect2 v1.0.3-0.20250322232337-35a7c28c31ee // indirect
