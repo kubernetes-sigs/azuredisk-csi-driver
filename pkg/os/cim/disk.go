@@ -22,12 +22,12 @@ package cim
 import (
 	"fmt"
 	"strconv"
-
-	"github.com/microsoft/wmi/pkg/base/query"
-	"github.com/microsoft/wmi/server2019/root/microsoft/windows/storage"
 )
 
 const (
+	MSFTDiskClass           = "MSFT_Disk"
+	MSFTStorageSettingClass = "MSFT_StorageSetting"
+
 	// PartitionStyleUnknown indicates an unknown partition table format
 	PartitionStyleUnknown = 0
 	// PartitionStyleMBR indicates the disk uses Master Boot Record (MBR) format
@@ -41,6 +41,17 @@ const (
 	// GPTPartitionTypeMicrosoftReserved is the GUID for Microsoft Reserved Partition (MSR)
 	// Reserved by Windows for system use
 	GPTPartitionTypeMicrosoftReserved = "{e3c9e316-0b5c-4db8-817d-f92df00215ae}"
+
+	// ErrorCodeCreatePartitionAccessPathAlreadyInUse is the error code (42002) returned when the driver letter failed to assign after partition created
+	ErrorCodeCreatePartitionAccessPathAlreadyInUse = 42002
+)
+
+var (
+	DiskSelectorListForDiskNumberAndLocation = []string{"Number", "Location"}
+	DiskSelectorListForPartitionStyle        = []string{"PartitionStyle"}
+	DiskSelectorListForPathAndSerialNumber   = []string{"Path", "SerialNumber"}
+	DiskSelectorListForIsOffline             = []string{"IsOffline"}
+	DiskSelectorListForSize                  = []string{"Size"}
 )
 
 // QueryDiskByNumber retrieves disk information for a specific disk identified by its number.
@@ -52,18 +63,16 @@ const (
 //
 // Refer to https://learn.microsoft.com/en-us/windows-hardware/drivers/storage/msft-disk
 // for the WMI class definition.
-func QueryDiskByNumber(diskNumber uint32, selectorList []string) (*storage.MSFT_Disk, error) {
-	diskQuery := query.NewWmiQueryWithSelectList("MSFT_Disk", selectorList, "Number", strconv.Itoa(int(diskNumber)))
-	instances, err := QueryInstances(WMINamespaceStorage, diskQuery)
-	if err != nil {
-		return nil, err
-	}
+func QueryDiskByNumber(scope *Scope, diskNumber uint32, selectorList []string) (*COMDispatchObject, error) {
+	q := NewQuery(MSFTDiskClass).
+		WithNamespace(WMINamespaceStorage).
+		Select(selectorList...).
+		WithCondition("Number", "=", strconv.FormatUint(uint64(diskNumber), 10))
 
-	disk, err := storage.NewMSFT_DiskEx1(instances[0])
+	disk, err := QueryFirstObjectWithBuilder(scope, q)
 	if err != nil {
-		return nil, fmt.Errorf("failed to query disk %d. error: %v", diskNumber, err)
+		return nil, fmt.Errorf("failed to query disk %d. error: %w", diskNumber, err)
 	}
-
 	return disk, nil
 }
 
@@ -75,22 +84,172 @@ func QueryDiskByNumber(diskNumber uint32, selectorList []string) (*storage.MSFT_
 //
 // Refer to https://learn.microsoft.com/en-us/windows-hardware/drivers/storage/msft-disk
 // for the WMI class definition.
-func ListDisks(selectorList []string) ([]*storage.MSFT_Disk, error) {
-	diskQuery := query.NewWmiQueryWithSelectList("MSFT_Disk", selectorList)
-	instances, err := QueryInstances(WMINamespaceStorage, diskQuery)
-	if IgnoreNotFound(err) != nil {
-		return nil, err
+func ListDisks(scope *Scope, selectorList []string) ([]*COMDispatchObject, error) {
+	q := NewQuery(MSFTDiskClass).
+		WithNamespace(WMINamespaceStorage).
+		Select(selectorList...)
+
+	disks, err := QueryObjectsWithBuilder(scope, q)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query disks: %w", err)
 	}
-
-	var disks []*storage.MSFT_Disk
-	for _, instance := range instances {
-		disk, err := storage.NewMSFT_DiskEx1(instance)
-		if err != nil {
-			return nil, fmt.Errorf("failed to query disk %v. error: %v", instance, err)
-		}
-
-		disks = append(disks, disk)
-	}
-
 	return disks, nil
+}
+
+// InitializeDisk initializes a RAW disk with a particular partition style.
+//
+// Refer to https://learn.microsoft.com/en-us/windows-hardware/drivers/storage/initialize-msft-disk
+// for the WMI method definition.
+func InitializeDisk(disk *COMDispatchObject, partitionStyle int) error {
+	result, err := disk.CallUint32("Initialize", int32(partitionStyle))
+	if err != nil {
+		return fmt.Errorf("failed to initialize disk: %w", err)
+	}
+	if result != 0 {
+		return NewWMIError(MSFTDiskClass, "Initialize", disk.Dispatch(), result)
+	}
+	return nil
+}
+
+// RefreshDisk Refreshes the cached disk layout information.
+//
+// Refer to https://learn.microsoft.com/en-us/windows-hardware/drivers/storage/msft-disk-refresh
+// for the WMI method definition.
+func RefreshDisk(disk *COMDispatchObject) (string, error) {
+	var status string
+	result, err := disk.CallUint32("Refresh", &status)
+	if err != nil {
+		return "", fmt.Errorf("failed to refresh disk: %w", err)
+	}
+	if result != 0 {
+		return "", NewWMIError(MSFTDiskClass, "Refresh", disk.Dispatch(), result)
+	}
+	return status, nil
+}
+
+// CreatePartition creates a partition on a disk.
+//
+// Refer to https://learn.microsoft.com/en-us/windows-hardware/drivers/storage/createpartition-msft-disk
+// for the WMI method definition.
+func CreatePartition(disk *COMDispatchObject, params ...interface{}) error {
+	result, err := disk.CallUint32("CreatePartition", params...)
+	if err != nil {
+		return fmt.Errorf("failed to create partition: %w", err)
+	}
+	if result != 0 {
+		return NewWMIError(MSFTDiskClass, "CreatePartition", disk.Dispatch(), result)
+	}
+	return nil
+}
+
+// SetDiskState takes a disk online or offline.
+//
+// Refer to https://learn.microsoft.com/en-us/windows-hardware/drivers/storage/msft-disk-online and
+// https://learn.microsoft.com/en-us/windows-hardware/drivers/storage/msft-disk-offline
+// for the WMI method definition.
+func SetDiskState(disk *COMDispatchObject, online bool) (string, error) {
+	method := "Offline"
+	if online {
+		method = "Online"
+	}
+
+	var status string
+	result, err := disk.CallUint32(method, &status)
+	if err != nil {
+		return "", fmt.Errorf("failed to set disk state: %w", err)
+	}
+	if result != 0 {
+		return "", NewWMIError(MSFTDiskClass, method, disk.Dispatch(), result)
+	}
+	return status, nil
+}
+
+// RescanDisks rescans all changes by updating the internal cache of software objects (that is, Disks, Partitions, Volumes)
+// for the storage setting.
+//
+// Refer to https://learn.microsoft.com/en-us/windows-hardware/drivers/storage/msft-storagesetting-updatehoststoragecache
+// for the WMI method definition.
+func RescanDisks() error {
+	result, _, err := CallMethodOnWMIClass(WMINamespaceStorage, MSFTStorageSettingClass, "UpdateHostStorageCache", nil, DiscardOutputParameter)
+	if err != nil {
+		return fmt.Errorf("failed to update host storage cache: %w", err)
+	}
+	if result != 0 {
+		return NewWMIError(MSFTStorageSettingClass, "UpdateHostStorageCache", nil, result)
+	}
+	return nil
+}
+
+// GetDiskNumber returns the number of a disk.
+func GetDiskNumber(disk *COMDispatchObject) (uint32, error) {
+	number, err := disk.GetProperty("Number")
+	if err != nil {
+		return 0, err
+	}
+	if number.Value() == nil {
+		return 0, fmt.Errorf("number is nil")
+	}
+	return NewSafeVariant(number).Uint32(), nil
+}
+
+// GetDiskLocation returns the location of a disk.
+func GetDiskLocation(disk *COMDispatchObject) (string, error) {
+	location, err := disk.GetProperty("Location")
+	if err != nil {
+		return "", err
+	}
+	return NewSafeVariant(location).String(), nil
+}
+
+// GetDiskPartitionStyle returns the partition style of a disk.
+func GetDiskPartitionStyle(disk *COMDispatchObject) (uint16, error) {
+	retValue, err := disk.GetProperty("PartitionStyle")
+	if err != nil {
+		return 0, err
+	}
+	return NewSafeVariant(retValue).Uint16(), nil
+}
+
+// IsDiskOffline returns whether a disk is offline.
+func IsDiskOffline(disk *COMDispatchObject) (bool, error) {
+	offline, err := disk.GetProperty("IsOffline")
+	if err != nil {
+		return false, err
+	}
+	return NewSafeVariant(offline).Bool(), nil
+}
+
+// GetDiskSize returns the size of a disk.
+func GetDiskSize(disk *COMDispatchObject) (uint64, error) {
+	sz, err := disk.GetProperty("Size")
+	if err != nil {
+		return 0, err
+	}
+	val := NewSafeVariant(sz).String()
+	if val == "" {
+		return 0, fmt.Errorf("size is empty")
+	}
+	size, err := strconv.ParseUint(val, 10, 64)
+	if err != nil {
+		return 0, fmt.Errorf("failed to get disk size %v. error: %w", disk, err)
+	}
+	return size, nil
+}
+
+// GetDiskPath returns the path of a disk.
+func GetDiskPath(disk *COMDispatchObject) (string, error) {
+	path, err := disk.GetProperty("Path")
+	if err != nil {
+		return "", err
+	}
+	return NewSafeVariant(path).String(), nil
+}
+
+// GetDiskSerialNumber returns the serial number of a disk.
+func GetDiskSerialNumber(disk *COMDispatchObject) (string, error) {
+	serialNumber, err := disk.GetProperty("SerialNumber")
+	if err != nil {
+		return "", err
+	}
+	return NewSafeVariant(serialNumber).String(), nil
 }
