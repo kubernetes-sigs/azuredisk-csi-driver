@@ -312,17 +312,6 @@ github.com/kylelemons/godebug/pretty
 github.com/mailru/easyjson/buffer
 github.com/mailru/easyjson/jlexer
 github.com/mailru/easyjson/jwriter
-# github.com/microsoft/wmi v0.39.0
-## explicit; go 1.25
-github.com/microsoft/wmi/go/wmi
-github.com/microsoft/wmi/pkg/base/credential
-github.com/microsoft/wmi/pkg/base/host
-github.com/microsoft/wmi/pkg/base/instance
-github.com/microsoft/wmi/pkg/base/query
-github.com/microsoft/wmi/pkg/base/session
-github.com/microsoft/wmi/pkg/errors
-github.com/microsoft/wmi/pkg/wmiinstance
-github.com/microsoft/wmi/server2019/root/microsoft/windows/storage
 # github.com/moby/spdystream v0.5.1
 ## explicit; go 1.13
 github.com/moby/spdystream
