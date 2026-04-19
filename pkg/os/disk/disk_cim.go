@@ -28,7 +28,7 @@ import (
 	"unsafe"
 
 	"k8s.io/klog/v2"
-	wmi "sigs.k8s.io/azuredisk-csi-driver/pkg/os/cim"
+	"sigs.k8s.io/azuredisk-csi-driver/pkg/os/wmi"
 )
 
 var _ DiskAPI = &cimDiskAPI{}
