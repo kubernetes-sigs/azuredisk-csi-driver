@@ -67,7 +67,7 @@ func QueryDiskByNumber(scope *Scope, diskNumber uint32, selectorList []string) (
 	q := NewQuery(MSFTDiskClass).
 		WithNamespace(WMINamespaceStorage).
 		Select(selectorList...).
-		WithCondition("Number", "=", strconv.FormatUint(uint64(diskNumber), 10))
+		WithCondition("Number", "=", diskNumber)
 
 	disk, err := QueryFirstObjectWithBuilder(scope, q)
 	if err != nil {
