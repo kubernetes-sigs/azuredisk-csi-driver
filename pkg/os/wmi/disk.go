@@ -186,6 +186,7 @@ func GetDiskNumber(disk *COMDispatchObject) (uint32, error) {
 	if err != nil {
 		return 0, err
 	}
+	defer number.Clear()
 	if number.Value() == nil {
 		return 0, fmt.Errorf("number is nil")
 	}
@@ -198,6 +199,7 @@ func GetDiskLocation(disk *COMDispatchObject) (string, error) {
 	if err != nil {
 		return "", err
 	}
+	defer location.Clear()
 	return NewSafeVariant(location).String(), nil
 }
 
@@ -207,6 +209,7 @@ func GetDiskPartitionStyle(disk *COMDispatchObject) (uint16, error) {
 	if err != nil {
 		return 0, err
 	}
+	defer retValue.Clear()
 	return NewSafeVariant(retValue).Uint16(), nil
 }
 
@@ -216,6 +219,7 @@ func IsDiskOffline(disk *COMDispatchObject) (bool, error) {
 	if err != nil {
 		return false, err
 	}
+	defer offline.Clear()
 	return NewSafeVariant(offline).Bool(), nil
 }
 
@@ -225,6 +229,7 @@ func GetDiskSize(disk *COMDispatchObject) (uint64, error) {
 	if err != nil {
 		return 0, err
 	}
+	defer sz.Clear()
 	val := NewSafeVariant(sz).String()
 	if val == "" {
 		return 0, fmt.Errorf("size is empty")
@@ -242,6 +247,7 @@ func GetDiskPath(disk *COMDispatchObject) (string, error) {
 	if err != nil {
 		return "", err
 	}
+	defer path.Clear()
 	return NewSafeVariant(path).String(), nil
 }
 
@@ -251,5 +257,6 @@ func GetDiskSerialNumber(disk *COMDispatchObject) (string, error) {
 	if err != nil {
 		return "", err
 	}
+	defer serialNumber.Clear()
 	return NewSafeVariant(serialNumber).String(), nil
 }
