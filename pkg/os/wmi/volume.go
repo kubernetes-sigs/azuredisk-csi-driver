@@ -361,7 +361,7 @@ func SetPartitionState(part *COMDispatchObject, online bool) (string, error) {
 		return "", err
 	}
 	if result != 0 {
-		return status, NewWMIError(MSFTVolumeClass, method, part.Dispatch(), result)
+		return status, NewWMIError(MSFTPartitionClass, method, part.Dispatch(), result)
 	}
 	return status, err
 }

@@ -59,7 +59,7 @@ var (
 // The equivalent WMI query is:
 //
 //	SELECT [selectors] FROM MSFT_Disk
-//	  WHERE DiskNumber = '<diskNumber>'
+//	  WHERE Number = '<diskNumber>'
 //
 // Refer to https://learn.microsoft.com/en-us/windows-hardware/drivers/storage/msft-disk
 // for the WMI class definition.

@@ -170,7 +170,7 @@ func (*cimDiskAPI) BasicPartitionsExist(diskNumber uint32) (bool, error) {
 		return wmi.WithScope(func(scope *wmi.Scope) error {
 			partitions, err := wmi.ListPartitionsWithFilters(scope, nil, wmi.FilterForPartitionOnDisk(diskNumber), wmi.FilterForPartitionsOfTypeNormal())
 			if err != nil {
-				return fmt.Errorf("error checking presence of partitions on disk %d:, %w", diskNumber, err)
+				return fmt.Errorf("error checking presence of partitions on disk %d: %w", diskNumber, err)
 			}
 
 			exist = len(partitions) > 0
