@@ -205,7 +205,8 @@ func WithCOMThread(fn func() error) error {
 // WithWMIService runs the given function with a WMI service.
 //
 // It creates a new WMI service and calls the given function with it.
-// It returns the error from the function.
+// The callback fn receives an *ole.IDispatch that is only valid for the duration
+// of the callback; callers must NOT store or use it after fn returns.
 func WithWMIService(namespace string, fn func(*ole.IDispatch) error) error {
 	locatorUnknown, err := oleutil.CreateObject("WbemScripting.SWbemLocator")
 	if err != nil {
@@ -224,13 +225,16 @@ func WithWMIService(namespace string, fn func(*ole.IDispatch) error) error {
 		return err
 	}
 	defer serviceRaw.Clear()
+	// serviceRaw.Clear() releases the underlying IDispatch via VariantClear;
+	// do NOT call service.Release() separately (double-release).
 	service := serviceRaw.ToIDispatch()
-	defer service.Release()
 
 	return fn(service)
 }
 
 // Query queries the WMI objects with the given namespace and query.
+// The callback fn receives an *ole.IDispatch that is only valid for the duration
+// of the callback; callers must NOT store or use it after fn returns.
 func Query(namespace, query string, fn func(item *ole.IDispatch) error) error {
 	err := WithWMIService(namespace, func(service *ole.IDispatch) error {
 		resultRaw, err := oleutil.CallMethod(service, "ExecQuery", query)
@@ -239,8 +243,9 @@ func Query(namespace, query string, fn func(item *ole.IDispatch) error) error {
 			return err
 		}
 		defer resultRaw.Clear()
+		// resultRaw.Clear() releases the underlying IDispatch via VariantClear;
+		// do NOT call result.Release() separately (double-release).
 		result := resultRaw.ToIDispatch()
-		defer result.Release()
 
 		klog.V(10).Infof("ExecQuery: (namespace: %s, query: %s) -> enumerating results", namespace, query)
 
@@ -625,7 +630,7 @@ func (s SafeVariant) Int() int {
 	}
 	// For unsigned types with high bit set, clamp to max int to avoid
 	// negative values from sign interpretation.
-	if isUnsigned(s.v.VT) && s.v.Val < 0 {
+	if isUnsigned(s.v.VT) && (s.v.Val < 0 || s.v.Val > math.MaxInt) {
 		return math.MaxInt
 	}
 	return int(s.v.Val)

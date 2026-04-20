@@ -139,17 +139,16 @@ func GetVolumeSize(volume *COMDispatchObject) (uint64, error) {
 	}
 	defer volumeSizeVal.Clear()
 
-	val := NewSafeVariant(volumeSizeVal).String()
+	sv := NewSafeVariant(volumeSizeVal)
+	if size := sv.Uint64(); size > 0 {
+		return size, nil
+	}
+	// Fallback to string parsing for non-numeric VARIANT types (e.g., VT_BSTR).
+	val := sv.String()
 	if val == "" {
 		return 0, fmt.Errorf("volume size is empty")
 	}
-
-	volumeSize, err := strconv.ParseUint(val, 10, 64)
-	if err != nil {
-		return 0, fmt.Errorf("failed to get volume size %v. error: %w", volume, err)
-	}
-
-	return volumeSize, nil
+	return strconv.ParseUint(val, 10, 64)
 }
 
 // GetVolumeSizeRemaining returns the remaining size of a volume.
@@ -160,17 +159,16 @@ func GetVolumeSizeRemaining(volume *COMDispatchObject) (uint64, error) {
 	}
 	defer volumeSizeRemainingVal.Clear()
 
-	val := NewSafeVariant(volumeSizeRemainingVal).String()
+	sv := NewSafeVariant(volumeSizeRemainingVal)
+	if size := sv.Uint64(); size > 0 {
+		return size, nil
+	}
+	// Fallback to string parsing for non-numeric VARIANT types (e.g., VT_BSTR).
+	val := sv.String()
 	if val == "" {
 		return 0, fmt.Errorf("volume size remaining is empty")
 	}
-
-	volumeSizeRemaining, err := strconv.ParseUint(val, 10, 64)
-	if err != nil {
-		return 0, err
-	}
-
-	return volumeSizeRemaining, nil
+	return strconv.ParseUint(val, 10, 64)
 }
 
 // ListPartitionsOnDisk retrieves all partitions or a partition with the specified number on a disk.
