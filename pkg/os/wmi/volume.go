@@ -170,7 +170,7 @@ func GetVolumeSizeRemaining(volume *COMDispatchObject) (uint64, error) {
 		return 0, err
 	}
 
-	return volumeSizeRemaining, err
+	return volumeSizeRemaining, nil
 }
 
 // ListPartitionsOnDisk retrieves all partitions or a partition with the specified number on a disk.
