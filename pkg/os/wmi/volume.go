@@ -42,44 +42,23 @@ var (
 	PartitionSelectorListObjectID = []string{"ObjectId"}
 )
 
-// QueryVolumeByUniqueID retrieves a specific volume by its unique identifier,
-// returning the first volume that matches the given volume ID.
+// QueryVolumeByUniqueID retrieves a specific volume by its unique identifier.
 //
 // The equivalent WMI query is:
 //
-//	SELECT [selectors] FROM MSFT_Volume
+//	SELECT [selectors] FROM MSFT_Volume WHERE UniqueId = "<volumeID>"
 //
 // Refer to https://learn.microsoft.com/en-us/windows-hardware/drivers/storage/msft-volume
 // for the WMI class definition.
 func QueryVolumeByUniqueID(scope *Scope, volumeID string, selectorList []string) (*COMDispatchObject, error) {
 	q := NewQuery(MSFTVolumeClass).WithNamespace(WMINamespaceStorage).
 		Select(selectorList...).
-		Select("UniqueId")
+		Select("UniqueId").
+		WithCondition("UniqueId", "=", volumeID)
 
-	instances, err := QueryObjectsWithBuilder(scope, q)
+	result, err := QueryFirstObjectWithBuilder(scope, q)
 	if err != nil {
 		return nil, err
-	}
-
-	var result *COMDispatchObject
-	err = ForEach(instances, func(volume *COMDispatchObject) error {
-		uniqueID, err := GetVolumeUniqueID(volume)
-		if err != nil {
-			return fmt.Errorf("failed to query volume unique ID (%s). error: %w", volumeID, err)
-		}
-		if uniqueID == volumeID {
-			result = volume
-			return ErrStopIteration
-		}
-		return nil
-	})
-
-	if err != nil {
-		return nil, err
-	}
-
-	if result == nil {
-		return nil, ErrNotFound
 	}
 
 	return result, nil
@@ -139,6 +118,7 @@ func GetVolumeUniqueID(volume *COMDispatchObject) (string, error) {
 	if err != nil {
 		return "", err
 	}
+	defer uniqueID.Clear()
 	return NewSafeVariant(uniqueID).String(), nil
 }
 
@@ -148,6 +128,7 @@ func GetVolumeFileSystemType(volume *COMDispatchObject) (uint16, error) {
 	if err != nil {
 		return 0, err
 	}
+	defer fsType.Clear()
 	return NewSafeVariant(fsType).Uint16(), nil
 }
 
@@ -157,6 +138,7 @@ func GetVolumeSize(volume *COMDispatchObject) (uint64, error) {
 	if err != nil {
 		return 0, err
 	}
+	defer volumeSizeVal.Clear()
 
 	val := NewSafeVariant(volumeSizeVal).String()
 	if val == "" {
@@ -177,6 +159,7 @@ func GetVolumeSizeRemaining(volume *COMDispatchObject) (uint64, error) {
 	if err != nil {
 		return 0, err
 	}
+	defer volumeSizeRemainingVal.Clear()
 
 	val := NewSafeVariant(volumeSizeRemainingVal).String()
 	if val == "" {
@@ -203,10 +186,10 @@ func GetVolumeSizeRemaining(volume *COMDispatchObject) (uint64, error) {
 // for the WMI class definition.
 func ListPartitionsOnDisk(scope *Scope, diskNumber, partitionNumber uint32, selectorList []string) ([]*COMDispatchObject, error) {
 	filters := []Condition{
-		WithCondition("DiskNumber", "=", strconv.FormatUint(uint64(diskNumber), 10)),
+		WithCondition("DiskNumber", "=", diskNumber),
 	}
 	if partitionNumber > 0 {
-		filters = append(filters, WithCondition("PartitionNumber", "=", strconv.FormatUint(uint64(partitionNumber), 10)))
+		filters = append(filters, WithCondition("PartitionNumber", "=", partitionNumber))
 	}
 	return ListPartitionsWithFilters(scope, selectorList, filters...)
 }
@@ -340,6 +323,7 @@ func GetPartitionDiskNumber(part *COMDispatchObject) (uint32, error) {
 	if err != nil {
 		return 0, err
 	}
+	defer diskNumber.Clear()
 
 	return NewSafeVariant(diskNumber).Uint32(), nil
 }
@@ -418,6 +402,7 @@ func GetPartitionSize(part *COMDispatchObject) (uint64, error) {
 	if err != nil {
 		return 0, err
 	}
+	defer sizeProp.Clear()
 
 	val := NewSafeVariant(sizeProp).String()
 	if val == "" {
@@ -434,7 +419,7 @@ func GetPartitionSize(part *COMDispatchObject) (uint64, error) {
 
 // FilterForPartitionOnDisk creates a WMI query filter to query a disk by its number.
 func FilterForPartitionOnDisk(diskNumber uint32) Condition {
-	return WithCondition("DiskNumber", "=", strconv.FormatUint(uint64(diskNumber), 10))
+	return WithCondition("DiskNumber", "=", diskNumber)
 }
 
 // FilterForPartitionsOfTypeNormal creates a WMI query filter for all non-reserved partitions.

@@ -228,6 +228,7 @@ func WithWMIService(namespace string, fn func(*ole.IDispatch) error) error {
 	if err != nil {
 		return err
 	}
+	defer serviceRaw.Clear()
 	service := serviceRaw.ToIDispatch()
 	defer service.Release()
 
@@ -242,6 +243,7 @@ func Query(namespace, query string, fn func(item *ole.IDispatch) error) error {
 			klog.V(4).Infof("ExecQuery: (namespace: %s, query: %s), error: %v", namespace, query, err)
 			return err
 		}
+		defer resultRaw.Clear()
 		result := resultRaw.ToIDispatch()
 		defer result.Release()
 

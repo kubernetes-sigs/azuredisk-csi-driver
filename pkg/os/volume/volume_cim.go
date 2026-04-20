@@ -208,15 +208,15 @@ func (*cimVolumeAPI) ResizeVolume(volumeID string, size int64) error {
 				return fmt.Errorf("error getting the current size of volume (%s) with error (%w)", volumeID, err)
 			}
 
-			// only resize if finalSize - currentSize is greater than 100MB
-			if finalSize-currentSize < minimumResizeSize {
-				klog.V(2).Infof("minimum resize difference (100MB) not met, skipping resize. volumeID=%s currentSize=%d finalSize=%d", volumeID, currentSize, finalSize)
-				return nil
-			}
-
 			//if the partition's size is already the size we want this is a noop, just return
 			if currentSize >= finalSize {
 				klog.V(2).Infof("Attempted to resize volume (%s) to a lower size, from currentBytes=%d wantedBytes=%d", volumeID, currentSize, finalSize)
+				return nil
+			}
+
+			// only resize if finalSize - currentSize is greater than 100MB
+			if finalSize-currentSize < minimumResizeSize {
+				klog.V(2).Infof("minimum resize difference (100MB) not met, skipping resize. volumeID=%s currentSize=%d finalSize=%d", volumeID, currentSize, finalSize)
 				return nil
 			}
 
