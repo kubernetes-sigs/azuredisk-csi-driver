@@ -215,11 +215,11 @@ func (*cimDiskAPI) CreateBasicPartition(diskNumber uint32) error {
 
 			partitions, err := wmi.ListPartitionsWithFilters(scope, nil, wmi.FilterForPartitionOnDisk(diskNumber), wmi.FilterForPartitionsOfTypeNormal())
 			if err != nil {
-				return fmt.Errorf("error query basic partition on disk %d:, %w", diskNumber, err)
+				return fmt.Errorf("error query basic partition on disk %d: %w", diskNumber, err)
 			}
 
 			if len(partitions) == 0 {
-				return fmt.Errorf("failed to create basic partition on disk %d:, %w", diskNumber, err)
+				return fmt.Errorf("no partitions found on disk %d after creation", diskNumber)
 			}
 
 			partition := partitions[0]

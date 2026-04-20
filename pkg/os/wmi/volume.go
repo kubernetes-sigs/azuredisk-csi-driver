@@ -53,7 +53,6 @@ var (
 func QueryVolumeByUniqueID(scope *Scope, volumeID string, selectorList []string) (*COMDispatchObject, error) {
 	q := NewQuery(MSFTVolumeClass).WithNamespace(WMINamespaceStorage).
 		Select(selectorList...).
-		Select("UniqueId").
 		WithCondition("UniqueId", "=", volumeID)
 
 	result, err := QueryFirstObjectWithBuilder(scope, q)
@@ -356,6 +355,8 @@ func SetPartitionState(part *COMDispatchObject, online bool) (string, error) {
 // for the WMI method definition.
 func GetPartitionSupportedSize(part *COMDispatchObject) (sizeMin, sizeMax uint64, status string, err error) {
 	var sizeMinVar, sizeMaxVar ole.VARIANT
+	defer sizeMinVar.Clear()
+	defer sizeMaxVar.Clear()
 	result, err := part.CallUint32("GetSupportedSize", &sizeMinVar, &sizeMaxVar, &status)
 	if err != nil {
 		return
