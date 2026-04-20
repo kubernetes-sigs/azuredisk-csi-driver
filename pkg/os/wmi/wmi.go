@@ -351,6 +351,7 @@ func CallMethodOnWMIClass(namespace, class, methodName string, input map[string]
 		if err != nil {
 			return fmt.Errorf("get class %s failed: %w", class, err)
 		}
+		defer classRaw.Clear()
 		classInst := classRaw.ToIDispatch()
 		defer classInst.Release()
 
@@ -558,7 +559,7 @@ func QueryFirstObjectWithBuilder(scope *Scope, q *QueryBuilder) (*COMDispatchObj
 		return ErrStopIteration
 	})
 
-	if err != nil && !errors.Is(err, ErrStopIteration) {
+	if err != nil {
 		return nil, err
 	}
 
