@@ -21,7 +21,6 @@ package wmi
 
 import (
 	"fmt"
-	"strconv"
 )
 
 const (
@@ -185,81 +184,35 @@ func RescanDisks() error {
 
 // GetDiskNumber returns the number of a disk.
 func GetDiskNumber(disk *COMDispatchObject) (uint32, error) {
-	number, err := disk.GetProperty("Number")
-	if err != nil {
-		return 0, err
-	}
-	defer number.Clear()
-	if number.Value() == nil {
-		return 0, fmt.Errorf("number is nil")
-	}
-	return NewSafeVariant(number).Uint32(), nil
+	return disk.GetUint32Property("Number")
 }
 
 // GetDiskLocation returns the location of a disk.
 func GetDiskLocation(disk *COMDispatchObject) (string, error) {
-	location, err := disk.GetProperty("Location")
-	if err != nil {
-		return "", err
-	}
-	defer location.Clear()
-	return NewSafeVariant(location).String(), nil
+	return disk.GetStringProperty("Location")
 }
 
 // GetDiskPartitionStyle returns the partition style of a disk.
 func GetDiskPartitionStyle(disk *COMDispatchObject) (uint16, error) {
-	retValue, err := disk.GetProperty("PartitionStyle")
-	if err != nil {
-		return 0, err
-	}
-	defer retValue.Clear()
-	return NewSafeVariant(retValue).Uint16(), nil
+	return disk.GetUint16Property("PartitionStyle")
 }
 
 // IsDiskOffline returns whether a disk is offline.
 func IsDiskOffline(disk *COMDispatchObject) (bool, error) {
-	offline, err := disk.GetProperty("IsOffline")
-	if err != nil {
-		return false, err
-	}
-	defer offline.Clear()
-	return NewSafeVariant(offline).Bool(), nil
+	return disk.GetBoolProperty("IsOffline")
 }
 
 // GetDiskSize returns the size of a disk.
 func GetDiskSize(disk *COMDispatchObject) (uint64, error) {
-	sz, err := disk.GetProperty("Size")
-	if err != nil {
-		return 0, err
-	}
-	defer sz.Clear()
-	val := NewSafeVariant(sz).String()
-	if val == "" {
-		return 0, fmt.Errorf("size is empty")
-	}
-	size, err := strconv.ParseUint(val, 10, 64)
-	if err != nil {
-		return 0, fmt.Errorf("failed to get disk size %v. error: %w", disk, err)
-	}
-	return size, nil
+	return disk.GetStringPropertyAsUint64("Size")
 }
 
 // GetDiskPath returns the path of a disk.
 func GetDiskPath(disk *COMDispatchObject) (string, error) {
-	path, err := disk.GetProperty("Path")
-	if err != nil {
-		return "", err
-	}
-	defer path.Clear()
-	return NewSafeVariant(path).String(), nil
+	return disk.GetStringProperty("Path")
 }
 
 // GetDiskSerialNumber returns the serial number of a disk.
 func GetDiskSerialNumber(disk *COMDispatchObject) (string, error) {
-	serialNumber, err := disk.GetProperty("SerialNumber")
-	if err != nil {
-		return "", err
-	}
-	defer serialNumber.Clear()
-	return NewSafeVariant(serialNumber).String(), nil
+	return disk.GetStringProperty("SerialNumber")
 }
