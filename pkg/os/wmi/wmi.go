@@ -22,6 +22,7 @@ package wmi
 import (
 	"errors"
 	"fmt"
+	"math"
 	"runtime"
 	"strings"
 
@@ -132,13 +133,11 @@ func (q *QueryBuilder) Build() string {
 	selectPart := "*"
 
 	if len(q.Selectors) > 0 {
-		selectPart = ""
+		parts := make([]string, len(q.Selectors))
 		for i, s := range q.Selectors {
-			if i > 0 {
-				selectPart += ", "
-			}
-			selectPart += string(s)
+			parts[i] = string(s)
 		}
+		selectPart = strings.Join(parts, ", ")
 	}
 
 	query := "SELECT " + selectPart + " FROM " + q.Class
@@ -307,17 +306,17 @@ func Enumerate(obj *ole.IDispatch, fn func(item *ole.VARIANT) error) error {
 	// --- Get _NewEnum ---
 	enumProp, err := obj.GetProperty("_NewEnum")
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to get _NewEnum from IDispatch %v: %w", obj, err)
 	}
 	defer enumProp.Clear()
 
 	// --- Get IEnumVARIANT ---
 	enum, err := enumProp.ToIUnknown().IEnumVARIANT(ole.IID_IEnumVariant)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to get IEnumVARIANT from IDispatch %v: %w", obj, err)
 	}
 	if enum == nil {
-		return fmt.Errorf("enum is nil")
+		return fmt.Errorf("IEnumVARIANT is nil for IDispatch %v", obj)
 	}
 	defer enum.Release()
 
@@ -616,9 +615,22 @@ func isInteger(vt ole.VT) bool {
 	return false
 }
 
+func isUnsigned(vt ole.VT) bool {
+	switch vt {
+	case ole.VT_UI1, ole.VT_UI2, ole.VT_UI4, ole.VT_UI8, ole.VT_UINT:
+		return true
+	}
+	return false
+}
+
 func (s SafeVariant) Int() int {
 	if s.v == nil || !isInteger(s.v.VT) {
 		return 0
+	}
+	// For unsigned types with high bit set, clamp to max int to avoid
+	// negative values from sign interpretation.
+	if isUnsigned(s.v.VT) && s.v.Val < 0 {
+		return math.MaxInt
 	}
 	return int(s.v.Val)
 }
@@ -626,6 +638,9 @@ func (s SafeVariant) Int() int {
 func (s SafeVariant) Int32() int32 {
 	if s.v == nil || !isInteger(s.v.VT) {
 		return 0
+	}
+	if isUnsigned(s.v.VT) && (s.v.Val < 0 || s.v.Val > math.MaxInt32) {
+		return math.MaxInt32
 	}
 	return int32(s.v.Val)
 }

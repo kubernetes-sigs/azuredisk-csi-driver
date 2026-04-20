@@ -23,6 +23,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"math"
 	"strings"
 	"syscall"
 	"unsafe"
@@ -413,6 +414,9 @@ func (*cimDiskAPI) GetDiskStats(diskNumber uint32) (size int64, err error) {
 				return fmt.Errorf("failed to query size of disk %d. %w", diskNumber, err)
 			}
 
+			if sz > math.MaxInt64 {
+				return fmt.Errorf("disk %d size %d exceeds max int64", diskNumber, sz)
+			}
 			size = int64(sz)
 			return nil
 		})
