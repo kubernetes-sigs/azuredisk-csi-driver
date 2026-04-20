@@ -247,8 +247,8 @@ func Query(namespace, query string, fn func(item *ole.IDispatch) error) error {
 
 		klog.V(10).Infof("ExecQuery: (namespace: %s, query: %s) -> enumerating results", namespace, query)
 
-		err = Enumerate(result, func(item *ole.IDispatch) error {
-			return fn(item)
+		err = Enumerate(result, func(item *ole.VARIANT) error {
+			return fn(item.ToIDispatch())
 		})
 		if err != nil {
 			if errors.Is(err, ErrStopIteration) {
