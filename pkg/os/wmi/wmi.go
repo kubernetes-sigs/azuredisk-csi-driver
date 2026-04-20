@@ -24,6 +24,7 @@ import (
 	"fmt"
 	"math"
 	"runtime"
+	"strconv"
 	"strings"
 
 	"github.com/go-ole/go-ole"
@@ -269,11 +270,6 @@ func QueryWithBuilder(builder *QueryBuilder, fn func(item *ole.IDispatch) error)
 	return Query(builder.Namespace, builder.Build(), fn)
 }
 
-// GetProperty gets the property of the given name from the given object.
-func GetProperty(item *ole.IDispatch, name string) (*ole.VARIANT, error) {
-	return oleutil.GetProperty(item, name)
-}
-
 // Associators gets the associators of the given object.
 func Associators(obj *ole.IDispatch, assocClass, resultClass, role, resultRole string, fn func(*ole.IDispatch) error) error {
 	klog.V(10).Infof("Associators: obj: %v, assocClass: %s, resultClass: %s, role: %s, resultRole: %s", obj, assocClass, resultClass, role, resultRole)
@@ -352,8 +348,7 @@ func CallMethodOnWMIClass(namespace, class, methodName string, input map[string]
 			return fmt.Errorf("get class %s failed: %w", class, err)
 		}
 		defer classRaw.Clear()
-		classInst := classRaw.ToIDispatch()
-		defer classInst.Release()
+		classInst := classRaw.ToIDispatch() // Release is not required as no AddRef is called
 
 		methodsRaw, err := oleutil.GetProperty(classInst, "Methods_")
 		if err != nil {
@@ -401,7 +396,7 @@ func CallMethodOnWMIClass(namespace, class, methodName string, input map[string]
 		}
 		defer outParamsRaw.Clear()
 
-		outParams := outParamsRaw.ToIDispatch()
+		outParams := outParamsRaw.ToIDispatch() // Release is not required as no AddRef is called
 
 		rv, err := outParams.GetProperty("ReturnValue")
 		if err != nil {
@@ -420,7 +415,7 @@ func CallMethodOnWMIClass(namespace, class, methodName string, input map[string]
 
 		output = make(map[string]interface{})
 		err = Enumerate(props, func(item *ole.VARIANT) error {
-			prop := item.ToIDispatch()
+			prop := item.ToIDispatch() // Release is not required as no AddRef is called
 
 			nameVar, err := prop.GetProperty("Name")
 			if err != nil {
@@ -471,8 +466,77 @@ func (c *COMDispatchObject) Dispatch() *ole.IDispatch {
 	return c.obj
 }
 
-func (c *COMDispatchObject) GetProperty(name string) (*ole.VARIANT, error) {
-	return GetProperty(c.Dispatch(), name)
+func (c *COMDispatchObject) GetPropertyWithHandler(name string, fn func(*ole.VARIANT) error) error {
+	v, err := oleutil.GetProperty(c.Dispatch(), name)
+	if err != nil {
+		return fmt.Errorf("failed to get property %s: %w", name, err)
+	}
+	defer v.Clear()
+
+	return fn(v)
+}
+
+func (c *COMDispatchObject) GetStringProperty(name string) (string, error) {
+	var result string
+	err := c.GetPropertyWithHandler(name, func(v *ole.VARIANT) error {
+		result = NewSafeVariant(v).String()
+		return nil
+	})
+	if err != nil {
+		return "", err
+	}
+	return result, nil
+}
+
+func (c *COMDispatchObject) GetUint32Property(name string) (uint32, error) {
+	var result uint32
+	err := c.GetPropertyWithHandler(name, func(v *ole.VARIANT) error {
+		result = NewSafeVariant(v).Uint32()
+		return nil
+	})
+	if err != nil {
+		return 0, err
+	}
+	return result, nil
+}
+
+func (c *COMDispatchObject) GetUint16Property(name string) (uint16, error) {
+	var result uint16
+	err := c.GetPropertyWithHandler(name, func(v *ole.VARIANT) error {
+		result = NewSafeVariant(v).Uint16()
+		return nil
+	})
+	if err != nil {
+		return 0, err
+	}
+	return result, nil
+}
+
+func (c *COMDispatchObject) GetBoolProperty(name string) (bool, error) {
+	var result bool
+	err := c.GetPropertyWithHandler(name, func(v *ole.VARIANT) error {
+		result = NewSafeVariant(v).Bool()
+		return nil
+	})
+	if err != nil {
+		return false, err
+	}
+	return result, nil
+}
+
+func (c *COMDispatchObject) GetStringPropertyAsUint64(name string) (uint64, error) {
+	str, err := c.GetStringProperty(name)
+	if err != nil {
+		return 0, err
+	}
+	if str == "" {
+		return 0, fmt.Errorf("string is empty")
+	}
+	result, err := strconv.ParseUint(str, 10, 64)
+	if err != nil {
+		return 0, fmt.Errorf("failed to parse string %s as uint64: %w", str, err)
+	}
+	return result, nil
 }
 
 func (c *COMDispatchObject) CallMethod(name string, fn func(*ole.VARIANT) error, params ...interface{}) error {
