@@ -133,11 +133,7 @@ func (q *QueryBuilder) Build() string {
 	selectPart := "*"
 
 	if len(q.Selectors) > 0 {
-		parts := make([]string, len(q.Selectors))
-		for i, s := range q.Selectors {
-			parts[i] = string(s)
-		}
-		selectPart = strings.Join(parts, ", ")
+		selectPart = strings.Join(q.Selectors, ", ")
 	}
 
 	query := "SELECT " + selectPart + " FROM " + q.Class

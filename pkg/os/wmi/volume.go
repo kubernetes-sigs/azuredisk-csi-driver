@@ -339,6 +339,9 @@ func SetPartitionState(part *COMDispatchObject, online bool) (string, error) {
 	}
 
 	var status string
+	// MSFT_Partition Online/Offline methods do not take input parameters
+	// per https://learn.microsoft.com/en-us/windows-hardware/drivers/storage/msft-partition-online
+	// ExtendedStatus is an optional out parameter passed via &status.
 	result, err := part.CallUint32(method, &status)
 	if err != nil {
 		return "", err
