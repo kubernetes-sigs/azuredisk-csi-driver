@@ -155,7 +155,7 @@ func formatValue(v any) string {
 	switch x := v.(type) {
 
 	case string:
-		return "'" + strings.ReplaceAll(x, "'", "\\'") + "'"
+		return "'" + strings.ReplaceAll(x, "'", "''") + "'"
 
 	case int, int32, int64, uint, uint32, uint64:
 		return fmt.Sprintf("%v", x)
@@ -245,37 +245,17 @@ func Query(namespace, query string, fn func(item *ole.IDispatch) error) error {
 		result := resultRaw.ToIDispatch()
 		defer result.Release()
 
-		countVar, err := oleutil.GetProperty(result, "Count")
+		klog.V(10).Infof("ExecQuery: (namespace: %s, query: %s) -> enumerating results", namespace, query)
+
+		err = Enumerate(result, func(item *ole.IDispatch) error {
+			return fn(item)
+		})
 		if err != nil {
+			if errors.Is(err, ErrStopIteration) {
+				return nil // stop early
+			}
+
 			return err
-		}
-		count := NewSafeVariant(countVar).Int()
-		klog.V(10).Infof("ExecQuery: (namespace: %s, query: %s) -> count: %d", namespace, query, count)
-
-		if count == 0 {
-			return nil
-		}
-
-		for i := 0; i < count; i++ {
-			itemRaw, err := oleutil.CallMethod(result, "ItemIndex", i)
-			if err != nil {
-				continue
-			}
-
-			err = func() error {
-				defer itemRaw.Clear()
-				item := itemRaw.ToIDispatch()
-
-				return fn(item)
-			}()
-
-			if err != nil {
-				if errors.Is(err, ErrStopIteration) {
-					return nil // stop early
-				}
-
-				return err
-			}
 		}
 
 		return nil
@@ -341,11 +321,11 @@ func Enumerate(obj *ole.IDispatch, fn func(item *ole.VARIANT) error) error {
 
 	for {
 		item, length, err := enum.Next(1)
-		if length == 0 {
-			break
-		}
 		if err != nil {
 			return err
+		}
+		if length == 0 {
+			break
 		}
 
 		err = func() error {

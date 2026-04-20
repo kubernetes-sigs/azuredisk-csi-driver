@@ -197,6 +197,9 @@ func (*cimVolumeAPI) ResizeVolume(volumeID string, size int64) error {
 				}
 
 			} else {
+				if size < 0 {
+					return fmt.Errorf("invalid negative size %d for volume (%s)", size, volumeID)
+				}
 				finalSize = uint64(size)
 			}
 
