@@ -37,6 +37,8 @@ const (
 	WMINamespaceCimV2   = "Root\\CimV2"
 	WMINamespaceStorage = "Root\\Microsoft\\Windows\\Storage"
 	WMINamespaceSmb     = "Root\\Microsoft\\Windows\\Smb"
+
+	WBEM_S_FALSE = 0x00000001
 )
 
 var (
@@ -63,6 +65,11 @@ func IgnoreNotFound(err error) error {
 		return nil
 	}
 	return err
+}
+
+func IsEndOfEnum(err error) bool {
+	var oleErr *ole.OleError
+	return errors.As(err, &oleErr) && oleErr.Code() == WBEM_S_FALSE
 }
 
 // QueryBuilder is a builder for WMI queries.
@@ -320,6 +327,9 @@ func Enumerate(obj *ole.IDispatch, fn func(item *ole.VARIANT) error) error {
 	for {
 		item, length, err := enum.Next(1)
 		if err != nil {
+			if IsEndOfEnum(err) {
+				break
+			}
 			return err
 		}
 		if length == 0 {
