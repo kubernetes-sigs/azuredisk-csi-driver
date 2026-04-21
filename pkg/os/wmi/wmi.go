@@ -158,7 +158,10 @@ func formatValue(v any) string {
 	switch x := v.(type) {
 
 	case string:
-		return "'" + strings.ReplaceAll(x, "'", "''") + "'"
+		// escapes string for WMI Queries
+		x = strings.ReplaceAll(x, "'", "''")
+		x = strings.ReplaceAll(x, "\\", "\\\\")
+		return "'" + x + "'"
 
 	case int, int32, int64, uint, uint32, uint64:
 		return fmt.Sprintf("%v", x)
