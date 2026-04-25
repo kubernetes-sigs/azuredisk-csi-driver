@@ -5,7 +5,7 @@ go 1.25.0
 godebug winsymlink=0
 
 require (
-	github.com/Azure/azure-sdk-for-go/sdk/azcore v1.18.2
+	github.com/Azure/azure-sdk-for-go/sdk/azcore v1.19.0
 	github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute/v6 v6.4.0
 	github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/network/armnetwork/v6 v6.2.0
 	github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/resources/armresources v1.2.0
@@ -28,7 +28,7 @@ require (
 	go.opentelemetry.io/otel/exporters/otlp/otlptrace v1.35.0
 	go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc v1.35.0
 	go.opentelemetry.io/otel/sdk v1.43.0
-	go.uber.org/mock v0.5.2
+	go.uber.org/mock v0.6.0
 	golang.org/x/net v0.52.0
 	golang.org/x/sync v0.20.0
 	golang.org/x/sys v0.42.0
@@ -44,15 +44,15 @@ require (
 	k8s.io/mount-utils v0.34.0-alpha.0.0.20250505161257-5984695ef68d
 	k8s.io/pod-security-admission v0.33.4
 	k8s.io/utils v0.0.0-20250502105355-0f33e8f1c979
-	sigs.k8s.io/cloud-provider-azure v1.29.1-0.20250815061507-4f684928f81e
-	sigs.k8s.io/cloud-provider-azure/pkg/azclient v0.8.6
-	sigs.k8s.io/cloud-provider-azure/pkg/azclient/configloader v0.8.1
+	sigs.k8s.io/cloud-provider-azure v1.29.1-0.20260423160847-74b814d0b694
+	sigs.k8s.io/cloud-provider-azure/pkg/azclient v0.9.1
+	sigs.k8s.io/cloud-provider-azure/pkg/azclient/configloader v0.8.2
 	sigs.k8s.io/yaml v1.6.0
 )
 
 require (
 	cel.dev/expr v0.25.1 // indirect
-	github.com/Azure/azure-sdk-for-go/sdk/azidentity v1.10.1 // indirect
+	github.com/Azure/azure-sdk-for-go/sdk/azidentity v1.11.0 // indirect
 	github.com/Azure/azure-sdk-for-go/sdk/internal v1.11.2 // indirect
 	github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/authorization/armauthorization/v2 v2.2.0 // indirect
 	github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/containerregistry/armcontainerregistry v1.2.0 // indirect
@@ -96,7 +96,7 @@ require (
 	github.com/go-task/slim-sprig/v3 v3.0.0 // indirect
 	github.com/godbus/dbus/v5 v5.1.0 // indirect
 	github.com/gogo/protobuf v1.3.2 // indirect
-	github.com/golang-jwt/jwt/v5 v5.2.2 // indirect
+	github.com/golang-jwt/jwt/v5 v5.3.0 // indirect
 	github.com/google/cadvisor v0.52.1 // indirect
 	github.com/google/cel-go v0.23.2 // indirect
 	github.com/google/gnostic-models v0.6.9 // indirect
