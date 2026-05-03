@@ -360,6 +360,7 @@ func (d *Driver) NodeGetInfo(ctx context.Context, _ *csi.NodeGetInfoRequest) (*c
 
 	if d.supportZone {
 		var zone cloudprovider.Zone
+		var zoneLookupFailed bool // tracks whether initial zone lookup hit a transient error
 		if d.getNodeInfoFromLabels {
 			failureDomainFromLabels, instanceTypeFromLabels, err = GetNodeInfoFromLabels(ctx, d.NodeID, d.cloud.KubeClient)
 		} else {
@@ -369,6 +370,7 @@ func (d *Driver) NodeGetInfo(ctx context.Context, _ *csi.NodeGetInfoRequest) (*c
 				zone, err = d.cloud.GetZone(ctx)
 			}
 			if err != nil {
+				zoneLookupFailed = true
 				klog.Warningf("get zone(%s) failed with: %v, fall back to get zone from node labels", d.NodeID, err)
 				failureDomainFromLabels, instanceTypeFromLabels, err = GetNodeInfoFromLabels(ctx, d.NodeID, d.cloud.KubeClient)
 			}
@@ -380,11 +382,14 @@ func (d *Driver) NodeGetInfo(ctx context.Context, _ *csi.NodeGetInfoRequest) (*c
 			zone.FailureDomain = failureDomainFromLabels
 		}
 
-		// When zone is still empty (e.g., cloud config unavailable and node labels not yet
-		// populated by cloud-controller-manager on a newly joined node), retry with backoff
-		// to wait for the labels to appear rather than returning an empty topology.
-		if zone.FailureDomain == "" && d.cloud.KubeClient != nil {
-			klog.Warningf("NodeGetInfo: zone is empty for node %s, retrying with backoff to wait for node labels", d.NodeID)
+		// When zone is still empty AND the initial zone lookup failed with an error
+		// (e.g., cloud config unavailable because apiserver was unreachable on a newly
+		// joined node before CNI is ready), retry with backoff to wait for
+		// cloud-controller-manager to populate the zone label.
+		// We only retry when zoneLookupFailed is true to avoid blocking for 2 minutes
+		// on non-zonal nodes that legitimately have no zone label.
+		if zone.FailureDomain == "" && zoneLookupFailed && d.cloud.KubeClient != nil {
+			klog.Warningf("NodeGetInfo: zone is empty for node %s after transient lookup failure, retrying with backoff to wait for node labels", d.NodeID)
 			retryErr := wait.PollUntilContextTimeout(ctx, 5*time.Second, 2*time.Minute, true, func(ctx context.Context) (bool, error) {
 				fd, it, labelErr := GetNodeInfoFromLabels(ctx, d.NodeID, d.cloud.KubeClient)
 				if labelErr != nil {
