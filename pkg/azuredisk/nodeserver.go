@@ -365,9 +365,11 @@ func (d *Driver) NodeGetInfo(ctx context.Context, _ *csi.NodeGetInfoRequest) (*c
 		if d.getNodeInfoFromLabels {
 			failureDomainFromLabels, instanceTypeFromLabels, err = GetNodeInfoFromLabels(ctx, d.NodeID, d.cloud.KubeClient)
 			if err != nil {
-				zoneLookupFailed = true
-				klog.Warningf("GetNodeInfoFromLabels on node(%s) failed: %v, will retry", d.NodeID, err)
-				err = nil // don't fail immediately — fall through to retry
+				if d.cloud.KubeClient != nil {
+					zoneLookupFailed = true
+					klog.Warningf("GetNodeInfoFromLabels on node(%s) failed: %v, will retry", d.NodeID, err)
+					err = nil // don't fail immediately — fall through to retry
+				}
 			}
 		} else {
 			if runtime.GOOS == "windows" && (!d.cloud.UseInstanceMetadata || d.cloud.Metadata == nil) {
@@ -380,10 +382,15 @@ func (d *Driver) NodeGetInfo(ctx context.Context, _ *csi.NodeGetInfoRequest) (*c
 				klog.Warningf("get zone(%s) failed with: %v, fall back to get zone from node labels", d.NodeID, err)
 				failureDomainFromLabels, instanceTypeFromLabels, err = GetNodeInfoFromLabels(ctx, d.NodeID, d.cloud.KubeClient)
 				if err != nil {
-					klog.Warningf("GetNodeInfoFromLabels fallback on node(%s) also failed: %v, will retry", d.NodeID, err)
-					err = nil // don't fail immediately — fall through to retry
+					if d.cloud.KubeClient != nil {
+						klog.Warningf("GetNodeInfoFromLabels fallback on node(%s) also failed: %v, will retry", d.NodeID, err)
+						err = nil // don't fail immediately — fall through to retry
+					}
 				}
 			}
+		}
+		if err != nil {
+			return nil, status.Error(codes.Internal, fmt.Sprintf("GetNodeInfoFromLabels on node(%s) failed with %v", d.NodeID, err))
 		}
 		if zone.FailureDomain == "" {
 			zone.FailureDomain = failureDomainFromLabels
