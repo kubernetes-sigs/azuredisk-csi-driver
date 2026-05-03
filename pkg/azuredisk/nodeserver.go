@@ -35,6 +35,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/wait"
 	cloudprovider "k8s.io/cloud-provider"
@@ -390,23 +391,33 @@ func (d *Driver) NodeGetInfo(ctx context.Context, _ *csi.NodeGetInfoRequest) (*c
 		// - zoneLookupFailed is true (initial cloud zone query returned an error,
 		//   distinguishing transient failures from legitimately non-zonal nodes)
 		// - KubeClient is available (to read node labels)
-		// Note: we intentionally do NOT gate on allowEmptyCloudConfig or
-		// cloud.Location — during the startup race, cloud config may fail to load
-		// (Location="") even though the node IS in a zone. The zoneLookupFailed
-		// flag already ensures we only retry when a transient error occurred.
+		// Inside the retry loop, we also check the region label
+		// (topology.kubernetes.io/region): if CCM has added the region label but
+		// NOT the zone label, the node is in a non-zonal region and we stop early.
 		if zone.FailureDomain == "" && zoneLookupFailed && d.cloud.KubeClient != nil {
 			klog.Warningf("NodeGetInfo: zone is empty for node %s after transient lookup failure, retrying with backoff to wait for node labels", d.NodeID)
 			retryErr := wait.PollUntilContextTimeout(ctx, 5*time.Second, 2*time.Minute, false, func(ctx context.Context) (bool, error) {
-				fd, it, labelErr := GetNodeInfoFromLabels(ctx, d.NodeID, d.cloud.KubeClient)
-				if labelErr != nil {
-					klog.V(4).Infof("NodeGetInfo: retry GetNodeInfoFromLabels on node(%s) failed: %v", d.NodeID, labelErr)
+				node, nodeErr := d.cloud.KubeClient.CoreV1().Nodes().Get(ctx, d.NodeID, metav1.GetOptions{})
+				if nodeErr != nil {
+					klog.V(4).Infof("NodeGetInfo: retry get node(%s) failed: %v", d.NodeID, nodeErr)
 					return false, nil
 				}
+				if len(node.Labels) == 0 {
+					klog.V(4).Infof("NodeGetInfo: node %s has no labels yet, retrying...", d.NodeID)
+					return false, nil
+				}
+				fd := node.Labels[consts.WellKnownTopologyKey]
 				if fd != "" {
 					zone.FailureDomain = fd
 					if instanceTypeFromLabels == "" {
-						instanceTypeFromLabels = it
+						instanceTypeFromLabels = node.Labels[consts.InstanceTypeKey]
 					}
+					return true, nil
+				}
+				// If CCM has set the region label but not the zone label,
+				// this node is in a non-zonal region — stop retrying.
+				if region := node.Labels["topology.kubernetes.io/region"]; region != "" {
+					klog.V(2).Infof("NodeGetInfo: node %s has region label (%s) but no zone label, non-zonal node — stopping retry", d.NodeID, region)
 					return true, nil
 				}
 				klog.V(4).Infof("NodeGetInfo: zone label still empty on node %s, retrying...", d.NodeID)
