@@ -372,10 +372,15 @@ func (d *Driver) NodeGetInfo(ctx context.Context, _ *csi.NodeGetInfoRequest) (*c
 					err = nil // don't fail immediately — fall through to retry
 				}
 			} else if failureDomainFromLabels == "" {
-				// GetNodeInfoFromLabels succeeded but zone label is not populated yet
-				// (CCM hasn't set topology.kubernetes.io/zone). Mark as transient so
-				// the retry loop below waits for the label to appear.
-				zoneLookupFailed = true
+				// Zone label not populated yet. Check if the node is region-only
+				// (has region label but no zone label) to avoid unnecessary retry delay.
+				node, nodeErr := d.cloud.KubeClient.CoreV1().Nodes().Get(ctx, d.NodeID, metav1.GetOptions{})
+				if nodeErr == nil && node.Labels["topology.kubernetes.io/region"] != "" {
+					klog.V(2).Infof("NodeGetInfo: node %s has region label but no zone label via getNodeInfoFromLabels, non-zonal node", d.NodeID)
+					// Non-zonal node — no need to retry.
+				} else {
+					zoneLookupFailed = true
+				}
 			}
 		} else {
 			if runtime.GOOS == "windows" && (!d.cloud.UseInstanceMetadata || d.cloud.Metadata == nil) {
@@ -391,6 +396,14 @@ func (d *Driver) NodeGetInfo(ctx context.Context, _ *csi.NodeGetInfoRequest) (*c
 					if d.cloud.KubeClient != nil {
 						klog.Warningf("GetNodeInfoFromLabels fallback on node(%s) also failed: %v, will retry", d.NodeID, err)
 						err = nil // don't fail immediately — fall through to retry
+					}
+				} else if failureDomainFromLabels == "" {
+					// Fallback succeeded but zone is empty. Check if region-only node
+					// to avoid unnecessary 5s delay before first poll iteration.
+					node, nodeErr := d.cloud.KubeClient.CoreV1().Nodes().Get(ctx, d.NodeID, metav1.GetOptions{})
+					if nodeErr == nil && node.Labels["topology.kubernetes.io/region"] != "" {
+						klog.V(2).Infof("NodeGetInfo: node %s has region label but no zone label in fallback path, non-zonal node", d.NodeID)
+						zoneLookupFailed = false // no need to retry
 					}
 				}
 			}
@@ -444,7 +457,7 @@ func (d *Driver) NodeGetInfo(ctx context.Context, _ *csi.NodeGetInfoRequest) (*c
 			})
 			if retryErr != nil {
 				if ctx.Err() != nil {
-					klog.Warningf("NodeGetInfo: context canceled while waiting for zone label on node %s: %v", d.NodeID, ctx.Err())
+					return nil, status.Error(codes.Aborted, fmt.Sprintf("NodeGetInfo: context canceled while waiting for zone label on node %s: %v", d.NodeID, ctx.Err()))
 				} else if apierrors.IsForbidden(retryErr) || apierrors.IsNotFound(retryErr) {
 					return nil, status.Error(codes.Internal, fmt.Sprintf("NodeGetInfo: permanent error getting node(%s): %v", d.NodeID, retryErr))
 				} else {
