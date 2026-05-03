@@ -380,6 +380,32 @@ func (d *Driver) NodeGetInfo(ctx context.Context, _ *csi.NodeGetInfoRequest) (*c
 			zone.FailureDomain = failureDomainFromLabels
 		}
 
+		// When zone is still empty (e.g., cloud config unavailable and node labels not yet
+		// populated by cloud-controller-manager on a newly joined node), retry with backoff
+		// to wait for the labels to appear rather than returning an empty topology.
+		if zone.FailureDomain == "" && d.cloud.KubeClient != nil {
+			klog.Warningf("NodeGetInfo: zone is empty for node %s, retrying with backoff to wait for node labels", d.NodeID)
+			retryErr := wait.PollUntilContextTimeout(ctx, 5*time.Second, 2*time.Minute, true, func(ctx context.Context) (bool, error) {
+				fd, it, labelErr := GetNodeInfoFromLabels(ctx, d.NodeID, d.cloud.KubeClient)
+				if labelErr != nil {
+					klog.V(4).Infof("NodeGetInfo: retry GetNodeInfoFromLabels on node(%s) failed: %v", d.NodeID, labelErr)
+					return false, nil
+				}
+				if fd != "" {
+					zone.FailureDomain = fd
+					if instanceTypeFromLabels == "" {
+						instanceTypeFromLabels = it
+					}
+					return true, nil
+				}
+				klog.V(4).Infof("NodeGetInfo: zone label still empty on node %s, retrying...", d.NodeID)
+				return false, nil
+			})
+			if retryErr != nil {
+				klog.Warningf("NodeGetInfo: timed out waiting for zone label on node %s: %v", d.NodeID, retryErr)
+			}
+		}
+
 		klog.V(2).Infof("NodeGetInfo, nodeName: %s, failureDomain: %s", d.NodeID, zone.FailureDomain)
 		if azureutils.IsValidAvailabilityZone(zone.FailureDomain, d.cloud.Location) {
 			topology.Segments[topologyKey] = zone.FailureDomain
