@@ -361,9 +361,14 @@ func (d *Driver) NodeGetInfo(ctx context.Context, _ *csi.NodeGetInfoRequest) (*c
 
 	if d.supportZone {
 		var zone cloudprovider.Zone
-		var zoneLookupFailed bool // tracks whether initial zone lookup hit a transient error
+		var zoneLookupFailed bool // tracks whether zone lookup hit a transient error
 		if d.getNodeInfoFromLabels {
 			failureDomainFromLabels, instanceTypeFromLabels, err = GetNodeInfoFromLabels(ctx, d.NodeID, d.cloud.KubeClient)
+			if err != nil {
+				zoneLookupFailed = true
+				klog.Warningf("GetNodeInfoFromLabels on node(%s) failed: %v, will retry", d.NodeID, err)
+				err = nil // don't fail immediately — fall through to retry
+			}
 		} else {
 			if runtime.GOOS == "windows" && (!d.cloud.UseInstanceMetadata || d.cloud.Metadata == nil) {
 				zone, err = d.cloud.VMSet.GetZoneByNodeName(ctx, d.NodeID)
@@ -374,26 +379,22 @@ func (d *Driver) NodeGetInfo(ctx context.Context, _ *csi.NodeGetInfoRequest) (*c
 				zoneLookupFailed = true
 				klog.Warningf("get zone(%s) failed with: %v, fall back to get zone from node labels", d.NodeID, err)
 				failureDomainFromLabels, instanceTypeFromLabels, err = GetNodeInfoFromLabels(ctx, d.NodeID, d.cloud.KubeClient)
+				if err != nil {
+					klog.Warningf("GetNodeInfoFromLabels fallback on node(%s) also failed: %v, will retry", d.NodeID, err)
+					err = nil // don't fail immediately — fall through to retry
+				}
 			}
-		}
-		if err != nil {
-			return nil, status.Error(codes.Internal, fmt.Sprintf("GetNodeInfoFromLabels on node(%s) failed with %v", d.NodeID, err))
 		}
 		if zone.FailureDomain == "" {
 			zone.FailureDomain = failureDomainFromLabels
 		}
 
-		// When zone is still empty AND the initial zone lookup failed with an error
-		// (e.g., cloud config unavailable because apiserver was unreachable on a newly
-		// joined node before CNI is ready), retry with backoff to wait for
-		// cloud-controller-manager to populate the zone label.
-		// We only retry when:
-		// - zoneLookupFailed is true (initial cloud zone query returned an error,
-		//   distinguishing transient failures from legitimately non-zonal nodes)
-		// - KubeClient is available (to read node labels)
-		// Inside the retry loop, we also check the region label
-		// (topology.kubernetes.io/region): if CCM has added the region label but
-		// NOT the zone label, the node is in a non-zonal region and we stop early.
+		// When zone is still empty AND zone lookup hit a transient error,
+		// retry with backoff to wait for cloud-controller-manager to populate
+		// the zone label. This handles the startup race where CSI starts before
+		// CNI is ready (apiserver unreachable / cloud config not loaded yet).
+		// Inside the retry loop, if CCM has set the region label but NOT the
+		// zone label, the node is confirmed non-zonal and we stop early.
 		if zone.FailureDomain == "" && zoneLookupFailed && d.cloud.KubeClient != nil {
 			klog.Warningf("NodeGetInfo: zone is empty for node %s after transient lookup failure, retrying with backoff to wait for node labels", d.NodeID)
 			retryErr := wait.PollUntilContextTimeout(ctx, 5*time.Second, 2*time.Minute, false, func(ctx context.Context) (bool, error) {
