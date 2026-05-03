@@ -388,11 +388,11 @@ func (d *Driver) NodeGetInfo(ctx context.Context, _ *csi.NodeGetInfoRequest) (*c
 		// cloud-controller-manager to populate the zone label.
 		// We only retry when:
 		// - zoneLookupFailed is true (initial cloud zone query returned an error)
-		// - allowEmptyCloudConfig is false (cloud config absence is NOT intentional;
-		//   when true, the driver is deployed without cloud config on purpose and
-		//   the zone label may legitimately never appear)
+		// - cloud.Location is set (cloud config was loaded, so zone info should
+		//   eventually be available; if Location is empty, the driver truly has no
+		//   cloud config and the zone label will never appear)
 		// - KubeClient is available (to read node labels)
-		if zone.FailureDomain == "" && zoneLookupFailed && !d.allowEmptyCloudConfig && d.cloud.KubeClient != nil {
+		if zone.FailureDomain == "" && zoneLookupFailed && d.cloud.Location != "" && d.cloud.KubeClient != nil {
 			klog.Warningf("NodeGetInfo: zone is empty for node %s after transient lookup failure, retrying with backoff to wait for node labels", d.NodeID)
 			retryErr := wait.PollUntilContextTimeout(ctx, 5*time.Second, 2*time.Minute, false, func(ctx context.Context) (bool, error) {
 				fd, it, labelErr := GetNodeInfoFromLabels(ctx, d.NodeID, d.cloud.KubeClient)
