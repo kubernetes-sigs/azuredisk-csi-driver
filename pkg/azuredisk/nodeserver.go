@@ -386,11 +386,15 @@ func (d *Driver) NodeGetInfo(ctx context.Context, _ *csi.NodeGetInfoRequest) (*c
 		// (e.g., cloud config unavailable because apiserver was unreachable on a newly
 		// joined node before CNI is ready), retry with backoff to wait for
 		// cloud-controller-manager to populate the zone label.
-		// We only retry when zoneLookupFailed is true to avoid blocking for 2 minutes
-		// on non-zonal nodes that legitimately have no zone label.
-		if zone.FailureDomain == "" && zoneLookupFailed && d.cloud.KubeClient != nil {
+		// We only retry when:
+		// - zoneLookupFailed is true (initial cloud zone query returned an error)
+		// - allowEmptyCloudConfig is false (cloud config absence is NOT intentional;
+		//   when true, the driver is deployed without cloud config on purpose and
+		//   the zone label may legitimately never appear)
+		// - KubeClient is available (to read node labels)
+		if zone.FailureDomain == "" && zoneLookupFailed && !d.allowEmptyCloudConfig && d.cloud.KubeClient != nil {
 			klog.Warningf("NodeGetInfo: zone is empty for node %s after transient lookup failure, retrying with backoff to wait for node labels", d.NodeID)
-			retryErr := wait.PollUntilContextTimeout(ctx, 5*time.Second, 2*time.Minute, true, func(ctx context.Context) (bool, error) {
+			retryErr := wait.PollUntilContextTimeout(ctx, 5*time.Second, 2*time.Minute, false, func(ctx context.Context) (bool, error) {
 				fd, it, labelErr := GetNodeInfoFromLabels(ctx, d.NodeID, d.cloud.KubeClient)
 				if labelErr != nil {
 					klog.V(4).Infof("NodeGetInfo: retry GetNodeInfoFromLabels on node(%s) failed: %v", d.NodeID, labelErr)
@@ -407,7 +411,11 @@ func (d *Driver) NodeGetInfo(ctx context.Context, _ *csi.NodeGetInfoRequest) (*c
 				return false, nil
 			})
 			if retryErr != nil {
-				klog.Warningf("NodeGetInfo: timed out waiting for zone label on node %s: %v", d.NodeID, retryErr)
+				if ctx.Err() != nil {
+					klog.Warningf("NodeGetInfo: context canceled while waiting for zone label on node %s: %v", d.NodeID, ctx.Err())
+				} else {
+					klog.Warningf("NodeGetInfo: timed out waiting for zone label on node %s after 2m", d.NodeID)
+				}
 			}
 		}
 
