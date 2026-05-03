@@ -36,6 +36,7 @@ import (
 	"google.golang.org/grpc/status"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/wait"
 	cloudprovider "k8s.io/cloud-provider"
@@ -370,6 +371,11 @@ func (d *Driver) NodeGetInfo(ctx context.Context, _ *csi.NodeGetInfoRequest) (*c
 					klog.Warningf("GetNodeInfoFromLabels on node(%s) failed: %v, will retry", d.NodeID, err)
 					err = nil // don't fail immediately — fall through to retry
 				}
+			} else if failureDomainFromLabels == "" {
+				// GetNodeInfoFromLabels succeeded but zone label is not populated yet
+				// (CCM hasn't set topology.kubernetes.io/zone). Mark as transient so
+				// the retry loop below waits for the label to appear.
+				zoneLookupFailed = true
 			}
 		} else {
 			if runtime.GOOS == "windows" && (!d.cloud.UseInstanceMetadata || d.cloud.Metadata == nil) {
@@ -407,6 +413,11 @@ func (d *Driver) NodeGetInfo(ctx context.Context, _ *csi.NodeGetInfoRequest) (*c
 			retryErr := wait.PollUntilContextTimeout(ctx, 5*time.Second, 2*time.Minute, false, func(ctx context.Context) (bool, error) {
 				node, nodeErr := d.cloud.KubeClient.CoreV1().Nodes().Get(ctx, d.NodeID, metav1.GetOptions{})
 				if nodeErr != nil {
+					// Permanent errors: stop retrying and surface the error.
+					if apierrors.IsForbidden(nodeErr) || apierrors.IsNotFound(nodeErr) {
+						klog.Warningf("NodeGetInfo: permanent error getting node(%s): %v", d.NodeID, nodeErr)
+						return false, nodeErr
+					}
 					klog.V(4).Infof("NodeGetInfo: retry get node(%s) failed: %v", d.NodeID, nodeErr)
 					return false, nil
 				}
@@ -434,6 +445,8 @@ func (d *Driver) NodeGetInfo(ctx context.Context, _ *csi.NodeGetInfoRequest) (*c
 			if retryErr != nil {
 				if ctx.Err() != nil {
 					klog.Warningf("NodeGetInfo: context canceled while waiting for zone label on node %s: %v", d.NodeID, ctx.Err())
+				} else if apierrors.IsForbidden(retryErr) || apierrors.IsNotFound(retryErr) {
+					return nil, status.Error(codes.Internal, fmt.Sprintf("NodeGetInfo: permanent error getting node(%s): %v", d.NodeID, retryErr))
 				} else {
 					klog.Warningf("NodeGetInfo: timed out waiting for zone label on node %s after 2m", d.NodeID)
 				}
