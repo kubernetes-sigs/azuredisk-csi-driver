@@ -365,23 +365,7 @@ func (d *Driver) NodeGetInfo(ctx context.Context, _ *csi.NodeGetInfoRequest) (*c
 		var zoneLookupFailed bool // tracks whether zone lookup hit a transient error
 		if d.getNodeInfoFromLabels {
 			failureDomainFromLabels, instanceTypeFromLabels, err = GetNodeInfoFromLabels(ctx, d.NodeID, d.cloud.KubeClient)
-			if err != nil {
-				if d.cloud.KubeClient != nil {
-					zoneLookupFailed = true
-					klog.Warningf("GetNodeInfoFromLabels on node(%s) failed: %v, will retry", d.NodeID, err)
-					err = nil // don't fail immediately — fall through to retry
-				}
-			} else if failureDomainFromLabels == "" {
-				// Zone label not populated yet. Check if the node is region-only
-				// (has region label but no zone label) to avoid unnecessary retry delay.
-				node, nodeErr := d.cloud.KubeClient.CoreV1().Nodes().Get(ctx, d.NodeID, metav1.GetOptions{})
-				if nodeErr == nil && node.Labels["topology.kubernetes.io/region"] != "" {
-					klog.V(2).Infof("NodeGetInfo: node %s has region label but no zone label via getNodeInfoFromLabels, non-zonal node", d.NodeID)
-					// Non-zonal node — no need to retry.
-				} else {
-					zoneLookupFailed = true
-				}
-			}
+			zoneLookupFailed, err = d.handleZoneLookupResult(ctx, failureDomainFromLabels, err)
 		} else {
 			if runtime.GOOS == "windows" && (!d.cloud.UseInstanceMetadata || d.cloud.Metadata == nil) {
 				zone, err = d.cloud.VMSet.GetZoneByNodeName(ctx, d.NodeID)
@@ -392,20 +376,7 @@ func (d *Driver) NodeGetInfo(ctx context.Context, _ *csi.NodeGetInfoRequest) (*c
 				zoneLookupFailed = true
 				klog.Warningf("get zone(%s) failed with: %v, fall back to get zone from node labels", d.NodeID, err)
 				failureDomainFromLabels, instanceTypeFromLabels, err = GetNodeInfoFromLabels(ctx, d.NodeID, d.cloud.KubeClient)
-				if err != nil {
-					if d.cloud.KubeClient != nil {
-						klog.Warningf("GetNodeInfoFromLabels fallback on node(%s) also failed: %v, will retry", d.NodeID, err)
-						err = nil // don't fail immediately — fall through to retry
-					}
-				} else if failureDomainFromLabels == "" {
-					// Fallback succeeded but zone is empty. Check if region-only node
-					// to avoid unnecessary 5s delay before first poll iteration.
-					node, nodeErr := d.cloud.KubeClient.CoreV1().Nodes().Get(ctx, d.NodeID, metav1.GetOptions{})
-					if nodeErr == nil && node.Labels["topology.kubernetes.io/region"] != "" {
-						klog.V(2).Infof("NodeGetInfo: node %s has region label but no zone label in fallback path, non-zonal node", d.NodeID)
-						zoneLookupFailed = false // no need to retry
-					}
-				}
+				zoneLookupFailed, err = d.handleZoneLookupResult(ctx, failureDomainFromLabels, err)
 			}
 		}
 		if err != nil {
@@ -415,54 +386,17 @@ func (d *Driver) NodeGetInfo(ctx context.Context, _ *csi.NodeGetInfoRequest) (*c
 			zone.FailureDomain = failureDomainFromLabels
 		}
 
-		// When zone is still empty AND zone lookup hit a transient error,
-		// retry with backoff to wait for cloud-controller-manager to populate
-		// the zone label. This handles the startup race where CSI starts before
-		// CNI is ready (apiserver unreachable / cloud config not loaded yet).
-		// Inside the retry loop, if CCM has set the region label but NOT the
-		// zone label, the node is confirmed non-zonal and we stop early.
 		if zone.FailureDomain == "" && zoneLookupFailed && d.cloud.KubeClient != nil {
-			klog.Warningf("NodeGetInfo: zone is empty for node %s after transient lookup failure, retrying with backoff to wait for node labels", d.NodeID)
-			retryErr := wait.PollUntilContextTimeout(ctx, 5*time.Second, 2*time.Minute, false, func(ctx context.Context) (bool, error) {
-				node, nodeErr := d.cloud.KubeClient.CoreV1().Nodes().Get(ctx, d.NodeID, metav1.GetOptions{})
-				if nodeErr != nil {
-					// Permanent errors: stop retrying and surface the error.
-					if apierrors.IsForbidden(nodeErr) || apierrors.IsNotFound(nodeErr) {
-						klog.Warningf("NodeGetInfo: permanent error getting node(%s): %v", d.NodeID, nodeErr)
-						return false, nodeErr
-					}
-					klog.V(4).Infof("NodeGetInfo: retry get node(%s) failed: %v", d.NodeID, nodeErr)
-					return false, nil
-				}
-				if len(node.Labels) == 0 {
-					klog.V(4).Infof("NodeGetInfo: node %s has no labels yet, retrying...", d.NodeID)
-					return false, nil
-				}
-				fd := node.Labels[consts.WellKnownTopologyKey]
-				if fd != "" {
-					zone.FailureDomain = fd
-					if instanceTypeFromLabels == "" {
-						instanceTypeFromLabels = node.Labels[consts.InstanceTypeKey]
-					}
-					return true, nil
-				}
-				// If CCM has set the region label but not the zone label,
-				// this node is in a non-zonal region — stop retrying.
-				if region := node.Labels["topology.kubernetes.io/region"]; region != "" {
-					klog.V(2).Infof("NodeGetInfo: node %s has region label (%s) but no zone label, non-zonal node — stopping retry", d.NodeID, region)
-					return true, nil
-				}
-				klog.V(4).Infof("NodeGetInfo: zone label still empty on node %s, retrying...", d.NodeID)
-				return false, nil
-			})
-			if retryErr != nil {
-				if ctx.Err() != nil {
-					return nil, status.Error(codes.Aborted, fmt.Sprintf("NodeGetInfo: context canceled while waiting for zone label on node %s: %v", d.NodeID, ctx.Err()))
-				}
-				if apierrors.IsForbidden(retryErr) || apierrors.IsNotFound(retryErr) {
-					return nil, status.Error(codes.Internal, fmt.Sprintf("NodeGetInfo: permanent error getting node(%s): %v", d.NodeID, retryErr))
-				}
-				klog.Warningf("NodeGetInfo: timed out waiting for zone label on node %s after 2m", d.NodeID)
+			var retryZone, retryInstanceType string
+			retryZone, retryInstanceType, err = d.waitForZoneLabel(ctx)
+			if err != nil {
+				return nil, err
+			}
+			if retryZone != "" {
+				zone.FailureDomain = retryZone
+			}
+			if instanceTypeFromLabels == "" {
+				instanceTypeFromLabels = retryInstanceType
 			}
 		}
 
@@ -558,6 +492,93 @@ func GetMaxDataDiskCount(instanceType string) (int64, bool) {
 
 	klog.V(5).Infof("not found a matching size in getMaxDataDiskCount, VM Size: %s, use default volume limit: %d", vmsize, defaultAzureVolumeLimit)
 	return defaultAzureVolumeLimit, false
+}
+
+// handleZoneLookupResult processes the result of a zone label lookup (GetNodeInfoFromLabels).
+// It returns (zoneLookupFailed, err). When the lookup failed transiently and KubeClient is
+// available, err is cleared so the caller falls through to the retry loop. When the lookup
+// succeeded but the zone is empty, it checks whether the node is region-only (non-zonal)
+// to avoid an unnecessary retry.
+func (d *Driver) handleZoneLookupResult(ctx context.Context, failureDomain string, lookupErr error) (bool, error) {
+	if lookupErr != nil {
+		if d.cloud.KubeClient != nil {
+			klog.Warningf("GetNodeInfoFromLabels on node(%s) failed: %v, will retry", d.NodeID, lookupErr)
+			return true, nil // zoneLookupFailed=true, clear error for retry
+		}
+		return false, lookupErr // no KubeClient, can't retry — propagate error
+	}
+	if failureDomain == "" {
+		// Zone empty — check if this is a region-only (non-zonal) node.
+		if d.isRegionOnlyNode(ctx) {
+			return false, nil // non-zonal, no retry needed
+		}
+		return true, nil // zoneLookupFailed=true, need retry
+	}
+	return false, nil // zone found, no retry needed
+}
+
+// isRegionOnlyNode checks whether the node has a region label but no zone label,
+// indicating it is in a non-zonal region and should not wait for a zone label.
+func (d *Driver) isRegionOnlyNode(ctx context.Context) bool {
+	if d.cloud.KubeClient == nil {
+		return false
+	}
+	node, err := d.cloud.KubeClient.CoreV1().Nodes().Get(ctx, d.NodeID, metav1.GetOptions{})
+	if err != nil {
+		return false
+	}
+	if region := node.Labels["topology.kubernetes.io/region"]; region != "" {
+		klog.V(2).Infof("NodeGetInfo: node %s has region label (%s) but no zone label, non-zonal node", d.NodeID, region)
+		return true
+	}
+	return false
+}
+
+// waitForZoneLabel polls node labels with backoff until the zone label appears,
+// the node is confirmed non-zonal (region-only), or the timeout (2min) expires.
+// Returns (failureDomain, instanceType, error). A non-nil error means the caller
+// should return it directly (context cancellation or permanent API error).
+func (d *Driver) waitForZoneLabel(ctx context.Context) (string, string, error) {
+	klog.Warningf("NodeGetInfo: zone is empty for node %s after transient lookup failure, retrying with backoff", d.NodeID)
+
+	var zoneFD, instanceType string
+	retryErr := wait.PollUntilContextTimeout(ctx, 5*time.Second, 2*time.Minute, false, func(ctx context.Context) (bool, error) {
+		node, nodeErr := d.cloud.KubeClient.CoreV1().Nodes().Get(ctx, d.NodeID, metav1.GetOptions{})
+		if nodeErr != nil {
+			if apierrors.IsForbidden(nodeErr) || apierrors.IsNotFound(nodeErr) {
+				klog.Warningf("NodeGetInfo: permanent error getting node(%s): %v", d.NodeID, nodeErr)
+				return false, nodeErr
+			}
+			klog.V(4).Infof("NodeGetInfo: retry get node(%s) failed: %v", d.NodeID, nodeErr)
+			return false, nil
+		}
+		if len(node.Labels) == 0 {
+			klog.V(4).Infof("NodeGetInfo: node %s has no labels yet, retrying...", d.NodeID)
+			return false, nil
+		}
+		if fd := node.Labels[consts.WellKnownTopologyKey]; fd != "" {
+			zoneFD = fd
+			instanceType = node.Labels[consts.InstanceTypeKey]
+			return true, nil
+		}
+		// Region label present but no zone label → non-zonal node.
+		if region := node.Labels["topology.kubernetes.io/region"]; region != "" {
+			klog.V(2).Infof("NodeGetInfo: node %s has region label (%s) but no zone label, non-zonal — stopping retry", d.NodeID, region)
+			return true, nil
+		}
+		klog.V(4).Infof("NodeGetInfo: zone label still empty on node %s, retrying...", d.NodeID)
+		return false, nil
+	})
+	if retryErr != nil {
+		if ctx.Err() != nil {
+			return "", "", status.Error(codes.Aborted, fmt.Sprintf("NodeGetInfo: context canceled while waiting for zone label on node %s: %v", d.NodeID, ctx.Err()))
+		}
+		if apierrors.IsForbidden(retryErr) || apierrors.IsNotFound(retryErr) {
+			return "", "", status.Error(codes.Internal, fmt.Sprintf("NodeGetInfo: permanent error getting node(%s): %v", d.NodeID, retryErr))
+		}
+		klog.Warningf("NodeGetInfo: timed out waiting for zone label on node %s after 2m", d.NodeID)
+	}
+	return zoneFD, instanceType, nil
 }
 
 func (d *Driver) NodeGetVolumeStats(ctx context.Context, req *csi.NodeGetVolumeStatsRequest) (*csi.NodeGetVolumeStatsResponse, error) {
