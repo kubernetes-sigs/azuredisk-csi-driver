@@ -373,7 +373,6 @@ func (d *Driver) NodeGetInfo(ctx context.Context, _ *csi.NodeGetInfoRequest) (*c
 				zone, err = d.cloud.GetZone(ctx)
 			}
 			if err != nil {
-				zoneLookupFailed = true
 				klog.Warningf("get zone(%s) failed with: %v, fall back to get zone from node labels", d.NodeID, err)
 				failureDomainFromLabels, instanceTypeFromLabels, err = GetNodeInfoFromLabels(ctx, d.NodeID, d.cloud.KubeClient)
 				zoneLookupFailed, err = d.handleZoneLookupResult(ctx, failureDomainFromLabels, err)
