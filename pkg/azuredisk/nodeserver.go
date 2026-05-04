@@ -500,6 +500,11 @@ func GetMaxDataDiskCount(instanceType string) (int64, bool) {
 // to avoid an unnecessary retry.
 func (d *Driver) handleZoneLookupResult(ctx context.Context, failureDomain string, lookupErr error) (bool, error) {
 	if lookupErr != nil {
+		// Permanent errors should not be retried — surface them immediately.
+		if apierrors.IsForbidden(lookupErr) || apierrors.IsNotFound(lookupErr) ||
+			apierrors.IsUnauthorized(lookupErr) {
+			return false, lookupErr
+		}
 		if d.cloud.KubeClient != nil {
 			klog.Warningf("GetNodeInfoFromLabels on node(%s) failed: %v, will retry", d.NodeID, lookupErr)
 			return true, nil // zoneLookupFailed=true, clear error for retry
@@ -542,27 +547,23 @@ func (d *Driver) waitForZoneLabel(ctx context.Context) (string, string, error) {
 
 	var zoneFD, instanceType string
 	retryErr := wait.PollUntilContextTimeout(ctx, 5*time.Second, 2*time.Minute, false, func(ctx context.Context) (bool, error) {
-		node, nodeErr := d.cloud.KubeClient.CoreV1().Nodes().Get(ctx, d.NodeID, metav1.GetOptions{})
-		if nodeErr != nil {
-			if apierrors.IsForbidden(nodeErr) || apierrors.IsNotFound(nodeErr) {
-				klog.Warningf("NodeGetInfo: permanent error getting node(%s): %v", d.NodeID, nodeErr)
-				return false, nodeErr
+		fd, it, err := GetNodeInfoFromLabels(ctx, d.NodeID, d.cloud.KubeClient)
+		if err != nil {
+			if apierrors.IsForbidden(err) || apierrors.IsNotFound(err) || apierrors.IsUnauthorized(err) {
+				klog.Warningf("NodeGetInfo: permanent error getting node(%s): %v", d.NodeID, err)
+				return false, err
 			}
-			klog.V(4).Infof("NodeGetInfo: retry get node(%s) failed: %v", d.NodeID, nodeErr)
+			klog.V(4).Infof("NodeGetInfo: retry GetNodeInfoFromLabels on node(%s) failed: %v", d.NodeID, err)
 			return false, nil
 		}
-		if len(node.Labels) == 0 {
-			klog.V(4).Infof("NodeGetInfo: node %s has no labels yet, retrying...", d.NodeID)
-			return false, nil
-		}
-		if fd := node.Labels[consts.WellKnownTopologyKey]; fd != "" {
+		if fd != "" {
 			zoneFD = fd
-			instanceType = node.Labels[consts.InstanceTypeKey]
+			instanceType = it
 			return true, nil
 		}
-		// Region label present but no zone label → non-zonal node.
-		if region := node.Labels["topology.kubernetes.io/region"]; region != "" {
-			klog.V(2).Infof("NodeGetInfo: node %s has region label (%s) but no zone label, non-zonal — stopping retry", d.NodeID, region)
+		// Zone still empty — check if region-only (non-zonal) node.
+		if d.isRegionOnlyNode(ctx) {
+			instanceType = it
 			return true, nil
 		}
 		klog.V(4).Infof("NodeGetInfo: zone label still empty on node %s, retrying...", d.NodeID)
