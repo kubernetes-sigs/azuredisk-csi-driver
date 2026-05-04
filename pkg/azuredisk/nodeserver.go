@@ -458,11 +458,11 @@ func (d *Driver) NodeGetInfo(ctx context.Context, _ *csi.NodeGetInfoRequest) (*c
 			if retryErr != nil {
 				if ctx.Err() != nil {
 					return nil, status.Error(codes.Aborted, fmt.Sprintf("NodeGetInfo: context canceled while waiting for zone label on node %s: %v", d.NodeID, ctx.Err()))
-				} else if apierrors.IsForbidden(retryErr) || apierrors.IsNotFound(retryErr) {
-					return nil, status.Error(codes.Internal, fmt.Sprintf("NodeGetInfo: permanent error getting node(%s): %v", d.NodeID, retryErr))
-				} else {
-					klog.Warningf("NodeGetInfo: timed out waiting for zone label on node %s after 2m", d.NodeID)
 				}
+				if apierrors.IsForbidden(retryErr) || apierrors.IsNotFound(retryErr) {
+					return nil, status.Error(codes.Internal, fmt.Sprintf("NodeGetInfo: permanent error getting node(%s): %v", d.NodeID, retryErr))
+				}
+				klog.Warningf("NodeGetInfo: timed out waiting for zone label on node %s after 2m", d.NodeID)
 			}
 		}
 
