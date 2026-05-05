@@ -54,6 +54,12 @@ var exit = func(code int) {
 
 func main() {
 	flag.Parse()
+	if err := flag.Set("legacy_stderr_threshold_behavior", "false"); err != nil {
+		klog.Errorf("Failed to set legacy_stderr_threshold_behavior: %v", err)
+	}
+	if err := flag.Set("stderrthreshold", "INFO"); err != nil {
+		klog.Errorf("Failed to set stderrthreshold: %v", err)
+	}
 	if *version {
 		info, err := azuredisk.GetVersionYAML(driverOptions.DriverName)
 		if err != nil {
