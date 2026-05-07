@@ -69,8 +69,8 @@ type DiskOp struct {
 }
 
 type WireserverRequest struct {
-	MSIClientID string             `json:"msiClientId"`
-	DiskOps     map[string]*DiskOp `json:"diskOps"`
+	VMAccessToken string             `json:"vmAccessToken"`
+	DiskOps       map[string]*DiskOp `json:"diskOps"`
 }
 
 // DiskStatus represents the status information for a single disk
@@ -160,7 +160,10 @@ func (d *Driver) NodeStageVolume(ctx context.Context, req *csi.NodeStageVolumeRe
 
 		if err != nil {
 			klog.Errorf("NodeStageVolume: failed to make POST call to wireserver for volume %s: %v", volumeID, err)
-			return nil, status.Error(codes.Internal, "failed to make POST call to wireserver")
+			if s, ok := status.FromError(err); ok {
+				return nil, status.Errorf(s.Code(), "NodeStageVolume: wireserver call failed for volume %s: %v", volumeID, err)
+			}
+			return nil, status.Errorf(codes.Internal, "NodeStageVolume: wireserver call failed for volume %s: %v", volumeID, err)
 		}
 
 		lowercaseDiskURI := strings.ToLower(volumeID)
@@ -338,7 +341,7 @@ func (d *Driver) NodeUnstageVolume(ctx context.Context, req *csi.NodeUnstageVolu
 		detachResponse, err := attachOrDetachDisk(ctx, *d.httpClient, volumeID, d.cloud.AADClientID, blobURL, qadCounterVal, "DETACH")
 		if err != nil {
 			klog.Errorf("NodeUnStageVolume: failed to make POST call to wireserver for volume %s: %v", volumeID, err)
-			return nil, status.Error(codes.Internal, "failed to make POST call to wireserver")
+			return nil, err
 		}
 
 		lowercaseVolumeID := strings.ToLower(volumeID)
@@ -953,11 +956,11 @@ func attachOrDetachDisk(ctx context.Context, client http.Client, diskURI string,
 	}
 
 	request := &WireserverRequest{
-		// TODO: Remove this hardcoding for the actual implementation.
-		// This should instead use the kubelet(agentpool) identity.
-		// One way to get the kubelet identity is to get IMDS metadata.
+		// TODO: The token should actually come from workload identity,
+		// but for now we are using the environment variable for testing purposes.
+		// In production, this should be replaced with a proper token retrieval mechanism.
 
-		MSIClientID: "3aaf73cc-b187-4078-ba96-21105d6bc137",
+		VMAccessToken: os.Getenv("TOKEN"),
 		DiskOps: map[string]*DiskOp{
 			diskURI: diskOp,
 		},
@@ -982,6 +985,22 @@ func attachOrDetachDisk(ctx context.Context, client http.Client, diskURI string,
 	bytes, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return WireserverDiskStatusResponse{}, fmt.Errorf("failed to read response body: %v", err)
+	}
+
+	// Map HTTP error codes to CSI/gRPC status codes
+	switch resp.StatusCode {
+	case http.StatusBadRequest: // 400
+		return WireserverDiskStatusResponse{}, status.Errorf(codes.InvalidArgument, "wireserver returned HTTP %d: %s", resp.StatusCode, string(bytes))
+	case http.StatusForbidden: // 403
+		return WireserverDiskStatusResponse{}, status.Errorf(codes.PermissionDenied, "wireserver returned HTTP %d: %s", resp.StatusCode, string(bytes))
+	case http.StatusTooManyRequests: // 429
+	case http.StatusServiceUnavailable: // 503
+		return WireserverDiskStatusResponse{}, status.Errorf(codes.Unavailable, "wireserver returned HTTP %d: %s", resp.StatusCode, string(bytes))
+	case http.StatusInternalServerError: // 500
+	case http.StatusNotImplemented: // 501
+		return WireserverDiskStatusResponse{}, status.Errorf(codes.Internal, "wireserver returned HTTP %d: %s", resp.StatusCode, string(bytes))
+	case http.StatusGatewayTimeout: // 504
+		return WireserverDiskStatusResponse{}, status.Errorf(codes.DeadlineExceeded, "wireserver returned HTTP %d: %s", resp.StatusCode, string(bytes))
 	}
 
 	// TODO:// Remove this post debugging

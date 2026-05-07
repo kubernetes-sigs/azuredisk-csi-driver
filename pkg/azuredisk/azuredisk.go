@@ -40,11 +40,15 @@ import (
 	v1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/labels"
 	k8stypes "k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/wait"
+	"k8s.io/client-go/informers"
 	clientset "k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/kubernetes/scheme"
 	clientcorev1 "k8s.io/client-go/kubernetes/typed/core/v1"
+	corelisters "k8s.io/client-go/listers/core/v1"
+	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/record"
 	"k8s.io/klog/v2"
 	"k8s.io/kubernetes/pkg/volume/util/hostutil"
@@ -173,6 +177,10 @@ type Driver struct {
 	nodeInformerFactory             metadatainformer.SharedInformerFactory
 	// HTTP client for wireserver calls
 	httpClient *http.Client
+	// informer factory and PV lister for cached API access
+	informerFactory informers.SharedInformerFactory
+	pvLister        corelisters.PersistentVolumeLister
+	pvListerSynced  cache.InformerSynced
 }
 
 // NewDriver Creates a NewCSIDriver object. Assumes vendor version is equal to driver version &
@@ -430,6 +438,13 @@ func NewDriver(options *DriverOptions) *Driver {
 		csi.NodeServiceCapability_RPC_SINGLE_NODE_MULTI_WRITER,
 	})
 
+	if kubeClient != nil {
+		driver.informerFactory = informers.NewSharedInformerFactory(kubeClient, 10*time.Minute)
+		pvInformer := driver.informerFactory.Core().V1().PersistentVolumes()
+		driver.pvLister = pvInformer.Lister()
+		driver.pvListerSynced = pvInformer.Informer().HasSynced
+	}
+
 	if kubeClient != nil && driver.removeNotReadyTaint && driver.NodeID != "" {
 		// Remove taint from node to indicate driver startup success
 		// This is done at the last possible moment to prevent race conditions or false positive removals
@@ -484,11 +499,24 @@ func (d *Driver) Run(ctx context.Context) error {
 			klog.V(2).Infof("metadata node informer cache synced successfully")
 		}
 		klog.V(2).Infof("started metadata node informer for GetNodeInfoFromLabels caching")
+	// Start informer factory if initialized
+	if d.informerFactory != nil {
+		d.informerFactory.Start(ctx.Done())
+		if !cache.WaitForCacheSync(ctx.Done(), d.pvListerSynced) {
+			klog.Errorf("failed to sync PV informer cache")
+		} else {
+			klog.V(2).Infof("PV informer cache synced successfully")
+		}
 	}
 
 	go func() {
 		//graceful shutdown
 		<-ctx.Done()
+
+		// Shutdown informer factory
+		if d.informerFactory != nil {
+			d.informerFactory.Shutdown()
+		}
 
 		// Stop migration monitor if it exists
 		if d.migrationMonitor != nil {
@@ -774,20 +802,28 @@ func GetNodeInfoFromNodeLister(nodeName string, nodeLister cache.GenericLister) 
 }
 
 func (d *Driver) getPVFromDiskURI(ctx context.Context, diskURI string) (*v1.PersistentVolume, error) {
-	// Use label selector to filter PVs managed by Azure Disk CSI driver
-	labelSelector := "pv.kubernetes.io/provisioned-by=disk.csi.azure.com"
 	klog.Infof("Looking for PV with handle %s", diskURI)
 
-	pvList, err := d.kubeClient.CoreV1().PersistentVolumes().List(ctx, metav1.ListOptions{
-		LabelSelector: labelSelector,
-	})
-	if err != nil || pvList == nil || len(pvList.Items) == 0 {
-		pvList, err = d.kubeClient.CoreV1().PersistentVolumes().List(ctx, metav1.ListOptions{})
+	// Use cached PV lister if available
+	if d.pvLister != nil {
+		pvs, err := d.pvLister.List(labels.Everything())
 		if err != nil {
-			return nil, fmt.Errorf("failed to list PersistentVolumes: %v", err)
+			return nil, fmt.Errorf("failed to list PersistentVolumes from cache: %v", err)
 		}
+		for _, pv := range pvs {
+			if pv.Spec.CSI != nil && pv.Spec.CSI.VolumeHandle == diskURI {
+				klog.Infof("Found PV %s with handle %s (from cache)", pv.Name, diskURI)
+				return pv, nil
+			}
+		}
+		return nil, fmt.Errorf("cannot find PV with diskURI(%s)", diskURI)
 	}
-	// Search for a PV with matching VolumeHandle
+
+	// Fallback to direct API call if lister is not initialized
+	pvList, err := d.kubeClient.CoreV1().PersistentVolumes().List(ctx, metav1.ListOptions{})
+	if err != nil {
+		return nil, fmt.Errorf("failed to list PersistentVolumes: %v", err)
+	}
 	for _, pv := range pvList.Items {
 		if pv.Spec.CSI != nil && pv.Spec.CSI.VolumeHandle == diskURI {
 			klog.Infof("Found PV %s with handle %s", pv.Name, diskURI)
