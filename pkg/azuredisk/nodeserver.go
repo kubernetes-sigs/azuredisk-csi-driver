@@ -30,6 +30,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
+	"github.com/Azure/azure-sdk-for-go/sdk/azcore/policy"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/optimization"
 	volumehelper "sigs.k8s.io/azuredisk-csi-driver/pkg/util"
@@ -156,7 +158,7 @@ func (d *Driver) NodeStageVolume(ctx context.Context, req *csi.NodeStageVolumeRe
 		klog.V(2).Infof("NodeStageVolume: volume %s is using QAD path, making POST call to wireserver with qad-counter %d", volumeID, qadCounterVal)
 
 		attachTimer := time.Now()
-		attachResponse, err := attachOrDetachDisk(ctx, *d.httpClient, volumeID, d.cloud.AADClientID, blobURL, qadCounterVal, "ATTACH")
+		attachResponse, err := attachOrDetachDisk(ctx, *d.httpClient, volumeID, d.cloud.AuthProvider.GetAzIdentity(), blobURL, qadCounterVal, "ATTACH")
 
 		if err != nil {
 			klog.Errorf("NodeStageVolume: failed to make POST call to wireserver for volume %s: %v", volumeID, err)
@@ -338,7 +340,7 @@ func (d *Driver) NodeUnstageVolume(ctx context.Context, req *csi.NodeUnstageVolu
 		}
 		klog.V(2).Infof("NodeUnStageVolume: volume %s is using QAD path, making POST call to wireserver with qad-counter %d", volumeID, qadCounterVal)
 		detachTimer := time.Now()
-		detachResponse, err := attachOrDetachDisk(ctx, *d.httpClient, volumeID, d.cloud.AADClientID, blobURL, qadCounterVal, "DETACH")
+		detachResponse, err := attachOrDetachDisk(ctx, *d.httpClient, volumeID, d.cloud.AuthProvider.GetAzIdentity(), blobURL, qadCounterVal, "DETACH")
 		if err != nil {
 			klog.Errorf("NodeUnStageVolume: failed to make POST call to wireserver for volume %s: %v", volumeID, err)
 			return nil, err
@@ -947,7 +949,15 @@ func incrementQADCounterAnnotation(kubeClient clientset.Interface, pv *v1.Persis
 	return updatedCounter, nil
 }
 
-func attachOrDetachDisk(ctx context.Context, client http.Client, diskURI string, clientID string, blobUrl string, qadCounter int, operationType string) (WireserverDiskStatusResponse, error) {
+func attachOrDetachDisk(ctx context.Context, client http.Client, diskURI string, cred azcore.TokenCredential, blobUrl string, qadCounter int, operationType string) (WireserverDiskStatusResponse, error) {
+	// Get a fresh token from the credential (SDK handles caching/refresh internally)
+	token, err := cred.GetToken(ctx, policy.TokenRequestOptions{
+		Scopes: []string{"https://management.azure.com/.default"},
+	})
+	if err != nil {
+		return WireserverDiskStatusResponse{}, fmt.Errorf("failed to get VM access token: %v", err)
+	}
+
 	diskOp := &DiskOp{
 		BlobURL:     blobUrl,
 		QadCounter:  qadCounter,
@@ -956,11 +966,7 @@ func attachOrDetachDisk(ctx context.Context, client http.Client, diskURI string,
 	}
 
 	request := &WireserverRequest{
-		// TODO: The token should actually come from workload identity,
-		// but for now we are using the environment variable for testing purposes.
-		// In production, this should be replaced with a proper token retrieval mechanism.
-
-		VMAccessToken: os.Getenv("TOKEN"),
+		VMAccessToken: token.Token,
 		DiskOps: map[string]*DiskOp{
 			diskURI: diskOp,
 		},
