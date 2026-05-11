@@ -1010,8 +1010,14 @@ func attachOrDetachDisk(ctx context.Context, client http.Client, diskURI string,
 	}
 
 	// TODO:// Remove this post debugging
-	// Log wireserver request and response for debugging
-	klog.V(2).Infof("Wireserver request: %s", string(requestBody))
+	// Log wireserver request and response for debugging (redact token)
+	redactedRequest := &WireserverRequest{
+		VMAccessToken: "[REDACTED]",
+		DiskOps:       request.DiskOps,
+	}
+	if redactedBody, err := json.Marshal(redactedRequest); err == nil {
+		klog.V(2).Infof("Wireserver request: %s", string(redactedBody))
+	}
 	klog.V(2).Infof("Wireserver response: %s", string(bytes))
 
 	var wireserverDiskStatusResponse WireserverDiskStatusResponse

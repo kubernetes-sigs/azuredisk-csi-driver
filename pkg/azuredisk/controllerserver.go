@@ -22,12 +22,12 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"os"
 	"sort"
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/Azure/azure-sdk-for-go/sdk/azcore/policy"
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/to"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute/v7"
 	"github.com/container-storage-interface/spec/lib/go/csi"
@@ -574,6 +574,11 @@ func (d *Driver) ControllerModifyVolume(ctx context.Context, req *csi.Controller
 	}
 
 	diskURI := volumeID
+
+	if _, isQAD, err := d.isUsingQADPath(ctx, diskURI); err == nil && isQAD {
+		return nil, status.Errorf(codes.Unimplemented, "ControllerModifyVolume is not supported for QAD-enabled volume %s", diskURI)
+	}
+
 	currentDisk, err := d.checkDiskExists(ctx, diskURI)
 	if err != nil {
 		return nil, status.Error(codes.NotFound, fmt.Sprintf("Volume not found, failed with error: %v", err))
@@ -732,6 +737,7 @@ func (d *Driver) ControllerPublishVolume(ctx context.Context, req *csi.Controlle
 				pv.Annotations = make(map[string]string)
 			}
 			pv.Annotations[azureconstants.QADCounterAnnotation] = "0"
+			pv.Annotations[azureconstants.BlobURLAnnotation] = blobURI
 
 			// Update the PV in Kubernetes
 			_, err := d.kubeClient.CoreV1().PersistentVolumes().Update(context.TODO(), pv, metav1.UpdateOptions{})
@@ -1213,6 +1219,11 @@ func (d *Driver) ControllerExpandVolume(ctx context.Context, req *csi.Controller
 	requestSize := *resource.NewQuantity(capacityBytes, resource.BinarySI)
 
 	diskURI := req.GetVolumeId()
+
+	if _, isQAD, err := d.isUsingQADPath(ctx, diskURI); err == nil && isQAD {
+		return nil, status.Errorf(codes.Unimplemented, "ControllerExpandVolume is not supported for QAD-enabled volume %s", diskURI)
+	}
+
 	result, rerr := d.diskController.GetDiskByURI(ctx, diskURI)
 	if rerr != nil {
 		return nil, status.Errorf(codes.Internal, "GetDiskByURI(%s) failed with error(%v)", diskURI, rerr)
@@ -1703,15 +1714,22 @@ func inlineVolumeSpecMatchesDisk(driverName, diskURI string, va *storagev1.Volum
 
 // getDiskAccessSAS calls the Azure REST API beginGetAccess to obtain an access SAS URL for the given disk.
 func (d *Driver) getDiskAccessSAS(ctx context.Context, subsID, resourceGroup, diskName string) (string, error) {
-	token := os.Getenv("TOKEN")
-	if token == "" {
-		return "", fmt.Errorf("TOKEN environment variable is not set")
+	cred := d.cloud.AuthProvider.GetAzIdentity()
+	if cred == nil {
+		return "", fmt.Errorf("no Azure credential available")
 	}
+	tokenResp, err := cred.GetToken(ctx, policy.TokenRequestOptions{
+		Scopes: []string{"https://management.azure.com/.default"},
+	})
+	if err != nil {
+		return "", fmt.Errorf("failed to get access token: %w", err)
+	}
+	token := tokenResp.Token
 
 	url := fmt.Sprintf("https://management.azure.com/subscriptions/%s/resourceGroups/%s/providers/Microsoft.Compute/disks/%s/beginGetAccess?api-version=2022-03-02",
 		subsID, resourceGroup, diskName)
 
-	reqBody := strings.NewReader(`{"access": "WriteDsas", "durationInSeconds": 3600}`)
+	reqBody := strings.NewReader(`{"access": "Read", "durationInSeconds": 3600}`)
 	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, url, reqBody)
 	if err != nil {
 		return "", fmt.Errorf("failed to create HTTP request: %w", err)
@@ -1741,7 +1759,7 @@ func (d *Driver) getDiskAccessSAS(ctx context.Context, subsID, resourceGroup, di
 		}
 
 		klog.V(2).Infof("beginGetAccess for disk %s returned 202, polling %s", diskName, asyncURL)
-		body, err = d.pollAsyncOperation(ctx, asyncURL, token)
+		body, err = d.pollAsyncOperation(ctx, asyncURL)
 		if err != nil {
 			return "", fmt.Errorf("polling beginGetAccess failed: %w", err)
 		}
@@ -1772,7 +1790,7 @@ func (d *Driver) getDiskAccessSAS(ctx context.Context, subsID, resourceGroup, di
 }
 
 // pollAsyncOperation polls an Azure async operation URL until it completes or the context is cancelled.
-func (d *Driver) pollAsyncOperation(ctx context.Context, asyncURL, token string) ([]byte, error) {
+func (d *Driver) pollAsyncOperation(ctx context.Context, asyncURL string) ([]byte, error) {
 	ticker := time.NewTicker(5 * time.Second)
 	defer ticker.Stop()
 
@@ -1781,11 +1799,22 @@ func (d *Driver) pollAsyncOperation(ctx context.Context, asyncURL, token string)
 		case <-ctx.Done():
 			return nil, ctx.Err()
 		case <-ticker.C:
+			cred := d.cloud.AuthProvider.GetAzIdentity()
+			if cred == nil {
+				return nil, fmt.Errorf("no Azure credential available")
+			}
+			tokenResp, err := cred.GetToken(ctx, policy.TokenRequestOptions{
+				Scopes: []string{"https://management.azure.com/.default"},
+			})
+			if err != nil {
+				return nil, fmt.Errorf("failed to get access token for polling: %w", err)
+			}
+
 			pollReq, err := http.NewRequestWithContext(ctx, http.MethodGet, asyncURL, nil)
 			if err != nil {
 				return nil, fmt.Errorf("failed to create poll request: %w", err)
 			}
-			pollReq.Header.Set("Authorization", "Bearer "+token)
+			pollReq.Header.Set("Authorization", "Bearer "+tokenResp.Token)
 
 			pollResp, err := http.DefaultClient.Do(pollReq)
 			if err != nil {
