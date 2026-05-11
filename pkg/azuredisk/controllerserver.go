@@ -18,16 +18,12 @@ package azuredisk
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
-	"io"
-	"net/http"
 	"sort"
 	"strconv"
 	"strings"
 	"time"
 
-	"github.com/Azure/azure-sdk-for-go/sdk/azcore/policy"
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/to"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute/v7"
 	"github.com/container-storage-interface/spec/lib/go/csi"
@@ -1712,140 +1708,35 @@ func inlineVolumeSpecMatchesDisk(driverName, diskURI string, va *storagev1.Volum
 	return false
 }
 
-// getDiskAccessSAS calls the Azure REST API beginGetAccess to obtain an access SAS URL for the given disk.
+// getDiskAccessSAS uses the Azure SDK DisksClient.BeginGrantAccess to obtain an access SAS URL for the given disk.
 func (d *Driver) getDiskAccessSAS(ctx context.Context, subsID, resourceGroup, diskName string) (string, error) {
 	cred := d.cloud.AuthProvider.GetAzIdentity()
 	if cred == nil {
 		return "", fmt.Errorf("no Azure credential available")
 	}
-	tokenResp, err := cred.GetToken(ctx, policy.TokenRequestOptions{
-		Scopes: []string{"https://management.azure.com/.default"},
-	})
+
+	disksClient, err := armcompute.NewDisksClient(subsID, cred, nil)
 	if err != nil {
-		return "", fmt.Errorf("failed to get access token: %w", err)
+		return "", fmt.Errorf("failed to create disks client: %w", err)
 	}
-	token := tokenResp.Token
 
-	url := fmt.Sprintf("https://management.azure.com/subscriptions/%s/resourceGroups/%s/providers/Microsoft.Compute/disks/%s/beginGetAccess?api-version=2022-03-02",
-		subsID, resourceGroup, diskName)
-
-	reqBody := strings.NewReader(`{"access": "Read", "durationInSeconds": 3600}`)
-	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, url, reqBody)
+	accessLevel := armcompute.AccessLevel("Read")
+	durationInSeconds := int32(3600)
+	poller, err := disksClient.BeginGrantAccess(ctx, resourceGroup, diskName, armcompute.GrantAccessData{
+		Access:            &accessLevel,
+		DurationInSeconds: &durationInSeconds,
+	}, nil)
 	if err != nil {
-		return "", fmt.Errorf("failed to create HTTP request: %w", err)
+		return "", fmt.Errorf("BeginGrantAccess request failed: %w", err)
 	}
-	httpReq.Header.Set("Authorization", "Bearer "+token)
-	httpReq.Header.Set("Content-Type", "application/json")
 
-	resp, err := http.DefaultClient.Do(httpReq)
+	resp, err := poller.PollUntilDone(ctx, nil)
 	if err != nil {
-		return "", fmt.Errorf("beginGetAccess request failed: %w", err)
-	}
-	defer resp.Body.Close()
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return "", fmt.Errorf("failed to read response body: %w", err)
+		return "", fmt.Errorf("polling BeginGrantAccess failed: %w", err)
 	}
 
-	// beginGetAccess is a long-running operation; follow the Azure-AsyncOperation header
-	if resp.StatusCode == http.StatusAccepted {
-		asyncURL := resp.Header.Get("Azure-AsyncOperation")
-		if asyncURL == "" {
-			asyncURL = resp.Header.Get("Location")
-		}
-		if asyncURL == "" {
-			return "", fmt.Errorf("beginGetAccess returned 202 but no Azure-AsyncOperation or Location header")
-		}
-
-		klog.V(2).Infof("beginGetAccess for disk %s returned 202, polling %s", diskName, asyncURL)
-		body, err = d.pollAsyncOperation(ctx, asyncURL)
-		if err != nil {
-			return "", fmt.Errorf("polling beginGetAccess failed: %w", err)
-		}
-	} else if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("beginGetAccess returned status %d: %s", resp.StatusCode, string(body))
+	if resp.AccessSAS == nil || *resp.AccessSAS == "" {
+		return "", fmt.Errorf("accessSAS not found in response")
 	}
-
-	var result struct {
-		AccessSAS string `json:"accessSAS"`
-		// Nested under "properties.output" when polling async operation
-		Properties *struct {
-			Output *struct {
-				AccessSAS string `json:"accessSAS"`
-			} `json:"output"`
-		} `json:"properties"`
-	}
-	if err := json.Unmarshal(body, &result); err != nil {
-		return "", fmt.Errorf("failed to parse response: %w", err)
-	}
-
-	if result.AccessSAS != "" {
-		return result.AccessSAS, nil
-	}
-	if result.Properties != nil && result.Properties.Output != nil && result.Properties.Output.AccessSAS != "" {
-		return result.Properties.Output.AccessSAS, nil
-	}
-	return "", fmt.Errorf("accessSAS not found in response: %s", string(body))
-}
-
-// pollAsyncOperation polls an Azure async operation URL until it completes or the context is cancelled.
-func (d *Driver) pollAsyncOperation(ctx context.Context, asyncURL string) ([]byte, error) {
-	ticker := time.NewTicker(5 * time.Second)
-	defer ticker.Stop()
-
-	for {
-		select {
-		case <-ctx.Done():
-			return nil, ctx.Err()
-		case <-ticker.C:
-			cred := d.cloud.AuthProvider.GetAzIdentity()
-			if cred == nil {
-				return nil, fmt.Errorf("no Azure credential available")
-			}
-			tokenResp, err := cred.GetToken(ctx, policy.TokenRequestOptions{
-				Scopes: []string{"https://management.azure.com/.default"},
-			})
-			if err != nil {
-				return nil, fmt.Errorf("failed to get access token for polling: %w", err)
-			}
-
-			pollReq, err := http.NewRequestWithContext(ctx, http.MethodGet, asyncURL, nil)
-			if err != nil {
-				return nil, fmt.Errorf("failed to create poll request: %w", err)
-			}
-			pollReq.Header.Set("Authorization", "Bearer "+tokenResp.Token)
-
-			pollResp, err := http.DefaultClient.Do(pollReq)
-			if err != nil {
-				return nil, fmt.Errorf("poll request failed: %w", err)
-			}
-
-			body, err := io.ReadAll(pollResp.Body)
-			pollResp.Body.Close()
-			if err != nil {
-				return nil, fmt.Errorf("failed to read poll response: %w", err)
-			}
-
-			if pollResp.StatusCode != http.StatusOK && pollResp.StatusCode != http.StatusAccepted {
-				return nil, fmt.Errorf("poll returned status %d: %s", pollResp.StatusCode, string(body))
-			}
-
-			var pollResult struct {
-				Status string `json:"status"`
-			}
-			if err := json.Unmarshal(body, &pollResult); err != nil {
-				return nil, fmt.Errorf("failed to parse poll response: %w", err)
-			}
-
-			klog.V(2).Infof("async operation status: %s", pollResult.Status)
-			switch strings.ToLower(pollResult.Status) {
-			case "succeeded":
-				return body, nil
-			case "failed", "canceled", "cancelled":
-				return nil, fmt.Errorf("async operation %s: %s", pollResult.Status, string(body))
-			}
-			// still "InProgress" — continue polling
-		}
-	}
+	return *resp.AccessSAS, nil
 }
