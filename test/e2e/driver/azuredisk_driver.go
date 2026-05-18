@@ -17,6 +17,7 @@ limitations under the License.
 package driver
 
 import (
+	"flag"
 	"fmt"
 	"os"
 	"strings"
@@ -34,6 +35,13 @@ const (
 	AzureDriverNameVar = "AZURE_STORAGE_DRIVER"
 	TopologyKey        = "topology.disk.csi.azure.com/zone"
 )
+
+// IsQADEnabled is set via the --qad flag to enable QAD storage class parameters in e2e tests.
+var IsQADEnabled bool
+
+func init() {
+	flag.BoolVar(&IsQADEnabled, "qad", false, "enable QAD storage class parameters in e2e tests")
+}
 
 // Implement DynamicPVTestDriver interface
 type azureDiskDriver struct {
@@ -77,15 +85,17 @@ func (d *azureDiskDriver) GetDynamicProvisionStorageClass(parameters map[string]
 	}
 
 	// Apply QAD default parameters if not already set by the test
-	qadDefaults := map[string]string{
-		"skuName":             "Premium_LRS",
-		"qadEnabled":          "true",
-		"networkAccessPolicy": "AllowAll",
-		"publicNetworkAccess": "Enabled",
-	}
-	for k, v := range qadDefaults {
-		if _, ok := parameters[k]; !ok {
-			parameters[k] = v
+	if IsQADEnabled {
+		qadDefaults := map[string]string{
+			"skuName":             "Premium_LRS",
+			"qadEnabled":          "true",
+			"networkAccessPolicy": "AllowAll",
+			"publicNetworkAccess": "Enabled",
+		}
+		for k, v := range qadDefaults {
+			if _, ok := parameters[k]; !ok {
+				parameters[k] = v
+			}
 		}
 	}
 
@@ -141,10 +151,15 @@ func (d *azureDiskDriver) GetPersistentVolume(volumeID, fsType, size string, vol
 }
 
 func GetParameters() map[string]string {
+	if IsQADEnabled {
+		return map[string]string{
+			"skuName":             "Premium_LRS",
+			"qadEnabled":          "true",
+			"networkAccessPolicy": "AllowAll",
+			"publicNetworkAccess": "Enabled",
+		}
+	}
 	return map[string]string{
-		"skuName":             "Premium_LRS",
-		"qadEnabled":          "true",
-		"networkAccessPolicy": "AllowAll",
-		"publicNetworkAccess": "Enabled",
+		"skuName": "StandardSSD_LRS",
 	}
 }
