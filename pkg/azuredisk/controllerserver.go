@@ -22,6 +22,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"sort"
 	"strconv"
 	"strings"
@@ -1780,13 +1781,39 @@ func (d *Driver) getDiskAccessSAS(ctx context.Context, subsID, resourceGroup, di
 		return "", fmt.Errorf("failed to parse response: %w", err)
 	}
 
+	var sasURL string
 	if result.AccessSAS != "" {
-		return result.AccessSAS, nil
+		sasURL = result.AccessSAS
+	} else if result.Properties != nil && result.Properties.Output != nil && result.Properties.Output.AccessSAS != "" {
+		sasURL = result.Properties.Output.AccessSAS
+	} else {
+		return "", fmt.Errorf("accessSAS not found in response: %s", string(body))
 	}
-	if result.Properties != nil && result.Properties.Output != nil && result.Properties.Output.AccessSAS != "" {
-		return result.Properties.Output.AccessSAS, nil
+
+	sanitized, err := sanitizeSASURL(sasURL)
+	if err != nil {
+		return "", fmt.Errorf("failed to sanitize accessSAS URL: %w", err)
 	}
-	return "", fmt.Errorf("accessSAS not found in response: %s", string(body))
+	return sanitized, nil
+}
+
+// sanitizeSASURL parses a SAS URL, strips all query parameters, and adds
+// comp=disksession and timeout=30 as the only query parameters.
+func sanitizeSASURL(raw string) (string, error) {
+	// The Azure response may contain JSON unicode escapes for '&' that survive unmarshaling.
+	raw = strings.ReplaceAll(raw, `\u0026`, "&")
+
+	parsed, err := url.Parse(raw)
+	if err != nil {
+		return "", err
+	}
+
+	cleaned := url.Values{}
+	cleaned.Set("comp", "disksession")
+	cleaned.Set("timeout", "30")
+
+	parsed.RawQuery = cleaned.Encode()
+	return parsed.String(), nil
 }
 
 // pollAsyncOperation polls an Azure async operation URL until it completes or the context is cancelled.
