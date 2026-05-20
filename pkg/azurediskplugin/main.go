@@ -76,7 +76,7 @@ func main() {
 }
 
 func handlePreStopHook(kubeconfig string) {
-	kubeClient, err := azureutils.GetKubeClient(kubeconfig)
+	kubeClient, err := azureutils.GetKubeClient(kubeconfig, 0, 0)
 	if err != nil {
 		klog.Errorf("failed to get kube client: %v", err)
 	} else {

@@ -247,10 +247,17 @@ func GetCloudProviderFromClient(ctx context.Context, kubeClient clientset.Interf
 	return az, nil
 }
 
-func GetKubeClient(kubeconfig string) (clientset.Interface, error) {
+func GetKubeClient(kubeconfig string, qps float64, burst int) (clientset.Interface, error) {
 	config, err := clientcmd.BuildConfigFromFlags("", kubeconfig)
 	if err != nil {
 		return nil, err
+	}
+
+	if qps > 0 {
+		config.QPS = float32(qps)
+	}
+	if burst > 0 {
+		config.Burst = burst
 	}
 
 	return clientset.NewForConfig(config)
