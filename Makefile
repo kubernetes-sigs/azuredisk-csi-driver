@@ -148,6 +148,7 @@ container: azuredisk
 
 .PHONY: container-linux
 container-linux:
+	docker run --rm --privileged tonistiigi/binfmt --install all 2>/dev/null || true
 	docker buildx build . \
 		--pull \
 		--output=type=$(OUTPUT_TYPE) \
