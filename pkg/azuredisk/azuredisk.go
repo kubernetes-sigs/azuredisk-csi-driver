@@ -238,7 +238,7 @@ func NewDriver(options *DriverOptions) *Driver {
 	userAgent := GetUserAgent(driver.Name, driver.customUserAgent, driver.userAgentSuffix)
 	klog.V(2).Infof("driver userAgent: %s", userAgent)
 
-	kubeClient, err := azureutils.GetKubeClient(options.Kubeconfig)
+	kubeClient, err := azureutils.GetKubeClient(options.Kubeconfig, options.KubeAPIQPS, options.KubeAPIBurst)
 	if err != nil {
 		klog.Warningf("get kubeconfig(%s) failed with error: %v", options.Kubeconfig, err)
 	}
