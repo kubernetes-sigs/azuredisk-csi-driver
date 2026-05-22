@@ -83,12 +83,10 @@ func (*cimDiskAPI) ListDiskLocations() (map[uint32]Location, error) {
 			klog.V(5).Infof("failed to get Path property for disk %d: %v", num, err)
 		}
 		diskPathStr, _ := diskPath.(string)
-		if loc, err := getNVMeLocation(diskPathStr); loc != nil {
-			klog.V(2).Infof("cimDiskAPI.ListDiskLocations: NVMe disk %d, path: %s, derived LUN: %s", num, diskPathStr, loc.LUNID)
-			m[uint32(num.(int32))] = *loc
-			continue
-		} else if err != nil {
-			klog.V(2).Infof("cimDiskAPI.ListDiskLocations: skipping NVMe disk %d: %v", num, err)
+		if loc, isNVMe := getNVMeLocation(diskPathStr, int(num.(int32))); isNVMe {
+			if loc != nil {
+				m[uint32(num.(int32))] = *loc
+			}
 			continue
 		}
 
