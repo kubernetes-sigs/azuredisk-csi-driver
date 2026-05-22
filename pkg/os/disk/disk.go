@@ -80,7 +80,7 @@ func ListDisksUsingCIM() (map[uint32]Location, error) {
 	//    "SCSIPort":  1,
 	//    "SCSIBus":  0
 	// }, ...]
-	cmd := fmt.Sprintf("ConvertTo-Json @(Get-CimInstance win32_diskdrive|Where-Object { $_.Model -eq \"Virtual_Disk NVME Premium\" -or $_.SCSIPort -Ne 0 }|Select Index,SCSILogicalUnit,SCSITargetId,SCSIPort,SCSIBus,DeviceID,PNPDeviceID)")
+	cmd := fmt.Sprintf("ConvertTo-Json @(Get-CimInstance win32_diskdrive|Where-Object { $_.Model -eq \"Virtual_Disk NVME Premium\" -or $_.SCSIPort -Ne 0 }|Select Index,SCSILogicalUnit,SCSITargetId,SCSIPort,SCSIBus,PNPDeviceID)")
 	out, err := azureutils.RunPowershellCmd(cmd)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list disk location. cmd: %q, output: %q, err %v", cmd, string(out), err)
@@ -93,7 +93,6 @@ func ListDisksUsingCIM() (map[uint32]Location, error) {
 		SCSITargetId    int    `json:"SCSITargetId"`
 		SCSIPort        int    `json:"SCSIPort"`
 		SCSIBus         int    `json:"SCSIBus"`
-		DeviceID        string `json:"DeviceID"`
 		PNPDeviceID     string `json:"PNPDeviceID"`
 	}
 	err = json.Unmarshal(out, &getCimInstance)
@@ -111,6 +110,7 @@ func ListDisksUsingCIM() (map[uint32]Location, error) {
 				klog.V(2).Infof("ListDisksUsingCIM: skipping NVMe disk %d: %v", v.Index, err)
 				continue
 			}
+			klog.V(2).Infof("ListDisksUsingCIM: NVMe disk %d, PNPDeviceID: %s, derived LUN: %s", v.Index, v.PNPDeviceID, lunID)
 			m[v.Index] = Location{
 				Adapter: "0",
 				Bus:     "0",
@@ -194,13 +194,13 @@ func (*powerShellDiskAPI) ListDiskLocations() (map[uint32]Location, error) {
 				klog.V(2).Infof("skipping NVMe disk %d: %v", int(num), err)
 				continue
 			}
+			klog.V(2).Infof("ListDiskLocations: NVMe disk %d, path: %s, derived LUN: %s", int(num), diskPath, lunID)
 			m[uint32(num)] = Location{
 				Adapter: "0",
 				Bus:     "0",
 				Target:  "0",
 				LUNID:   lunID,
 			}
-			klog.V(5).Infof("NVMe disk number: %d, path: %s, lun: %s", int(num), diskPath, lunID)
 			continue
 		}
 
