@@ -171,10 +171,8 @@ spec:
               path: /healthz
 {{- if eq .Values.node.hostNetwork true }}
               host: localhost
-              port: {{ .Values.node.livenessProbe.healthPort }}
-{{- else }}
-              port: healthz
 {{- end }}
+              port: {{ .Values.node.livenessProbe.healthPort }}
             initialDelaySeconds: 30
             timeoutSeconds: 30
             periodSeconds: 30
