@@ -104,7 +104,7 @@ func ListDisksUsingCIM() (map[uint32]Location, error) {
 	for _, v := range getCimInstance {
 		// For NVMe disks, SCSILogicalUnit is unreliable (always 0).
 		// Use PNPDeviceID to extract the namespace ID and derive the LUN.
-		if strings.Contains(strings.ToLower(v.PNPDeviceID), "ven_nvme") {
+		if isNVMeDisk(v.PNPDeviceID) {
 			lunID, err := getNVMeLunFromPath(v.PNPDeviceID)
 			if err != nil {
 				klog.V(2).Infof("ListDisksUsingCIM: skipping NVMe disk %d: %v", v.Index, err)
@@ -133,6 +133,11 @@ func ListDisksUsingCIM() (map[uint32]Location, error) {
 // Example path: \\?\scsi#disk&ven_nvme&prod_msft_nvme_accele#6&ca10229&0&000001#{...}
 // The regex captures the digits immediately after "&0&" (e.g., "000001" = NSID 1).
 var nvmeNSIDRegex = regexp.MustCompile(`&0&(\d+)(?:#|$)`)
+
+// isNVMeDisk checks whether the given device path or PNPDeviceID indicates an NVMe disk.
+func isNVMeDisk(path string) bool {
+	return strings.Contains(strings.ToLower(path), "ven_nvme")
+}
 
 // getNVMeLunFromPath extracts the Azure LUN number from an NVMe disk device path.
 // Azure NVMe data disks use Namespace ID = LUN + 1, so LUN = NSID - 1.
@@ -187,7 +192,7 @@ func (*powerShellDiskAPI) ListDiskLocations() (map[uint32]Location, error) {
 
 		// Check if this is an NVMe disk by examining the Path field
 		diskPath, _ := v["Path"].(string)
-		if strings.Contains(strings.ToLower(diskPath), "ven_nvme") {
+		if isNVMeDisk(diskPath) {
 			// NVMe disk: extract LUN from namespace ID in the device path
 			lunID, err := getNVMeLunFromPath(diskPath)
 			if err != nil {

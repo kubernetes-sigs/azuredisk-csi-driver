@@ -94,3 +94,20 @@ func TestGetNVMeLunFromPath(t *testing.T) {
 		})
 	}
 }
+
+func TestIsNVMeDisk(t *testing.T) {
+	tests := []struct {
+		path string
+		want bool
+	}{
+		{`\\?\scsi#disk&ven_nvme&prod_msft_nvme_accele#6&ca10229&0&000001#{53f56307-b6bf-11d0-94f2-00a0c91efb8b}`, true},
+		{`SCSI\DISK&VEN_NVME&PROD_MSFT_NVME_ACCELE\6&CA10229&0&000001`, true},
+		{`\\?\scsi#disk&ven_msft&prod_virtual_disk#2&1f4adffe&0&000001#{53f56307-b6bf-11d0-94f2-00a0c91efb8b}`, false},
+		{"", false},
+	}
+	for _, tt := range tests {
+		if got := isNVMeDisk(tt.path); got != tt.want {
+			t.Errorf("isNVMeDisk(%q) = %v, want %v", tt.path, got, tt.want)
+		}
+	}
+}
