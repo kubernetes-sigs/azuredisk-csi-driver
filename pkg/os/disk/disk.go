@@ -131,7 +131,7 @@ func ListDisksUsingCIM() (map[uint32]Location, error) {
 
 // nvmeNSIDRegex extracts the NVMe Namespace ID from the device path.
 // Example path: \\?\scsi#disk&ven_nvme&prod_msft_nvme_accele#6&ca10229&0&000001#{...}
-// The namespace ID is the last numeric segment before the GUID (e.g., "000001" = NSID 1).
+// The regex captures the digits immediately after "&0&" (e.g., "000001" = NSID 1).
 var nvmeNSIDRegex = regexp.MustCompile(`&0&(\d+)(?:#|$)`)
 
 // getNVMeLunFromPath extracts the Azure LUN number from an NVMe disk device path.
