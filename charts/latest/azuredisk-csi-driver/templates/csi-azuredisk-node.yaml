@@ -159,7 +159,7 @@ spec:
 {{- if ne .Values.node.hostNetwork true }}
           ports:
             - containerPort: {{ .Values.node.livenessProbe.healthPort }}
-              name: liveness-port
+              name: healthz
               protocol: TCP
             - containerPort: {{ .Values.node.metricsPort }}
               name: metrics
