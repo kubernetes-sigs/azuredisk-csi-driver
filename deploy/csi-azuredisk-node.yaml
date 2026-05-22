@@ -113,7 +113,7 @@ spec:
             - "--metrics-address=0.0.0.0:29605"
           ports:
             - containerPort: 29603
-              name: healthz
+              name: liveness-port
               protocol: TCP
             - containerPort: 29605
               name: metrics
