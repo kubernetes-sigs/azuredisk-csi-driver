@@ -104,19 +104,12 @@ func ListDisksUsingCIM() (map[uint32]Location, error) {
 	for _, v := range getCimInstance {
 		// For NVMe disks, SCSILogicalUnit is unreliable (always 0).
 		// Use PNPDeviceID to extract the namespace ID and derive the LUN.
-		if isNVMeDisk(v.PNPDeviceID) {
-			lunID, err := getNVMeLunFromPath(v.PNPDeviceID)
-			if err != nil {
-				klog.V(2).Infof("ListDisksUsingCIM: skipping NVMe disk %d: %v", v.Index, err)
-				continue
-			}
-			klog.V(2).Infof("ListDisksUsingCIM: NVMe disk %d, PNPDeviceID: %s, derived LUN: %s", v.Index, v.PNPDeviceID, lunID)
-			m[v.Index] = Location{
-				Adapter: "0",
-				Bus:     "0",
-				Target:  "0",
-				LUNID:   lunID,
-			}
+		if loc, err := getNVMeLocation(v.PNPDeviceID); loc != nil {
+			klog.V(2).Infof("ListDisksUsingCIM: NVMe disk %d, PNPDeviceID: %s, derived LUN: %s", v.Index, v.PNPDeviceID, loc.LUNID)
+			m[v.Index] = *loc
+		} else if err != nil {
+			klog.V(2).Infof("ListDisksUsingCIM: skipping NVMe disk %d: %v", v.Index, err)
+			continue
 		} else {
 			m[v.Index] = Location{
 				Adapter: strconv.Itoa(v.SCSIPort),
@@ -137,6 +130,24 @@ var nvmeNSIDRegex = regexp.MustCompile(`&0&(\d+)(?:#|$)`)
 // isNVMeDisk checks whether the given device path or PNPDeviceID indicates an NVMe disk.
 func isNVMeDisk(path string) bool {
 	return strings.Contains(strings.ToLower(path), "ven_nvme")
+}
+
+// getNVMeLocation returns a Location for an NVMe disk by extracting the LUN
+// from the namespace ID in the device path. Returns nil if the path is not NVMe.
+func getNVMeLocation(path string) (*Location, error) {
+	if !isNVMeDisk(path) {
+		return nil, nil
+	}
+	lunID, err := getNVMeLunFromPath(path)
+	if err != nil {
+		return nil, err
+	}
+	return &Location{
+		Adapter: "0",
+		Bus:     "0",
+		Target:  "0",
+		LUNID:   lunID,
+	}, nil
 }
 
 // getNVMeLunFromPath extracts the Azure LUN number from an NVMe disk device path.
@@ -192,20 +203,12 @@ func (*powerShellDiskAPI) ListDiskLocations() (map[uint32]Location, error) {
 
 		// Check if this is an NVMe disk by examining the Path field
 		diskPath, _ := v["Path"].(string)
-		if isNVMeDisk(diskPath) {
-			// NVMe disk: extract LUN from namespace ID in the device path
-			lunID, err := getNVMeLunFromPath(diskPath)
-			if err != nil {
-				klog.V(2).Infof("skipping NVMe disk %d: %v", int(num), err)
-				continue
-			}
-			klog.V(2).Infof("ListDiskLocations: NVMe disk %d, path: %s, derived LUN: %s", int(num), diskPath, lunID)
-			m[uint32(num)] = Location{
-				Adapter: "0",
-				Bus:     "0",
-				Target:  "0",
-				LUNID:   lunID,
-			}
+		if loc, err := getNVMeLocation(diskPath); loc != nil {
+			klog.V(2).Infof("ListDiskLocations: NVMe disk %d, path: %s, derived LUN: %s", int(num), diskPath, loc.LUNID)
+			m[uint32(num)] = *loc
+			continue
+		} else if err != nil {
+			klog.V(2).Infof("ListDiskLocations: skipping NVMe disk %d: %v", int(num), err)
 			continue
 		}
 
