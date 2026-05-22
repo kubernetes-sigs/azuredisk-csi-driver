@@ -80,7 +80,7 @@ func ListDisksUsingCIM() (map[uint32]Location, error) {
 	//    "SCSIPort":  1,
 	//    "SCSIBus":  0
 	// }, ...]
-	cmd := fmt.Sprintf("ConvertTo-Json @(Get-CimInstance win32_diskdrive|Where-Object { $_.Model -eq \"Virtual_Disk NVME Premium\" -or $_.SCSIPort -Ne 0 }|Select Index,SCSILogicalUnit,SCSITargetId,SCSIPort,SCSIBus,PNPDeviceID)")
+	cmd := "ConvertTo-Json @(Get-CimInstance win32_diskdrive|Where-Object { $_.Model -eq 'Virtual_Disk NVME Premium' -or $_.SCSIPort -Ne 0 }|Select Index,SCSILogicalUnit,SCSITargetId,SCSIPort,SCSIBus,PNPDeviceID)"
 	out, err := azureutils.RunPowershellCmd(cmd)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list disk location. cmd: %q, output: %q, err %v", cmd, string(out), err)
@@ -162,7 +162,7 @@ func (*powerShellDiskAPI) ListDiskLocations() (map[uint32]Location, error) {
 	// }, ...]
 	// For NVMe disks, Location is "Integrated : Bus X : Device 0 : Function 0 : Adapter 0"
 	// and does not contain LUN info. We use the Path field to extract the namespace ID.
-	cmd := fmt.Sprintf("ConvertTo-Json @(Get-Disk | select Number, Location, Path, PartitionStyle)")
+	cmd := "ConvertTo-Json @(Get-Disk | select Number, Location, Path, PartitionStyle)"
 	out, err := azureutils.RunPowershellCmd(cmd)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list disk location. cmd: %q, output: %q, err %v", cmd, string(out), err)
