@@ -48,7 +48,7 @@ func (*cimDiskAPI) ListDiskLocations() (map[uint32]Location, error) {
 	//    "number":  0,
 	//    "location":  "PCI Slot 3 : Adapter 0 : Port 0 : Target 1 : LUN 0"
 	// }, ...]
-	disks, err := cim.ListDisks([]string{"Number", "Location", "PartitionStyle"})
+	disks, err := cim.ListDisks([]string{"Number", "Location", "Path", "PartitionStyle"})
 	if err != nil {
 		return nil, fmt.Errorf("could not query disk locations")
 	}
@@ -76,6 +76,26 @@ func (*cimDiskAPI) ListDiskLocations() (map[uint32]Location, error) {
 		}
 
 		klog.V(5).Infof("disk number: %d, location: %s, partitionStyle: %d", num, location, partitionStyle)
+
+		// Check if this is an NVMe disk by examining the Path field
+		diskPath, _ := disk.GetProperty("Path")
+		diskPathStr, _ := diskPath.(string)
+		if strings.Contains(strings.ToLower(diskPathStr), "ven_nvme") {
+			lunID, err := getNVMeLunFromPath(diskPathStr)
+			if err != nil {
+				klog.V(2).Infof("skipping NVMe disk %d: %v", num, err)
+				continue
+			}
+			m[uint32(num.(int32))] = Location{
+				Adapter: "0",
+				Bus:     "0",
+				Target:  "0",
+				LUNID:   lunID,
+			}
+			klog.V(5).Infof("NVMe disk number: %d, path: %s, lun: %s", num, diskPathStr, lunID)
+			continue
+		}
+
 		found := false
 		s := strings.Split(location, ":")
 		if len(s) >= 5 {
