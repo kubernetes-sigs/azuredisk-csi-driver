@@ -91,7 +91,6 @@ func (*cimDiskAPI) ListDiskLocations() (map[uint32]Location, error) {
 			klog.V(2).Infof("cimDiskAPI.ListDiskLocations: skipping NVMe disk %d: %v", num, err)
 			continue
 		}
-		}
 
 		found := false
 		s := strings.Split(location, ":")
