@@ -80,7 +80,7 @@ func ListDisksUsingCIM() (map[uint32]Location, error) {
 	//    "SCSIPort":  1,
 	//    "SCSIBus":  0
 	// }, ...]
-	cmd := fmt.Sprintf("ConvertTo-Json @(Get-CimInstance win32_diskdrive|Where-Object { $_.Model -eq \"Virtual_Disk NVME Premium\" -or $_.SCSIPort -Ne 0 }|Select Index,SCSILogicalUnit,SCSITargetId,SCSIPort,SCSIBus)")
+	cmd := "ConvertTo-Json @(Get-CimInstance win32_diskdrive|Where-Object { $_.Model -eq 'Virtual_Disk NVME Premium' -or $_.SCSIPort -Ne 0 }|Select Index,SCSILogicalUnit,SCSITargetId,SCSIPort,SCSIBus,PNPDeviceID)"
 	out, err := azureutils.RunPowershellCmd(cmd)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list disk location. cmd: %q, output: %q, err %v", cmd, string(out), err)
@@ -93,6 +93,7 @@ func ListDisksUsingCIM() (map[uint32]Location, error) {
 		SCSITargetId    int    `json:"SCSITargetId"`
 		SCSIPort        int    `json:"SCSIPort"`
 		SCSIBus         int    `json:"SCSIBus"`
+		PNPDeviceID     string `json:"PNPDeviceID"`
 	}
 	err = json.Unmarshal(out, &getCimInstance)
 	if err != nil {
@@ -101,14 +102,72 @@ func ListDisksUsingCIM() (map[uint32]Location, error) {
 
 	m := make(map[uint32]Location)
 	for _, v := range getCimInstance {
-		m[v.Index] = Location{
-			Adapter: strconv.Itoa(v.SCSIPort),
-			Bus:     strconv.Itoa(v.SCSIBus),
-			Target:  strconv.Itoa(v.SCSITargetId),
-			LUNID:   strconv.Itoa(v.SCSILogicalUnit),
+		// For NVMe disks, SCSILogicalUnit is unreliable (always 0).
+		// Use PNPDeviceID to extract the namespace ID and derive the LUN.
+		if loc, isNVMe := getNVMeLocation(v.PNPDeviceID, int(v.Index)); isNVMe {
+			if loc != nil {
+				m[v.Index] = *loc
+			}
+			continue
+		} else {
+			m[v.Index] = Location{
+				Adapter: strconv.Itoa(v.SCSIPort),
+				Bus:     strconv.Itoa(v.SCSIBus),
+				Target:  strconv.Itoa(v.SCSITargetId),
+				LUNID:   strconv.Itoa(v.SCSILogicalUnit),
+			}
 		}
 	}
 	return m, nil
+}
+
+// nvmeNSIDRegex extracts the NVMe Namespace ID from the device path.
+// Example path: \\?\scsi#disk&ven_nvme&prod_msft_nvme_accele#6&ca10229&0&000001#{...}
+// The regex captures the digits immediately after "&0&" (e.g., "000001" = NSID 1).
+var nvmeNSIDRegex = regexp.MustCompile(`&0&(\d+)(?:#|$)`)
+
+// isNVMeDisk checks whether the given device path or PNPDeviceID indicates an NVMe disk.
+func isNVMeDisk(path string) bool {
+	return strings.Contains(strings.ToLower(path), "ven_nvme")
+}
+
+// getNVMeLocation returns a Location for an NVMe disk by extracting the LUN
+// from the namespace ID in the device path. Returns (nil, false) if not NVMe,
+// (nil, true) on parse error (logged), or (*Location, true) on success.
+func getNVMeLocation(path string, diskNum int) (*Location, bool) {
+	if !isNVMeDisk(path) {
+		return nil, false
+	}
+	lunID, err := getNVMeLunFromPath(path)
+	if err != nil {
+		klog.V(2).Infof("skipping NVMe disk %d: %v", diskNum, err)
+		return nil, true
+	}
+	klog.V(2).Infof("NVMe disk %d, path: %s, derived LUN: %s", diskNum, path, lunID)
+	return &Location{
+		Adapter: "0",
+		Bus:     "0",
+		Target:  "0",
+		LUNID:   lunID,
+	}, true
+}
+
+// getNVMeLunFromPath extracts the Azure LUN number from an NVMe disk device path.
+// Azure NVMe data disks use Namespace ID = LUN + 1, so LUN = NSID - 1.
+func getNVMeLunFromPath(path string) (string, error) {
+	matches := nvmeNSIDRegex.FindStringSubmatch(path)
+	if len(matches) < 2 {
+		return "", fmt.Errorf("could not extract NVMe namespace ID from path: %s", path)
+	}
+	nsid, err := strconv.Atoi(matches[1])
+	if err != nil {
+		return "", fmt.Errorf("failed to parse NVMe namespace ID %q: %v", matches[1], err)
+	}
+	if nsid < 1 {
+		return "", fmt.Errorf("invalid NVMe namespace ID %d from path: %s", nsid, path)
+	}
+	lun := nsid - 1
+	return strconv.Itoa(lun), nil
 }
 
 // ListDiskLocations - constructs a map with the disk number as the key and the DiskLocation structure
@@ -119,7 +178,9 @@ func (*powerShellDiskAPI) ListDiskLocations() (map[uint32]Location, error) {
 	//    "number":  0,
 	//    "location":  "PCI Slot 3 : Adapter 0 : Port 0 : Target 1 : LUN 0"
 	// }, ...]
-	cmd := fmt.Sprintf("ConvertTo-Json @(Get-Disk | select Number, Location, PartitionStyle)")
+	// For NVMe disks, Location is "Integrated : Bus X : Device 0 : Function 0 : Adapter 0"
+	// and does not contain LUN info. We use the Path field to extract the namespace ID.
+	cmd := "ConvertTo-Json @(Get-Disk | select Number, Location, Path, PartitionStyle)"
 	out, err := azureutils.RunPowershellCmd(cmd)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list disk location. cmd: %q, output: %q, err %v", cmd, string(out), err)
@@ -139,6 +200,15 @@ func (*powerShellDiskAPI) ListDiskLocations() (map[uint32]Location, error) {
 		partitionStyle := v["PartitionStyle"].(string)
 		if strings.EqualFold(partitionStyle, "MBR") {
 			klog.V(2).Infof("skipping MBR disk, number: %d, location: %s", int(num), str)
+			continue
+		}
+
+		// Check if this is an NVMe disk by examining the Path field
+		diskPath, _ := v["Path"].(string)
+		if loc, isNVMe := getNVMeLocation(diskPath, int(num)); isNVMe {
+			if loc != nil {
+				m[uint32(num)] = *loc
+			}
 			continue
 		}
 
