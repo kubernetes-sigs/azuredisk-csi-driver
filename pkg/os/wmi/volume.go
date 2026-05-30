@@ -57,7 +57,7 @@ func QueryVolumeByUniqueID(scope *Scope, volumeID string, selectorList []string)
 
 	result, err := QueryFirstObjectWithBuilder(scope, q)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to query volume %s: %w", volumeID, err)
 	}
 
 	return result, nil

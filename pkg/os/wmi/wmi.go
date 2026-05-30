@@ -23,9 +23,11 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"os"
 	"runtime"
 	"strconv"
 	"strings"
+	"sync"
 
 	"github.com/go-ole/go-ole"
 	"github.com/go-ole/go-ole/oleutil"
@@ -39,7 +41,14 @@ const (
 	WMINamespaceSmb     = "Root\\Microsoft\\Windows\\Smb"
 
 	WBEM_S_FALSE = 0x00000001
+
+	// rpcETooLate is returned when CoInitializeSecurity has already been called.
+	rpcETooLate = 0x80010119
+
+	envWMIComSecurity = "WMI_COM_SECURITY"
 )
+
+var initCOMSecurity sync.Once
 
 var (
 	ErrNotFound      = errors.New("not found")
@@ -158,10 +167,10 @@ func formatValue(v any) string {
 	switch x := v.(type) {
 
 	case string:
-		// escapes string for WMI Queries
-		x = strings.ReplaceAll(x, "'", "''")
-		x = strings.ReplaceAll(x, "\\", "\\\\")
-		return "'" + x + "'"
+		// WQL escaping: double single quotes and escape backslashes
+		escaped := strings.ReplaceAll(x, "'", "''")
+		escaped = strings.ReplaceAll(escaped, "\\", "\\\\")
+		return "'" + escaped + "'"
 
 	case int, int32, int64, uint, uint32, uint64:
 		return fmt.Sprintf("%v", x)
@@ -177,6 +186,48 @@ func formatValue(v any) string {
 	}
 }
 
+func comSecurityEnabled() bool {
+	v := strings.ToLower(strings.TrimSpace(os.Getenv(envWMIComSecurity)))
+	switch v {
+	case "0", "false", "no", "off":
+		return false
+	default:
+		return true
+	}
+}
+
+// InitializeCOMSecurity registers process-wide COM security for WMI/DCOM.
+//
+// It is enabled by default and runs at most once per process (including from init).
+// Set WMI_COM_SECURITY to false/0/no/off to skip. Errors (including missing permissions or an already
+// initialized process) are logged and ignored; this function never panics.
+func InitializeCOMSecurity() {
+	initCOMSecurity.Do(func() {
+		if !comSecurityEnabled() {
+			klog.V(6).Infof("COM security initialization disabled via %s", envWMIComSecurity)
+			return
+		}
+
+		err := ole.CoInitializeSecurity(-1, 0, 3, 0)
+		if err == nil {
+			klog.V(10).Infof("COM security initialized for WMI/DCOM")
+			return
+		}
+
+		var oleErr *ole.OleError
+		if errors.As(err, &oleErr) && oleErr.Code() == rpcETooLate {
+			klog.V(10).Infof("COM security already initialized for this process")
+			return
+		}
+
+		klog.V(4).Infof("CoInitializeSecurity failed (non-fatal): %v", err)
+	})
+}
+
+func init() {
+	InitializeCOMSecurity()
+}
+
 // WithCOMThread runs the given function `fn` on a locked OS thread
 // with COM initialized using COINIT_MULTITHREADED.
 //
@@ -189,6 +240,8 @@ func formatValue(v any) string {
 //   - Executes the user-provided function
 //   - Uninitializes COM
 //   - Unlocks the thread
+//
+// Process-wide COM security is initialized once at package init (best-effort).
 //
 // If COM initialization fails, or if the user's function returns an error,
 // that error is returned by WithCOMThread.
@@ -394,9 +447,11 @@ func CallMethodOnWMIClass(namespace, class, methodName string, input map[string]
 				inParamsInst := inParamsInstRaw.ToIDispatch()
 
 				for k, v := range input {
-					if _, err := oleutil.PutProperty(inParamsInst, k, v); err != nil {
+					putResult, err := oleutil.PutProperty(inParamsInst, k, v)
+					if err != nil {
 						return fmt.Errorf("set param %s failed: %w", k, err)
 					}
+					putResult.Clear()
 				}
 
 				params = append(params, inParamsInst)
@@ -815,7 +870,7 @@ func WithScope(fn func(*Scope) error) error {
 type WMIError struct {
 	Method  string
 	Class   string
-	Target  *ole.IDispatch
+	Target  string
 	Code    uint32
 	Details string
 }
@@ -825,7 +880,7 @@ func NewWMIError(class, method string, target *ole.IDispatch, code uint32) *WMIE
 	return &WMIError{
 		Class:  class,
 		Method: method,
-		Target: target,
+		Target: fmt.Sprintf("%v", target),
 		Code:   code,
 	}
 }
