@@ -466,6 +466,20 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 		if strings.Contains(err.Error(), consts.NotFound) {
 			return nil, status.Error(codes.NotFound, err.Error())
 		}
+		// On Azure ARM throttling, the underlying PUT may have already been
+		// accepted by ARM (the throttle commonly fires on a polling GET inside
+		// the SDK poller after the disk creation has started). Returning
+		// codes.Internal here causes external-provisioner's checkError() to
+		// classify the operation as ProvisioningFinished — no retry, no
+		// cleanup — which leaks the disk in Azure if the PVC is meanwhile
+		// removed. Returning codes.Aborted ("Operation pending for the
+		// specified volume" per CSI spec) makes the provisioner classify the
+		// operation as ProvisioningInBackground and retry; CSI idempotency on
+		// the retry returns the existing disk's URI.
+		if azureutils.IsThrottlingError(err) {
+			klog.Warningf("CreateVolume(%s) throttled by Azure ARM; returning Aborted so external-provisioner retries: %v", req.GetName(), err)
+			return nil, status.Errorf(codes.Aborted, "%v", err)
+		}
 		return nil, status.Errorf(codes.Internal, "%v", err)
 	}
 

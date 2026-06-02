@@ -44,6 +44,7 @@ import (
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/optimization"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/util"
 	"sigs.k8s.io/cloud-provider-azure/pkg/azclient/configloader"
+	retryrepectthrottled "sigs.k8s.io/cloud-provider-azure/pkg/azclient/policy/retryrepectthrottled"
 	azure "sigs.k8s.io/cloud-provider-azure/pkg/provider"
 	azureconfig "sigs.k8s.io/cloud-provider-azure/pkg/provider/config"
 )
@@ -801,7 +802,9 @@ func SleepIfThrottled(err error, defaultSleepSec int) {
 func IsThrottlingError(err error) bool {
 	if err != nil {
 		errMsg := strings.ToLower(err.Error())
-		return strings.Contains(errMsg, strings.ToLower(consts.TooManyRequests)) || strings.Contains(errMsg, consts.ClientThrottled)
+		return strings.Contains(errMsg, strings.ToLower(consts.TooManyRequests)) ||
+			strings.Contains(errMsg, consts.ClientThrottled) ||
+			strings.Contains(errMsg, retryrepectthrottled.ErrTooManyRequest.Error())
 	}
 	return false
 }
