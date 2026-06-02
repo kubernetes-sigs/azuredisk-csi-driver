@@ -52,6 +52,7 @@ import (
 	volumehelper "sigs.k8s.io/azuredisk-csi-driver/pkg/util"
 	"sigs.k8s.io/cloud-provider-azure/pkg/azclient/diskclient/mock_diskclient"
 	"sigs.k8s.io/cloud-provider-azure/pkg/azclient/mock_azclient"
+	"sigs.k8s.io/cloud-provider-azure/pkg/azclient/policy/retryrepectthrottled"
 	"sigs.k8s.io/cloud-provider-azure/pkg/azclient/snapshotclient/mock_snapshotclient"
 	mockvmclient "sigs.k8s.io/cloud-provider-azure/pkg/azclient/virtualmachineclient/mock_virtualmachineclient"
 	azure "sigs.k8s.io/cloud-provider-azure/pkg/provider"
@@ -397,6 +398,35 @@ func TestCreateVolume(t *testing.T) {
 				expectedErr := status.Error(codes.NotFound, "invalid URI: ")
 				if !reflect.DeepEqual(err, expectedErr) {
 					t.Errorf("actualErr: (%v), expectedErr: (%v)", err, expectedErr)
+				}
+			},
+		},
+		{
+			name: "create managed disk throttled error returns Aborted",
+			testFunc: func(t *testing.T) {
+				cntl := gomock.NewController(t)
+				defer cntl.Finish()
+				d, _ := NewFakeDriver(cntl)
+				mp := make(map[string]string)
+				req := &csi.CreateVolumeRequest{
+					Name:               "unit-test",
+					VolumeCapabilities: createVolumeCapabilities(csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER),
+					Parameters:         mp,
+				}
+				diskClient := mock_diskclient.NewMockInterface(cntl)
+				d.getClientFactory().(*mock_azclient.MockClientFactory).EXPECT().GetDiskClientForSub(gomock.Any()).Return(diskClient, nil).AnyTimes()
+				diskClient.EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, fmt.Errorf("not found")).AnyTimes()
+				diskClient.EXPECT().CreateOrUpdate(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, retryrepectthrottled.ErrTooManyRequest).AnyTimes()
+				_, err := d.CreateVolume(context.Background(), req)
+				if err == nil {
+					t.Fatal("expected error, got nil")
+				}
+				st, ok := status.FromError(err)
+				if !ok {
+					t.Fatalf("expected gRPC status error, got %v", err)
+				}
+				if st.Code() != codes.Aborted {
+					t.Errorf("expected status code %v, got %v", codes.Aborted, st.Code())
 				}
 			},
 		},
