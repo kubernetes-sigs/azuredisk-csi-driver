@@ -11,3 +11,6 @@ spec:
   {{- if .Values.feature.enableFSGroupPolicy}}
   fsGroupPolicy: File
   {{- end}}
+  {{- if .Values.feature.enableSELinuxMount}}
+  seLinuxMount: true
+  {{- end}}
