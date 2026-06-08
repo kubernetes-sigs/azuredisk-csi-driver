@@ -361,8 +361,9 @@ func TestForceDetach(t *testing.T) {
 							contextDeadline, ok := ctx.Deadline()
 							assert.True(t, ok, "Context should have a deadline")
 							assert.True(t, contextDeadline.After(time.Now()), "Context deadline should be in the future")
-							assert.True(t, time.Until(contextDeadline) >= time.Duration(test.detachOperationTimeout)*time.Millisecond-500*time.Millisecond, "Context deadline should exceed min detach timeout.")
-							assert.True(t, time.Until(contextDeadline) >= test.contextTimeout/2-500*time.Millisecond, "Context deadline should be at least half of context timeout.")
+							remaining := time.Until(contextDeadline)
+							assert.True(t, remaining >= time.Duration(test.detachOperationTimeout)*time.Second-500*time.Millisecond, "Context deadline should exceed min detach timeout.")
+							assert.True(t, remaining >= test.contextTimeout/2-500*time.Millisecond, "Context deadline should be at least half of context timeout.")
 							// Simulate timeout by sleeping longer than context deadline
 							if test.firstDetachError == context.DeadlineExceeded {
 								time.Sleep(time.Until(contextDeadline.Add(50 * time.Millisecond)))
