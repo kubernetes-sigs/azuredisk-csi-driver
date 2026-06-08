@@ -37,6 +37,7 @@ import (
 	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/util"
 	"sigs.k8s.io/azuredisk-csi-driver/test/utils/testutil"
+	"sigs.k8s.io/cloud-provider-azure/pkg/azclient/policy/retryrepectthrottled"
 )
 
 func TestCheckDiskName(t *testing.T) {
@@ -1866,6 +1867,11 @@ func TestIsThrottlingError(t *testing.T) {
 		{
 			desc:     "match error message with TooManyRequests throttling",
 			err:      errors.New("could not list storage accounts for account type Premium_LRS: Retriable: true, RetryAfter: 2170s, HTTPStatusCode: 429, RawError: azure cloud provider throttled for operation StorageAccountListByResourceGroup with reason \"TooManyRequests\""),
+			expected: true,
+		},
+		{
+			desc:     "match cloud-provider-azure pipeline throttle string",
+			err:      retryrepectthrottled.ErrTooManyRequest,
 			expected: true,
 		},
 	}
