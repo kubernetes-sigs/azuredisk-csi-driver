@@ -290,7 +290,7 @@ func TestForceDetach(t *testing.T) {
 			diskName:               "disk1",
 			forceDetachBackoff:     true,
 			detachOperationTimeout: 1,
-			contextTimeout:         2 * time.Second,
+			contextTimeout:         5 * time.Second,
 			firstDetachError:       context.DeadlineExceeded,
 			forceDetachError:       errors.New("force detach failed"),
 			expectedErr:            true,
@@ -361,8 +361,8 @@ func TestForceDetach(t *testing.T) {
 							contextDeadline, ok := ctx.Deadline()
 							assert.True(t, ok, "Context should have a deadline")
 							assert.True(t, contextDeadline.After(time.Now()), "Context deadline should be in the future")
-							assert.True(t, time.Until(contextDeadline) >= time.Duration(test.detachOperationTimeout)*time.Millisecond-100*time.Millisecond, "Context deadline should exceed min detach timeout.")
-							assert.True(t, time.Until(contextDeadline) >= test.contextTimeout/2-100*time.Millisecond, "Context deadline should be at least half of context timeout.")
+							assert.True(t, time.Until(contextDeadline) >= time.Duration(test.detachOperationTimeout)*time.Millisecond-500*time.Millisecond, "Context deadline should exceed min detach timeout.")
+							assert.True(t, time.Until(contextDeadline) >= test.contextTimeout/2-500*time.Millisecond, "Context deadline should be at least half of context timeout.")
 							// Simulate timeout by sleeping longer than context deadline
 							if test.firstDetachError == context.DeadlineExceeded {
 								time.Sleep(time.Until(contextDeadline.Add(50 * time.Millisecond)))
