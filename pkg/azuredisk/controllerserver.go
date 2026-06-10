@@ -544,6 +544,23 @@ func (d *Driver) DeleteVolume(ctx context.Context, req *csi.DeleteVolumeRequest)
 	}
 	defer d.volumeLocks.Release(volumeID)
 
+	// If the PV is a QAD PV, revoke disk access before deletion
+	pv, err := d.getPVFromDiskURI(ctx, diskURI)
+	if err != nil {
+		klog.Warningf("failed to get PV from disk URI %s: %v", diskURI, err)
+	} else if pv.Annotations != nil {
+		if _, exists := pv.Annotations[azureconstants.QADCounterAnnotation]; exists {
+			subsID, resourceGroup, diskName, parseErr := azureutils.GetInfoFromURI(diskURI)
+			if parseErr != nil {
+				return nil, status.Errorf(codes.Internal, "failed to parse disk URI %s: %v", diskURI, parseErr)
+			}
+			klog.V(2).Infof("PV %s has QAD enabled, revoking disk access for disk %s before deletion", pv.Name, diskName)
+			if revokeErr := d.revokeDiskAccess(ctx, subsID, resourceGroup, diskName); revokeErr != nil {
+				klog.Warningf("failed to revoke disk access for QAD disk %s (proceeding with deletion): %v", diskName, revokeErr)
+			}
+		}
+	}
+
 	mc := csiMetrics.NewCSIMetricContext("controller_delete_volume").WithBasicVolumeInfo(d.cloud.ResourceGroup, d.cloud.SubscriptionID, d.Name)
 	isOperationSucceeded := false
 	defer func() {
@@ -551,7 +568,7 @@ func (d *Driver) DeleteVolume(ctx context.Context, req *csi.DeleteVolumeRequest)
 	}()
 
 	klog.V(2).Infof("deleting azure disk(%s)", diskURI)
-	err := d.diskController.DeleteManagedDisk(ctx, diskURI)
+	err = d.diskController.DeleteManagedDisk(ctx, diskURI)
 	klog.V(2).Infof("delete azure disk(%s) returned with %v", diskURI, err)
 
 	isOperationSucceeded = (err == nil)
@@ -1795,6 +1812,60 @@ func (d *Driver) getDiskAccessSAS(ctx context.Context, subsID, resourceGroup, di
 		return "", fmt.Errorf("failed to sanitize accessSAS URL: %w", err)
 	}
 	return sanitized, nil
+}
+
+// revokeDiskAccess calls the Azure REST API endGetAccess to revoke access from a disk.
+func (d *Driver) revokeDiskAccess(ctx context.Context, subsID, resourceGroup, diskName string) error {
+	cred := d.cloud.AuthProvider.GetAzIdentity()
+	if cred == nil {
+		return fmt.Errorf("no Azure credential available")
+	}
+	tokenResp, err := cred.GetToken(ctx, policy.TokenRequestOptions{
+		Scopes: []string{"https://management.azure.com/.default"},
+	})
+	if err != nil {
+		return fmt.Errorf("failed to get access token: %w", err)
+	}
+
+	revokeURL := fmt.Sprintf("https://management.azure.com/subscriptions/%s/resourceGroups/%s/providers/Microsoft.Compute/disks/%s/endGetAccess?api-version=2022-03-02",
+		subsID, resourceGroup, diskName)
+
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, revokeURL, nil)
+	if err != nil {
+		return fmt.Errorf("failed to create HTTP request: %w", err)
+	}
+	httpReq.Header.Set("Authorization", "Bearer "+tokenResp.Token)
+	httpReq.Header.Set("Content-Type", "application/json")
+
+	resp, err := http.DefaultClient.Do(httpReq)
+	if err != nil {
+		return fmt.Errorf("endGetAccess request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode == http.StatusAccepted {
+		asyncURL := resp.Header.Get("Azure-AsyncOperation")
+		if asyncURL == "" {
+			asyncURL = resp.Header.Get("Location")
+		}
+		if asyncURL == "" {
+			return fmt.Errorf("endGetAccess returned 202 but no Azure-AsyncOperation or Location header")
+		}
+
+		klog.V(2).Infof("endGetAccess for disk %s returned 202, polling %s", diskName, asyncURL)
+		if _, err = d.pollAsyncOperation(ctx, asyncURL); err != nil {
+			return fmt.Errorf("polling endGetAccess failed: %w", err)
+		}
+	} else if resp.StatusCode == http.StatusConflict {
+		// 409 Conflict: disk is already marked for deletion or has no active access grant — treat as success
+		klog.V(2).Infof("endGetAccess for disk %s returned 409 (disk may already be marked for deletion), treating as no-op", diskName)
+	} else if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("endGetAccess returned status %d: %s", resp.StatusCode, string(body))
+	}
+
+	klog.V(2).Infof("successfully revoked disk access for disk %s", diskName)
+	return nil
 }
 
 // sanitizeSASURL parses a SAS URL, strips all query parameters, and adds

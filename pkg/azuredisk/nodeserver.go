@@ -80,7 +80,58 @@ type DiskStatus struct {
 	Status        AttachmentStatus `json:"status"`
 	StatusMessage string           `json:"status_message"`
 	LUN           int              `json:"lun"`
+	Error         *DiskError       `json:"error,omitempty"`
 }
+
+// DiskError represents a per-disk error in the wireserver response (HTTP 2XX partial failure)
+type DiskError struct {
+	DiskErrorType DiskErrorType `json:"diskErrorType"`
+	SeverityHint  SeverityHint  `json:"severityHint"`
+	Message       string        `json:"message"`
+}
+
+type DiskErrorType int
+
+const (
+	QADDiskErrUnknown               DiskErrorType = 0
+	QADDiskErrInvalidArgs           DiskErrorType = 1
+	QADDiskErrInternal              DiskErrorType = 2
+	QADDiskErrXFEAuthFailure        DiskErrorType = 3
+	QADDiskErrQADCounterMismatch    DiskErrorType = 4
+	QADDiskErrQADIdentifierMismatch DiskErrorType = 5
+	QADDiskErrFetchDSTSToken        DiskErrorType = 6
+	QADDiskErrDiskNotFound          DiskErrorType = 7
+	QADDiskErrNoLUNAvailable        DiskErrorType = 8
+)
+
+// QADErrorResponse represents the JSON error response from QAD agent (HTTP non-2XX)
+type QADErrorResponse struct {
+	RequestErrorType RequestErrorType `json:"requestErrorType"`
+	SeverityHint     SeverityHint     `json:"severityHint"`
+	Message          string           `json:"message"`
+}
+
+type RequestErrorType int
+
+const (
+	QADRequestErrUnknown            RequestErrorType = 0
+	QADRequestErrInvalidArgs        RequestErrorType = 1
+	QADRequestErrInternal           RequestErrorType = 2
+	QADRequestErrFetchAttachedDisks RequestErrorType = 3
+	QADRequestErrFetchMadariCGS     RequestErrorType = 4
+	QADRequestErrFetchVMMetadata    RequestErrorType = 5
+	QADRequestErrFetchDeployedVMs   RequestErrorType = 6
+	QADRequestErrVMNotInCCF         RequestErrorType = 7
+	QADRequestErrFetchVMAccessToken RequestErrorType = 8
+	QADRequestErrMadariCGSPublish   RequestErrorType = 9
+)
+
+type SeverityHint string
+
+const (
+	SeverityHintRetriable SeverityHint = "RETRIABLE"
+	SeverityHintFatal     SeverityHint = "FATAL"
+)
 
 type AttachmentStatus string
 
@@ -988,28 +1039,11 @@ func attachOrDetachDisk(ctx context.Context, client http.Client, diskURI string,
 	}
 	defer resp.Body.Close()
 
-	bytes, err := io.ReadAll(resp.Body)
+	respBody, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return WireserverDiskStatusResponse{}, fmt.Errorf("failed to read response body: %v", err)
 	}
 
-	// Map HTTP error codes to CSI/gRPC status codes
-	switch resp.StatusCode {
-	case http.StatusBadRequest: // 400
-		return WireserverDiskStatusResponse{}, status.Errorf(codes.InvalidArgument, "wireserver returned HTTP %d: %s", resp.StatusCode, string(bytes))
-	case http.StatusForbidden: // 403
-		return WireserverDiskStatusResponse{}, status.Errorf(codes.PermissionDenied, "wireserver returned HTTP %d: %s", resp.StatusCode, string(bytes))
-	case http.StatusTooManyRequests: // 429
-	case http.StatusServiceUnavailable: // 503
-		return WireserverDiskStatusResponse{}, status.Errorf(codes.Unavailable, "wireserver returned HTTP %d: %s", resp.StatusCode, string(bytes))
-	case http.StatusInternalServerError: // 500
-	case http.StatusNotImplemented: // 501
-		return WireserverDiskStatusResponse{}, status.Errorf(codes.Internal, "wireserver returned HTTP %d: %s", resp.StatusCode, string(bytes))
-	case http.StatusGatewayTimeout: // 504
-		return WireserverDiskStatusResponse{}, status.Errorf(codes.DeadlineExceeded, "wireserver returned HTTP %d: %s", resp.StatusCode, string(bytes))
-	}
-
-	// TODO:// Remove this post debugging
 	// Log wireserver request and response for debugging (redact token)
 	redactedRequest := &WireserverRequest{
 		VMAccessToken: "[REDACTED]",
@@ -1018,22 +1052,178 @@ func attachOrDetachDisk(ctx context.Context, client http.Client, diskURI string,
 	if redactedBody, err := json.Marshal(redactedRequest); err == nil {
 		klog.V(2).Infof("Wireserver request: %s", string(redactedBody))
 	}
-	klog.V(2).Infof("Wireserver response: %s", string(bytes))
+	klog.V(2).Infof("Wireserver response (HTTP %d): %s", resp.StatusCode, string(respBody))
 
-	var wireserverDiskStatusResponse WireserverDiskStatusResponse
-	if err := json.Unmarshal(bytes, &wireserverDiskStatusResponse); err != nil {
-		return WireserverDiskStatusResponse{}, fmt.Errorf("failed to unmarshal wireserver response: %v", err)
+	// Case 1: Request succeeded (HTTP 2XX) - may contain per-disk errors (partial failure)
+	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
+		var wireserverDiskStatusResponse WireserverDiskStatusResponse
+		if err := json.Unmarshal(respBody, &wireserverDiskStatusResponse); err != nil {
+			return WireserverDiskStatusResponse{}, fmt.Errorf("failed to unmarshal wireserver response: %v", err)
+		}
+
+		// Convert keys to lowercase and check for per-disk errors
+		lowercaseResponse := make(WireserverDiskStatusResponse)
+		for k, v := range wireserverDiskStatusResponse {
+			lowercaseResponse[strings.ToLower(k)] = v
+		}
+
+		// Check for per-disk errors (partial failure)
+		lowercaseDiskURI := strings.ToLower(diskURI)
+		if diskStatus, ok := lowercaseResponse[lowercaseDiskURI]; ok && diskStatus.Error != nil {
+			grpcCode := mapDiskErrorToCode(diskStatus.Error.DiskErrorType, diskStatus.Error.SeverityHint)
+			return WireserverDiskStatusResponse{}, status.Errorf(grpcCode,
+				"wireserver disk operation failed for %s: errorType=%d, severity=%s, message=%s",
+				diskURI, diskStatus.Error.DiskErrorType, diskStatus.Error.SeverityHint, diskStatus.Error.Message)
+		}
+
+		return lowercaseResponse, nil
 	}
 
-	// Convert all the keys in the response to lowercase for case-insensitive comparison
-	lowercaseResponse := make(WireserverDiskStatusResponse)
-	for k, v := range wireserverDiskStatusResponse {
-		lowercaseResponse[strings.ToLower(k)] = v
+	// Case 2 & 3: Request failed (HTTP non-2XX)
+	// Try JSON parse first (Case 3: QAD agent failure)
+	var qadError QADErrorResponse
+	if err := json.Unmarshal(respBody, &qadError); err == nil && qadError.RequestErrorType > 0 || (err == nil && qadError.SeverityHint != "") {
+		grpcCode := mapRequestErrorToCode(qadError.RequestErrorType, qadError.SeverityHint)
+		return WireserverDiskStatusResponse{}, status.Errorf(grpcCode,
+			"QAD agent error for %s: errorType=%d, severity=%s, message=%s",
+			diskURI, qadError.RequestErrorType, qadError.SeverityHint, qadError.Message)
 	}
 
-	wireserverDiskStatusResponse = lowercaseResponse
+	// Case 2: WireServer XML failure - map HTTP status code
+	grpcCode := mapHTTPStatusToCode(resp.StatusCode)
+	return WireserverDiskStatusResponse{}, status.Errorf(grpcCode, "wireserver returned HTTP %d: %s", resp.StatusCode, string(respBody))
+}
 
-	return wireserverDiskStatusResponse, nil
+// mapDiskErrorToCode maps a DiskErrorType and SeverityHint to a gRPC status code.
+// Used for HTTP 2XX partial failure responses.
+func mapDiskErrorToCode(errorType DiskErrorType, severity SeverityHint) codes.Code {
+	switch errorType {
+	case QADDiskErrUnknown:
+		return codes.Unknown
+	case QADDiskErrInvalidArgs:
+		return codes.InvalidArgument
+	case QADDiskErrInternal:
+		if severity == SeverityHintRetriable {
+			return codes.Unavailable
+		}
+		return codes.Internal
+	case QADDiskErrXFEAuthFailure:
+		if severity == SeverityHintRetriable {
+			return codes.Unavailable
+		}
+		return codes.Unauthenticated
+	case QADDiskErrQADCounterMismatch:
+		return codes.Aborted
+	case QADDiskErrQADIdentifierMismatch:
+		if severity == SeverityHintRetriable {
+			return codes.Unavailable
+		}
+		return codes.Internal
+	case QADDiskErrFetchDSTSToken:
+		if severity == SeverityHintRetriable {
+			return codes.Unavailable
+		}
+		return codes.Internal
+	case QADDiskErrDiskNotFound:
+		return codes.NotFound
+	case QADDiskErrNoLUNAvailable:
+		return codes.ResourceExhausted
+	default:
+		return codes.Unknown
+	}
+}
+
+// mapRequestErrorToCode maps a RequestErrorType and SeverityHint to a gRPC status code.
+// Used for HTTP non-2XX QAD JSON error responses.
+func mapRequestErrorToCode(errorType RequestErrorType, severity SeverityHint) codes.Code {
+	switch errorType {
+	case QADRequestErrUnknown:
+		return codes.Unknown
+	case QADRequestErrInvalidArgs:
+		return codes.InvalidArgument
+	case QADRequestErrInternal:
+		if severity == SeverityHintRetriable {
+			return codes.Unavailable
+		}
+		return codes.Internal
+	case QADRequestErrFetchAttachedDisks:
+		if severity == SeverityHintRetriable {
+			return codes.Unavailable
+		}
+		return codes.Internal
+	case QADRequestErrFetchMadariCGS:
+		if severity == SeverityHintRetriable {
+			return codes.Unavailable
+		}
+		return codes.Internal
+	case QADRequestErrFetchVMMetadata:
+		if severity == SeverityHintRetriable {
+			return codes.Unavailable
+		}
+		return codes.Internal
+	case QADRequestErrFetchDeployedVMs:
+		if severity == SeverityHintRetriable {
+			return codes.Unavailable
+		}
+		return codes.Internal
+	case QADRequestErrVMNotInCCF:
+		if severity == SeverityHintRetriable {
+			return codes.Unavailable
+		}
+		return codes.Internal
+	case QADRequestErrFetchVMAccessToken:
+		if severity == SeverityHintRetriable {
+			return codes.Unavailable
+		}
+		return codes.Unauthenticated
+	case QADRequestErrMadariCGSPublish:
+		if severity == SeverityHintRetriable {
+			return codes.Unavailable
+		}
+		return codes.Internal
+	default:
+		return codes.Unknown
+	}
+}
+
+// mapHTTPStatusToCode maps an HTTP status code to a gRPC status code.
+// Used for WireServer XML failure responses (HTTP non-2XX).
+func mapHTTPStatusToCode(httpStatus int) codes.Code {
+	switch httpStatus {
+	case http.StatusBadRequest: // 400
+		return codes.InvalidArgument
+	case http.StatusUnauthorized: // 401
+		return codes.Unauthenticated
+	case http.StatusForbidden: // 403
+		return codes.Unauthenticated
+	case http.StatusNotFound: // 404
+		return codes.NotFound
+	case http.StatusMethodNotAllowed: // 405
+		return codes.InvalidArgument
+	case http.StatusGone: // 410
+		return codes.Unavailable
+	case http.StatusLengthRequired: // 411
+		return codes.Internal
+	case http.StatusRequestEntityTooLarge: // 413
+		return codes.Internal
+	case http.StatusRequestURITooLong: // 415
+		return codes.Internal
+	case http.StatusUnsupportedMediaType: // 422
+		return codes.Internal
+	case http.StatusTooManyRequests: // 429
+		return codes.Aborted
+	case http.StatusBadGateway: // 502
+		return codes.Unavailable
+	case http.StatusServiceUnavailable: // 503
+		return codes.Unavailable
+	case http.StatusGatewayTimeout: // 504
+		return codes.DeadlineExceeded
+	default:
+		if httpStatus >= 400 && httpStatus < 500 {
+			return codes.InvalidArgument
+		}
+		return codes.Unknown // Default 5XX
+	}
 }
 
 func getAttachedDisks(ctx context.Context, client http.Client) (WireserverDiskStatusResponse, error) {
