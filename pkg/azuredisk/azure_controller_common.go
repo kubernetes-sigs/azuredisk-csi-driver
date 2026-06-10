@@ -69,6 +69,12 @@ const (
 	// default timeout for VMSS detach operation before polling on GET VM to verify detach status
 	defaultVMSSDetachTimeoutInSeconds = 20
 
+	// nodeInfoLookupTimeout bounds the best-effort kube-apiserver Node Get used by
+	// AttachDisk to look up the instance type for disk-count batching. The lookup
+	// runs under the per-node attach lock, so a slow/throttled apiserver must not
+	// be allowed to pin it.
+	nodeInfoLookupTimeout = 5 * time.Second
+
 	// WriteAcceleratorEnabled support for Azure Write Accelerator on Azure Disks
 	// https://docs.microsoft.com/azure/virtual-machines/windows/how-to-enable-write-accelerator
 	WriteAcceleratorEnabled = "writeacceleratorenabled"
@@ -234,9 +240,14 @@ func (c *controllerCommon) AttachDisk(ctx context.Context, diskName, diskURI str
 
 	numDisksAllowed := math.MaxInt
 	if c.CheckDiskCountForBatching {
-		_, instanceType, err := GetNodeInfoFromLabels(ctx, string(nodeName), c.cloud.KubeClient)
+		// Best-effort lookup: bound the wait so a slow/throttled kube-apiserver
+		// cannot pin the per-node lock taken above. On timeout/error we fall through
+		// with numDisksAllowed=math.MaxInt, which matches pre-CheckDiskCountForBatching behavior.
+		nodeInfoCtx, nodeInfoCancel := context.WithTimeout(ctx, nodeInfoLookupTimeout)
+		_, instanceType, err := GetNodeInfoFromLabels(nodeInfoCtx, string(nodeName), c.cloud.KubeClient)
+		nodeInfoCancel()
 		if err != nil {
-			klog.Errorf("failed to get node info from labels: %v", err)
+			klog.V(2).Infof("skip disk-count check for node(%s), failed to get node info from labels: %v", nodeName, err)
 		} else if instanceType != "" {
 			maxNumDisks, instanceExists := GetMaxDataDiskCount(instanceType)
 			if instanceExists {
