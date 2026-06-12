@@ -54,7 +54,7 @@ func (t *DynamicallyProvisionedAttachBatchTest) Run(ctx context.Context, client 
 			}
 
 			if !noSchedule && !node.Spec.Unschedulable {
-				_, instanceType, err := azuredisk.GetNodeInfoFromLabels(ctx, string(node.Name), client)
+				_, instanceType, err := azuredisk.GetNodeInfoFromLabels(ctx, string(node.Name), client, nil)
 				framework.ExpectNoError(err)
 				if instanceType != "" {
 					maxNumDisks, instanceExists := azuredisk.GetMaxDataDiskCount(instanceType)

@@ -36,6 +36,7 @@ import (
 
 	grpcprom "github.com/grpc-ecosystem/go-grpc-middleware/providers/prometheus"
 	corev1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	k8stypes "k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/wait"
@@ -47,6 +48,10 @@ import (
 	"k8s.io/kubernetes/pkg/volume/util/hostutil"
 	"k8s.io/mount-utils"
 	"k8s.io/utils/ptr"
+
+	"k8s.io/client-go/informers"
+	corelisters "k8s.io/client-go/listers/core/v1"
+	"k8s.io/client-go/tools/cache"
 
 	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
@@ -156,6 +161,8 @@ type Driver struct {
 	enableMigrationMonitor      bool
 	// whether to convert ReadWrite cachingMode to ReadOnly for intree PVs to avoid issues
 	convertRWCachingModeForIntreePV bool
+	nodeLister                      corelisters.NodeLister
+	nodeInformerSynced              cache.InformerSynced
 }
 
 // NewDriver Creates a NewCSIDriver object. Assumes vendor version is equal to driver version &
@@ -332,6 +339,29 @@ func NewDriver(options *DriverOptions) *Driver {
 					time.Sleep(10 * time.Minute)
 				}
 			}()
+		}
+	}
+
+	if kubeClient != nil && driver.getNodeInfoFromLabels {
+		// Create a metadata-only node informer to cache node labels locally
+		nodeInformerFactory := informers.NewSharedInformerFactoryWithOptions(kubeClient, 0,
+			informers.WithTransform(func(obj interface{}) (interface{}, error) {
+				if node, ok := obj.(*corev1.Node); ok {
+					// Strip everything except metadata to reduce memory usage
+					node.Spec = corev1.NodeSpec{}
+					node.Status = corev1.NodeStatus{}
+					node.ManagedFields = nil
+				}
+				return obj, nil
+			}),
+		)
+		nodeInformer := nodeInformerFactory.Core().V1().Nodes()
+		driver.nodeLister = nodeInformer.Lister()
+		driver.nodeInformerSynced = nodeInformer.Informer().HasSynced
+		nodeInformerFactory.Start(context.Background().Done())
+		klog.V(2).Infof("started node informer for GetNodeInfoFromLabels caching")
+		if driver.diskController != nil {
+			driver.diskController.nodeLister = driver.nodeLister
 		}
 	}
 
@@ -675,8 +705,25 @@ func (d *Driver) getUsedLunsFromNode(ctx context.Context, nodeName k8stypes.Node
 	return usedLuns, nil
 }
 
-// getNodeInfoFromLabels get zone, instanceType from node labels
-func GetNodeInfoFromLabels(ctx context.Context, nodeName string, kubeClient clientset.Interface) (string, string, error) {
+// GetNodeInfoFromLabels get zone, instanceType from node labels.
+// If nodeLister is non-nil, it uses the cached lister; otherwise falls back to an API call.
+// If the lister returns a NotFound error or a node with empty labels (e.g. cache not yet synced), it falls back to the API server.
+func GetNodeInfoFromLabels(ctx context.Context, nodeName string, kubeClient clientset.Interface, nodeLister corelisters.NodeLister) (string, string, error) {
+	if nodeLister != nil {
+		node, err := nodeLister.Get(nodeName)
+		if err == nil && len(node.Labels) > 0 {
+			return node.Labels[consts.WellKnownTopologyKey], node.Labels[consts.InstanceTypeKey], nil
+		}
+		if err != nil {
+			if !apierrors.IsNotFound(err) {
+				return "", "", fmt.Errorf("get node(%s) from lister failed with %v", nodeName, err)
+			}
+			klog.V(4).Infof("node(%s) not found in lister cache, falling back to API server", nodeName)
+		} else {
+			klog.V(4).Infof("node(%s) labels from lister are empty, falling back to API server", nodeName)
+		}
+	}
+
 	if kubeClient == nil || kubeClient.CoreV1() == nil {
 		return "", "", fmt.Errorf("kubeClient is nil")
 	}
