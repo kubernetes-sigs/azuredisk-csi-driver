@@ -30,8 +30,14 @@ import (
 	"go.uber.org/mock/gomock"
 	"golang.org/x/sync/errgroup"
 	"google.golang.org/grpc/status"
+	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/types"
 	clientset "k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/kubernetes/fake"
+	corelisters "k8s.io/client-go/listers/core/v1"
+	"k8s.io/client-go/tools/cache"
 	"k8s.io/utils/ptr"
 	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 	"sigs.k8s.io/cloud-provider-azure/pkg/azclient/diskclient/mock_diskclient"
@@ -290,24 +296,185 @@ func TestDriver_CheckDiskExists_Success(t *testing.T) {
 	assert.Equal(t, err, nil)
 }
 
+// fakeErrorNodeLister is a NodeLister that always returns a specified error.
+type fakeErrorNodeLister struct {
+	err error
+}
+
+func (f *fakeErrorNodeLister) List(selector labels.Selector) ([]*corev1.Node, error) {
+	return nil, f.err
+}
+
+func (f *fakeErrorNodeLister) Get(name string) (*corev1.Node, error) {
+	return nil, f.err
+}
+
 func TestGetNodeInfoFromLabels(t *testing.T) {
 	tests := []struct {
-		nodeName      string
-		kubeClient    clientset.Interface
-		expectedError error
+		name           string
+		nodeName       string
+		kubeClient     clientset.Interface
+		nodeLister     corelisters.NodeLister
+		expectedZone   string
+		expectedType   string
+		expectedError  error
+		expectErrorNil bool
 	}{
 		{
+			name:          "nil kubeClient and nil lister",
 			nodeName:      "",
 			kubeClient:    nil,
+			nodeLister:    nil,
 			expectedError: fmt.Errorf("kubeClient is nil"),
+		},
+		{
+			name:       "lister returns node with labels",
+			nodeName:   "node1",
+			kubeClient: nil,
+			nodeLister: func() corelisters.NodeLister {
+				indexer := cache.NewIndexer(cache.MetaNamespaceKeyFunc, cache.Indexers{})
+				node := &corev1.Node{}
+				node.Name = "node1"
+				node.Labels = map[string]string{
+					consts.WellKnownTopologyKey: "westus2-1",
+					consts.InstanceTypeKey:      "Standard_DS2_v2",
+				}
+				_ = indexer.Add(node)
+				return corelisters.NewNodeLister(indexer)
+			}(),
+			expectedZone:   "westus2-1",
+			expectedType:   "Standard_DS2_v2",
+			expectErrorNil: true,
+		},
+		{
+			name:     "lister returns node with empty labels, falls back to kubeClient",
+			nodeName: "node1",
+			kubeClient: fake.NewSimpleClientset(&corev1.Node{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "node1",
+					Labels: map[string]string{
+						consts.WellKnownTopologyKey: "eastus-2",
+						consts.InstanceTypeKey:      "Standard_D4s_v3",
+					},
+				},
+			}),
+			nodeLister: func() corelisters.NodeLister {
+				indexer := cache.NewIndexer(cache.MetaNamespaceKeyFunc, cache.Indexers{})
+				node := &corev1.Node{}
+				node.Name = "node1"
+				node.Labels = map[string]string{}
+				_ = indexer.Add(node)
+				return corelisters.NewNodeLister(indexer)
+			}(),
+			expectedZone:   "eastus-2",
+			expectedType:   "Standard_D4s_v3",
+			expectErrorNil: true,
+		},
+		{
+			name:       "lister returns node with empty labels, nil kubeClient returns error",
+			nodeName:   "node1",
+			kubeClient: nil,
+			nodeLister: func() corelisters.NodeLister {
+				indexer := cache.NewIndexer(cache.MetaNamespaceKeyFunc, cache.Indexers{})
+				node := &corev1.Node{}
+				node.Name = "node1"
+				node.Labels = map[string]string{}
+				_ = indexer.Add(node)
+				return corelisters.NewNodeLister(indexer)
+			}(),
+			expectedError: fmt.Errorf("kubeClient is nil"),
+		},
+		{
+			name:       "lister does not have the node, nil kubeClient returns error",
+			nodeName:   "missing-node",
+			kubeClient: nil,
+			nodeLister: func() corelisters.NodeLister {
+				indexer := cache.NewIndexer(cache.MetaNamespaceKeyFunc, cache.Indexers{})
+				return corelisters.NewNodeLister(indexer)
+			}(),
+			expectedError: fmt.Errorf("kubeClient is nil"),
+		},
+		{
+			name:     "lister does not have the node, falls back to kubeClient",
+			nodeName: "missing-node",
+			kubeClient: fake.NewSimpleClientset(&corev1.Node{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "missing-node",
+					Labels: map[string]string{
+						consts.WellKnownTopologyKey: "westus-1",
+						consts.InstanceTypeKey:      "Standard_D2s_v3",
+					},
+				},
+			}),
+			nodeLister: func() corelisters.NodeLister {
+				indexer := cache.NewIndexer(cache.MetaNamespaceKeyFunc, cache.Indexers{})
+				return corelisters.NewNodeLister(indexer)
+			}(),
+			expectedZone:   "westus-1",
+			expectedType:   "Standard_D2s_v3",
+			expectErrorNil: true,
+		},
+		{
+			name:     "lister returns error, falls back to kubeClient",
+			nodeName: "node1",
+			kubeClient: fake.NewSimpleClientset(&corev1.Node{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "node1",
+					Labels: map[string]string{
+						consts.WellKnownTopologyKey: "northeurope-1",
+						consts.InstanceTypeKey:      "Standard_D8s_v3",
+					},
+				},
+			}),
+			nodeLister:     &fakeErrorNodeLister{err: fmt.Errorf("connection refused")},
+			expectedZone:   "northeurope-1",
+			expectedType:   "Standard_D8s_v3",
+			expectErrorNil: true,
+		},
+		{
+			name:          "lister returns error, nil kubeClient returns error",
+			nodeName:      "node1",
+			kubeClient:    nil,
+			nodeLister:    &fakeErrorNodeLister{err: fmt.Errorf("connection refused")},
+			expectedError: fmt.Errorf("kubeClient is nil"),
+		},
+		{
+			name:     "no lister, kubeClient returns node with labels",
+			nodeName: "node1",
+			kubeClient: fake.NewSimpleClientset(&corev1.Node{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "node1",
+					Labels: map[string]string{
+						consts.WellKnownTopologyKey: "centralus-1",
+						consts.InstanceTypeKey:      "Standard_E8s_v3",
+					},
+				},
+			}),
+			nodeLister:     nil,
+			expectedZone:   "centralus-1",
+			expectedType:   "Standard_E8s_v3",
+			expectErrorNil: true,
+		},
+		{
+			name:          "no lister, kubeClient node not found",
+			nodeName:      "missing-node",
+			kubeClient:    fake.NewSimpleClientset(),
+			nodeLister:    nil,
+			expectedError: fmt.Errorf("get node(missing-node) failed with %v", fmt.Errorf("nodes \"missing-node\" not found")),
 		},
 	}
 
 	for _, test := range tests {
-		_, _, err := GetNodeInfoFromLabels(context.TODO(), test.nodeName, test.kubeClient)
-		if !reflect.DeepEqual(err, test.expectedError) {
-			t.Errorf("Unexpected result: %v, expected result: %v", err, test.expectedError)
-		}
+		t.Run(test.name, func(t *testing.T) {
+			zone, instanceType, err := GetNodeInfoFromLabels(context.TODO(), test.nodeName, test.kubeClient, test.nodeLister)
+			if test.expectErrorNil {
+				assert.NoError(t, err)
+				assert.Equal(t, test.expectedZone, zone)
+				assert.Equal(t, test.expectedType, instanceType)
+			} else {
+				assert.EqualError(t, err, test.expectedError.Error())
+			}
+		})
 	}
 }
 

@@ -48,6 +48,10 @@ import (
 	"k8s.io/mount-utils"
 	"k8s.io/utils/ptr"
 
+	"k8s.io/client-go/informers"
+	corelisters "k8s.io/client-go/listers/core/v1"
+	"k8s.io/client-go/tools/cache"
+
 	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
 	csicommon "sigs.k8s.io/azuredisk-csi-driver/pkg/csi-common"
@@ -156,6 +160,8 @@ type Driver struct {
 	enableMigrationMonitor      bool
 	// whether to convert ReadWrite cachingMode to ReadOnly for intree PVs to avoid issues
 	convertRWCachingModeForIntreePV bool
+	nodeLister                      corelisters.NodeLister
+	nodeInformerSynced              cache.InformerSynced
 }
 
 // NewDriver Creates a NewCSIDriver object. Assumes vendor version is equal to driver version &
@@ -332,6 +338,31 @@ func NewDriver(options *DriverOptions) *Driver {
 					time.Sleep(10 * time.Minute)
 				}
 			}()
+		}
+	}
+
+	if kubeClient != nil && driver.getNodeInfoFromLabels {
+		// Create a metadata-only node informer to cache node labels locally
+		nodeInformerFactory := informers.NewSharedInformerFactoryWithOptions(kubeClient, 0,
+			informers.WithTransform(func(obj interface{}) (interface{}, error) {
+				if node, ok := obj.(*corev1.Node); ok {
+					// Strip everything except metadata to reduce memory usage
+					node.Spec = corev1.NodeSpec{}
+					node.Status = corev1.NodeStatus{}
+					node.ManagedFields = nil
+					klog.V(4).Infof("node informer transform: node(%s) cached with metadata only - spec empty: %v, status empty: %v, managedFields nil: %v, labels: %v",
+						node.Name, reflect.DeepEqual(node.Spec, corev1.NodeSpec{}), reflect.DeepEqual(node.Status, corev1.NodeStatus{}), node.ManagedFields == nil, node.Labels)
+				}
+				return obj, nil
+			}),
+		)
+		nodeInformer := nodeInformerFactory.Core().V1().Nodes()
+		driver.nodeLister = nodeInformer.Lister()
+		driver.nodeInformerSynced = nodeInformer.Informer().HasSynced
+		nodeInformerFactory.Start(context.Background().Done())
+		klog.V(2).Infof("started node informer for GetNodeInfoFromLabels caching")
+		if driver.diskController != nil {
+			driver.diskController.nodeLister = driver.nodeLister
 		}
 	}
 
@@ -675,8 +706,25 @@ func (d *Driver) getUsedLunsFromNode(ctx context.Context, nodeName k8stypes.Node
 	return usedLuns, nil
 }
 
-// getNodeInfoFromLabels get zone, instanceType from node labels
-func GetNodeInfoFromLabels(ctx context.Context, nodeName string, kubeClient clientset.Interface) (string, string, error) {
+// GetNodeInfoFromLabels get zone, instanceType from node labels.
+// If nodeLister is non-nil, it uses the cached lister; otherwise falls back to an API call.
+// If the lister returns an error or a node with empty labels (e.g. cache not yet synced), it falls back to the API server.
+func GetNodeInfoFromLabels(ctx context.Context, nodeName string, kubeClient clientset.Interface, nodeLister corelisters.NodeLister) (string, string, error) {
+	if nodeLister != nil {
+		node, err := nodeLister.Get(nodeName)
+		if err == nil && len(node.Labels) > 0 {
+			zone := node.Labels[consts.WellKnownTopologyKey]
+			instanceType := node.Labels[consts.InstanceTypeKey]
+			klog.V(2).Infof("GetNodeInfoFromLabels: Node informer details for node(%s): zone=%s, instanceType=%s, labels=%v", nodeName, zone, instanceType, node.Labels)
+			return zone, instanceType, nil
+		}
+		if err != nil {
+			klog.V(4).Infof("get node(%s) from lister failed: %v, falling back to API server", nodeName, err)
+		} else {
+			klog.V(4).Infof("node(%s) labels from lister are empty, falling back to API server", nodeName)
+		}
+	}
+
 	if kubeClient == nil || kubeClient.CoreV1() == nil {
 		return "", "", fmt.Errorf("kubeClient is nil")
 	}
@@ -689,7 +737,10 @@ func GetNodeInfoFromLabels(ctx context.Context, nodeName string, kubeClient clie
 	if len(node.Labels) == 0 {
 		return "", "", fmt.Errorf("node(%s) label is empty", nodeName)
 	}
-	return node.Labels[consts.WellKnownTopologyKey], node.Labels[consts.InstanceTypeKey], nil
+	zone := node.Labels[consts.WellKnownTopologyKey]
+	instanceType := node.Labels[consts.InstanceTypeKey]
+	klog.V(2).Infof("GetNodeInfoFromLabels: API server node details for node(%s): zone=%s, instanceType=%s, labels=%v", nodeName, zone, instanceType, node.Labels)
+	return zone, instanceType, nil
 }
 
 // getDefaultDiskIOPSReadWrite according to requestGiB
