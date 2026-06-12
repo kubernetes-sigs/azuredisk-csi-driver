@@ -339,7 +339,9 @@ func TestGetNodeInfoFromLabels(t *testing.T) {
 					consts.WellKnownTopologyKey: "westus2-1",
 					consts.InstanceTypeKey:      "Standard_DS2_v2",
 				}
-				_ = indexer.Add(node)
+				if err := indexer.Add(node); err != nil {
+					panic(err)
+				}
 				return corelisters.NewNodeLister(indexer)
 			}(),
 			expectedZone:   "westus2-1",
@@ -363,7 +365,9 @@ func TestGetNodeInfoFromLabels(t *testing.T) {
 				node := &corev1.Node{}
 				node.Name = "node1"
 				node.Labels = map[string]string{}
-				_ = indexer.Add(node)
+				if err := indexer.Add(node); err != nil {
+					panic(err)
+				}
 				return corelisters.NewNodeLister(indexer)
 			}(),
 			expectedZone:   "eastus-2",
@@ -379,7 +383,9 @@ func TestGetNodeInfoFromLabels(t *testing.T) {
 				node := &corev1.Node{}
 				node.Name = "node1"
 				node.Labels = map[string]string{}
-				_ = indexer.Add(node)
+				if err := indexer.Add(node); err != nil {
+					panic(err)
+				}
 				return corelisters.NewNodeLister(indexer)
 			}(),
 			expectedError: fmt.Errorf("kubeClient is nil"),
