@@ -31,7 +31,7 @@ import (
 
 	"k8s.io/apimachinery/pkg/types"
 	kwait "k8s.io/apimachinery/pkg/util/wait"
-	corelisters "k8s.io/client-go/listers/core/v1"
+	"k8s.io/client-go/tools/cache"
 	cloudprovider "k8s.io/cloud-provider"
 	volerr "k8s.io/cloud-provider/volume/errors"
 	"k8s.io/klog/v2"
@@ -93,7 +93,7 @@ type controllerCommon struct {
 	lockMap       *lockMap
 	cloud         *provider.Cloud
 	clientFactory azclient.ClientFactory
-	nodeLister    corelisters.NodeLister
+	nodeLister    cache.GenericLister
 	// disk queue that is waiting for attach or detach on specific node
 	// <nodeName, map<diskURI, *provider.AttachDiskOptions/DetachDiskOptions>>
 	attachDiskMap sync.Map
