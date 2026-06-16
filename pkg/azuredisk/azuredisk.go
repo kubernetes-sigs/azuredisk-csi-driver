@@ -48,8 +48,9 @@ import (
 	"k8s.io/mount-utils"
 	"k8s.io/utils/ptr"
 
-	"k8s.io/client-go/informers"
-	corelisters "k8s.io/client-go/listers/core/v1"
+	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/client-go/metadata"
+	"k8s.io/client-go/metadata/metadatainformer"
 	"k8s.io/client-go/tools/cache"
 
 	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
@@ -160,7 +161,7 @@ type Driver struct {
 	enableMigrationMonitor      bool
 	// whether to convert ReadWrite cachingMode to ReadOnly for intree PVs to avoid issues
 	convertRWCachingModeForIntreePV bool
-	nodeLister                      corelisters.NodeLister
+	nodeLister                      cache.GenericLister
 	nodeInformerSynced              cache.InformerSynced
 }
 
@@ -244,9 +245,13 @@ func NewDriver(options *DriverOptions) *Driver {
 	userAgent := GetUserAgent(driver.Name, driver.customUserAgent, driver.userAgentSuffix)
 	klog.V(2).Infof("driver userAgent: %s", userAgent)
 
-	kubeClient, err := azureutils.GetKubeClient(options.Kubeconfig, options.KubeAPIQPS, options.KubeAPIBurst)
+	kubeConfig, err := azureutils.GetKubeConfig(options.Kubeconfig, options.KubeAPIQPS, options.KubeAPIBurst)
 	if err != nil {
 		klog.Warningf("get kubeconfig(%s) failed with error: %v", options.Kubeconfig, err)
+	}
+	kubeClient, err := azureutils.GetKubeClient(options.Kubeconfig, options.KubeAPIQPS, options.KubeAPIBurst)
+	if err != nil {
+		klog.Warningf("get kubeclient failed with error: %v", err)
 	}
 	driver.kubeClient = kubeClient
 
@@ -341,26 +346,22 @@ func NewDriver(options *DriverOptions) *Driver {
 		}
 	}
 
-	if kubeClient != nil && driver.getNodeInfoFromLabels {
+	if kubeConfig != nil && driver.checkDiskCountForBatching {
 		// Create a metadata-only node informer to cache node labels locally
-		nodeInformerFactory := informers.NewSharedInformerFactoryWithOptions(kubeClient, 0,
-			informers.WithTransform(func(obj interface{}) (interface{}, error) {
-				if node, ok := obj.(*corev1.Node); ok {
-					// Strip everything except metadata to reduce memory usage
-					node.Spec = corev1.NodeSpec{}
-					node.Status = corev1.NodeStatus{}
-					node.ManagedFields = nil
-					klog.V(4).Infof("node informer transform: node(%s) cached with metadata only - spec empty: %v, status empty: %v, managedFields nil: %v, labels: %v",
-						node.Name, reflect.DeepEqual(node.Spec, corev1.NodeSpec{}), reflect.DeepEqual(node.Status, corev1.NodeStatus{}), node.ManagedFields == nil, node.Labels)
-				}
-				return obj, nil
-			}),
-		)
-		nodeInformer := nodeInformerFactory.Core().V1().Nodes()
+		metadataClient, err := metadata.NewForConfig(kubeConfig)
+		if err != nil {
+			klog.Fatalf("failed to create metadata client: %v", err)
+		}
+		nodeInformerFactory := metadatainformer.NewSharedInformerFactory(metadataClient, 0)
+		nodeGVR := schema.GroupVersionResource{Group: "", Version: "v1", Resource: "nodes"}
+		nodeInformer := nodeInformerFactory.ForResource(nodeGVR)
 		driver.nodeLister = nodeInformer.Lister()
 		driver.nodeInformerSynced = nodeInformer.Informer().HasSynced
 		nodeInformerFactory.Start(context.Background().Done())
-		klog.V(2).Infof("started node informer for GetNodeInfoFromLabels caching")
+		if !cache.WaitForCacheSync(context.Background().Done(), driver.nodeInformerSynced) {
+			klog.Warningf("failed to sync metadata node informer cache")
+		}
+		klog.V(2).Infof("started metadata node informer for GetNodeInfoFromLabels caching")
 		if driver.diskController != nil {
 			driver.diskController.nodeLister = driver.nodeLister
 		}
@@ -709,19 +710,24 @@ func (d *Driver) getUsedLunsFromNode(ctx context.Context, nodeName k8stypes.Node
 // GetNodeInfoFromLabels get zone, instanceType from node labels.
 // If nodeLister is non-nil, it uses the cached lister; otherwise falls back to an API call.
 // If the lister returns an error or a node with empty labels (e.g. cache not yet synced), it falls back to the API server.
-func GetNodeInfoFromLabels(ctx context.Context, nodeName string, kubeClient clientset.Interface, nodeLister corelisters.NodeLister) (string, string, error) {
+func GetNodeInfoFromLabels(ctx context.Context, nodeName string, kubeClient clientset.Interface, nodeLister cache.GenericLister) (string, string, error) {
 	if nodeLister != nil {
-		node, err := nodeLister.Get(nodeName)
-		if err == nil && len(node.Labels) > 0 {
-			zone := node.Labels[consts.WellKnownTopologyKey]
-			instanceType := node.Labels[consts.InstanceTypeKey]
-			klog.V(2).Infof("GetNodeInfoFromLabels: Node informer details for node(%s): zone=%s, instanceType=%s, labels=%v", nodeName, zone, instanceType, node.Labels)
-			return zone, instanceType, nil
-		}
-		if err != nil {
-			klog.V(4).Infof("get node(%s) from lister failed: %v, falling back to API server", nodeName, err)
+		obj, err := nodeLister.Get(nodeName)
+		if err == nil {
+			pom, ok := obj.(*metav1.PartialObjectMetadata)
+			if ok && len(pom.Labels) > 0 {
+				zone := pom.Labels[consts.WellKnownTopologyKey]
+				instanceType := pom.Labels[consts.InstanceTypeKey]
+				klog.V(2).Infof("GetNodeInfoFromLabels: Node informer details for node(%s): zone=%s, instanceType=%s", nodeName, zone, instanceType)
+				return zone, instanceType, nil
+			}
+			if !ok {
+				klog.V(4).Infof("node(%s) from lister is not *metav1.PartialObjectMetadata, falling back to API server", nodeName)
+			} else {
+				klog.V(4).Infof("node(%s) labels from lister are empty, falling back to API server", nodeName)
+			}
 		} else {
-			klog.V(4).Infof("node(%s) labels from lister are empty, falling back to API server", nodeName)
+			klog.V(4).Infof("get node(%s) from lister failed: %v, falling back to API server", nodeName, err)
 		}
 	}
 
