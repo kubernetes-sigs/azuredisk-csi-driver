@@ -175,8 +175,12 @@ type Driver struct {
 	nodeLister                      cache.GenericLister
 	nodeInformerSynced              cache.InformerSynced
 	nodeInformerFactory             metadatainformer.SharedInformerFactory
+	// maximum number of data disks attachable to this node, lazily computed in NodeGetInfo
+	maxDataDiskCount int64
 	// HTTP client for wireserver calls
 	httpClient *http.Client
+	// in-process batcher to coalesce concurrent QAD attach/detach requests from node RPC callers
+	qadBatcher *qadDiskBatcher
 	// informer factory and PV lister for cached API access
 	informerFactory informers.SharedInformerFactory
 	pvLister        corelisters.PersistentVolumeLister
@@ -242,15 +246,6 @@ func NewDriver(options *DriverOptions) *Driver {
 	driver.enableMigrationMonitor = options.EnableMigrationMonitor
 	driver.convertRWCachingModeForIntreePV = options.ConvertRWCachingModeForIntreePV
 
-	// Initialize HTTP client for wireserver calls
-	driver.httpClient = &http.Client{
-		Timeout: 30 * time.Second,
-	}
-
-	if driver.NodeID == "" {
-		// nodeid is not needed in controller component
-		klog.Warning("nodeid is empty")
-	}
 	topologyKey = fmt.Sprintf("topology.%s/zone", driver.Name)
 
 	getter := func(_ context.Context, _ string) (interface{}, error) { return nil, nil }
@@ -284,6 +279,16 @@ func NewDriver(options *DriverOptions) *Driver {
 		}
 	}
 	driver.kubeClient = kubeClient
+
+	if driver.NodeID != "" {
+		// Initialize HTTP client for wireserver calls (node component only)
+		driver.httpClient = &http.Client{
+			Timeout: 30 * time.Second,
+		}
+		// Initialize QAD batcher; batch size is resolved lazily from d.maxDataDiskCount
+		// which is populated on the first NodeGetInfo call.
+		driver.qadBatcher = newQADDiskBatcher(1000 * time.Millisecond)
+	}
 
 	cloud, err := azureutils.GetCloudProviderFromClient(context.Background(), kubeClient, driver.cloudConfigSecretName, driver.cloudConfigSecretNamespace,
 		userAgent, driver.allowEmptyCloudConfig, driver.enableTrafficManager, driver.enableMinimumRetryAfter, driver.trafficManagerPort)
