@@ -346,24 +346,29 @@ func NewDriver(options *DriverOptions) *Driver {
 		}
 	}
 
-	if kubeConfig != nil && driver.checkDiskCountForBatching {
-		// Create a metadata-only node informer to cache node labels locally
+	if kubeConfig != nil && driver.checkDiskCountForBatching && driver.NodeID == "" {
+		// Create a metadata-only node informer to cache node labels locally (controller only)
 		metadataClient, err := metadata.NewForConfig(kubeConfig)
 		if err != nil {
-			klog.Fatalf("failed to create metadata client: %v", err)
-		}
-		nodeInformerFactory := metadatainformer.NewSharedInformerFactory(metadataClient, 0)
-		nodeGVR := schema.GroupVersionResource{Group: "", Version: "v1", Resource: "nodes"}
-		nodeInformer := nodeInformerFactory.ForResource(nodeGVR)
-		driver.nodeLister = nodeInformer.Lister()
-		driver.nodeInformerSynced = nodeInformer.Informer().HasSynced
-		nodeInformerFactory.Start(context.Background().Done())
-		if !cache.WaitForCacheSync(context.Background().Done(), driver.nodeInformerSynced) {
-			klog.Warningf("failed to sync metadata node informer cache")
-		}
-		klog.V(2).Infof("started metadata node informer for GetNodeInfoFromLabels caching")
-		if driver.diskController != nil {
-			driver.diskController.nodeLister = driver.nodeLister
+			klog.Warningf("failed to create metadata client: %v, node informer will not be used", err)
+		} else {
+			nodeInformerFactory := metadatainformer.NewSharedInformerFactory(metadataClient, 0)
+			nodeGVR := schema.GroupVersionResource{Group: "", Version: "v1", Resource: "nodes"}
+			nodeInformer := nodeInformerFactory.ForResource(nodeGVR)
+			driver.nodeLister = nodeInformer.Lister()
+			driver.nodeInformerSynced = nodeInformer.Informer().HasSynced
+			nodeInformerFactory.Start(context.Background().Done())
+			syncCtx, syncCancel := context.WithTimeout(context.Background(), 30*time.Second)
+			defer syncCancel()
+			if !cache.WaitForCacheSync(syncCtx.Done(), driver.nodeInformerSynced) {
+				klog.Warningf("metadata node informer cache has not synced yet, will continue to sync in background")
+			} else {
+				klog.V(2).Infof("metadata node informer cache synced successfully")
+			}
+			klog.V(2).Infof("started metadata node informer for GetNodeInfoFromLabels caching")
+			if driver.diskController != nil {
+				driver.diskController.nodeLister = driver.nodeLister
+			}
 		}
 	}
 
