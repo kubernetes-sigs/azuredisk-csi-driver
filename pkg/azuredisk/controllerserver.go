@@ -801,6 +801,32 @@ func (d *Driver) ControllerUnpublishVolume(ctx context.Context, req *csi.Control
 
 	klog.V(2).Infof("Trying to detach volume %s from node %s", diskURI, nodeID)
 
+	// Fast-path: a cheap disk read can show the volume is already detached from
+	// every node, letting us skip the node-centric DetachDisk path that
+	// serializes on the global VMManagementType mutex during mass detach (e.g.
+	// when many spot/preemptible nodes are deleted at once). Two cases qualify,
+	// both of which the CSI spec says SHOULD/MUST return OK:
+	//   - the disk no longer exists (404), so it is attached to nothing; or
+	//   - the disk exists but has no owning VM (e.g. its node was deleted).
+	// checkDiskExists honors GetDisk throttling (returns nil,nil while throttled)
+	// and a timeout, so under throttling or any other read error we simply fall
+	// through to the normal detach. Gated by --skip-detach-for-unattached-disk.
+	if d.skipDetachForUnattachedDisk {
+		disk, derr := d.checkDiskExists(ctx, diskURI)
+		switch {
+		case derr != nil:
+			if isDiskNotFoundError(derr) {
+				klog.V(2).Infof("volume %s not found, assuming already detached from node %s", diskURI, nodeID)
+				isOperationSucceeded = true
+				return &csi.ControllerUnpublishVolumeResponse{}, nil
+			}
+		case diskHasNoOwner(disk):
+			klog.V(2).Infof("volume %s has no owning VM, assuming already detached from node %s", diskURI, nodeID)
+			isOperationSucceeded = true
+			return &csi.ControllerUnpublishVolumeResponse{}, nil
+		}
+	}
+
 	if err := d.diskController.DetachDisk(ctx, diskName, diskURI, nodeName); err != nil {
 		if strings.Contains(err.Error(), consts.ErrDiskNotFound) {
 			klog.Warningf("volume %s already detached from node %s", diskURI, nodeID)

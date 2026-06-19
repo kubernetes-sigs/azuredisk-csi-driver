@@ -21,11 +21,13 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/http"
 	"reflect"
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute/v7"
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
@@ -138,6 +140,7 @@ type Driver struct {
 	forceDetachBackoff                 bool
 	waitForDetach                      bool
 	waitForDetachDiskComplete          bool
+	skipDetachForUnattachedDisk        bool
 	endpoint                           string
 	disableAVSetNodes                  bool
 	removeNotReadyTaint                bool
@@ -200,6 +203,7 @@ func NewDriver(options *DriverOptions) *Driver {
 	driver.forceDetachBackoff = options.ForceDetachBackoff
 	driver.waitForDetach = options.WaitForDetach
 	driver.waitForDetachDiskComplete = options.WaitForDetachDiskComplete
+	driver.skipDetachForUnattachedDisk = options.SkipDetachForUnattachedDisk
 	driver.endpoint = options.Endpoint
 	driver.disableAVSetNodes = options.DisableAVSetNodes
 	driver.removeNotReadyTaint = options.RemoveNotReadyTaint
@@ -474,6 +478,27 @@ func (d *Driver) checkDiskExists(ctx context.Context, diskURI string) (*armcompu
 	newCtx, cancel := context.WithTimeout(ctx, time.Duration(d.getDiskTimeoutInSeconds)*time.Second)
 	defer cancel()
 	return d.diskController.GetDiskByURI(newCtx, diskURI)
+}
+
+// diskHasNoOwner reports whether the managed disk is currently attached to no
+// VM, i.e. it is already detached from every node. A non-shared disk records
+// its single owner in ManagedBy; a shared disk (MaxShares > 1) records every
+// owner in ManagedByExtended. The disk has no owner only when both are empty,
+// which is the steady state after Azure deletes the owning VM(s). It returns
+// false for a nil disk (e.g. GetDisk skipped due to throttling).
+func diskHasNoOwner(disk *armcompute.Disk) bool {
+	if disk == nil {
+		return false
+	}
+	return disk.ManagedBy == nil && len(disk.ManagedByExtended) == 0
+}
+
+// isDiskNotFoundError reports whether err indicates the managed disk does not
+// exist (HTTP 404). A non-existent disk is attached to no node, so per the CSI
+// spec a ControllerUnpublishVolume can be safely regarded as already complete.
+func isDiskNotFoundError(err error) bool {
+	var respErr *azcore.ResponseError
+	return errors.As(err, &respErr) && respErr.StatusCode == http.StatusNotFound
 }
 
 func (d *Driver) checkDiskCapacity(ctx context.Context, subsID, resourceGroup, diskName string, requestGiB int) (bool, error) {
