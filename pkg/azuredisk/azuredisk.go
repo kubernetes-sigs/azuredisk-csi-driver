@@ -249,9 +249,12 @@ func NewDriver(options *DriverOptions) *Driver {
 	if err != nil {
 		klog.Warningf("get kubeconfig(%s) failed with error: %v", options.Kubeconfig, err)
 	}
-	kubeClient, err := azureutils.GetKubeClient(options.Kubeconfig, options.KubeAPIQPS, options.KubeAPIBurst)
-	if err != nil {
-		klog.Warningf("get kubeclient failed with error: %v", err)
+	var kubeClient clientset.Interface
+	if kubeConfig != nil {
+		kubeClient, err = clientset.NewForConfig(kubeConfig)
+		if err != nil {
+			klog.Warningf("get kubeclient failed with error: %v", err)
+		}
 	}
 	driver.kubeClient = kubeClient
 
@@ -712,28 +715,28 @@ func (d *Driver) getUsedLunsFromNode(ctx context.Context, nodeName k8stypes.Node
 	return usedLuns, nil
 }
 
-// GetNodeInfoFromLabels get zone, instanceType from node labels.
-// If nodeLister is non-nil, it uses the cached lister; otherwise falls back to an API call.
-// If the lister returns an error or a node with empty labels (e.g. cache not yet synced), it falls back to the API server.
+// GetNodeInfoFromLabels get zone, instanceType from node labels using the cached nodeLister.
+// If nodeLister is nil, it falls back to the kubeClient API server.
 func GetNodeInfoFromLabels(ctx context.Context, nodeName string, kubeClient clientset.Interface, nodeLister cache.GenericLister) (string, string, error) {
 	if nodeLister != nil {
 		obj, err := nodeLister.Get(nodeName)
-		if err == nil {
-			pom, ok := obj.(*metav1.PartialObjectMetadata)
-			if ok && len(pom.Labels) > 0 {
-				zone := pom.Labels[consts.WellKnownTopologyKey]
-				instanceType := pom.Labels[consts.InstanceTypeKey]
-				klog.V(2).Infof("GetNodeInfoFromLabels: Node informer details for node(%s): zone=%s, instanceType=%s", nodeName, zone, instanceType)
-				return zone, instanceType, nil
-			}
-			if !ok {
-				klog.V(4).Infof("node(%s) from lister is not *metav1.PartialObjectMetadata, falling back to API server", nodeName)
-			} else {
-				klog.V(4).Infof("node(%s) labels from lister are empty, falling back to API server", nodeName)
-			}
-		} else {
-			klog.V(4).Infof("get node(%s) from lister failed: %v, falling back to API server", nodeName, err)
+		if err != nil {
+			return "", "", fmt.Errorf("get node(%s) from lister failed: %v", nodeName, err)
 		}
+
+		pom, ok := obj.(*metav1.PartialObjectMetadata)
+		if !ok {
+			return "", "", fmt.Errorf("node(%s) from lister is not *metav1.PartialObjectMetadata", nodeName)
+		}
+
+		if len(pom.Labels) == 0 {
+			return "", "", fmt.Errorf("node(%s) labels are empty", nodeName)
+		}
+
+		zone := pom.Labels[consts.WellKnownTopologyKey]
+		instanceType := pom.Labels[consts.InstanceTypeKey]
+		klog.V(2).Infof("GetNodeInfoFromLabels: node(%s): zone=%s, instanceType=%s", nodeName, zone, instanceType)
+		return zone, instanceType, nil
 	}
 
 	if kubeClient == nil || kubeClient.CoreV1() == nil {
@@ -748,9 +751,10 @@ func GetNodeInfoFromLabels(ctx context.Context, nodeName string, kubeClient clie
 	if len(node.Labels) == 0 {
 		return "", "", fmt.Errorf("node(%s) label is empty", nodeName)
 	}
+
 	zone := node.Labels[consts.WellKnownTopologyKey]
 	instanceType := node.Labels[consts.InstanceTypeKey]
-	klog.V(2).Infof("GetNodeInfoFromLabels: API server node details for node(%s): zone=%s, instanceType=%s, labels=%v", nodeName, zone, instanceType, node.Labels)
+	klog.V(2).Infof("GetNodeInfoFromLabels: node(%s) from API server: zone=%s, instanceType=%s", nodeName, zone, instanceType)
 	return zone, instanceType, nil
 }
 
