@@ -5036,3 +5036,57 @@ func TestHasVolumeAttachmentForDiskOnNode(t *testing.T) {
 		})
 	}
 }
+
+func TestTruncateErrMsg(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    string
+		wantLen  int
+		wantHead string
+		wantTail string
+	}{
+		{
+			name:    "short message not truncated",
+			input:   "short error",
+			wantLen: len("short error"),
+		},
+		{
+			name:    "exactly at limit not truncated",
+			input:   strings.Repeat("a", maxErrMsgLength),
+			wantLen: maxErrMsgLength,
+		},
+		{
+			name:     "long message preserves head and tail",
+			input:    strings.Repeat("H", 500) + strings.Repeat("T", 600),
+			wantLen:  maxErrMsgLength,
+			wantHead: "HHHH",
+			wantTail: "TTTT",
+		},
+		{
+			name:     "permission error preserves critical tail",
+			input:    "Attach volume pvc-xxx to instance aks-node failed with PUT https://long-url/..." + strings.Repeat("x", 900) + "does not have permission to perform action 'Microsoft.Compute/diskEncryptionSets/read' on the linked scope",
+			wantLen:  maxErrMsgLength,
+			wantTail: "diskEncryptionSets/read' on the linked scope",
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			result := truncateErrMsg(tc.input)
+			if len(result) > maxErrMsgLength {
+				t.Errorf("truncateErrMsg() length = %d, want <= %d", len(result), maxErrMsgLength)
+			}
+			if tc.wantLen > 0 && len(result) != tc.wantLen {
+				t.Errorf("truncateErrMsg() length = %d, want %d", len(result), tc.wantLen)
+			}
+			if tc.wantHead != "" && !strings.HasPrefix(result, tc.wantHead) {
+				t.Errorf("truncateErrMsg() should start with %q, got prefix %q", tc.wantHead, result[:20])
+			}
+			if tc.wantTail != "" && !strings.HasSuffix(result, tc.wantTail) {
+				t.Errorf("truncateErrMsg() should end with %q, got suffix %q", tc.wantTail, result[len(result)-50:])
+			}
+			if len(tc.input) > maxErrMsgLength && !strings.Contains(result, " ... ") {
+				t.Error("truncateErrMsg() should contain ellipsis for truncated messages")
+			}
+		})
+	}
+}
