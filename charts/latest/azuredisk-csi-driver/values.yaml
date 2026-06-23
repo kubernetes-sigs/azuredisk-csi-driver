@@ -199,6 +199,7 @@ snapshot:
 
 feature:
   enableFSGroupPolicy: true
+  enableSELinuxMount: false
 
 driver:
   name: disk.csi.azure.com
