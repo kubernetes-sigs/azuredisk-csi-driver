@@ -36,6 +36,7 @@ import (
 
 	grpcprom "github.com/grpc-ecosystem/go-grpc-middleware/providers/prometheus"
 	corev1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	k8stypes "k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/wait"
@@ -163,6 +164,7 @@ type Driver struct {
 	convertRWCachingModeForIntreePV bool
 	nodeLister                      cache.GenericLister
 	nodeInformerSynced              cache.InformerSynced
+	nodeInformerFactory             metadatainformer.SharedInformerFactory
 }
 
 // NewDriver Creates a NewCSIDriver object. Assumes vendor version is equal to driver version &
@@ -355,20 +357,11 @@ func NewDriver(options *DriverOptions) *Driver {
 		if err != nil {
 			klog.Warningf("failed to create metadata client: %v, node informer will not be used", err)
 		} else {
-			nodeInformerFactory := metadatainformer.NewSharedInformerFactory(metadataClient, 0)
+			driver.nodeInformerFactory = metadatainformer.NewSharedInformerFactory(metadataClient, 0)
 			nodeGVR := schema.GroupVersionResource{Group: "", Version: "v1", Resource: "nodes"}
-			nodeInformer := nodeInformerFactory.ForResource(nodeGVR)
+			nodeInformer := driver.nodeInformerFactory.ForResource(nodeGVR)
 			driver.nodeLister = nodeInformer.Lister()
 			driver.nodeInformerSynced = nodeInformer.Informer().HasSynced
-			nodeInformerFactory.Start(context.Background().Done())
-			syncCtx, syncCancel := context.WithTimeout(context.Background(), 30*time.Second)
-			defer syncCancel()
-			if !cache.WaitForCacheSync(syncCtx.Done(), driver.nodeInformerSynced) {
-				klog.Warningf("metadata node informer cache has not synced yet, will continue to sync in background")
-			} else {
-				klog.V(2).Infof("metadata node informer cache synced successfully")
-			}
-			klog.V(2).Infof("started metadata node informer for GetNodeInfoFromLabels caching")
 			if driver.diskController != nil {
 				driver.diskController.nodeLister = driver.nodeLister
 			}
@@ -463,6 +456,19 @@ func (d *Driver) Run(ctx context.Context) error {
 	csi.RegisterControllerServer(s, d)
 	csi.RegisterNodeServer(s, d)
 
+	// Start the node informer if it was set up during driver initialization
+	if d.nodeInformerFactory != nil {
+		d.nodeInformerFactory.Start(ctx.Done())
+		syncCtx, syncCancel := context.WithTimeout(ctx, 30*time.Second)
+		defer syncCancel()
+		if !cache.WaitForCacheSync(syncCtx.Done(), d.nodeInformerSynced) {
+			klog.Warningf("metadata node informer cache has not synced yet, will continue to sync in background")
+		} else {
+			klog.V(2).Infof("metadata node informer cache synced successfully")
+		}
+		klog.V(2).Infof("started metadata node informer for GetNodeInfoFromLabels caching")
+	}
+
 	go func() {
 		//graceful shutdown
 		<-ctx.Done()
@@ -470,6 +476,11 @@ func (d *Driver) Run(ctx context.Context) error {
 		// Stop migration monitor if it exists
 		if d.migrationMonitor != nil {
 			d.migrationMonitor.Stop()
+		}
+
+		// Shutdown node informer if it was started
+		if d.nodeInformerFactory != nil {
+			d.nodeInformerFactory.Shutdown()
 		}
 
 		s.GracefulStop()
@@ -715,30 +726,39 @@ func (d *Driver) getUsedLunsFromNode(ctx context.Context, nodeName k8stypes.Node
 	return usedLuns, nil
 }
 
-// GetNodeInfoFromLabels get zone, instanceType from node labels using the cached nodeLister.
-// If nodeLister is nil, it falls back to the kubeClient API server.
-func GetNodeInfoFromLabels(ctx context.Context, nodeName string, kubeClient clientset.Interface, nodeLister cache.GenericLister) (string, string, error) {
-	if nodeLister != nil {
-		obj, err := nodeLister.Get(nodeName)
-		if err != nil {
-			return "", "", fmt.Errorf("get node(%s) from lister failed: %v", nodeName, err)
-		}
-
-		pom, ok := obj.(*metav1.PartialObjectMetadata)
-		if !ok {
-			return "", "", fmt.Errorf("node(%s) from lister is not *metav1.PartialObjectMetadata", nodeName)
-		}
-
-		if len(pom.Labels) == 0 {
-			return "", "", fmt.Errorf("node(%s) labels are empty", nodeName)
-		}
-
-		zone := pom.Labels[consts.WellKnownTopologyKey]
-		instanceType := pom.Labels[consts.InstanceTypeKey]
-		klog.V(2).Infof("GetNodeInfoFromLabels: node(%s): zone=%s, instanceType=%s", nodeName, zone, instanceType)
-		return zone, instanceType, nil
+// GetNodeInfoFromNodeLister gets zone, instanceType from node labels using the cached nodeLister.
+func GetNodeInfoFromNodeLister(nodeName string, nodeLister cache.GenericLister) (string, string, error) {
+	if nodeLister == nil {
+		return "", "", fmt.Errorf("nodeLister is nil")
 	}
 
+	obj, err := nodeLister.Get(nodeName)
+	if err != nil {
+		if apierrors.IsNotFound(err) {
+			klog.V(4).Infof("GetNodeInfoFromNodeLister: node(%s) not found in lister cache", nodeName)
+			return "", "", nil
+		}
+		return "", "", fmt.Errorf("get node(%s) from lister failed: %v", nodeName, err)
+	}
+
+	pom, ok := obj.(*metav1.PartialObjectMetadata)
+	if !ok {
+		return "", "", fmt.Errorf("node(%s) from lister is not *metav1.PartialObjectMetadata", nodeName)
+	}
+
+	if len(pom.Labels) == 0 {
+		klog.V(4).Infof("GetNodeInfoFromNodeLister: node(%s) labels are empty", nodeName)
+		return "", "", nil
+	}
+
+	zone := pom.Labels[consts.WellKnownTopologyKey]
+	instanceType := pom.Labels[consts.InstanceTypeKey]
+	klog.V(4).Infof("GetNodeInfoFromNodeLister: node(%s): zone=%s, instanceType=%s", nodeName, zone, instanceType)
+	return zone, instanceType, nil
+}
+
+// GetNodeInfoFromLabels gets zone, instanceType from node labels via the kubeClient API server.
+func GetNodeInfoFromLabels(ctx context.Context, nodeName string, kubeClient clientset.Interface) (string, string, error) {
 	if kubeClient == nil || kubeClient.CoreV1() == nil {
 		return "", "", fmt.Errorf("kubeClient is nil")
 	}
@@ -754,7 +774,7 @@ func GetNodeInfoFromLabels(ctx context.Context, nodeName string, kubeClient clie
 
 	zone := node.Labels[consts.WellKnownTopologyKey]
 	instanceType := node.Labels[consts.InstanceTypeKey]
-	klog.V(2).Infof("GetNodeInfoFromLabels: node(%s) from API server: zone=%s, instanceType=%s", nodeName, zone, instanceType)
+	klog.V(4).Infof("GetNodeInfoFromLabels: node(%s) from API server: zone=%s, instanceType=%s", nodeName, zone, instanceType)
 	return zone, instanceType, nil
 }
 

@@ -236,7 +236,13 @@ func (c *controllerCommon) AttachDisk(ctx context.Context, diskName, diskURI str
 
 	numDisksAllowed := math.MaxInt
 	if c.CheckDiskCountForBatching {
-		_, instanceType, err := GetNodeInfoFromLabels(ctx, string(nodeName), c.cloud.KubeClient, c.nodeLister)
+		var instanceType string
+		var err error
+		if c.nodeLister != nil {
+			_, instanceType, err = GetNodeInfoFromNodeLister(string(nodeName), c.nodeLister)
+		} else {
+			_, instanceType, err = GetNodeInfoFromLabels(ctx, string(nodeName), c.cloud.KubeClient)
+		}
 		if err != nil {
 			klog.Errorf("failed to get node info from labels: %v", err)
 		} else if instanceType != "" {
