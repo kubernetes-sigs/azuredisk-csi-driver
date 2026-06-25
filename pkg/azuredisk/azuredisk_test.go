@@ -366,9 +366,7 @@ func TestGetNodeInfoFromNodeLister(t *testing.T) {
 				_ = indexer.Add(node)
 				return cache.NewGenericLister(indexer, nodeGR)
 			}(),
-			expectedZone:   "",
-			expectedType:   "",
-			expectErrorNil: true,
+			expectedError: fmt.Errorf("node(node1) label is empty"),
 		},
 		{
 			name:     "lister does not have the node - returns nil (NotFound is not an error)",

@@ -747,8 +747,7 @@ func GetNodeInfoFromNodeLister(nodeName string, nodeLister cache.GenericLister) 
 	}
 
 	if len(pom.Labels) == 0 {
-		klog.V(4).Infof("GetNodeInfoFromNodeLister: node(%s) labels are empty", nodeName)
-		return "", "", nil
+		return "", "", fmt.Errorf("node(%s) label is empty", nodeName)
 	}
 
 	zone := pom.Labels[consts.WellKnownTopologyKey]
