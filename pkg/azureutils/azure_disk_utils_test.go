@@ -309,7 +309,7 @@ users:
 			}
 		}
 
-		kubeClient, err := GetKubeClient(test.kubeconfig)
+		kubeClient, err := GetKubeClient(test.kubeconfig, 0, 0)
 		if err != nil {
 			if ((err == nil) == (test.expectedErr == nil)) && !reflect.DeepEqual(err, test.expectedErr) && !strings.Contains(err.Error(), test.expectedErr.Error()) {
 				t.Errorf("desc: %s,\n input: %q, GetCloudProvider err: %v, expectedErr: %v", test.desc, test.kubeconfig, err, test.expectedErr)
