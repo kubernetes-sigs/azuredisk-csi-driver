@@ -352,7 +352,7 @@ func (d *Driver) NodeGetCapabilities(_ context.Context, _ *csi.NodeGetCapabiliti
 // NodeGetInfo return info of the node on which this plugin is running
 func (d *Driver) NodeGetInfo(ctx context.Context, _ *csi.NodeGetInfoRequest) (*csi.NodeGetInfoResponse, error) {
 	topology := &csi.Topology{
-		Segments: map[string]string{topologyKey: ""},
+		Segments: map[string]string{topologyKey: consts.TopologyRegionalZoneValue},
 	}
 
 	var failureDomainFromLabels, instanceTypeFromLabels string
