@@ -1059,16 +1059,16 @@ func TestAttachDiskRequest(t *testing.T) {
 			diskURI := fmt.Sprintf("%s%d", test.diskURI, i)
 			diskName := fmt.Sprintf("%s%d", test.diskName, i)
 			ops := &provider.AttachDiskOptions{DiskName: diskName}
-			_, err := common.batchAttachDiskRequest(diskURI, test.nodeName, ops)
+			_, err := common.batchAttachDiskRequest(context.Background(), diskURI, test.nodeName, ops)
 			assert.Equal(t, test.expectedErr, err != nil, "TestCase[%d]: %s", i, test.desc)
 			if test.duplicateDiskRequest {
-				_, err := common.batchAttachDiskRequest(diskURI, test.nodeName, ops)
+				_, err := common.batchAttachDiskRequest(context.Background(), diskURI, test.nodeName, ops)
 				assert.Equal(t, test.expectedErr, err != nil, "TestCase[%d]: %s", i, test.desc)
 			}
 		}
 
 		diskURI := fmt.Sprintf("%s%d", test.diskURI, test.diskNum)
-		diskMap, err := common.retrieveAttachBatchedDiskRequests(test.nodeName, diskURI)
+		diskMap, err := common.retrieveAttachBatchedDiskRequests(context.Background(), test.nodeName, diskURI)
 		assert.Equal(t, test.expectedErr, err != nil, "TestCase[%d]: %s", i, test.desc)
 		assert.Equal(t, test.diskNum, len(diskMap), "TestCase[%d]: %s", i, test.desc)
 		for diskURI, opt := range diskMap {
@@ -1136,15 +1136,15 @@ func TestDetachDiskRequest(t *testing.T) {
 		for i := 1; i <= test.diskNum; i++ {
 			diskURI = fmt.Sprintf("%s%d", test.diskURI, i)
 			diskName := fmt.Sprintf("%s%d", test.diskName, i)
-			_, err := common.batchDetachDiskRequest(diskName, diskURI, test.nodeName)
+			_, err := common.batchDetachDiskRequest(context.Background(), diskName, diskURI, test.nodeName)
 			assert.Equal(t, test.expectedErr, err != nil, "TestCase[%d]: %s", i, test.desc)
 			if test.duplicateDiskRequest {
-				_, err := common.batchDetachDiskRequest(diskName, diskURI, test.nodeName)
+				_, err := common.batchDetachDiskRequest(context.Background(), diskName, diskURI, test.nodeName)
 				assert.Equal(t, test.expectedErr, err != nil, "TestCase[%d]: %s", i, test.desc)
 			}
 		}
 
-		diskMap, err := common.retrieveDetachBatchedDiskRequests(test.nodeName, diskURI)
+		diskMap, err := common.retrieveDetachBatchedDiskRequests(context.Background(), test.nodeName, diskURI)
 		assert.Equal(t, test.expectedErr, err != nil, "TestCase[%d]: %s", i, test.desc)
 		assert.Equal(t, test.diskNum, len(diskMap), "TestCase[%d]: %s", i, test.desc)
 		for diskURI, diskName := range diskMap {
@@ -1211,15 +1211,15 @@ func TestGetDetachDiskRequestNum(t *testing.T) {
 		for i := 1; i <= test.diskNum; i++ {
 			diskURI := fmt.Sprintf("%s%d", test.diskURI, i)
 			diskName := fmt.Sprintf("%s%d", test.diskName, i)
-			_, err := common.batchDetachDiskRequest(diskName, diskURI, test.nodeName)
+			_, err := common.batchDetachDiskRequest(context.Background(), diskName, diskURI, test.nodeName)
 			assert.Equal(t, test.expectedErr, err != nil, "TestCase[%d]: %s", i, test.desc)
 			if test.duplicateDiskRequest {
-				_, err := common.batchDetachDiskRequest(diskName, diskURI, test.nodeName)
+				_, err := common.batchDetachDiskRequest(context.Background(), diskName, diskURI, test.nodeName)
 				assert.Equal(t, test.expectedErr, err != nil, "TestCase[%d]: %s", i, test.desc)
 			}
 		}
 
-		detachDiskReqeustNum, err := common.getDetachDiskRequestNum(test.nodeName)
+		detachDiskReqeustNum, err := common.getDetachDiskRequestNum(context.Background(), test.nodeName)
 		assert.Equal(t, test.expectedErr, err != nil, "TestCase[%d]: %s", i, test.desc)
 		assert.Equal(t, test.diskNum, detachDiskReqeustNum, "TestCase[%d]: %s", i, test.desc)
 	}
