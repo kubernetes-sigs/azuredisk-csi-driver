@@ -105,6 +105,8 @@ spec:
             - "--extra-create-metadata=true"
             - "--retry-interval-max=30m"
             - "--worker-threads=250"
+            - "--kube-api-qps=100"
+            - "--kube-api-burst=200"
           env:
             - name: ADDRESS
               value: /csi/csi.sock
