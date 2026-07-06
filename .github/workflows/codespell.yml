@@ -9,7 +9,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
-      - uses: codespell-project/actions-codespell@710c0e89d3a9a8b91a7ed9c9695810354fbebc1b # master
+      - uses: codespell-project/actions-codespell@2b9806f41af12bec53e4f85ec5ac993fb4649c6d # master
         with:
           check_filenames: true
           skip: ./.git,./.github/workflows/codespell.yml,.git,*.png,*.jpg,*.svg,*.sum,./vendor,go.sum,crd-csi-snapshot-ga.yaml,crd-csi-snapshot.yaml
