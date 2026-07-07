@@ -76,9 +76,12 @@ if ! [[ "$1" == *"windows-2022"* ]]; then
 fi
 
 if [[ "$1" == *"windows"* ]]; then
+    # skip Windows statefulset example to improve CI stability (StatefulSet pod
+    # frequently stuck in ContainerCreating on Windows nodes, causing the whole
+    # AfterSuite to fail even when e2e tests pass; deployment example already
+    # covers the mount/attach code path)
     EXAMPLES+=(\
     deploy/example/windows/deployment.yaml \
-    deploy/example/windows/statefulset.yaml \
     )
 fi
 
