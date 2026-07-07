@@ -115,7 +115,7 @@ The following table lists the configurable parameters of the latest Azure Disk C
 | `driver.azureGoSDKLogLevel`                       | [Azure go sdk log level](https://github.com/Azure/azure-sdk-for-go/blob/main/documentation/previous-versions-quickstart.md#built-in-basic-requestresponse-logging)  | ``(no logs), `DEBUG`, `INFO`, `WARNING`, `ERROR`, [etc](https://github.com/Azure/go-autorest/blob/50e09bb39af124f28f29ba60efde3fa74a4fe93f/logger/logger.go#L65-L73) |
 | `feature.enableFSGroupPolicy`                     | enable `fsGroupPolicy` on a k8s 1.20+ cluster              | `true`                      |
 | `image.baseRepo`                                  | base repository of driver images                           | `mcr.microsoft.com`                      |
-| `image.azuredisk.repository`                      | azuredisk-csi-driver container image                          | `/k8s/csi/azuredisk-csi`                      |
+| `image.azuredisk.repository`                      | azuredisk-csi-driver container image                          | `/oss/v2/kubernetes-csi/azuredisk-csi`                      |
 | `image.azuredisk.tag`                             | azuredisk-csi-driver container image tag                      | ``                                                       |
 | `image.azuredisk.pullPolicy`                      | azuredisk-csi-driver image pull policy                     | `IfNotPresent`                                                 |
 | `image.csiProvisioner.repository`                 | csi-provisioner container image                               | `/oss/v2/kubernetes-csi/csi-provisioner`         |
