@@ -54,6 +54,8 @@ controller:
   provisionerWorkerThreads: 100
   attacherWorkerThreads: 1000
   vmssCacheTTLInSeconds: -1
+  kubeAPIQPS: 0
+  kubeAPIBurst: 0
   logLevel: 5
   extraArgs: []
   otelTracing:

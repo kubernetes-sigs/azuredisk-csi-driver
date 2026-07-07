@@ -74,6 +74,8 @@ type DriverOptions struct {
 	GoMaxProcs                         int64
 	EnableMigrationMonitor             bool
 	ConvertRWCachingModeForIntreePV    bool
+	KubeAPIQPS                         float64
+	KubeAPIBurst                       int
 }
 
 func (o *DriverOptions) AddFlags() *flag.FlagSet {
@@ -129,5 +131,7 @@ func (o *DriverOptions) AddFlags() *flag.FlagSet {
 	fs.Int64Var(&o.GoMaxProcs, "max-procs", 2, "maximum number of CPUs that can be executing simultaneously in golang runtime")
 	fs.BoolVar(&o.EnableMigrationMonitor, "enable-migration-monitor", true, "enable migration monitor for Azure Disk CSI Driver")
 	fs.BoolVar(&o.ConvertRWCachingModeForIntreePV, "convert-rw-caching-mode-for-intree-pv", false, "convert ReadWrite cachingMode to ReadOnly for intree PVs to avoid issues")
+	fs.Float64Var(&o.KubeAPIQPS, "kube-api-qps", 0, "QPS for kubernetes API client (0 uses default)")
+	fs.IntVar(&o.KubeAPIBurst, "kube-api-burst", 0, "Burst for kubernetes API client (0 uses default)")
 	return fs
 }
