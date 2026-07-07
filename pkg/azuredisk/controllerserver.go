@@ -57,6 +57,22 @@ const (
 	maxSnapshotSizeDifferenceAllowed = 50 // in GiB
 )
 
+// truncateErrMsg truncates long error messages while preserving both the
+// beginning (context) and end (critical details like permission errors).
+// This ensures that important information at the tail of verbose Azure
+// error messages (e.g., missing permissions) remains visible in kube-events
+// which are limited to 1024 bytes.
+func truncateErrMsg(errMsg string) string {
+	if len(errMsg) <= maxErrMsgLength {
+		return errMsg
+	}
+	// Keep head (~40%) for context and tail (~60%) for critical error details.
+	const ellipsis = " ... "
+	headLen := (maxErrMsgLength - len(ellipsis)) * 2 / 5
+	tailLen := maxErrMsgLength - headLen - len(ellipsis)
+	return errMsg[:headLen] + ellipsis + errMsg[len(errMsg)-tailLen:]
+}
+
 // listVolumeStatus explains the return status of `listVolumesByResourceGroup`
 type listVolumeStatus struct {
 	numVisited    int  // the number of iterated azure disks
@@ -755,9 +771,7 @@ func (d *Driver) ControllerPublishVolume(ctx context.Context, req *csi.Controlle
 			if err != nil {
 				klog.Errorf("Attach volume %s to instance %s failed with %v", diskName, nodeName, err)
 				errMsg := fmt.Sprintf("Attach volume %s to instance %s failed with %v", diskName, nodeName, err)
-				if len(errMsg) > maxErrMsgLength {
-					errMsg = errMsg[:maxErrMsgLength]
-				}
+				errMsg = truncateErrMsg(errMsg)
 				return nil, status.Errorf(codes.Internal, "%v", errMsg)
 			}
 		}
@@ -807,9 +821,7 @@ func (d *Driver) ControllerUnpublishVolume(ctx context.Context, req *csi.Control
 		} else {
 			klog.Errorf("Could not detach volume %s from node %s: %v", diskURI, nodeID, err)
 			errMsg := fmt.Sprintf("Could not detach volume %s from node %s: %v", diskURI, nodeID, err)
-			if len(errMsg) > maxErrMsgLength {
-				errMsg = errMsg[:maxErrMsgLength]
-			}
+			errMsg = truncateErrMsg(errMsg)
 			return nil, status.Errorf(codes.Internal, "%v", errMsg)
 		}
 	}
