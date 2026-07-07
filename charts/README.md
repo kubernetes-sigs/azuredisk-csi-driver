@@ -116,22 +116,22 @@ The following table lists the configurable parameters of the latest Azure Disk C
 | `feature.enableFSGroupPolicy`                     | enable `fsGroupPolicy` on a k8s 1.20+ cluster              | `true`                      |
 | `feature.enableSELinuxMount`                      | enable `seLinuxMount` on a k8s 1.30+ cluster ([KEP 1710](https://github.com/kubernetes/enhancements/issues/1710)), mounts `/sys/fs/selinux` and `/etc/selinux` into the node driver container so that mount-time SELinux labeling works | `false`                     |
 | `image.baseRepo`                                  | base repository of driver images                           | `mcr.microsoft.com`                      |
-| `image.azuredisk.repository`                      | azuredisk-csi-driver container image                          | `/oss/kubernetes-csi/azuredisk-csi`                      |
+| `image.azuredisk.repository`                      | azuredisk-csi-driver container image                          | `/k8s/csi/azuredisk-csi`                      |
 | `image.azuredisk.tag`                             | azuredisk-csi-driver container image tag                      | ``                                                       |
 | `image.azuredisk.pullPolicy`                      | azuredisk-csi-driver image pull policy                     | `IfNotPresent`                                                 |
-| `image.csiProvisioner.repository`                 | csi-provisioner container image                               | `/oss/kubernetes-csi/csi-provisioner`         |
+| `image.csiProvisioner.repository`                 | csi-provisioner container image                               | `/oss/v2/kubernetes-csi/csi-provisioner`         |
 | `image.csiProvisioner.tag`                        | csi-provisioner container image tag                           | `v6.3.0`                                                       |
 | `image.csiProvisioner.pullPolicy`                 | csi-provisioner image pull policy                          | `IfNotPresent`                                                 |
-| `image.csiAttacher.repository`                    | csi-attacher container image                                  | `/oss/kubernetes-csi/csi-attacher`            |
+| `image.csiAttacher.repository`                    | csi-attacher container image                                  | `/oss/v2/kubernetes-csi/csi-attacher`            |
 | `image.csiAttacher.tag`                           | csi-attacher container image tag                              | `v4.12.0`                                                       |
 | `image.csiAttacher.pullPolicy`                    | csi-attacher image pull policy                             | `IfNotPresent`                                                 |
-| `image.csiResizer.repository`                     | csi-resizer container image                                   | `/oss/kubernetes-csi/csi-resizer`             |
+| `image.csiResizer.repository`                     | csi-resizer container image                                   | `/oss/v2/kubernetes-csi/csi-resizer`             |
 | `image.csiResizer.tag`                            | csi-resizer container image tag                               | `v2.2.0`                                                       |
 | `image.csiResizer.pullPolicy`                     | csi-resizer image pull policy                              | `IfNotPresent`                                                 |
-| `image.livenessProbe.repository`                  | liveness-probe container image                                | `/oss/kubernetes-csi/livenessprobe`           |
+| `image.livenessProbe.repository`                  | liveness-probe container image                                | `/oss/v2/kubernetes-csi/livenessprobe`           |
 | `image.livenessProbe.tag`                         | liveness-probe container image tag                            | `v2.19.0`                                                       |
 | `image.livenessProbe.pullPolicy`                  | liveness-probe image pull policy                           | `IfNotPresent`                                                 |
-| `image.nodeDriverRegistrar.repository`            | csi-node-driver-registrar container image                     | `/oss/kubernetes-csi/csi-node-driver-registrar` |
+| `image.nodeDriverRegistrar.repository`            | csi-node-driver-registrar container image                     | `/oss/v2/kubernetes-csi/csi-node-driver-registrar` |
 | `image.nodeDriverRegistrar.tag`                   | csi-node-driver-registrar container image tag                 | `v2.17.0`                                                       |
 | `image.nodeDriverRegistrar.pullPolicy`            | csi-node-driver-registrar image pull policy                | `IfNotPresent`                                                 |
 | `imagePullSecrets`                                | Specify docker-registry secret names as an array           | [] (does not add image pull secrets to deployed pods)        |                                       |
@@ -202,10 +202,10 @@ The following table lists the configurable parameters of the latest Azure Disk C
 | `node.nodeDriverRegistrar.livenessProbe.failureThreshold`    | node-driver-registrar liveness probe failureThreshold                                                      | `2`                                                     |
 | `node.logLevel`                                   | node driver log level                                      |`5`                                                           |
 | `snapshot.enabled`                                | whether enable snapshot feature                            | `false`                                                        |
-| `snapshot.image.csiSnapshotter.repository`        | csi-snapshotter container image                               | `/oss/kubernetes-csi/csi-snapshotter`         |
+| `snapshot.image.csiSnapshotter.repository`        | csi-snapshotter container image                               | `/oss/v2/kubernetes-csi/csi-snapshotter`         |
 | `snapshot.image.csiSnapshotter.tag`               | csi-snapshotter container image tag                           | `v8.6.0`                                                       |
 | `snapshot.image.csiSnapshotter.pullPolicy`        | csi-snapshotter image pull policy                          | `IfNotPresent`                                                 |
-| `snapshot.image.csiSnapshotController.repository` | snapshot-controller container image                           | `/oss/kubernetes-csi/snapshot-controller`     |
+| `snapshot.image.csiSnapshotController.repository` | snapshot-controller container image                           | `/oss/v2/kubernetes-csi/snapshot-controller`     |
 | `snapshot.image.csiSnapshotController.tag`        | snapshot-controller container image tag                       | `v8.6.0`                                                      |
 | `snapshot.image.csiSnapshotController.pullPolicy` | snapshot-controller image pull policy                      | `IfNotPresent`                                                 |
 | `snapshot.snapshotController.name`                | snapshot controller name                                   | `csi-snapshot-controller`                                                           |
