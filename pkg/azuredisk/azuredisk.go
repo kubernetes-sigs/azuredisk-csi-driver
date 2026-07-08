@@ -756,15 +756,23 @@ func GetNodeInfoFromNodeLister(nodeName string, nodeLister cache.GenericLister) 
 	return zone, instanceType, nil
 }
 
-// GetNodeInfoFromLabels gets zone, instanceType from node labels via the kubeClient API server.
-func GetNodeInfoFromLabels(ctx context.Context, nodeName string, kubeClient clientset.Interface) (string, string, error) {
+// getNode returns the Kubernetes Node object for the given nodeName.
+func getNode(ctx context.Context, nodeName string, kubeClient clientset.Interface) (*corev1.Node, error) {
 	if kubeClient == nil || kubeClient.CoreV1() == nil {
-		return "", "", fmt.Errorf("kubeClient is nil")
+		return nil, fmt.Errorf("kubeClient is nil")
 	}
-
 	node, err := kubeClient.CoreV1().Nodes().Get(ctx, nodeName, metav1.GetOptions{})
 	if err != nil {
-		return "", "", fmt.Errorf("get node(%s) failed with %v", nodeName, err)
+		return nil, fmt.Errorf("get node(%s) failed with %v", nodeName, err)
+	}
+	return node, nil
+}
+
+// GetNodeInfoFromLabels gets zone, instanceType from node labels via the kubeClient API server.
+func GetNodeInfoFromLabels(ctx context.Context, nodeName string, kubeClient clientset.Interface) (string, string, error) {
+	node, err := getNode(ctx, nodeName, kubeClient)
+	if err != nil {
+		return "", "", err
 	}
 
 	if len(node.Labels) == 0 {

@@ -35,16 +35,20 @@ import (
 	autorestmocks "github.com/Azure/go-autorest/autorest/mocks"
 	"github.com/stretchr/testify/assert"
 	"go.uber.org/mock/gomock"
+	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/wait"
 	cloudprovider "k8s.io/cloud-provider"
 	"k8s.io/klog/v2"
 	"k8s.io/utils/ptr"
 
+	"k8s.io/client-go/kubernetes/fake"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 	"sigs.k8s.io/cloud-provider-azure/pkg/azclient/diskclient/mock_diskclient"
 	"sigs.k8s.io/cloud-provider-azure/pkg/azclient/mock_azclient"
 	mockvmclient "sigs.k8s.io/cloud-provider-azure/pkg/azclient/virtualmachineclient/mock_virtualmachineclient"
+	mockvmssvmclient "sigs.k8s.io/cloud-provider-azure/pkg/azclient/virtualmachinescalesetvmclient/mock_virtualmachinescalesetvmclient"
 	azcache "sigs.k8s.io/cloud-provider-azure/pkg/cache"
 	"sigs.k8s.io/cloud-provider-azure/pkg/consts"
 	"sigs.k8s.io/cloud-provider-azure/pkg/provider"
@@ -338,6 +342,15 @@ func TestForceDetach(t *testing.T) {
 				clientFactory:                      testCloud.ComputeClientFactory,
 			}
 
+			// Provide the node's providerID so verifyInstanceForDetach uses the targeted
+			// VM GET fast path (avoiding the disk-based fallback).
+			node := &corev1.Node{
+				ObjectMeta: metav1.ObjectMeta{Name: string(test.nodeName)},
+				Spec: corev1.NodeSpec{ProviderID: fmt.Sprintf("azure:///subscriptions/%s/resourceGroups/%s/providers/Microsoft.Compute/virtualMachines/%s",
+					testCloud.SubscriptionID, testCloud.ResourceGroup, test.nodeName)},
+			}
+			testCloud.KubeClient = fake.NewSimpleClientset(node)
+
 			diskURI := fmt.Sprintf("/subscriptions/%s/resourceGroups/%s/providers/Microsoft.Compute/disks/%s",
 				testCloud.SubscriptionID, testCloud.ResourceGroup, test.diskName)
 
@@ -465,6 +478,14 @@ func TestCommonDetachDisk(t *testing.T) {
 			DetachOperationMinTimeoutInSeconds: 2,
 			clientFactory:                      testCloud.ComputeClientFactory,
 		}
+		// Provide the node's providerID so verifyInstanceForDetach uses the targeted
+		// VM GET fast path (avoiding the disk-based fallback).
+		node := &corev1.Node{
+			ObjectMeta: metav1.ObjectMeta{Name: string(test.nodeName)},
+			Spec: corev1.NodeSpec{ProviderID: fmt.Sprintf("azure:///subscriptions/%s/resourceGroups/%s/providers/Microsoft.Compute/virtualMachines/%s",
+				testCloud.SubscriptionID, testCloud.ResourceGroup, test.nodeName)},
+		}
+		testCloud.KubeClient = fake.NewSimpleClientset(node)
 		diskURI := fmt.Sprintf("/subscriptions/%s/resourceGroups/%s/providers/Microsoft.Compute/disks/disk-name",
 			testCloud.SubscriptionID, testCloud.ResourceGroup)
 		expectedVMs := setTestVirtualMachines(testCloud, test.vmList, false)
@@ -485,6 +506,303 @@ func TestCommonDetachDisk(t *testing.T) {
 
 		err := common.DetachDisk(ctx, test.diskName, diskURI, test.nodeName)
 		assert.Equal(t, test.expectedErr, err != nil, "TestCase[%d]: %s, err: %v", i, test.desc, err)
+	}
+}
+
+func TestParseProviderID(t *testing.T) {
+	testCases := []struct {
+		desc          string
+		providerID    string
+		expectErr     bool
+		resourceGroup string
+		vmssName      string
+		name          string
+	}{
+		{
+			desc:          "standalone/flex VM providerID",
+			providerID:    "azure:///subscriptions/sub/resourceGroups/rg/providers/Microsoft.Compute/virtualMachines/vm1",
+			resourceGroup: "rg",
+			name:          "vm1",
+		},
+		{
+			desc:          "VMSS uniform providerID",
+			providerID:    "azure:///subscriptions/sub/resourceGroups/rg/providers/Microsoft.Compute/virtualMachineScaleSets/vmss/virtualMachines/0",
+			resourceGroup: "rg",
+			vmssName:      "vmss",
+			name:          "0",
+		},
+		{
+			desc:          "providerID without azure scheme prefix",
+			providerID:    "/subscriptions/sub/resourceGroups/rg/providers/Microsoft.Compute/virtualMachines/vm1",
+			resourceGroup: "rg",
+			name:          "vm1",
+		},
+		{
+			desc:       "empty providerID",
+			providerID: "",
+			expectErr:  true,
+		},
+		{
+			desc:       "malformed providerID",
+			providerID: "azure:///subscriptions/sub/foo/bar",
+			expectErr:  true,
+		},
+		{
+			desc:       "unsupported resource type",
+			providerID: "azure:///subscriptions/sub/resourceGroups/rg/providers/Microsoft.Compute/disks/disk1",
+			expectErr:  true,
+		},
+	}
+
+	for _, test := range testCases {
+		t.Run(test.desc, func(t *testing.T) {
+			info, err := parseProviderID(test.providerID)
+			if test.expectErr {
+				assert.Error(t, err)
+				return
+			}
+			assert.NoError(t, err)
+			assert.Equal(t, test.resourceGroup, info.resourceGroup)
+			assert.Equal(t, test.vmssName, info.vmssName)
+			assert.Equal(t, test.name, info.name)
+		})
+	}
+}
+
+func TestVerifyInstanceForDetach(t *testing.T) {
+	notFoundErr := &azcore.ResponseError{StatusCode: http.StatusNotFound}
+
+	testCases := []struct {
+		desc           string
+		nodeName       types.NodeName
+		providerID     string
+		hasNode        bool
+		getErr         error
+		expectNotFound bool
+		expectErr      bool
+	}{
+		{
+			desc:       "standalone VM exists via targeted GET",
+			nodeName:   "vm1",
+			providerID: "azure:///subscriptions/subscription/resourceGroups/rg/providers/Microsoft.Compute/virtualMachines/vm1",
+			hasNode:    true,
+		},
+		{
+			desc:           "standalone VM not found via targeted GET",
+			nodeName:       "vm1",
+			providerID:     "azure:///subscriptions/subscription/resourceGroups/rg/providers/Microsoft.Compute/virtualMachines/vm1",
+			hasNode:        true,
+			getErr:         notFoundErr,
+			expectNotFound: true,
+		},
+		{
+			desc:       "VMSS uniform instance exists via targeted GET",
+			nodeName:   "vmss000000",
+			providerID: "azure:///subscriptions/subscription/resourceGroups/rg/providers/Microsoft.Compute/virtualMachineScaleSets/vmss/virtualMachines/0",
+			hasNode:    true,
+		},
+		{
+			desc:           "VMSS uniform instance not found via targeted GET",
+			nodeName:       "vmss000000",
+			providerID:     "azure:///subscriptions/subscription/resourceGroups/rg/providers/Microsoft.Compute/virtualMachineScaleSets/vmss/virtualMachines/0",
+			hasNode:        true,
+			getErr:         notFoundErr,
+			expectNotFound: true,
+		},
+	}
+
+	for _, test := range testCases {
+		t.Run(test.desc, func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			defer ctrl.Finish()
+
+			testCloud := provider.GetTestCloud(ctrl)
+			node := &corev1.Node{
+				ObjectMeta: metav1.ObjectMeta{Name: string(test.nodeName)},
+				Spec:       corev1.NodeSpec{ProviderID: test.providerID},
+			}
+			testCloud.KubeClient = fake.NewSimpleClientset(node)
+
+			info, err := parseProviderID(test.providerID)
+			assert.NoError(t, err)
+			if info.vmssName != "" {
+				mockVMSSVMClient := testCloud.ComputeClientFactory.GetVirtualMachineScaleSetVMClient().(*mockvmssvmclient.MockInterface)
+				mockVMSSVMClient.EXPECT().Get(gomock.Any(), info.resourceGroup, info.vmssName, info.name).
+					Return(&armcompute.VirtualMachineScaleSetVM{}, test.getErr).AnyTimes()
+			} else {
+				mockVMClient := testCloud.ComputeClientFactory.GetVirtualMachineClient().(*mockvmclient.MockInterface)
+				mockVMClient.EXPECT().Get(gomock.Any(), info.resourceGroup, info.name, gomock.Any()).
+					Return(&armcompute.VirtualMachine{}, test.getErr).AnyTimes()
+			}
+
+			common := &controllerCommon{
+				cloud:         testCloud,
+				lockMap:       newLockMap(),
+				clientFactory: testCloud.ComputeClientFactory,
+			}
+
+			diskURI := fmt.Sprintf("/subscriptions/%s/resourceGroups/%s/providers/Microsoft.Compute/disks/disk-name",
+				testCloud.SubscriptionID, testCloud.ResourceGroup)
+			err = common.verifyInstanceForDetach(t.Context(), diskURI, test.nodeName)
+			if test.expectNotFound {
+				assert.ErrorIs(t, err, cloudprovider.InstanceNotFound)
+				return
+			}
+			if test.expectErr {
+				assert.Error(t, err)
+				return
+			}
+			assert.NoError(t, err)
+		})
+	}
+}
+
+// TestVerifyInstanceForDetachDiskFallback covers the fallback path taken when the
+// node's providerID is unavailable (e.g. the Node object was already deleted):
+// the decision is driven by the disk's ManagedBy, and cloud.InstanceID is only
+// used when the disk itself cannot be read or its ManagedBy cannot be parsed.
+func TestVerifyInstanceForDetachDiskFallback(t *testing.T) {
+	notFoundErr := &azcore.ResponseError{StatusCode: http.StatusNotFound}
+	standaloneManagedBy := "/subscriptions/subscription/resourceGroups/rg/providers/Microsoft.Compute/virtualMachines/vm1"
+	unparseableManagedBy := "/subscriptions/subscription/resourceGroups/rg/providers/Microsoft.Compute/disks/disk1"
+
+	testCases := []struct {
+		desc                  string
+		diskGetErr            error
+		managedBy             *string
+		vmGetErr              error
+		instanceIDErr         error
+		expectNotFound        bool
+		expectAlreadyDetached bool
+		expectErr             bool
+	}{
+		{
+			desc:       "disk get fails -> InstanceID fallback (exists)",
+			diskGetErr: errors.New("throttled"),
+		},
+		{
+			desc:                  "disk not found (404) -> already detached (nothing to detach)",
+			diskGetErr:            notFoundErr,
+			expectAlreadyDetached: true,
+		},
+		{
+			desc:                  "disk ManagedBy nil -> already detached",
+			managedBy:             nil,
+			expectAlreadyDetached: true,
+		},
+		{
+			desc:      "disk ManagedBy points to existing VM -> exists",
+			managedBy: &standaloneManagedBy,
+		},
+		{
+			desc:           "disk ManagedBy points to missing VM -> InstanceNotFound",
+			managedBy:      &standaloneManagedBy,
+			vmGetErr:       notFoundErr,
+			expectNotFound: true,
+		},
+		{
+			desc:           "disk ManagedBy unparseable -> InstanceID fallback (not found)",
+			managedBy:      &unparseableManagedBy,
+			instanceIDErr:  cloudprovider.InstanceNotFound,
+			expectNotFound: true,
+		},
+	}
+
+	for _, test := range testCases {
+		t.Run(test.desc, func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			defer ctrl.Finish()
+
+			testCloud := provider.GetTestCloud(ctrl)
+			testCloud.UseInstanceMetadata = false
+			// KubeClient is nil in GetTestCloud, so getNodeProviderID fails and the
+			// disk-based fallback is exercised.
+
+			diskClient := mock_diskclient.NewMockInterface(ctrl)
+			testCloud.ComputeClientFactory.(*mock_azclient.MockClientFactory).EXPECT().GetDiskClientForSub(gomock.Any()).Return(diskClient, nil).AnyTimes()
+			diskClient.EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any()).Return(&armcompute.Disk{ManagedBy: test.managedBy}, test.diskGetErr).AnyTimes()
+
+			mockVMClient := testCloud.ComputeClientFactory.GetVirtualMachineClient().(*mockvmclient.MockInterface)
+			mockVMClient.EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(&armcompute.VirtualMachine{}, test.vmGetErr).AnyTimes()
+
+			mockVMSet := provider.NewMockVMSet(ctrl)
+			testCloud.VMSet = mockVMSet
+			mockVMSet.EXPECT().GetInstanceIDByNodeName(gomock.Any(), gomock.Any()).Return("id", test.instanceIDErr).AnyTimes()
+
+			common := &controllerCommon{
+				cloud:         testCloud,
+				lockMap:       newLockMap(),
+				clientFactory: testCloud.ComputeClientFactory,
+			}
+
+			diskURI := fmt.Sprintf("/subscriptions/%s/resourceGroups/%s/providers/Microsoft.Compute/disks/disk-name",
+				testCloud.SubscriptionID, testCloud.ResourceGroup)
+			err := common.verifyInstanceForDetach(t.Context(), diskURI, "vm1")
+			if test.expectAlreadyDetached {
+				assert.ErrorIs(t, err, errDiskAlreadyDetached)
+				return
+			}
+			if test.expectNotFound {
+				assert.ErrorIs(t, err, cloudprovider.InstanceNotFound)
+				return
+			}
+			if test.expectErr {
+				assert.Error(t, err)
+				return
+			}
+			assert.NoError(t, err)
+		})
+	}
+}
+
+// TestVerifyInstanceForDetachVMSSUniform covers the pure VMSS-uniform fast path
+// (DisableAvailabilitySetNodes && !EnableVmssFlexNodes), where cloud.InstanceID is
+// used directly instead of the providerID/disk targeted GET path.
+func TestVerifyInstanceForDetachVMSSUniform(t *testing.T) {
+	testCases := []struct {
+		desc           string
+		instanceIDErr  error
+		expectNotFound bool
+	}{
+		{
+			desc: "vmss-uniform instance exists via InstanceID",
+		},
+		{
+			desc:           "vmss-uniform instance not found via InstanceID",
+			instanceIDErr:  cloudprovider.InstanceNotFound,
+			expectNotFound: true,
+		},
+	}
+
+	for _, test := range testCases {
+		t.Run(test.desc, func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			defer ctrl.Finish()
+
+			testCloud := provider.GetTestCloud(ctrl)
+			testCloud.UseInstanceMetadata = false
+			testCloud.DisableAvailabilitySetNodes = true
+			testCloud.EnableVmssFlexNodes = false
+
+			mockVMSet := provider.NewMockVMSet(ctrl)
+			testCloud.VMSet = mockVMSet
+			mockVMSet.EXPECT().GetInstanceIDByNodeName(gomock.Any(), gomock.Any()).Return("id", test.instanceIDErr).AnyTimes()
+
+			common := &controllerCommon{
+				cloud:         testCloud,
+				lockMap:       newLockMap(),
+				clientFactory: testCloud.ComputeClientFactory,
+			}
+
+			diskURI := fmt.Sprintf("/subscriptions/%s/resourceGroups/%s/providers/Microsoft.Compute/disks/disk-name",
+				testCloud.SubscriptionID, testCloud.ResourceGroup)
+			err := common.verifyInstanceForDetach(t.Context(), diskURI, "vm1")
+			if test.expectNotFound {
+				assert.ErrorIs(t, err, cloudprovider.InstanceNotFound)
+				return
+			}
+			assert.NoError(t, err)
+		})
 	}
 }
 
@@ -1606,6 +1924,15 @@ func TestDetachDiskWithVMSSTimeoutConfiguration(t *testing.T) {
 			diskName := "disk1"
 			diskURI := fmt.Sprintf("/subscriptions/%s/resourceGroups/%s/providers/Microsoft.Compute/disks/%s",
 				testCloud.SubscriptionID, testCloud.ResourceGroup, diskName)
+
+			// Provide the node's providerID so verifyInstanceForDetach uses the targeted
+			// VM GET fast path and DetachDisk proceeds to the detach logic under test.
+			node := &corev1.Node{
+				ObjectMeta: metav1.ObjectMeta{Name: "vm1"},
+				Spec: corev1.NodeSpec{ProviderID: fmt.Sprintf("azure:///subscriptions/%s/resourceGroups/%s/providers/Microsoft.Compute/virtualMachines/vm1",
+					testCloud.SubscriptionID, testCloud.ResourceGroup)},
+			}
+			testCloud.KubeClient = fake.NewSimpleClientset(node)
 
 			expectedVMs := setTestVirtualMachines(testCloud, map[string]string{"vm1": "PowerState/Running"}, false)
 			mockVMClient := testCloud.ComputeClientFactory.GetVirtualMachineClient().(*mockvmclient.MockInterface)

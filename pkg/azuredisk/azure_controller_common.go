@@ -88,6 +88,12 @@ var defaultBackOff = kwait.Backoff{
 	Jitter:   0.0,
 }
 
+// errDiskAlreadyDetached signals that a fresh disk read authoritatively confirmed the
+// disk is not attached to any VM (ManagedBy and ManagedByExtended are empty) or the
+// disk no longer exists. In these cases DetachDisk can return immediately without
+// polling waitForDiskManagedByTobeRemoved, since there is no stale ManagedBy to clear.
+var errDiskAlreadyDetached = errors.New("disk already detached")
+
 type controllerCommon struct {
 	diskStateMap  sync.Map // <diskURI, attaching/detaching state>
 	lockMap       *lockMap
@@ -386,10 +392,17 @@ func (c *controllerCommon) retrieveAttachBatchedDiskRequests(ctx context.Context
 
 // DetachDisk detaches a disk from VM
 func (c *controllerCommon) DetachDisk(ctx context.Context, diskName, diskURI string, nodeName types.NodeName) error {
-	if _, err := c.cloud.InstanceID(ctx, nodeName); err != nil {
+	if err := c.verifyInstanceForDetach(ctx, diskURI, nodeName); err != nil {
+		if errors.Is(err, errDiskAlreadyDetached) {
+			// a fresh disk read already confirmed the disk is detached (disk gone or
+			// ManagedBy/ManagedByExtended empty), so there is no stale ManagedBy to wait on.
+			klog.V(2).Infof("azureDisk - DetachDisk(%s) confirmed disk already detached from node %s, skip wait", diskURI, nodeName)
+			return nil
+		}
 		if errors.Is(err, cloudprovider.InstanceNotFound) {
-			// if host doesn't exist, no need to detach
-			klog.Warningf("azureDisk - failed to get azure instance id(%s), DetachDisk(%s) will assume disk is already detached",
+			// the instance is gone, but the disk may still carry a stale ManagedBy that
+			// takes a while to clear, so wait for it to be removed before assuming detached.
+			klog.Warningf("azureDisk - azure instance id(%s) not found, DetachDisk(%s) will assume disk is already detached",
 				nodeName, diskURI)
 			return c.waitForDiskManagedByTobeRemoved(ctx, diskURI, nodeName)
 		}
@@ -659,6 +672,24 @@ func (c *controllerCommon) GetNodeDataDisks(ctx context.Context, nodeName types.
 	return vmset.GetDataDisks(ctx, nodeName, crt)
 }
 
+// GetDiskByURI gets the managed disk identified by diskURI.
+func (c *controllerCommon) GetDiskByURI(ctx context.Context, diskURI string) (*armcompute.Disk, error) {
+	subsID, resourceGroup, diskName, err := azureutils.GetInfoFromURI(diskURI)
+	if err != nil {
+		return nil, err
+	}
+	return c.GetDisk(ctx, subsID, resourceGroup, diskName)
+}
+
+// GetDisk gets the managed disk identified by subsID, resourceGroup and diskName.
+func (c *controllerCommon) GetDisk(ctx context.Context, subsID, resourceGroup, diskName string) (*armcompute.Disk, error) {
+	diskclient, err := c.clientFactory.GetDiskClientForSub(subsID)
+	if err != nil {
+		return nil, err
+	}
+	return diskclient.Get(ctx, resourceGroup, diskName)
+}
+
 // GetDiskLun finds the lun on the host that the vhd is attached to, given a vhd's diskName and diskURI.
 func (c *controllerCommon) GetDiskLun(ctx context.Context, diskName, diskURI string, nodeName types.NodeName) (int32, *string, error) {
 	// GetNodeDataDisks need to fetch the cached data/fresh data if cache expired here
@@ -791,6 +822,11 @@ func (c *controllerCommon) waitForDiskManagedByTobeRemoved(ctx context.Context, 
 		}
 		disk, err = diskclient.Get(ctx, resourceGroup, diskName)
 		if err != nil {
+			if isInstanceNotFoundError(err) {
+				// the disk resource itself is gone, so it is fully detached.
+				klog.V(2).Infof("azureDisk - disk %s not found, assuming detached", diskURI)
+				return true, nil
+			}
 			return false, fmt.Errorf("error getting disk: %w", err)
 		}
 
@@ -818,6 +854,151 @@ func (c *controllerCommon) waitForDiskManagedByTobeRemoved(ctx context.Context, 
 		klog.Errorf("error in - waitForDiskManagedByTobeRemoved, disk %s still has ManagedBy (VM resource ID) %s", diskURI, *disk.ManagedBy)
 	}
 	return err
+}
+
+// vmResourceInfo captures the VM identity parsed from a node's providerID.
+type vmResourceInfo struct {
+	resourceGroup string
+	// vmssName is non-empty only for VMSS uniform instances.
+	vmssName string
+	// name is the VM resource name for standalone/flex VMs, or the instance ID for VMSS uniform instances.
+	name string
+}
+
+// parseProviderID extracts the VM resource identity from a node providerID.
+// Supported forms:
+//
+//	VMSS uniform:    azure:///subscriptions/{sub}/resourceGroups/{rg}/providers/Microsoft.Compute/virtualMachineScaleSets/{vmss}/virtualMachines/{instanceID}
+//	standalone/flex: azure:///subscriptions/{sub}/resourceGroups/{rg}/providers/Microsoft.Compute/virtualMachines/{name}
+func parseProviderID(providerID string) (*vmResourceInfo, error) {
+	resourceID := strings.TrimPrefix(providerID, "azure://")
+	parts := strings.Split(strings.Trim(resourceID, "/"), "/")
+	if len(parts) < 8 || !strings.EqualFold(parts[0], "subscriptions") || !strings.EqualFold(parts[2], "resourceGroups") || !strings.EqualFold(parts[4], "providers") {
+		return nil, fmt.Errorf("unexpected providerID format: %q", providerID)
+	}
+	resourceGroup := parts[3]
+	switch {
+	case len(parts) >= 10 && strings.EqualFold(parts[6], "virtualMachineScaleSets") && strings.EqualFold(parts[8], "virtualMachines"):
+		return &vmResourceInfo{resourceGroup: resourceGroup, vmssName: parts[7], name: parts[9]}, nil
+	case strings.EqualFold(parts[6], "virtualMachines"):
+		return &vmResourceInfo{resourceGroup: resourceGroup, name: parts[7]}, nil
+	default:
+		return nil, fmt.Errorf("unsupported resource type in providerID: %q", providerID)
+	}
+}
+
+// getNodeProviderID returns the spec.providerID of the given node from the Kubernetes API.
+func (c *controllerCommon) getNodeProviderID(ctx context.Context, nodeName string) (string, error) {
+	node, err := getNode(ctx, nodeName, c.cloud.KubeClient)
+	if err != nil {
+		return "", err
+	}
+	return node.Spec.ProviderID, nil
+}
+
+// verifyInstanceForDetach reports whether DetachDisk still needs to perform a detach
+// for (diskURI, nodeName). It returns:
+//   - nil when the disk should be detached from a live VM;
+//   - errDiskAlreadyDetached when a fresh disk read authoritatively confirms the disk
+//     is already detached (disk not found, or ManagedBy and ManagedByExtended both
+//     empty), so DetachDisk can return immediately without waiting;
+//   - cloudprovider.InstanceNotFound when the backing VM no longer exists but the disk
+//     may still carry a stale ManagedBy, so DetachDisk should wait for it to clear.
+//
+// For pure VMSS-uniform clusters (availability-set and VMSS-flex nodes disabled),
+// cloud.InstanceID is cache-backed and never triggers the subscription-wide VM List,
+// so it is used directly as the cheapest check. Otherwise it resolves the VM from the
+// node's providerID and issues a targeted GET, avoiding the subscription-wide VM List
+// that cloud.InstanceID may trigger via getVMManagementTypeByNodeName. When the node's
+// providerID is unavailable (e.g. the Node object was already deleted after the VM was
+// removed), it falls back to the disk's ManagedBy (authoritative Azure attachment
+// state), which is still List-free. Only when neither the providerID nor the disk can
+// be read does it fall back to cloud.InstanceID.
+func (c *controllerCommon) verifyInstanceForDetach(ctx context.Context, diskURI string, nodeName types.NodeName) error {
+	// Pure VMSS-uniform cluster: InstanceID is cache-backed and never lists VMs
+	// subscription-wide (getVMManagementTypeByNodeName short-circuits), so it is the
+	// cheapest option in the common case.
+	if c.cloud.DisableAvailabilitySetNodes && !c.cloud.EnableVmssFlexNodes {
+		_, err := c.cloud.InstanceID(ctx, nodeName)
+		return err
+	}
+
+	// Fast path: resolve the VM from the node's providerID (no ARM list, no disk GET).
+	providerID, nodeErr := c.getNodeProviderID(ctx, string(nodeName))
+	if nodeErr == nil && providerID != "" {
+		info, parseErr := parseProviderID(providerID)
+		if parseErr == nil {
+			return c.instanceExistsByResourceInfo(ctx, info)
+		}
+		klog.V(2).Infof("verifyInstanceForDetach: cannot parse providerID %q of node %s: %v", providerID, nodeName, parseErr)
+	} else {
+		klog.V(2).Infof("verifyInstanceForDetach: providerID unavailable for node %s: %v", nodeName, nodeErr)
+	}
+
+	// Fallback: the node/providerID is unavailable (e.g. the Node object was already
+	// deleted). Use the disk's ManagedBy/ManagedByExtended (authoritative attachment
+	// state) to decide, still avoiding a subscription-wide VM List.
+	disk, err := c.GetDiskByURI(ctx, diskURI)
+	if err != nil {
+		if isInstanceNotFoundError(err) {
+			// the disk resource itself no longer exists, so there is nothing to detach
+			// and nothing to wait on.
+			klog.V(2).Infof("verifyInstanceForDetach: disk %s not found, no detach needed for node %s", diskURI, nodeName)
+			return errDiskAlreadyDetached
+		}
+		klog.V(2).Infof("verifyInstanceForDetach: failed to get disk %s (err: %v), falling back to InstanceID for node %s", diskURI, err, nodeName)
+		_, idErr := c.cloud.InstanceID(ctx, nodeName)
+		return idErr
+	}
+	if disk == nil {
+		klog.V(2).Infof("verifyInstanceForDetach: disk %s returned nil, falling back to InstanceID for node %s", diskURI, nodeName)
+		_, idErr := c.cloud.InstanceID(ctx, nodeName)
+		return idErr
+	}
+	// ManagedBy covers non-shared disks; ManagedByExtended covers shared disks
+	// (maxShares > 1) that can be attached to multiple VMs.
+	if disk.ManagedBy == nil && len(disk.ManagedByExtended) == 0 {
+		// the disk is not attached to any VM (authoritative), so there is nothing to
+		// detach and nothing to wait on.
+		klog.V(2).Infof("verifyInstanceForDetach: disk %s is not attached to any VM, no detach needed for node %s", diskURI, nodeName)
+		return errDiskAlreadyDetached
+	}
+	managedByID := disk.ManagedBy
+	if managedByID == nil && len(disk.ManagedByExtended) > 0 {
+		managedByID = disk.ManagedByExtended[0]
+	}
+	if managedByID == nil {
+		return errDiskAlreadyDetached
+	}
+	info, err := parseProviderID(*managedByID)
+	if err != nil {
+		klog.V(2).Infof("verifyInstanceForDetach: cannot parse disk.ManagedBy %q (err: %v), falling back to InstanceID for node %s", *managedByID, err, nodeName)
+		_, idErr := c.cloud.InstanceID(ctx, nodeName)
+		return idErr
+	}
+	return c.instanceExistsByResourceInfo(ctx, info)
+}
+
+// instanceExistsByResourceInfo issues a targeted GET for the VM identified by info,
+// mapping a 404 (or equivalent) to cloudprovider.InstanceNotFound.
+func (c *controllerCommon) instanceExistsByResourceInfo(ctx context.Context, info *vmResourceInfo) error {
+	if info.vmssName != "" {
+		if _, err := c.clientFactory.GetVirtualMachineScaleSetVMClient().Get(ctx, info.resourceGroup, info.vmssName, info.name); err != nil {
+			if isInstanceNotFoundError(err) {
+				return cloudprovider.InstanceNotFound
+			}
+			return err
+		}
+		return nil
+	}
+
+	if _, err := c.clientFactory.GetVirtualMachineClient().Get(ctx, info.resourceGroup, info.name, nil); err != nil {
+		if isInstanceNotFoundError(err) {
+			return cloudprovider.InstanceNotFound
+		}
+		return err
+	}
+	return nil
 }
 
 func getValidCreationData(subscriptionID, resourceGroup string, options *ManagedDiskOptions) (armcompute.CreationData, error) {
