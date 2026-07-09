@@ -55,8 +55,8 @@ diskEncryptionSetID | ResourceId of the disk encryption set to use for [enabling
 diskEncryptionType | encryption type of the disk encryption set | `EncryptionAtRestWithCustomerKey`(by default), `EncryptionAtRestWithPlatformAndCustomerKeys` | No | ""
 writeAcceleratorEnabled | [Write Accelerator on Azure Disks](https://learn.microsoft.com/en-us/azure/virtual-machines/how-to-enable-write-accelerator) | `true`, `false` | No | ""
 perfProfile | [Block device performance tuning using perfProfiles](./perf-profiles.md) | `none`, `basic`, `advanced` | No | `none`
-networkAccessPolicy | NetworkAccessPolicy property to prevent anybody from generating the SAS URI for a disk or a snapshot | `AllowAll`, `DenyAll`, `AllowPrivate` | No | `AllowAll`
-publicNetworkAccess | Enabling or disabling public access to the underlying data of a disk on the internet, even when the NetworkAccessPolicy is set to `AllowAll` | `Enabled`, `Disabled` | No | `Enabled`
+networkAccessPolicy | NetworkAccessPolicy property to prevent anybody from generating the SAS URI for a disk or a snapshot | `AllowAll`, `DenyAll`, `AllowPrivate` | No | `DenyAll`
+publicNetworkAccess | Enabling or disabling public access to the underlying data of a disk on the internet, even when the NetworkAccessPolicy is set to `AllowAll` | `Enabled`, `Disabled` | No | `Disabled`
 diskAccessID | ARM id of the [DiskAccess](https://aka.ms/disksprivatelinksdoc) resource for using private endpoints on disks | | No  | ``
 enableBursting | [enable on-demand bursting](https://learn.microsoft.com/en-us/azure/virtual-machines/disk-bursting) beyond the provisioned performance target of the disk. On-demand bursting can only be applied to Premium disk, disk size > 512GB, Ultra & shared disk is not supported. Bursting is disabled by default. | `true`, `false` | No | `false`
 enablePerformancePlus | [enabling performance plus](https://learn.microsoft.com/en-us/azure/virtual-machines/disks-enable-performance), this setting only applies to Premium SSD, Standard SSD and HDD with disk size > 512GB. | `true`, `false` | No | `false`
