@@ -247,6 +247,15 @@ spec:
               mountPath: /etc/pki/ca-trust/extracted
               readOnly: true
             {{- end }}
+            {{- if .Values.feature.enableSELinuxMount }}
+            - mountPath: /sys/fs/selinux
+              # intentionally mounted as read-write, /bin/mount with libselinux
+              # checks it's write-able.
+              name: sys-fs-selinux
+            - mountPath: /etc/selinux
+              name: etc-selinux
+              readOnly: true
+            {{- end }}
           resources: {{- toYaml .Values.linux.resources.azuredisk | nindent 12 }}
       volumes:
         - hostPath:
@@ -286,5 +295,15 @@ spec:
         - name: ssl-pki
           hostPath:
             path: /etc/pki/ca-trust/extracted
+        {{- end }}
+        {{- if .Values.feature.enableSELinuxMount }}
+        - name: sys-fs-selinux
+          hostPath:
+            path: /sys/fs/selinux
+            type: Directory
+        - name: etc-selinux
+          hostPath:
+            path: /etc/selinux
+            type: Directory
         {{- end }}
 {{- end -}}
