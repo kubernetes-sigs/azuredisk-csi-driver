@@ -153,6 +153,10 @@ type Driver struct {
 	volStatsCache           azcache.Resource
 	maxConcurrentFormat     int64
 	concurrentFormatTimeout int64
+	// formatSem limits the number of concurrent mkfs operations, mirroring
+	// mount.SafeFormatAndMount's WithMaxConcurrentFormat semaphore. nil means unlimited.
+	formatSem               chan any
+	formatTimeout           time.Duration
 	enableMinimumRetryAfter bool
 	volumeLocks             *volumehelper.VolumeLocks
 	// a timed cache for throttling
@@ -215,6 +219,10 @@ func NewDriver(options *DriverOptions) *Driver {
 	driver.neverStopTaintRemoval = options.NeverStopTaintRemoval
 	driver.maxConcurrentFormat = options.MaxConcurrentFormat
 	driver.concurrentFormatTimeout = options.ConcurrentFormatTimeout
+	if options.MaxConcurrentFormat > 0 {
+		driver.formatSem = make(chan any, int(options.MaxConcurrentFormat))
+		driver.formatTimeout = time.Duration(options.ConcurrentFormatTimeout) * time.Second
+	}
 	driver.enableMinimumRetryAfter = options.EnableMinimumRetryAfter
 	driver.volumeLocks = volumehelper.NewVolumeLocks()
 	driver.ioHandler = azureutils.NewOSIOHandler()

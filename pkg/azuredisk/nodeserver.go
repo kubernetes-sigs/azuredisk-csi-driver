@@ -662,7 +662,7 @@ func (d *Driver) ensureMountPoint(target string) (bool, error) {
 }
 
 func (d *Driver) formatAndMount(source, target, fstype string, options []string) error {
-	return formatAndMount(source, target, fstype, options, d.mounter)
+	return formatAndMount(source, target, fstype, options, d.mounter, d.formatSem, d.formatTimeout)
 }
 
 func (d *Driver) getDevicePathWithLUN(lunStr string) (string, error) {

@@ -23,6 +23,7 @@ import (
 	"context"
 	"fmt"
 	"strconv"
+	"time"
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	"google.golang.org/grpc/codes"
@@ -35,7 +36,7 @@ import (
 	azcache "sigs.k8s.io/cloud-provider-azure/pkg/cache"
 )
 
-func formatAndMount(source, target, fstype string, options []string, m *mount.SafeFormatAndMount) error {
+func formatAndMount(source, target, fstype string, options []string, m *mount.SafeFormatAndMount, _ chan any, _ time.Duration) error {
 	if proxy, ok := m.Interface.(mounter.CSIProxyMounter); ok {
 		return proxy.FormatAndMount(source, target, fstype, options)
 	}
