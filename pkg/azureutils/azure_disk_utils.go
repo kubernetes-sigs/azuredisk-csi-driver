@@ -34,6 +34,7 @@ import (
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/apimachinery/pkg/util/uuid"
 	clientset "k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/klog/v2"
 	api "k8s.io/kubernetes/pkg/apis/core"
@@ -248,7 +249,7 @@ func GetCloudProviderFromClient(ctx context.Context, kubeClient clientset.Interf
 	return az, nil
 }
 
-func GetKubeClient(kubeconfig string, qps float64, burst int) (clientset.Interface, error) {
+func GetKubeConfig(kubeconfig string, qps float64, burst int) (*rest.Config, error) {
 	config, err := clientcmd.BuildConfigFromFlags("", kubeconfig)
 	if err != nil {
 		return nil, err
@@ -259,6 +260,15 @@ func GetKubeClient(kubeconfig string, qps float64, burst int) (clientset.Interfa
 	}
 	if burst > 0 {
 		config.Burst = burst
+	}
+
+	return config, nil
+}
+
+func GetKubeClient(kubeconfig string, qps float64, burst int) (clientset.Interface, error) {
+	config, err := GetKubeConfig(kubeconfig, qps, burst)
+	if err != nil {
+		return nil, err
 	}
 
 	return clientset.NewForConfig(config)

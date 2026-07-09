@@ -31,6 +31,7 @@ import (
 
 	"k8s.io/apimachinery/pkg/types"
 	kwait "k8s.io/apimachinery/pkg/util/wait"
+	"k8s.io/client-go/tools/cache"
 	cloudprovider "k8s.io/cloud-provider"
 	volerr "k8s.io/cloud-provider/volume/errors"
 	"k8s.io/klog/v2"
@@ -92,6 +93,7 @@ type controllerCommon struct {
 	lockMap       *lockMap
 	cloud         *provider.Cloud
 	clientFactory azclient.ClientFactory
+	nodeLister    cache.GenericLister
 	// disk queue that is waiting for attach or detach on specific node
 	// <nodeName, map<diskURI, *provider.AttachDiskOptions/DetachDiskOptions>>
 	attachDiskMap sync.Map
@@ -236,7 +238,13 @@ func (c *controllerCommon) AttachDisk(ctx context.Context, diskName, diskURI str
 
 	numDisksAllowed := math.MaxInt
 	if c.CheckDiskCountForBatching {
-		_, instanceType, err := GetNodeInfoFromLabels(ctx, string(nodeName), c.cloud.KubeClient)
+		var instanceType string
+		var err error
+		if c.nodeLister != nil {
+			_, instanceType, err = GetNodeInfoFromNodeLister(string(nodeName), c.nodeLister)
+		} else {
+			_, instanceType, err = GetNodeInfoFromLabels(ctx, string(nodeName), c.cloud.KubeClient)
+		}
 		if err != nil {
 			klog.Errorf("failed to get node info from labels: %v", err)
 		} else if instanceType != "" {
