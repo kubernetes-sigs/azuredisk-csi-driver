@@ -657,6 +657,8 @@ func (d *Driver) recoverMigrationMonitorsFromLabels(ctx context.Context) error {
 		}
 	}
 
-	klog.V(4).Infof("Recovered %d migration monitors from labels", recoveredCount)
+	if recoveredCount > 0 {
+		klog.V(4).Infof("Recovered %d migration monitors from labels", recoveredCount)
+	}
 	return nil
 }
