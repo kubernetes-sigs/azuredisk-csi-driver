@@ -99,6 +99,8 @@ controller:
   annotations: {}
   podLabels: {}
   podAnnotations: {}
+  extraVolumeMounts: []
+  extraVolumes: []
   nodeSelector: {}
   affinity: {}
   resources:
@@ -231,6 +233,8 @@ linux:
   annotations: {}
   podLabels: {}
   podAnnotations: {}
+  extraVolumeMounts: []
+  extraVolumes: []
   nodeSelector: {}
   affinity: {}
   nodeAffinity:

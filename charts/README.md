@@ -165,6 +165,8 @@ The following table lists the configurable parameters of the latest Azure Disk C
 | `controller.annotations`                          | controller deployment extra annotations               | `{}`
 | `controller.podLabels`                            | controller pods extra labels                          | `{}`
 | `controller.podAnnotations`                       | controller pods extra annotations                     | `{}`
+| `controller.extraVolumeMounts`                    | additional volumeMounts for azuredisk container in controller pod | `[]`
+| `controller.extraVolumes`                         | additional volumes for controller pod                 | `[]`
 | `controller.hostNetwork`                          | `hostNetwork` setting on controller driver(could be disabled if controller does not depend on MSI setting)                            | `true`                                                            | `true`, `false`
 | `controller.resources.csiProvisioner.limits.memory`   | csi-provisioner memory limits                         | 500Mi                                                          |
 | `controller.resources.csiProvisioner.requests.cpu`    | csi-provisioner cpu requests                   | 10m                                                            |
@@ -234,6 +236,8 @@ The following table lists the configurable parameters of the latest Azure Disk C
 | `linux.otelTracing.otelExporterEndpoint`          | opentelemetry-compatible endpoint where traces are sent      | `"http://localhost:4317"`                          |
 | `linux.podLabels`                                 | linux node pods extra labels                          | `{}`
 | `linux.podAnnotations`                            | linux node pods extra annotations                     | `{}`
+| `linux.extraVolumeMounts`                         | additional volumeMounts for azuredisk container in linux node pod | `[]`
+| `linux.extraVolumes`                              | additional volumes for linux node pod                 | `[]`
 | `linux.resources.livenessProbe.limits.memory`          | liveness-probe memory limits                          | 100Mi                                                          |
 | `linux.resources.livenessProbe.requests.cpu`           | liveness-probe cpu requests                    | 10m                                                            |
 | `linux.resources.livenessProbe.requests.memory`        | liveness-probe memory requests                 | 20Mi                                                           |
