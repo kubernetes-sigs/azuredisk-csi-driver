@@ -321,7 +321,7 @@ func NewDriver(options *DriverOptions) *Driver {
 				klog.V(2).Infof("reset VMSSDetachTimeoutInSeconds as DetachOperationMinTimeoutInSeconds %d with no additional polling", driver.diskController.DetachOperationMinTimeoutInSeconds)
 				driver.diskController.VMSSDetachTimeoutInSeconds = driver.diskController.DetachOperationMinTimeoutInSeconds
 			} else {
-				klog.V(2).Infof("reset VMSSDetachTimeoutInSeconds as 200 (default)")
+				klog.V(2).Infof("reset VMSSDetachTimeoutInSeconds as %d (default)", defaultVMSSDetachTimeoutInSeconds)
 				driver.diskController.VMSSDetachTimeoutInSeconds = defaultVMSSDetachTimeoutInSeconds
 			}
 		}
