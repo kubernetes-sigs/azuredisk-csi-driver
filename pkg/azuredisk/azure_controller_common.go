@@ -68,7 +68,7 @@ const (
 	defaultDetachOperationMinTimeoutInSeconds = 240
 
 	// default timeout for VMSS detach operation before polling on GET VM to verify detach status
-	defaultVMSSDetachTimeoutInSeconds = 20
+	defaultVMSSDetachTimeoutInSeconds = 200
 
 	// WriteAcceleratorEnabled support for Azure Write Accelerator on Azure Disks
 	// https://docs.microsoft.com/azure/virtual-machines/windows/how-to-enable-write-accelerator
