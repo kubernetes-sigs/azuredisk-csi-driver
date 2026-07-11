@@ -58,7 +58,7 @@ controller:
       - RecoverVolumeExpansionFailure=true
       - VolumeAttributesClass=true
 
-  VMSSDetachTimeoutInSeconds: 20
+  VMSSDetachTimeoutInSeconds: 200
   allowEmptyCloudConfig: false
   enableTrafficManager: false
   trafficManagerPort: 7788
