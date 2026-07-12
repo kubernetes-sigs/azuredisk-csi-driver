@@ -16,56 +16,42 @@ limitations under the License.
 
 package azuredisk
 
-import (
-	"context"
-	"fmt"
-	"sync"
+import "sync"
 
-	"golang.org/x/sync/semaphore"
-)
-
-// lockMap used to lock on entries. Each entry is backed by a weighted
-// semaphore (capacity 1) so that LockEntry honors context cancellation and
-// timeouts, and waiters are granted the lock in FIFO order (fairness).
+// lockMap used to lock on entries
 type lockMap struct {
 	sync.Mutex
-	semMap map[string]*semaphore.Weighted
+	mutexMap map[string]*sync.Mutex
 }
 
-// newLockMap returns a new lock map
+// NewLockMap returns a new lock map
 func newLockMap() *lockMap {
 	return &lockMap{
-		semMap: make(map[string]*semaphore.Weighted),
+		mutexMap: make(map[string]*sync.Mutex),
 	}
 }
 
-// LockEntry acquires a lock associated with the specific entry. It blocks until
-// the lock is acquired or ctx is done, returning ctx.Err() in the latter case.
-// UnlockEntry must only be called when LockEntry returns nil.
-func (lm *lockMap) LockEntry(ctx context.Context, entry string) error {
+// LockEntry acquires a lock associated with the specific entry
+func (lm *lockMap) LockEntry(entry string) {
 	lm.Lock()
-	// check if entry does not exist, then add entry
-	sem, exists := lm.semMap[entry]
+	// check if entry does not exists, then add entry
+	mutex, exists := lm.mutexMap[entry]
 	if !exists {
-		sem = semaphore.NewWeighted(1)
-		lm.semMap[entry] = sem
+		mutex = &sync.Mutex{}
+		lm.mutexMap[entry] = mutex
 	}
 	lm.Unlock()
-	if err := sem.Acquire(ctx, 1); err != nil {
-		return fmt.Errorf("failed to acquire lock for entry %q: %w", entry, err)
-	}
-	return nil
+	mutex.Lock()
 }
 
-// UnlockEntry releases the lock associated with the specific entry. It must
-// only be called after a successful LockEntry for the same entry.
+// UnlockEntry release the lock associated with the specific entry
 func (lm *lockMap) UnlockEntry(entry string) {
 	lm.Lock()
-	sem, exists := lm.semMap[entry]
-	lm.Unlock()
+	defer lm.Unlock()
 
+	mutex, exists := lm.mutexMap[entry]
 	if !exists {
 		return
 	}
-	sem.Release(1)
+	mutex.Unlock()
 }

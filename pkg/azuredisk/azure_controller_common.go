@@ -202,7 +202,7 @@ func (c *controllerCommon) AttachDisk(ctx context.Context, diskName, diskURI str
 	}
 	node := strings.ToLower(string(nodeName))
 	diskuri := strings.ToLower(diskURI)
-	requestNum, err := c.batchAttachDiskRequest(ctx, diskuri, node, &options)
+	requestNum, err := c.batchAttachDiskRequest(diskuri, node, &options)
 	if err != nil {
 		return -1, err
 	}
@@ -210,8 +210,8 @@ func (c *controllerCommon) AttachDisk(ctx context.Context, diskName, diskURI str
 	var waitForDetachHappened bool
 	if c.WaitForDetach && c.isMaxDataDiskCountExceeded(ctx, string(nodeName)) {
 		// wait for disk detach to finish first on the same node
-		if err = kwait.PollUntilContextTimeout(ctx, 2*time.Second, 30*time.Second, true, func(ctx context.Context) (bool, error) {
-			detachDiskReqeustNum, err := c.getDetachDiskRequestNum(ctx, node)
+		if err = kwait.PollUntilContextTimeout(ctx, 2*time.Second, 30*time.Second, true, func(context.Context) (bool, error) {
+			detachDiskReqeustNum, err := c.getDetachDiskRequestNum(node)
 			if err != nil {
 				return false, err
 			}
@@ -226,9 +226,7 @@ func (c *controllerCommon) AttachDisk(ctx context.Context, diskName, diskURI str
 		}
 	}
 
-	if err := c.lockMap.LockEntry(ctx, node); err != nil {
-		return -1, fmt.Errorf("AttachDisk: failed to acquire node lock for node %s: %w", nodeName, err)
-	}
+	c.lockMap.LockEntry(node)
 	defer c.lockMap.UnlockEntry(node)
 
 	if !waitForDetachHappened && c.AttachDetachInitialDelayInMs > 0 && requestNum == 1 {
@@ -264,7 +262,7 @@ func (c *controllerCommon) AttachDisk(ctx context.Context, diskName, diskURI str
 		}
 	}
 
-	diskMap, err := c.retrieveAttachBatchedDiskRequests(ctx, node, diskuri)
+	diskMap, err := c.retrieveAttachBatchedDiskRequests(node, diskuri)
 	if err != nil {
 		return -1, err
 	}
@@ -333,12 +331,10 @@ func (c *controllerCommon) AttachDisk(ctx context.Context, diskName, diskURI str
 }
 
 // insertAttachDiskRequest return (attachDiskRequestQueueLength, error)
-func (c *controllerCommon) batchAttachDiskRequest(ctx context.Context, diskURI, nodeName string, options *provider.AttachDiskOptions) (int, error) {
+func (c *controllerCommon) batchAttachDiskRequest(diskURI, nodeName string, options *provider.AttachDiskOptions) (int, error) {
 	var diskMap map[string]*provider.AttachDiskOptions
 	attachDiskMapKey := nodeName + attachDiskMapKeySuffix
-	if err := c.lockMap.LockEntry(ctx, attachDiskMapKey); err != nil {
-		return -1, fmt.Errorf("batchAttachDiskRequest: failed to lock attach disk map for node %s: %w", nodeName, err)
-	}
+	c.lockMap.LockEntry(attachDiskMapKey)
 	defer c.lockMap.UnlockEntry(attachDiskMapKey)
 	v, ok := c.attachDiskMap.Load(nodeName)
 	if ok {
@@ -361,13 +357,11 @@ func (c *controllerCommon) batchAttachDiskRequest(ctx context.Context, diskURI, 
 
 // clean up attach disk requests
 // return original attach disk requests
-func (c *controllerCommon) retrieveAttachBatchedDiskRequests(ctx context.Context, nodeName, diskURI string) (map[string]*provider.AttachDiskOptions, error) {
+func (c *controllerCommon) retrieveAttachBatchedDiskRequests(nodeName, diskURI string) (map[string]*provider.AttachDiskOptions, error) {
 	var diskMap map[string]*provider.AttachDiskOptions
 
 	attachDiskMapKey := nodeName + attachDiskMapKeySuffix
-	if err := c.lockMap.LockEntry(ctx, attachDiskMapKey); err != nil {
-		return nil, fmt.Errorf("retrieveAttachBatchedDiskRequests: failed to lock attach disk map for node %s: %w", nodeName, err)
-	}
+	c.lockMap.LockEntry(attachDiskMapKey)
 	defer c.lockMap.UnlockEntry(attachDiskMapKey)
 	nodeAttachRequests, ok := c.attachDiskMap.Load(nodeName)
 	if !ok {
@@ -404,14 +398,12 @@ func (c *controllerCommon) DetachDisk(ctx context.Context, diskName, diskURI str
 
 	node := strings.ToLower(string(nodeName))
 	formattedDiskURI := strings.ToLower(diskURI)
-	batchCount, err := c.batchDetachDiskRequest(ctx, diskName, formattedDiskURI, node)
+	batchCount, err := c.batchDetachDiskRequest(diskName, formattedDiskURI, node)
 	if err != nil {
 		return err
 	}
 
-	if err := c.lockMap.LockEntry(ctx, node); err != nil {
-		return fmt.Errorf("DetachDisk: failed to acquire node lock for node %s: %w", nodeName, err)
-	}
+	c.lockMap.LockEntry(node)
 	defer c.lockMap.UnlockEntry(node)
 
 	if c.AttachDetachInitialDelayInMs > 0 && batchCount == 1 {
@@ -419,7 +411,7 @@ func (c *controllerCommon) DetachDisk(ctx context.Context, diskName, diskURI str
 		time.Sleep(time.Duration(c.AttachDetachInitialDelayInMs) * time.Millisecond)
 	}
 
-	diskMap, err := c.retrieveDetachBatchedDiskRequests(ctx, node, formattedDiskURI)
+	diskMap, err := c.retrieveDetachBatchedDiskRequests(node, formattedDiskURI)
 	if err != nil {
 		return err
 	}
@@ -513,9 +505,7 @@ func (c *controllerCommon) UpdateVM(ctx context.Context, nodeName types.NodeName
 		return err
 	}
 	node := strings.ToLower(string(nodeName))
-	if err := c.lockMap.LockEntry(ctx, node); err != nil {
-		return fmt.Errorf("UpdateVM: failed to acquire node lock for node %s: %w", nodeName, err)
-	}
+	c.lockMap.LockEntry(node)
 	defer c.lockMap.UnlockEntry(node)
 
 	defer func() {
@@ -576,12 +566,10 @@ func (c *controllerCommon) verifyAttach(ctx context.Context, diskName, diskURI s
 }
 
 // batchDetachDiskRequest return (detachDiskRequestQueueLength, error)
-func (c *controllerCommon) batchDetachDiskRequest(ctx context.Context, diskName, diskURI, nodeName string) (int, error) {
+func (c *controllerCommon) batchDetachDiskRequest(diskName, diskURI, nodeName string) (int, error) {
 	var diskMap map[string]string
 	detachDiskMapKey := nodeName + detachDiskMapKeySuffix
-	if err := c.lockMap.LockEntry(ctx, detachDiskMapKey); err != nil {
-		return -1, fmt.Errorf("batchDetachDiskRequest: failed to lock detach disk map for node %s: %w", nodeName, err)
-	}
+	c.lockMap.LockEntry(detachDiskMapKey)
 	defer c.lockMap.UnlockEntry(detachDiskMapKey)
 	nodeDetachRequests, ok := c.detachDiskMap.Load(nodeName)
 	if ok {
@@ -607,13 +595,11 @@ func (c *controllerCommon) batchDetachDiskRequest(ctx context.Context, diskName,
 
 // retrieveDetachBatchedDiskRequests removes the current detach disk requests for the node
 // and returns it for processing
-func (c *controllerCommon) retrieveDetachBatchedDiskRequests(ctx context.Context, nodeName, diskURI string) (map[string]string, error) {
+func (c *controllerCommon) retrieveDetachBatchedDiskRequests(nodeName, diskURI string) (map[string]string, error) {
 	var diskMap map[string]string
 
 	detachDiskMapKey := nodeName + detachDiskMapKeySuffix
-	if err := c.lockMap.LockEntry(ctx, detachDiskMapKey); err != nil {
-		return nil, fmt.Errorf("retrieveDetachBatchedDiskRequests: failed to lock detach disk map for node %s: %w", nodeName, err)
-	}
+	c.lockMap.LockEntry(detachDiskMapKey)
 	defer c.lockMap.UnlockEntry(detachDiskMapKey)
 
 	// load all detach disk requests for the node
@@ -633,11 +619,9 @@ func (c *controllerCommon) retrieveDetachBatchedDiskRequests(ctx context.Context
 	return diskMap, nil
 }
 
-func (c *controllerCommon) getDetachDiskRequestNum(ctx context.Context, nodeName string) (int, error) {
+func (c *controllerCommon) getDetachDiskRequestNum(nodeName string) (int, error) {
 	detachDiskMapKey := nodeName + detachDiskMapKeySuffix
-	if err := c.lockMap.LockEntry(ctx, detachDiskMapKey); err != nil {
-		return -1, fmt.Errorf("getDetachDiskRequestNum: failed to lock detach disk map for node %s: %w", nodeName, err)
-	}
+	c.lockMap.LockEntry(detachDiskMapKey)
 	defer c.lockMap.UnlockEntry(detachDiskMapKey)
 	v, ok := c.detachDiskMap.Load(nodeName)
 	if !ok {
