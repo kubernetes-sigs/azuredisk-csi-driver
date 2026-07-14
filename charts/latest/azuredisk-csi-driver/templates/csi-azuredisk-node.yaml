@@ -260,7 +260,7 @@ spec:
               readOnly: true
             {{- end }}
             {{- with .Values.linux.extraVolumeMounts }}
-{{ toYaml . | nindent 12 }}
+{{ toYaml . | indent 12 }}
             {{- end }}
           resources: {{- toYaml .Values.linux.resources.azuredisk | nindent 12 }}
       volumes:
@@ -317,6 +317,6 @@ spec:
             type: Directory
         {{- end }}
         {{- with .Values.linux.extraVolumes }}
-{{ toYaml . | nindent 8 }}
+{{ toYaml . | indent 8 }}
         {{- end }}
 {{- end -}}

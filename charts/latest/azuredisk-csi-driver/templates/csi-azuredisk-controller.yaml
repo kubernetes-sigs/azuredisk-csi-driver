@@ -323,7 +323,7 @@ spec:
               readOnly: true
             {{- end }}
             {{- with .Values.controller.extraVolumeMounts }}
-{{ toYaml . | nindent 12 }}
+{{ toYaml . | indent 12 }}
             {{- end }}
           resources: {{- toYaml .Values.controller.resources.azuredisk | nindent 12 }}
           securityContext:
@@ -348,5 +348,5 @@ spec:
             path: /etc/pki/ca-trust/extracted
         {{- end }}
         {{- with .Values.controller.extraVolumes }}
-{{ toYaml . | nindent 8 }}
+{{ toYaml . | indent 8 }}
         {{- end }}
