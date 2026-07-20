@@ -24,6 +24,7 @@ import (
 	"reflect"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute/v7"
@@ -142,6 +143,7 @@ type Driver struct {
 	checkDiskLUNCollision              bool
 	checkDiskCountForBatching          bool
 	forceDetachBackoff                 bool
+	useCacheFreeVMSet                  bool
 	waitForDetach                      bool
 	waitForDetachDiskComplete          bool
 	endpoint                           string
@@ -159,7 +161,12 @@ type Driver struct {
 	throttlingCache azcache.Resource
 	// a timed cache for disk lun collision check throttling
 	checkDiskLunThrottlingCache azcache.Resource
-	enableMigrationMonitor      bool
+	// per-userAgent ManagedDiskControllers, keyed by userAgent (string ->
+	// *cachedDiskController), so a custom-userAgent request does not rebuild the
+	// cloud client each time. A plain sync.Map keeps this free of any
+	// cloud-provider-azure cache dependency.
+	diskControllerCache    sync.Map
+	enableMigrationMonitor bool
 	// whether to convert ReadWrite cachingMode to ReadOnly for intree PVs to avoid issues
 	convertRWCachingModeForIntreePV bool
 	nodeLister                      cache.GenericLister
@@ -207,6 +214,7 @@ func NewDriver(options *DriverOptions) *Driver {
 	driver.checkDiskLUNCollision = options.CheckDiskLUNCollision
 	driver.checkDiskCountForBatching = options.CheckDiskCountForBatching
 	driver.forceDetachBackoff = options.ForceDetachBackoff
+	driver.useCacheFreeVMSet = options.UseCacheFreeVMSet
 	driver.waitForDetach = options.WaitForDetach
 	driver.waitForDetachDiskComplete = options.WaitForDetachDiskComplete
 	driver.endpoint = options.Endpoint
@@ -302,29 +310,7 @@ func NewDriver(options *DriverOptions) *Driver {
 			driver.cloud.VmssCacheTTLInSeconds = int(driver.vmssCacheTTLInSeconds)
 		}
 
-		driver.diskController = NewManagedDiskController(driver.cloud)
-		driver.diskController.AttachDetachInitialDelayInMs = int(driver.attachDetachInitialDelayInMs)
-		driver.diskController.ForceDetachBackoff = driver.forceDetachBackoff
-		driver.diskController.WaitForDetach = driver.waitForDetach
-		driver.diskController.WaitForDetachDiskComplete = driver.waitForDetachDiskComplete
-		driver.diskController.CheckDiskCountForBatching = driver.checkDiskCountForBatching
-		driver.diskController.DetachOperationMinTimeoutInSeconds = int(driver.detachOperationMinTimeoutInSeconds)
-		driver.diskController.VMSSDetachTimeoutInSeconds = int(driver.vmssDetachTimeoutInSeconds)
-		klog.V(2).Infof("set DetachOperationMinTimeoutInSeconds as %d", driver.diskController.DetachOperationMinTimeoutInSeconds)
-		if driver.diskController.DetachOperationMinTimeoutInSeconds <= 0 {
-			klog.V(2).Infof("reset DetachOperationMinTimeoutInSeconds as %d", defaultDetachOperationMinTimeoutInSeconds)
-			driver.diskController.DetachOperationMinTimeoutInSeconds = defaultDetachOperationMinTimeoutInSeconds
-		}
-		klog.V(2).Infof("set VMSSDetachTimeoutInSeconds as %d", driver.diskController.VMSSDetachTimeoutInSeconds)
-		if driver.diskController.VMSSDetachTimeoutInSeconds <= 0 || driver.diskController.VMSSDetachTimeoutInSeconds > driver.diskController.DetachOperationMinTimeoutInSeconds {
-			if driver.diskController.DetachOperationMinTimeoutInSeconds <= defaultVMSSDetachTimeoutInSeconds {
-				klog.V(2).Infof("reset VMSSDetachTimeoutInSeconds as DetachOperationMinTimeoutInSeconds %d with no additional polling", driver.diskController.DetachOperationMinTimeoutInSeconds)
-				driver.diskController.VMSSDetachTimeoutInSeconds = driver.diskController.DetachOperationMinTimeoutInSeconds
-			} else {
-				klog.V(2).Infof("reset VMSSDetachTimeoutInSeconds as %d (default)", defaultVMSSDetachTimeoutInSeconds)
-				driver.diskController.VMSSDetachTimeoutInSeconds = defaultVMSSDetachTimeoutInSeconds
-			}
-		}
+		driver.diskController = driver.newManagedDiskController(driver.cloud, false)
 
 		if kubeClient != nil && driver.NodeID == "" && driver.enableMigrationMonitor {
 			eventBroadcaster := record.NewBroadcaster()

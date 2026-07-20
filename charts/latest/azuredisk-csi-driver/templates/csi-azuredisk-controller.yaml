@@ -248,6 +248,7 @@ spec:
             - "--enable-otel-tracing={{ .Values.controller.otelTracing.enabled }}"
             - "--check-disk-lun-collision=true"
             - "--vmss-detach-timeout-seconds={{ .Values.controller.VMSSDetachTimeoutInSeconds }}"
+            - "--use-cache-free-vmset={{ .Values.controller.useCacheFreeVMSet }}"
             {{- range $value := .Values.controller.extraArgs }}
             - {{ $value | quote }}
             {{- end }}
