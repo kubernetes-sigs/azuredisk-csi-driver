@@ -498,6 +498,49 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 		test.Run(ctx, cs, ns)
 	})
 
+	ginkgo.It("should attach, write, detach and reattach a disk across pod reschedule [disk.csi.azure.com] [cache-free-vmset]", func(ctx ginkgo.SpecContext) {
+		skipIfUsingInTreeVolumePlugin()
+
+		// This deployment writes to a disk, then the pod is deleted (detach) and
+		// rescheduled (reattach), verifying the data persists. It exercises the
+		// disk attach/detach path end-to-end, which is the code path controlled by
+		// the controller's --use-cache-free-vmset flag. Run the CAPZ e2e job with
+		// controller.useCacheFreeVMSet=true to validate the cache-free VMSet.
+		pod := testsuites.PodDetails{
+			Cmd: convertToPowershellorCmdCommandIfNecessary("echo 'cache-free-vmset' >> /mnt/test-1/data && while true; do sleep 3600; done"),
+			Volumes: t.normalizeVolumes([]testsuites.VolumeDetails{
+				{
+					FSType:    "ext4",
+					ClaimSize: "10Gi",
+					VolumeMount: testsuites.VolumeMountDetails{
+						NameGenerate:      "test-volume-",
+						MountPathGenerate: "/mnt/test-",
+					},
+					VolumeAccessMode: v1.ReadWriteOnce,
+				},
+			}, isMultiZone),
+			IsWindows:    isWindowsCluster,
+			WinServerVer: winServerVer,
+			UseCMD:       false,
+		}
+
+		podCheckCmd := []string{"cat", "/mnt/test-1/data"}
+		expectedString := "cache-free-vmset\n"
+		if isWindowsCluster {
+			podCheckCmd = []string{"cmd", "/c", "type C:\\mnt\\test-1\\data.txt"}
+			expectedString = "cache-free-vmset\r\n"
+		}
+		test := testsuites.DynamicallyProvisionedDeletePodTest{
+			CSIDriver: testDriver,
+			Pod:       pod,
+			PodCheck: &testsuites.PodExecCheck{
+				Cmd:            podCheckCmd,
+				ExpectedString: expectedString,
+			},
+		}
+		test.Run(ctx, cs, ns)
+	})
+
 	ginkgo.It(fmt.Sprintf("should delete PV with reclaimPolicy %q [kubernetes.io/azure-disk] [disk.csi.azure.com] [Windows]", v1.PersistentVolumeReclaimDelete), func(ctx ginkgo.SpecContext) {
 		reclaimPolicy := v1.PersistentVolumeReclaimDelete
 		volumes := t.normalizeVolumes([]testsuites.VolumeDetails{
