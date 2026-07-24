@@ -29,6 +29,7 @@ import (
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute/v7"
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
+	"go.opentelemetry.io/otel/attribute"
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
@@ -518,6 +519,7 @@ func (d *Driver) isCheckDiskLunThrottled(ctx context.Context) bool {
 
 func (d *Driver) checkDiskExists(ctx context.Context, diskURI string) (*armcompute.Disk, error) {
 	if d.isGetDiskThrottled(ctx) {
+		recordThrottleEvent(ctx, eventThrottled, "")
 		klog.Warningf("skip checkDiskExists(%s) since it's still in throttling", diskURI)
 		return nil, nil
 	}
@@ -676,8 +678,11 @@ func (d *Driver) getUsedLunsFromVolumeAttachments(ctx context.Context, nodeName 
 		return nil, fmt.Errorf("kubeClient or kubeClient.StorageV1() or kubeClient.StorageV1().VolumeAttachments() is nil")
 	}
 
+	_, kubeSpan := startSpan(ctx, "ListVolumeAttachments", attribute.String(attrNode, nodeName))
 	volumeAttachments, err := kubeClient.StorageV1().VolumeAttachments().List(ctx, metav1.ListOptions{
 		TimeoutSeconds: ptr.To(int64(volumeAttachmentListTimeoutSeconds))})
+	recordSpanResult(kubeSpan, err)
+	kubeSpan.End()
 	if err != nil {
 		return nil, err
 	}
@@ -762,7 +767,10 @@ func GetNodeInfoFromLabels(ctx context.Context, nodeName string, kubeClient clie
 		return "", "", fmt.Errorf("kubeClient is nil")
 	}
 
+	_, kubeSpan := startSpan(ctx, "GetNode", attribute.String(attrNode, nodeName))
 	node, err := kubeClient.CoreV1().Nodes().Get(ctx, nodeName, metav1.GetOptions{})
+	recordSpanResult(kubeSpan, err)
+	kubeSpan.End()
 	if err != nil {
 		return "", "", fmt.Errorf("get node(%s) failed with %v", nodeName, err)
 	}

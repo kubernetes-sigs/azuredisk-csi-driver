@@ -36,6 +36,7 @@ import (
 	clientset "k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
+	"k8s.io/client-go/util/flowcontrol"
 	"k8s.io/klog/v2"
 	api "k8s.io/kubernetes/pkg/apis/core"
 	"k8s.io/mount-utils"
@@ -270,6 +271,19 @@ func GetKubeClient(kubeconfig string, qps float64, burst int) (clientset.Interfa
 	if err != nil {
 		return nil, err
 	}
+
+	// Wrap the client-side rate limiter so that requests blocked by QPS/Burst
+	// exhaustion surface as span events. Replicate client-go's default token
+	// bucket (QPS 5, Burst 10) when the caller did not set explicit limits.
+	effectiveQPS := config.QPS
+	if effectiveQPS <= 0 {
+		effectiveQPS = rest.DefaultQPS
+	}
+	effectiveBurst := config.Burst
+	if effectiveBurst <= 0 {
+		effectiveBurst = rest.DefaultBurst
+	}
+	config.RateLimiter = newTracingRateLimiter(flowcontrol.NewTokenBucketRateLimiter(effectiveQPS, effectiveBurst))
 
 	return clientset.NewForConfig(config)
 }
@@ -817,6 +831,13 @@ func IsThrottlingError(err error) bool {
 			strings.Contains(errMsg, retryrepectthrottled.ErrTooManyRequest.Error())
 	}
 	return false
+}
+
+// GetRetryAfterSeconds returns the ARM "Retry-After" back-off (in seconds)
+// parsed from a throttling error, or 0 when none is present. It exposes the
+// package-internal parser so callers such as tracing can surface the delay.
+func GetRetryAfterSeconds(err error) int {
+	return getRetryAfterSeconds(err)
 }
 
 // getRetryAfterSeconds returns the number of seconds to wait from the error message
