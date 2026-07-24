@@ -32,6 +32,8 @@ import (
 	azure "sigs.k8s.io/cloud-provider-azure/pkg/provider"
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
+	"go.opentelemetry.io/otel/attribute"
+	oteltrace "go.opentelemetry.io/otel/trace"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
@@ -60,7 +62,7 @@ func getDefaultFsType() string {
 }
 
 // NodeStageVolume mount disk device to a staging path
-func (d *Driver) NodeStageVolume(_ context.Context, req *csi.NodeStageVolumeRequest) (*csi.NodeStageVolumeResponse, error) {
+func (d *Driver) NodeStageVolume(ctx context.Context, req *csi.NodeStageVolumeRequest) (*csi.NodeStageVolumeResponse, error) {
 	volumeID := req.GetVolumeId()
 	if len(volumeID) == 0 {
 		return nil, status.Error(codes.InvalidArgument, "Volume ID not provided")
@@ -91,6 +93,9 @@ func (d *Driver) NodeStageVolume(_ context.Context, req *csi.NodeStageVolumeRequ
 	defer func() {
 		mc.WithAdditionalVolumeInfo(consts.VolumeID, volumeID).Observe(isOperationSucceeded)
 	}()
+
+	// Label the root span so this trace can be correlated by volume.
+	oteltrace.SpanFromContext(ctx).SetAttributes(attribute.String(attrVolumeID, volumeID))
 
 	if acquired := d.volumeLocks.TryAcquire(volumeID); !acquired {
 		return nil, status.Errorf(codes.Aborted, volumeOperationAlreadyExistsFmt, volumeID)
@@ -163,7 +168,12 @@ func (d *Driver) NodeStageVolume(_ context.Context, req *csi.NodeStageVolumeRequ
 
 	// FormatAndMount will format only if needed
 	klog.V(2).Infof("NodeStageVolume: formatting %s and mounting at %s with mount options(%s)", source, target, options)
-	if err := d.formatAndMount(source, target, fstype, options); err != nil {
+	_, fmtSpan := startSpan(ctx, "formatAndMount",
+		attribute.String("fs_type", fstype))
+	err = d.formatAndMount(source, target, fstype, options)
+	recordSpanResult(fmtSpan, err)
+	fmtSpan.End()
+	if err != nil {
 		return nil, status.Errorf(codes.Internal, "could not format %s(lun: %s), and mount it at %s, failed with %v", source, lun, target, err)
 	}
 	klog.V(2).Infof("NodeStageVolume: format %s and mounting at %s successfully.", source, target)
@@ -183,7 +193,11 @@ func (d *Driver) NodeStageVolume(_ context.Context, req *csi.NodeStageVolumeRequ
 	// if resize is required, resize filesystem
 	if needResize {
 		klog.V(2).Infof("NodeStageVolume: fs resize initiating on target(%s) volumeid(%s)", target, volumeID)
-		if err := resizeVolume(source, target, d.mounter); err != nil {
+		_, resizeSpan := startSpan(ctx, "resizeVolume")
+		err = resizeVolume(source, target, d.mounter)
+		recordSpanResult(resizeSpan, err)
+		resizeSpan.End()
+		if err != nil {
 			return nil, status.Errorf(codes.Internal, "NodeStageVolume: could not resize volume %s (%s):  %v", source, target, err)
 		}
 		klog.V(2).Infof("NodeStageVolume: fs resize successful on target(%s) volumeid(%s).", target, volumeID)
