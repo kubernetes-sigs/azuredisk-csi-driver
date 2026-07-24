@@ -25,6 +25,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	"k8s.io/klog/v2"
@@ -38,7 +39,7 @@ const sysClassBlockPath = "/sys/class/block/"
 func scsiHostRescan(io azureutils.IOHandler, m *mount.SafeFormatAndMount) {
 }
 
-func formatAndMount(source, target, fstype string, options []string, m *mount.SafeFormatAndMount) error {
+func formatAndMount(source, target, fstype string, options []string, m *mount.SafeFormatAndMount, _ chan any, _ time.Duration) error {
 	return nil
 }
 
