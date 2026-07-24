@@ -250,7 +250,7 @@ func GetCloudProviderFromClient(ctx context.Context, kubeClient clientset.Interf
 	return az, nil
 }
 
-func GetKubeClient(kubeconfig string, qps float64, burst int) (clientset.Interface, error) {
+func GetKubeConfig(kubeconfig string, qps float64, burst int) (*rest.Config, error) {
 	config, err := clientcmd.BuildConfigFromFlags("", kubeconfig)
 	if err != nil {
 		return nil, err
@@ -261,6 +261,15 @@ func GetKubeClient(kubeconfig string, qps float64, burst int) (clientset.Interfa
 	}
 	if burst > 0 {
 		config.Burst = burst
+	}
+
+	return config, nil
+}
+
+func GetKubeClient(kubeconfig string, qps float64, burst int) (clientset.Interface, error) {
+	config, err := GetKubeConfig(kubeconfig, qps, burst)
+	if err != nil {
+		return nil, err
 	}
 
 	// Wrap the client-side rate limiter so that requests blocked by QPS/Burst

@@ -142,6 +142,8 @@ spec:
             - "--extra-create-metadata=true"
             - "--retry-interval-max=30m"
             - "--worker-threads=250"
+            - "--kube-api-qps=100"
+            - "--kube-api-burst=200"
           env:
             - name: ADDRESS
               value: /csi/csi.sock
@@ -320,6 +322,9 @@ spec:
               mountPath: /etc/pki/ca-trust/extracted
               readOnly: true
             {{- end }}
+            {{- with .Values.controller.extraVolumeMounts }}
+{{ toYaml . | indent 12 }}
+            {{- end }}
           resources: {{- toYaml .Values.controller.resources.azuredisk | nindent 12 }}
           securityContext:
             capabilities:
@@ -341,4 +346,7 @@ spec:
         - name: ssl-pki
           hostPath:
             path: /etc/pki/ca-trust/extracted
+        {{- end }}
+        {{- with .Values.controller.extraVolumes }}
+{{ toYaml . | indent 8 }}
         {{- end }}

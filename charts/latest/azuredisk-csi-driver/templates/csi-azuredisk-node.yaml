@@ -259,6 +259,9 @@ spec:
               name: etc-selinux
               readOnly: true
             {{- end }}
+            {{- with .Values.linux.extraVolumeMounts }}
+{{ toYaml . | indent 12 }}
+            {{- end }}
           resources: {{- toYaml .Values.linux.resources.azuredisk | nindent 12 }}
       volumes:
         - hostPath:
@@ -312,5 +315,8 @@ spec:
           hostPath:
             path: /etc/selinux
             type: Directory
+        {{- end }}
+        {{- with .Values.linux.extraVolumes }}
+{{ toYaml . | indent 8 }}
         {{- end }}
 {{- end -}}
