@@ -173,11 +173,13 @@ func formatAndMount(source, target, fstype string, options []string, m *mount.Sa
 			args := []string{source}
 			if fstype == "ext4" || fstype == "ext3" {
 				args = []string{
+					"-F",  // Force flag, if we reached this point then mostly it's a fresh disk without any fs signature
 					"-m0", // Zero blocks reserved for super-user
 					source,
 				}
 			} else if fstype == "xfs" {
 				args = []string{
+					"-f",
 					source,
 				}
 			}
@@ -439,7 +441,7 @@ func detectFilesystemExistence(source string, mounter *mount.SafeFormatAndMount)
 		klog.Errorf("detectFilesystemExistence - failed to check existence of filesystem on disk %s through 'wipefs' with error(%v)", source, err)
 		return false, fmt.Errorf("detectFilesystemExistence - failed to check existence of filesystem on disk %s through 'wipefs' with error(%v)", source, err)
 	}
-	if len(fsType) > 0 {
+	if len(strings.TrimSpace(string(fsType))) > 0 {
 		return true, nil
 	}
 	return false, nil

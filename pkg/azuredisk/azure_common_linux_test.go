@@ -104,7 +104,7 @@ func TestFormatAndMountDoesNotReformatWhenAlreadyFormatted(t *testing.T) {
 		mkfsAction(t),
 		// First call: fsck runs with "-a" to repair any issues before mounting.
 		fsckAction(t, []string{"-a", "/dev/sdz"}, nil, ""),
-		// Second call: disk is already ext4, so no fsck/mkfs should run.
+		// Second call: disk is already ext4, so it should skip the detection fsck/mkfs path.
 		blkidAction(t, "/dev/sdz", nil, "TYPE=ext4\n"),
 		// Second call: fsck runs with "-a" to repair any issues before mounting.
 		fsckAction(t, []string{"-a", "/dev/sdz"}, nil, ""),
@@ -304,7 +304,7 @@ func wipefsAction(t *testing.T, source string, err error, output string) testing
 // mkfsAction returns a fake command action asserting a successful mkfs.ext4 invocation.
 func mkfsAction(t *testing.T) testingexec.FakeCommandAction {
 	return func(cmd string, args ...string) exec.Cmd {
-		expectedArgs := []string{"-m0", "/dev/sdz"}
+		expectedArgs := []string{"-F", "-m0", "/dev/sdz"}
 		if cmd != "mkfs.ext4" || !reflect.DeepEqual(args, expectedArgs) {
 			t.Fatalf("unexpected mkfs command: %s %v", cmd, args)
 		}
