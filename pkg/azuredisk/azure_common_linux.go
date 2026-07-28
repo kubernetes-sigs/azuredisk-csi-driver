@@ -428,8 +428,12 @@ func rescanAllVolumes(io azureutils.IOHandler) error {
 func detectFilesystemExistence(source string, mounter *mount.SafeFormatAndMount) (bool, error) {
 	isFSExist, err := detectAndRepairFilesystem(source, []string{"-n"}, mounter)
 	if err != nil {
-		klog.Errorf("detectFilesystemExistence - failed to check existence of filesystem on disk %s through 'fsck' with error(%v)", source, err)
-		return false, fmt.Errorf("detectFilesystemExistence - failed to check existence of filesystem on disk %s through 'fsck' with error(%v)", source, err)
+		if strings.Contains(strings.ToLower(err.Error()), "superblock could not be read or does not describe a valid ext2/ext3/ext4") {
+			klog.Infof("Device %s may be fresh block device with no filesystem signature, fsck output: %s", source, err.Error())
+		} else {
+			klog.Errorf("detectFilesystemExistence - failed to check existence of filesystem on disk %s through 'fsck' with error(%v)", source, err)
+			return false, fmt.Errorf("detectFilesystemExistence - failed to check existence of filesystem on disk %s through 'fsck' with error(%v)", source, err)
+		}
 	}
 	if isFSExist {
 		return true, nil
@@ -469,12 +473,8 @@ func detectAndRepairFilesystem(source string, fsckOptions []string, mounter *mou
 			klog.Errorf("'fsck' not found on system; cannot verify filesystem signature on %s, returning error.", source)
 			return false, fmt.Errorf("'fsck' not found to detect filesystem on device %s with options %v: %v", source, fsckOptions, err)
 		case isExitError && ee.ExitStatus() == fsckOperationalError:
-			if strings.Contains(strings.ToLower(string(out)), "superblock could not be read or does not describe a valid ext2/ext3/ext4") {
-				klog.Infof("Device %s may be fresh block device with no filesystem signature, fsck output: %s", source, string(out))
-				return false, nil
-			}
 			klog.Warningf("Unable to run fsck on device %s with options %v, fsck output: %s", source, fsckOptions, string(out))
-			return false, fmt.Errorf("Unable to run fsck on device %s with options %v, fsck error: %v", source, fsckOptions, err)
+			return false, fmt.Errorf("Unable to run fsck on device %s with options %v, fsck error: %v output: %s", source, fsckOptions, err, string(out))
 		case isExitError && ee.ExitStatus() == fsckErrorsCorrected:
 			klog.Warningf("Device %s has errors which were corrected by fsck: %s", source, string(out))
 		case isExitError && ee.ExitStatus() == fsckErrorsUncorrected:
