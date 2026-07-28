@@ -143,12 +143,14 @@ func TestDetectAndRepairFilesystem(t *testing.T) {
 		},
 		{
 			// fsck exits 8 (operational error) on a fresh block device: its output reports that the
-			// superblock could not be read, which we treat as "no filesystem signature".
-			name:        "fresh block device with no filesystem",
+			// superblock could not be read. detectAndRepairFilesystem always surfaces an operational
+			// error; interpreting that output as "no filesystem signature" is the caller's job (see
+			// TestDetectFilesystemExistence).
+			name:        "operational error on a fresh block device",
 			fsckErr:     testingexec.FakeExitError{Status: fsckOperationalError},
 			fsckOutput:  "fsck.ext4: Superblock could not be read or does not describe a valid ext2/ext3/ext4 filesystem",
 			wantFsExist: false,
-			wantErr:     false,
+			wantErr:     true,
 		},
 		{
 			// fsck exits 8 (operational error) without the "no filesystem" signature: we cannot rule
@@ -205,6 +207,108 @@ func TestDetectAndRepairFilesystem(t *testing.T) {
 			}
 			if isFilesystemExist != tc.wantFsExist {
 				t.Fatalf("isFilesystemExist = %v, want %v", isFilesystemExist, tc.wantFsExist)
+			}
+		})
+	}
+}
+
+// TestDetectFilesystemExistence verifies that detectFilesystemExistence interprets an fsck
+// operational error whose output reports an unreadable superblock as a fresh block device and
+// falls back to wipefs, while still surfacing other fsck failures.
+func TestDetectFilesystemExistence(t *testing.T) {
+	const superblockOutput = "fsck.ext4: Superblock could not be read or does not describe a valid ext2/ext3/ext4 filesystem"
+
+	tests := []struct {
+		name         string
+		fsckErr      error
+		fsckOutput   string
+		expectWipefs bool
+		wipefsErr    error
+		wipefsOutput string
+		wantFsExist  bool
+		wantErr      bool
+	}{
+		{
+			// fsck exits 0, so a filesystem already exists and wipefs is not consulted.
+			name:        "fsck reports an existing filesystem",
+			fsckErr:     nil,
+			wantFsExist: true,
+			wantErr:     false,
+		},
+		{
+			// fsck exits 8 with the unreadable-superblock signature: treated as a fresh device, so
+			// wipefs is consulted and reports no signature.
+			name:         "fresh block device confirmed by wipefs",
+			fsckErr:      testingexec.FakeExitError{Status: fsckOperationalError},
+			fsckOutput:   superblockOutput,
+			expectWipefs: true,
+			wipefsErr:    nil,
+			wipefsOutput: "",
+			wantFsExist:  false,
+			wantErr:      false,
+		},
+		{
+			// fsck reports an unreadable superblock but wipefs still finds a filesystem signature.
+			name:         "unreadable superblock but wipefs finds a signature",
+			fsckErr:      testingexec.FakeExitError{Status: fsckOperationalError},
+			fsckOutput:   superblockOutput,
+			expectWipefs: true,
+			wipefsErr:    nil,
+			wipefsOutput: "ext4\n",
+			wantFsExist:  true,
+			wantErr:      false,
+		},
+		{
+			// fsck fails with an operational error unrelated to a missing superblock: surface it.
+			name:        "operational error unrelated to superblock",
+			fsckErr:     testingexec.FakeExitError{Status: fsckOperationalError},
+			fsckOutput:  "fsck.ext4: unable to set superblock flags",
+			wantFsExist: false,
+			wantErr:     true,
+		},
+		{
+			// fsck reports a fresh device but wipefs itself fails: surface the wipefs error.
+			name:         "wipefs failure is surfaced",
+			fsckErr:      testingexec.FakeExitError{Status: fsckOperationalError},
+			fsckOutput:   superblockOutput,
+			expectWipefs: true,
+			wipefsErr:    testingexec.FakeExitError{Status: 1},
+			wipefsOutput: "",
+			wantFsExist:  false,
+			wantErr:      true,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			fakeSafeMounter, err := testmounter.NewFakeSafeMounter()
+			if err != nil {
+				t.Fatalf("NewFakeSafeMounter failed: %v", err)
+			}
+
+			fakeExec := fakeSafeMounter.Exec.(*testmounter.FakeSafeMounter)
+			script := []testingexec.FakeCommandAction{
+				fsckAction(t, []string{"-n", "/dev/sdz"}, tc.fsckErr, tc.fsckOutput),
+			}
+			if tc.expectWipefs {
+				script = append(script, wipefsAction(t, "/dev/sdz", tc.wipefsErr, tc.wipefsOutput))
+			}
+			fakeExec.CommandScript = script
+
+			isFilesystemExist, err := detectFilesystemExistence("/dev/sdz", fakeSafeMounter)
+			if (err != nil) != tc.wantErr {
+				t.Fatalf("detectFilesystemExistence error = %v, wantErr %v", err, tc.wantErr)
+			}
+			if isFilesystemExist != tc.wantFsExist {
+				t.Fatalf("isFilesystemExist = %v, want %v", isFilesystemExist, tc.wantFsExist)
+			}
+
+			wantCalls := 1
+			if tc.expectWipefs {
+				wantCalls = 2
+			}
+			if got := fakeExec.CommandCalls; got != wantCalls {
+				t.Fatalf("unexpected command count: got %d, want %d", got, wantCalls)
 			}
 		})
 	}
