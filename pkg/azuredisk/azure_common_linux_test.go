@@ -201,7 +201,7 @@ func TestDetectAndRepairFilesystem(t *testing.T) {
 				fsckAction(t, []string{"-y", "/dev/sdz"}, tc.fsckErr, tc.fsckOutput),
 			}
 
-			isFilesystemExist, err := detectAndRepairFilesystem("/dev/sdz", []string{"-y"}, fakeSafeMounter)
+			isFilesystemExist, err := detectAndRepairFilesystem("/dev/sdz", []string{"-y"}, fakeSafeMounter, "test_detect_and_repair")
 			if (err != nil) != tc.wantErr {
 				t.Fatalf("detectAndRepairFilesystem error = %v, wantErr %v", err, tc.wantErr)
 			}
