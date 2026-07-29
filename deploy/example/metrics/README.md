@@ -12,11 +12,28 @@ These metrics are native to the Azure Disk CSI Driver and provide detailed opera
 |-------------|------|--------|-------------|
 | `azuredisk_csi_driver_operations_total` | Counter | `operation`, `success` | Total number of CSI operations |
 | `azuredisk_csi_driver_operation_duration_seconds` | Histogram | `operation`, `success` | Duration of CSI operations in seconds |
-| `azuredisk_csi_driver_operation_duration_seconds_labeled` | Histogram | `operation`, `success`, `storage_account_type` | Duration of CSI operations with additional disk-specific labels |
+| `azuredisk_csi_driver_operation_duration_seconds_labeled` | Histogram | `operation`, `success`, `storage_account_type`, `fsck_outcome`, `fs_type` | Duration of CSI operations with additional disk-specific labels |
 
 **Operation values:**
 - Controller: `controller_create_volume`, `controller_delete_volume`, `controller_modify_volume`, `controller_publish_volume`, `controller_unpublish_volume`, `controller_expand_volume`, `controller_create_snapshot`, `controller_delete_snapshot`
 - Node: `node_stage_volume`, `node_unstage_volume`, `node_publish_volume`, `node_unpublish_volume`, `node_expand_volume`
+
+**Linux format and mount operation values:**
+
+| Operation | When it is emitted | `success` value |
+|-----------|--------------------|-----------------|
+| `format_and_mount_blkid_no_signature` | `blkid` returned no filesystem signature, so fallback detection begins | `true` |
+| `format_and_mount_detect_fs_signature` | The read-only `fsck -n` filesystem detection completes | Result classified by `fsck_outcome` |
+| `format_and_mount_confirmed_no_signature` | `blkid`, `fsck -n`, and `wipefs` found no filesystem signature, so formatting is permitted | `true` |
+| `format_and_mount_mkfs` | The `mkfs` invocation completes | Whether `mkfs` succeeded |
+| `format_and_mount_detected_fs_signature_from_secondary_sb` | `blkid` returned empty, but fallback detection found a filesystem | `true` |
+| `format_and_mount_type_mismatch` | The detected filesystem type differs from the requested `fs_type` | `false` |
+| `format_and_mount_fsck_repair` | The pre-mount `fsck -a` repair completes | Result classified by `fsck_outcome` |
+| `format_and_mount_mount` | The final mount attempt completes, including the `directmount` path | Whether the mount succeeded |
+
+All format and mount operations expose the requested filesystem type through the `fs_type` label. The `format_and_mount_detect_fs_signature` and `format_and_mount_fsck_repair` operations additionally expose `fsck_outcome`, with possible values `clean`, `fresh_device`, `errors_corrected`, `errors_uncorrected`, `operational_error`, `not_found`, `fatal_error`, and `unknown`. Labels that do not apply to an operation have an empty value.
+
+For counts grouped by `storage_account_type`, `fsck_outcome`, or `fs_type`, use the histogram's `azuredisk_csi_driver_operation_duration_seconds_labeled_count` series. The `azuredisk_csi_driver_operations_total` counter contains only the `operation` and `success` labels.
 
 ### CSI Operation Latency Metrics (via cloud-provider-azure)
 
