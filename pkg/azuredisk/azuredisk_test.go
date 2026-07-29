@@ -30,8 +30,15 @@ import (
 	"go.uber.org/mock/gomock"
 	"golang.org/x/sync/errgroup"
 	"google.golang.org/grpc/status"
+	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/labels"
+	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
 	clientset "k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/kubernetes/fake"
+	"k8s.io/client-go/tools/cache"
 	"k8s.io/utils/ptr"
 	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 	"sigs.k8s.io/cloud-provider-azure/pkg/azclient/diskclient/mock_diskclient"
@@ -290,24 +297,161 @@ func TestDriver_CheckDiskExists_Success(t *testing.T) {
 	assert.Equal(t, err, nil)
 }
 
-func TestGetNodeInfoFromLabels(t *testing.T) {
+// fakeErrorNodeLister is a GenericLister that always returns a specified error.
+type fakeErrorNodeLister struct {
+	err error
+}
+
+func (f *fakeErrorNodeLister) List(selector labels.Selector) ([]runtime.Object, error) {
+	return nil, f.err
+}
+
+func (f *fakeErrorNodeLister) Get(name string) (runtime.Object, error) {
+	return nil, f.err
+}
+
+func (f *fakeErrorNodeLister) ByNamespace(namespace string) cache.GenericNamespaceLister {
+	return nil
+}
+
+func TestGetNodeInfoFromNodeLister(t *testing.T) {
+	nodeGR := schema.GroupResource{Group: "", Resource: "nodes"}
 	tests := []struct {
-		nodeName      string
-		kubeClient    clientset.Interface
-		expectedError error
+		name           string
+		nodeName       string
+		nodeLister     cache.GenericLister
+		expectedZone   string
+		expectedType   string
+		expectedError  error
+		expectErrorNil bool
 	}{
 		{
-			nodeName:      "",
-			kubeClient:    nil,
-			expectedError: fmt.Errorf("kubeClient is nil"),
+			name:          "nil lister",
+			nodeName:      "node1",
+			nodeLister:    nil,
+			expectedError: fmt.Errorf("nodeLister is nil"),
+		},
+		{
+			name:     "lister returns node with labels",
+			nodeName: "node1",
+			nodeLister: func() cache.GenericLister {
+				indexer := cache.NewIndexer(cache.MetaNamespaceKeyFunc, cache.Indexers{})
+				node := &metav1.PartialObjectMetadata{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: "node1",
+						Labels: map[string]string{
+							consts.WellKnownTopologyKey: "westus2-1",
+							consts.InstanceTypeKey:      "Standard_DS2_v2",
+						},
+					},
+				}
+				_ = indexer.Add(node)
+				return cache.NewGenericLister(indexer, nodeGR)
+			}(),
+			expectedZone:   "westus2-1",
+			expectedType:   "Standard_DS2_v2",
+			expectErrorNil: true,
+		},
+		{
+			name:     "lister returns node with empty labels",
+			nodeName: "node1",
+			nodeLister: func() cache.GenericLister {
+				indexer := cache.NewIndexer(cache.MetaNamespaceKeyFunc, cache.Indexers{})
+				node := &metav1.PartialObjectMetadata{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:   "node1",
+						Labels: map[string]string{},
+					},
+				}
+				_ = indexer.Add(node)
+				return cache.NewGenericLister(indexer, nodeGR)
+			}(),
+			expectedError: fmt.Errorf("node(node1) label is empty"),
+		},
+		{
+			name:     "lister does not have the node - returns nil (NotFound is not an error)",
+			nodeName: "missing-node",
+			nodeLister: func() cache.GenericLister {
+				indexer := cache.NewIndexer(cache.MetaNamespaceKeyFunc, cache.Indexers{})
+				return cache.NewGenericLister(indexer, nodeGR)
+			}(),
+			expectedZone:   "",
+			expectedType:   "",
+			expectErrorNil: true,
+		},
+		{
+			name:          "lister returns non-NotFound error - propagates error",
+			nodeName:      "node1",
+			nodeLister:    &fakeErrorNodeLister{err: fmt.Errorf("connection refused")},
+			expectedError: fmt.Errorf("get node(node1) from lister failed: connection refused"),
 		},
 	}
 
 	for _, test := range tests {
-		_, _, err := GetNodeInfoFromLabels(context.TODO(), test.nodeName, test.kubeClient)
-		if !reflect.DeepEqual(err, test.expectedError) {
-			t.Errorf("Unexpected result: %v, expected result: %v", err, test.expectedError)
-		}
+		t.Run(test.name, func(t *testing.T) {
+			zone, instanceType, err := GetNodeInfoFromNodeLister(test.nodeName, test.nodeLister)
+			if test.expectErrorNil {
+				assert.NoError(t, err)
+				assert.Equal(t, test.expectedZone, zone)
+				assert.Equal(t, test.expectedType, instanceType)
+			} else {
+				assert.EqualError(t, err, test.expectedError.Error())
+			}
+		})
+	}
+}
+
+func TestGetNodeInfoFromLabels(t *testing.T) {
+	tests := []struct {
+		name           string
+		nodeName       string
+		kubeClient     clientset.Interface
+		expectedZone   string
+		expectedType   string
+		expectedError  error
+		expectErrorNil bool
+	}{
+		{
+			name:          "nil kubeClient",
+			nodeName:      "",
+			kubeClient:    nil,
+			expectedError: fmt.Errorf("kubeClient is nil"),
+		},
+		{
+			name:     "kubeClient returns node with labels",
+			nodeName: "node1",
+			kubeClient: fake.NewSimpleClientset(&corev1.Node{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "node1",
+					Labels: map[string]string{
+						consts.WellKnownTopologyKey: "centralus-1",
+						consts.InstanceTypeKey:      "Standard_E8s_v3",
+					},
+				},
+			}),
+			expectedZone:   "centralus-1",
+			expectedType:   "Standard_E8s_v3",
+			expectErrorNil: true,
+		},
+		{
+			name:          "kubeClient node not found",
+			nodeName:      "missing-node",
+			kubeClient:    fake.NewSimpleClientset(),
+			expectedError: fmt.Errorf("get node(missing-node) failed with nodes \"missing-node\" not found"),
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			zone, instanceType, err := GetNodeInfoFromLabels(context.TODO(), test.nodeName, test.kubeClient)
+			if test.expectErrorNil {
+				assert.NoError(t, err)
+				assert.Equal(t, test.expectedZone, zone)
+				assert.Equal(t, test.expectedType, instanceType)
+			} else {
+				assert.EqualError(t, err, test.expectedError.Error())
+			}
+		})
 	}
 }
 

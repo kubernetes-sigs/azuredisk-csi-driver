@@ -36,6 +36,7 @@ import (
 
 	grpcprom "github.com/grpc-ecosystem/go-grpc-middleware/providers/prometheus"
 	corev1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	k8stypes "k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/wait"
@@ -47,6 +48,11 @@ import (
 	"k8s.io/kubernetes/pkg/volume/util/hostutil"
 	"k8s.io/mount-utils"
 	"k8s.io/utils/ptr"
+
+	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/client-go/metadata"
+	"k8s.io/client-go/metadata/metadatainformer"
+	"k8s.io/client-go/tools/cache"
 
 	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
@@ -156,6 +162,9 @@ type Driver struct {
 	enableMigrationMonitor      bool
 	// whether to convert ReadWrite cachingMode to ReadOnly for intree PVs to avoid issues
 	convertRWCachingModeForIntreePV bool
+	nodeLister                      cache.GenericLister
+	nodeInformerSynced              cache.InformerSynced
+	nodeInformerFactory             metadatainformer.SharedInformerFactory
 }
 
 // NewDriver Creates a NewCSIDriver object. Assumes vendor version is equal to driver version &
@@ -238,9 +247,16 @@ func NewDriver(options *DriverOptions) *Driver {
 	userAgent := GetUserAgent(driver.Name, driver.customUserAgent, driver.userAgentSuffix)
 	klog.V(2).Infof("driver userAgent: %s", userAgent)
 
-	kubeClient, err := azureutils.GetKubeClient(options.Kubeconfig, options.KubeAPIQPS, options.KubeAPIBurst)
+	kubeConfig, err := azureutils.GetKubeConfig(options.Kubeconfig, options.KubeAPIQPS, options.KubeAPIBurst)
 	if err != nil {
 		klog.Warningf("get kubeconfig(%s) failed with error: %v", options.Kubeconfig, err)
+	}
+	var kubeClient clientset.Interface
+	if kubeConfig != nil {
+		kubeClient, err = clientset.NewForConfig(kubeConfig)
+		if err != nil {
+			klog.Warningf("get kubeclient failed with error: %v", err)
+		}
 	}
 	driver.kubeClient = kubeClient
 
@@ -335,6 +351,23 @@ func NewDriver(options *DriverOptions) *Driver {
 		}
 	}
 
+	if kubeConfig != nil && driver.checkDiskCountForBatching && driver.NodeID == "" {
+		// Create a metadata-only node informer to cache node labels locally (controller only)
+		metadataClient, err := metadata.NewForConfig(kubeConfig)
+		if err != nil {
+			klog.Warningf("failed to create metadata client: %v, node informer will not be used", err)
+		} else {
+			driver.nodeInformerFactory = metadatainformer.NewSharedInformerFactory(metadataClient, 0)
+			nodeGVR := schema.GroupVersionResource{Group: "", Version: "v1", Resource: "nodes"}
+			nodeInformer := driver.nodeInformerFactory.ForResource(nodeGVR)
+			driver.nodeLister = nodeInformer.Lister()
+			driver.nodeInformerSynced = nodeInformer.Informer().HasSynced
+			if driver.diskController != nil {
+				driver.diskController.nodeLister = driver.nodeLister
+			}
+		}
+	}
+
 	driver.deviceHelper = optimization.NewSafeDeviceHelper()
 
 	if driver.getPerfOptimizationEnabled() {
@@ -423,6 +456,19 @@ func (d *Driver) Run(ctx context.Context) error {
 	csi.RegisterControllerServer(s, d)
 	csi.RegisterNodeServer(s, d)
 
+	// Start the node informer if it was set up during driver initialization
+	if d.nodeInformerFactory != nil {
+		d.nodeInformerFactory.Start(ctx.Done())
+		syncCtx, syncCancel := context.WithTimeout(ctx, 30*time.Second)
+		defer syncCancel()
+		if !cache.WaitForCacheSync(syncCtx.Done(), d.nodeInformerSynced) {
+			klog.Warningf("metadata node informer cache has not synced yet, will continue to sync in background")
+		} else {
+			klog.V(2).Infof("metadata node informer cache synced successfully")
+		}
+		klog.V(2).Infof("started metadata node informer for GetNodeInfoFromLabels caching")
+	}
+
 	go func() {
 		//graceful shutdown
 		<-ctx.Done()
@@ -430,6 +476,11 @@ func (d *Driver) Run(ctx context.Context) error {
 		// Stop migration monitor if it exists
 		if d.migrationMonitor != nil {
 			d.migrationMonitor.Stop()
+		}
+
+		// Shutdown node informer if it was started
+		if d.nodeInformerFactory != nil {
+			d.nodeInformerFactory.Shutdown()
 		}
 
 		s.GracefulStop()
@@ -675,7 +726,37 @@ func (d *Driver) getUsedLunsFromNode(ctx context.Context, nodeName k8stypes.Node
 	return usedLuns, nil
 }
 
-// getNodeInfoFromLabels get zone, instanceType from node labels
+// GetNodeInfoFromNodeLister gets zone, instanceType from node labels using the cached nodeLister.
+func GetNodeInfoFromNodeLister(nodeName string, nodeLister cache.GenericLister) (string, string, error) {
+	if nodeLister == nil {
+		return "", "", fmt.Errorf("nodeLister is nil")
+	}
+
+	obj, err := nodeLister.Get(nodeName)
+	if err != nil {
+		if apierrors.IsNotFound(err) {
+			klog.V(4).Infof("GetNodeInfoFromNodeLister: node(%s) not found in lister cache", nodeName)
+			return "", "", nil
+		}
+		return "", "", fmt.Errorf("get node(%s) from lister failed: %v", nodeName, err)
+	}
+
+	pom, ok := obj.(*metav1.PartialObjectMetadata)
+	if !ok {
+		return "", "", fmt.Errorf("node(%s) from lister is not *metav1.PartialObjectMetadata", nodeName)
+	}
+
+	if len(pom.Labels) == 0 {
+		return "", "", fmt.Errorf("node(%s) label is empty", nodeName)
+	}
+
+	zone := pom.Labels[consts.WellKnownTopologyKey]
+	instanceType := pom.Labels[consts.InstanceTypeKey]
+	klog.V(4).Infof("GetNodeInfoFromNodeLister: node(%s): zone=%s, instanceType=%s", nodeName, zone, instanceType)
+	return zone, instanceType, nil
+}
+
+// GetNodeInfoFromLabels gets zone, instanceType from node labels via the kubeClient API server.
 func GetNodeInfoFromLabels(ctx context.Context, nodeName string, kubeClient clientset.Interface) (string, string, error) {
 	if kubeClient == nil || kubeClient.CoreV1() == nil {
 		return "", "", fmt.Errorf("kubeClient is nil")
@@ -689,7 +770,11 @@ func GetNodeInfoFromLabels(ctx context.Context, nodeName string, kubeClient clie
 	if len(node.Labels) == 0 {
 		return "", "", fmt.Errorf("node(%s) label is empty", nodeName)
 	}
-	return node.Labels[consts.WellKnownTopologyKey], node.Labels[consts.InstanceTypeKey], nil
+
+	zone := node.Labels[consts.WellKnownTopologyKey]
+	instanceType := node.Labels[consts.InstanceTypeKey]
+	klog.V(4).Infof("GetNodeInfoFromLabels: node(%s) from API server: zone=%s, instanceType=%s", nodeName, zone, instanceType)
+	return zone, instanceType, nil
 }
 
 // getDefaultDiskIOPSReadWrite according to requestGiB
