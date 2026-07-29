@@ -40,8 +40,18 @@
 
 ### add the Helm chart repository
 
+Pick **one** source (both host the same charts; the two commands share the repo name `azuredisk-csi-driver`, so running the second after the first will fail unless you pass `--force-update`):
+
+Option 1: raw.githubusercontent.com (default)
+
 ```console
 helm repo add azuredisk-csi-driver https://raw.githubusercontent.com/kubernetes-sigs/azuredisk-csi-driver/master/charts
+```
+
+Option 2: GitHub Pages mirror (available since 1.33.7, not affected by raw.githubusercontent.com rate limits)
+
+```console
+helm repo add azuredisk-csi-driver https://kubernetes-sigs.github.io/azuredisk-csi-driver
 ```
 
 ### search for all available chart versions
