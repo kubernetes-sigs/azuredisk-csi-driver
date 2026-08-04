@@ -36,7 +36,6 @@ import (
 	clientset "k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
-	"k8s.io/client-go/util/flowcontrol"
 	"k8s.io/klog/v2"
 	api "k8s.io/kubernetes/pkg/apis/core"
 	"k8s.io/mount-utils"
@@ -268,17 +267,8 @@ func GetKubeConfig(kubeconfig string, qps float64, burst int) (*rest.Config, err
 	}
 
 	// Wrap the client-side rate limiter so that requests blocked by QPS/Burst
-	// exhaustion surface as span events. Replicate client-go's default token
-	// bucket (QPS 5, Burst 10) when the caller did not set explicit limits.
-	effectiveQPS := config.QPS
-	if effectiveQPS <= 0 {
-		effectiveQPS = rest.DefaultQPS
-	}
-	effectiveBurst := config.Burst
-	if effectiveBurst <= 0 {
-		effectiveBurst = rest.DefaultBurst
-	}
-	config.RateLimiter = newTracingRateLimiter(flowcontrol.NewTokenBucketRateLimiter(effectiveQPS, effectiveBurst))
+	// exhaustion surface as span events.
+	WrapConfigRateLimiterWithTracing(config)
 
 	return clientset.NewForConfig(config)
 }

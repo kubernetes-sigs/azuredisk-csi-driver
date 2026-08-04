@@ -1,5 +1,5 @@
 /*
-Copyright 2024 The Kubernetes Authors.
+Copyright 2026 The Kubernetes Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -22,6 +22,7 @@ import (
 
 	"go.opentelemetry.io/otel/attribute"
 	oteltrace "go.opentelemetry.io/otel/trace"
+	"k8s.io/client-go/rest"
 	"k8s.io/client-go/util/flowcontrol"
 )
 
@@ -47,6 +48,26 @@ func newTracingRateLimiter(inner flowcontrol.RateLimiter) *tracingRateLimiter {
 	return &tracingRateLimiter{RateLimiter: inner}
 }
 
+// WrapConfigRateLimiterWithTracing replaces config.RateLimiter with a tracing
+// wrapper so that Kubernetes API requests blocked by client-side QPS/Burst
+// exhaustion surface as span events. It replicates client-go's default token
+// bucket (QPS 5, Burst 10) when the caller did not set explicit limits. It is a
+// no-op for a nil config.
+func WrapConfigRateLimiterWithTracing(config *rest.Config) {
+	if config == nil {
+		return
+	}
+	effectiveQPS := config.QPS
+	if effectiveQPS <= 0 {
+		effectiveQPS = rest.DefaultQPS
+	}
+	effectiveBurst := config.Burst
+	if effectiveBurst <= 0 {
+		effectiveBurst = rest.DefaultBurst
+	}
+	config.RateLimiter = newTracingRateLimiter(flowcontrol.NewTokenBucketRateLimiter(effectiveQPS, effectiveBurst))
+}
+
 // Wait times how long the underlying limiter blocks the request and, when the
 // wait exceeds the threshold, adds a "kube_client_ratelimited" event to the
 // currently active span. When tracing is disabled the active span is a no-op
@@ -55,10 +76,13 @@ func (t *tracingRateLimiter) Wait(ctx context.Context) error {
 	start := time.Now()
 	err := t.RateLimiter.Wait(ctx)
 	waited := time.Since(start)
-	if waited >= kubeRateLimitWaitThreshold {
+	// Only record a rate-limit event on a successful wait. When the limiter
+	// returns an error (e.g. ctx deadline/cancel after a long wait), the time
+	// spent is a canceled request, not successful client-side back-pressure.
+	if err == nil && waited >= kubeRateLimitWaitThreshold {
 		if span := oteltrace.SpanFromContext(ctx); span.IsRecording() {
 			span.AddEvent("kube_client_ratelimited", oteltrace.WithAttributes(
-				attribute.String("wait", waited.String()),
+				attribute.Int64("wait_ms", waited.Milliseconds()),
 			))
 		}
 	}

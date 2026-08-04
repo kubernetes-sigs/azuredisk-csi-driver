@@ -20,12 +20,13 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"strconv"
 	"strings"
 
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/baggage"
 	otelcodes "go.opentelemetry.io/otel/codes"
-	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
 	"go.opentelemetry.io/otel/sdk/resource"
 	"go.opentelemetry.io/otel/sdk/trace"
 	oteltrace "go.opentelemetry.io/otel/trace"
@@ -38,18 +39,22 @@ const (
 	// spans produced by this driver can be distinguished from library spans.
 	tracerName = "sigs.k8s.io/azuredisk-csi-driver"
 
-	// otelExporterEndpointEnv is the standard OpenTelemetry environment
-	// variable that points at an OTLP collector. When it is set the driver
-	// additionally exports spans to that collector; otherwise spans are only
-	// written to the container logs.
-	otelExporterEndpointEnv = "OTEL_EXPORTER_OTLP_ENDPOINT"
+	// spanVerbosityEnv overrides the klog verbosity at which span lines are
+	// written. Operators who want span lines at a different level than the
+	// default can set it (e.g. "4") without changing the driver's global -v.
+	spanVerbosityEnv = "OTEL_KLOG_SPAN_VERBOSITY"
 
-	// klogSpanVerbosity is the klog verbosity level at which spans are logged.
-	// It is intentionally high so spans never appear at default logging levels
-	// and only surface when an operator explicitly raises verbosity, keeping
-	// trace volume controlled.
-	klogSpanVerbosity = 4
+	// defaultKlogSpanVerbosity is the default klog verbosity at which spans are
+	// logged. It is deliberately low (V(2)) so that enabling tracing produces
+	// usable span lines at normal production verbosity, without requiring the
+	// whole driver to run at V(4).
+	defaultKlogSpanVerbosity klog.Level = 2
 )
+
+// klogSpanVerbosity is the klog verbosity level at which spans are logged. It
+// defaults to defaultKlogSpanVerbosity and can be overridden at startup via the
+// spanVerbosityEnv environment variable (see InitOtelTracing).
+var klogSpanVerbosity = defaultKlogSpanVerbosity
 
 // Span attribute keys used across handlers so root-span labeling stays
 // consistent and traces are easy to correlate by disk, node or volume.
@@ -62,6 +67,11 @@ const (
 
 	// eventThrottled marks an ARM/library throttling back-off inside a span.
 	eventThrottled = "throttled"
+
+	// correlationBaggageKey is the OTel baggage key under which the canonical
+	// per-request correlation value (the disk name, e.g. pvc-<uid>) is carried
+	// so that startSpan can stamp it onto every child sub-span of an RPC.
+	correlationBaggageKey = attrDiskName
 )
 
 // noisySpanNames are health-check and capability-discovery RPCs that the
@@ -94,10 +104,40 @@ func tracer() oteltrace.Tracer {
 // I/O boundaries unconditionally without guarding every call site.
 func startSpan(ctx context.Context, name string, attrs ...attribute.KeyValue) (context.Context, oteltrace.Span) {
 	ctx, span := tracer().Start(ctx, name)
+	// Inherit the request's canonical correlation key (disk name) from baggage
+	// so every sub-span groups under the same disk without each call site
+	// having to pass it explicitly.
+	if v := baggage.FromContext(ctx).Member(correlationBaggageKey).Value(); v != "" {
+		span.SetAttributes(attribute.String(attrDiskName, v))
+	}
 	if len(attrs) > 0 {
 		span.SetAttributes(attrs...)
 	}
 	return ctx, span
+}
+
+// withDiskCorrelation stamps diskName as the canonical correlation key for the
+// whole request. It (1) labels the current root span, (2) stores the value in
+// OTel baggage so startSpan copies it onto every child sub-span, and (3)
+// attaches a contextual klog logger so ordinary klog lines carry disk.name too,
+// enabling logs-only correlation across an operation and the disk lifecycle. It
+// returns the enriched context; callers must use the returned context for
+// downstream work. An empty diskName returns ctx unchanged.
+func withDiskCorrelation(ctx context.Context, diskName string) context.Context {
+	if diskName == "" {
+		return ctx
+	}
+	// Label the root span of this RPC.
+	oteltrace.SpanFromContext(ctx).SetAttributes(attribute.String(attrDiskName, diskName))
+	// Propagate onto child sub-spans via baggage.
+	if member, err := baggage.NewMember(correlationBaggageKey, diskName); err == nil {
+		if bag, err := baggage.FromContext(ctx).SetMember(member); err == nil {
+			ctx = baggage.ContextWithBaggage(ctx, bag)
+		}
+	}
+	// Stamp ordinary klog lines with the same key.
+	ctx = klog.NewContext(ctx, klog.FromContext(ctx).WithValues(attrDiskName, diskName))
+	return ctx
 }
 
 // recordSpanResult sets the span status from err. On error it also records the
@@ -193,7 +233,7 @@ func spanKeysAndValues(span trace.ReadOnlySpan) []interface{} {
 			}
 			b.WriteString(ev.Name)
 			for _, attr := range ev.Attributes {
-				fmt.Fprintf(&b, " %s=%s", attr.Key, attr.Value.Emit())
+				fmt.Fprintf(&b, " %s=%v", attr.Key, attr.Value.Emit())
 			}
 		}
 		kv = append(kv, "events", b.String())
@@ -209,13 +249,22 @@ func spanKeysAndValues(span trace.ReadOnlySpan) []interface{} {
 }
 
 // InitOtelTracing initializes and registers a global OpenTelemetry
-// TracerProvider for the driver. Spans are always exported to the container
-// logs via klog; if an OTLP endpoint is configured they are additionally
-// exported to that collector. The returned TracerProvider must be shut down on
-// exit to flush any buffered spans. It is only called when tracing is enabled,
-// so there is zero cost when tracing is disabled.
+// TracerProvider for the driver. Spans are exported to the container logs via
+// klog, so no external collector is required. The returned TracerProvider must
+// be shut down on exit to flush any buffered spans. It is only called when
+// tracing is enabled, so there is zero cost when tracing is disabled.
 func InitOtelTracing() (*trace.TracerProvider, error) {
 	ctx := context.Background()
+
+	// Allow operators to override the span log verbosity without changing the
+	// driver's global -v level.
+	if v := strings.TrimSpace(os.Getenv(spanVerbosityEnv)); v != "" {
+		if lvl, err := strconv.Atoi(v); err == nil && lvl >= 0 {
+			klogSpanVerbosity = klog.Level(lvl)
+		} else {
+			klog.Warningf("otel tracing: ignoring invalid %s=%q", spanVerbosityEnv, v)
+		}
+	}
 
 	// Resource will auto populate spans with common attributes.
 	res, err := resource.New(ctx,
@@ -231,22 +280,12 @@ func InitOtelTracing() (*trace.TracerProvider, error) {
 
 	opts := []trace.TracerProviderOption{
 		trace.WithResource(res),
-		// Honor OTEL_TRACES_SAMPLER* env vars when set, otherwise sample based
-		// on the parent decision, keeping volume controlled.
+		// Sample based on the parent's decision, falling back to always
+		// sampling for root spans, so an entire trace is kept or dropped
+		// together.
 		trace.WithSampler(trace.ParentBased(trace.AlwaysSample())),
 		// Always write spans to the container logs.
 		trace.WithBatcher(&klogSpanExporter{}),
-	}
-
-	// Optionally add an OTLP exporter when a collector endpoint is configured.
-	// This is the one-line path to a real tracing backend.
-	if endpoint := strings.TrimSpace(os.Getenv(otelExporterEndpointEnv)); endpoint != "" {
-		exporter, err := otlptracegrpc.New(ctx)
-		if err != nil {
-			return nil, fmt.Errorf("failed to create the OTLP exporter: %w", err)
-		}
-		opts = append(opts, trace.WithBatcher(exporter))
-		klog.V(2).Infof("otel tracing: exporting spans to OTLP endpoint %s", endpoint)
 	}
 
 	traceProvider := trace.NewTracerProvider(opts...)

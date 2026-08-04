@@ -1,5 +1,5 @@
 /*
-Copyright 2023 The Kubernetes Authors.
+Copyright 2026 The Kubernetes Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -26,6 +26,7 @@ import (
 	"sync"
 	"testing"
 
+	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"k8s.io/klog/v2"
 )
@@ -55,6 +56,9 @@ func captureKlogAtSpanVerbosity(t *testing.T) (*bytes.Buffer, func()) {
 
 	return buf, func() {
 		klog.Flush()
+		// Restore logtostderr so later tests don't fall through to klog's
+		// file-creation path and write logs to temp files.
+		_ = flag.Set("logtostderr", "true")
 		klog.SetOutput(nil)
 	}
 }
@@ -65,6 +69,11 @@ func captureKlogAtSpanVerbosity(t *testing.T) (*bytes.Buffer, func()) {
 func TestTracingSpansVisibleInLogs(t *testing.T) {
 	buf, restore := captureKlogAtSpanVerbosity(t)
 	defer restore()
+
+	// InitOtelTracing mutates the global tracer provider; restore it so other
+	// tests (e.g. TestTracingDisabledEmitsNoSpans) still see the default no-op.
+	prevTP := otel.GetTracerProvider()
+	defer otel.SetTracerProvider(prevTP)
 
 	tp, err := InitOtelTracing()
 	if err != nil {
@@ -132,6 +141,11 @@ func TestRecordThrottleIfThrottled(t *testing.T) {
 	buf, restore := captureKlogAtSpanVerbosity(t)
 	defer restore()
 
+	// InitOtelTracing mutates the global tracer provider; restore it so other
+	// tests (e.g. TestTracingDisabledEmitsNoSpans) still see the default no-op.
+	prevTP := otel.GetTracerProvider()
+	defer otel.SetTracerProvider(prevTP)
+
 	tp, err := InitOtelTracing()
 	if err != nil {
 		t.Fatalf("InitOtelTracing failed: %v", err)
@@ -178,5 +192,51 @@ func TestRecordThrottleIfThrottled(t *testing.T) {
 		if strings.Contains(line, `span="DetachDisk"`) && strings.Contains(line, eventThrottled) {
 			t.Errorf("did not expect a throttle event on DetachDisk span, got:\n%s", line)
 		}
+	}
+}
+
+// TestDiskCorrelationPropagatesToChildSpans verifies that withDiskCorrelation
+// labels the root span and, via baggage, auto-stamps the same disk.name onto
+// child sub-spans started with startSpan without the caller passing it.
+func TestDiskCorrelationPropagatesToChildSpans(t *testing.T) {
+	buf, restore := captureKlogAtSpanVerbosity(t)
+	defer restore()
+
+	prevTP := otel.GetTracerProvider()
+	defer otel.SetTracerProvider(prevTP)
+
+	tp, err := InitOtelTracing()
+	if err != nil {
+		t.Fatalf("InitOtelTracing failed: %v", err)
+	}
+	defer func() {
+		_ = tp.Shutdown(context.Background())
+	}()
+
+	// Root span for the RPC, then stamp the canonical correlation key.
+	ctx, root := startSpan(context.Background(), "csi.v1.Controller/CreateVolume")
+	ctx = withDiskCorrelation(ctx, "pvc-abc123")
+
+	// A child sub-span started without passing disk.name explicitly.
+	_, child := startSpan(ctx, "CreateManagedDisk")
+	child.End()
+	root.End()
+
+	if err := tp.ForceFlush(context.Background()); err != nil {
+		t.Fatalf("ForceFlush failed: %v", err)
+	}
+	klog.Flush()
+
+	out := buf.String()
+	t.Logf("captured klog output:\n%s", out)
+
+	var childHasDiskName bool
+	for _, line := range strings.Split(out, "\n") {
+		if strings.Contains(line, `span="CreateManagedDisk"`) && strings.Contains(line, `disk.name="pvc-abc123"`) {
+			childHasDiskName = true
+		}
+	}
+	if !childHasDiskName {
+		t.Errorf("expected child span CreateManagedDisk to inherit disk.name=pvc-abc123 via baggage, got:\n%s", out)
 	}
 }

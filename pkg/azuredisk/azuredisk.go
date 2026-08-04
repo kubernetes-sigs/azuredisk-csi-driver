@@ -262,6 +262,9 @@ func NewDriver(options *DriverOptions) *Driver {
 	}
 	var kubeClient clientset.Interface
 	if kubeConfig != nil {
+		// Wrap the client-side rate limiter so that requests blocked by
+		// QPS/Burst exhaustion surface as span events on the traced driver path.
+		azureutils.WrapConfigRateLimiterWithTracing(kubeConfig)
 		kubeClient, err = clientset.NewForConfig(kubeConfig)
 		if err != nil {
 			klog.Warningf("get kubeclient failed with error: %v", err)
@@ -447,14 +450,14 @@ func (d *Driver) Run(ctx context.Context) error {
 		),
 	}
 	if d.enableOtelTracing {
-		exporter, err := InitOtelTracing()
+		tracerProvider, err := InitOtelTracing()
 		if err != nil {
 			klog.Fatalf("Failed to initialize otel tracing: %v", err)
 		}
-		// Exporter will flush traces on shutdown
+		// TracerProvider will flush traces on shutdown
 		defer func() {
-			if err := exporter.Shutdown(context.Background()); err != nil {
-				klog.Errorf("Could not shutdown otel exporter: %v", err)
+			if err := tracerProvider.Shutdown(context.Background()); err != nil {
+				klog.Errorf("Could not shutdown otel tracerProvider: %v", err)
 			}
 		}()
 		opts = append(opts, grpc.StatsHandler(otelgrpc.NewServerHandler()))
@@ -686,8 +689,8 @@ func (d *Driver) getUsedLunsFromVolumeAttachments(ctx context.Context, nodeName 
 		return nil, fmt.Errorf("kubeClient or kubeClient.StorageV1() or kubeClient.StorageV1().VolumeAttachments() is nil")
 	}
 
-	_, kubeSpan := startSpan(ctx, "ListVolumeAttachments", attribute.String(attrNode, nodeName))
-	volumeAttachments, err := kubeClient.StorageV1().VolumeAttachments().List(ctx, metav1.ListOptions{
+	kubeSpanCtx, kubeSpan := startSpan(ctx, "ListVolumeAttachments", attribute.String(attrNode, nodeName))
+	volumeAttachments, err := kubeClient.StorageV1().VolumeAttachments().List(kubeSpanCtx, metav1.ListOptions{
 		TimeoutSeconds: ptr.To(int64(volumeAttachmentListTimeoutSeconds))})
 	recordSpanResult(kubeSpan, err)
 	kubeSpan.End()
@@ -775,8 +778,8 @@ func GetNodeInfoFromLabels(ctx context.Context, nodeName string, kubeClient clie
 		return "", "", fmt.Errorf("kubeClient is nil")
 	}
 
-	_, kubeSpan := startSpan(ctx, "GetNode", attribute.String(attrNode, nodeName))
-	node, err := kubeClient.CoreV1().Nodes().Get(ctx, nodeName, metav1.GetOptions{})
+	kubeSpanCtx, kubeSpan := startSpan(ctx, "GetNode", attribute.String(attrNode, nodeName))
+	node, err := kubeClient.CoreV1().Nodes().Get(kubeSpanCtx, nodeName, metav1.GetOptions{})
 	recordSpanResult(kubeSpan, err)
 	kubeSpan.End()
 	if err != nil {

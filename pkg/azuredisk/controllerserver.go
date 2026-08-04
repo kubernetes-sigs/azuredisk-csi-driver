@@ -270,6 +270,10 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 	}
 	diskParams.DiskName = azureutils.CreateValidDiskName(diskParams.DiskName)
 
+	// Stamp the canonical correlation key (disk name) onto the root span, its
+	// child sub-spans (via baggage) and ordinary klog lines for this request.
+	ctx = withDiskCorrelation(ctx, diskParams.DiskName)
+
 	if diskParams.ResourceGroup == "" {
 		diskParams.ResourceGroup = d.cloud.ResourceGroup
 	}
@@ -479,10 +483,11 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 		mc.WithAdditionalVolumeInfo(consts.VolumeID, diskURI).ObserveWithLabels(isOperationSucceeded, csiMetrics.StorageAccountType, string(skuName))
 	}()
 
-	_, createSpan := startSpan(ctx, "CreateManagedDisk",
+	createSpanCtx, createSpan := startSpan(ctx, "CreateManagedDisk",
 		attribute.String(attrDiskName, diskParams.DiskName))
-	diskURI, err = localDiskController.CreateManagedDisk(ctx, volumeOptions)
+	diskURI, err = localDiskController.CreateManagedDisk(createSpanCtx, volumeOptions)
 	recordSpanResult(createSpan, err)
+	recordThrottleIfThrottled(createSpanCtx, err)
 	createSpan.End()
 	if err != nil {
 		if strings.Contains(err.Error(), consts.NotFound) {
@@ -499,11 +504,6 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 		// operation as ProvisioningInBackground and retry; CSI idempotency on
 		// the retry returns the existing disk's URI.
 		if azureutils.IsThrottlingError(err) {
-			retryAfter := ""
-			if s := azureutils.GetRetryAfterSeconds(err); s > 0 {
-				retryAfter = fmt.Sprintf("%ds", s)
-			}
-			recordThrottleEvent(ctx, eventThrottled, retryAfter)
 			klog.Warningf("CreateVolume(%s) throttled by Azure ARM; returning Aborted so external-provisioner retries: %v", req.GetName(), err)
 			return nil, status.Errorf(codes.Aborted, "%v", err)
 		}
@@ -556,13 +556,16 @@ func (d *Driver) DeleteVolume(ctx context.Context, req *csi.DeleteVolumeRequest)
 	}()
 
 	oteltrace.SpanFromContext(ctx).SetAttributes(attribute.String(attrDiskURI, diskURI))
+	if _, _, diskName, err := azureutils.GetInfoFromURI(diskURI); err == nil {
+		ctx = withDiskCorrelation(ctx, diskName)
+	}
 
 	klog.V(2).Infof("deleting azure disk(%s)", diskURI)
-	_, deleteSpan := startSpan(ctx, "DeleteManagedDisk")
-	err := d.diskController.DeleteManagedDisk(ctx, diskURI)
+	deleteSpanCtx, deleteSpan := startSpan(ctx, "DeleteManagedDisk")
+	err := d.diskController.DeleteManagedDisk(deleteSpanCtx, diskURI)
 	recordSpanResult(deleteSpan, err)
+	recordThrottleIfThrottled(deleteSpanCtx, err)
 	deleteSpan.End()
-	recordThrottleIfThrottled(ctx, err)
 	klog.V(2).Infof("delete azure disk(%s) returned with %v", diskURI, err)
 
 	isOperationSucceeded = (err == nil)
@@ -684,7 +687,17 @@ func (d *Driver) ControllerPublishVolume(ctx context.Context, req *csi.Controlle
 		return nil, status.Error(codes.InvalidArgument, err.Error())
 	}
 
-	disk, err := d.checkDiskExists(ctx, diskURI)
+	// Correlate early (best-effort) so checkDiskExists and its span carry
+	// disk.name; the strict derivation below still governs error handling.
+	if _, _, diskName, err := azureutils.GetInfoFromURI(diskURI); err == nil {
+		ctx = withDiskCorrelation(ctx, diskName)
+	}
+
+	checkSpanCtx, checkSpan := startSpan(ctx, "checkDiskExists")
+	disk, err := d.checkDiskExists(checkSpanCtx, diskURI)
+	recordSpanResult(checkSpan, err)
+	recordThrottleIfThrottled(checkSpanCtx, err)
+	checkSpan.End()
 	if err != nil {
 		if strings.Contains(err.Error(), "context deadline") {
 			disk = nil
@@ -708,9 +721,9 @@ func (d *Driver) ControllerPublishVolume(ctx context.Context, req *csi.Controlle
 	// Label the root span so this trace can be correlated by disk and node.
 	oteltrace.SpanFromContext(ctx).SetAttributes(
 		attribute.String(attrDiskURI, diskURI),
-		attribute.String(attrDiskName, diskName),
 		attribute.String(attrNode, string(nodeName)),
 	)
+	ctx = withDiskCorrelation(ctx, diskName)
 
 	mc := csiMetrics.NewCSIMetricContext("controller_publish_volume").WithBasicVolumeInfo(d.cloud.ResourceGroup, d.cloud.SubscriptionID, d.Name)
 	isOperationSucceeded := false
@@ -718,11 +731,11 @@ func (d *Driver) ControllerPublishVolume(ctx context.Context, req *csi.Controlle
 		mc.WithAdditionalVolumeInfo(consts.VolumeID, diskURI, consts.Node, string(nodeName)).Observe(isOperationSucceeded)
 	}()
 
-	_, lunSpan := startSpan(ctx, "GetDiskLun")
-	lun, vmState, err := d.diskController.GetDiskLun(ctx, diskName, diskURI, nodeName)
+	lunSpanCtx, lunSpan := startSpan(ctx, "GetDiskLun")
+	lun, vmState, err := d.diskController.GetDiskLun(lunSpanCtx, diskName, diskURI, nodeName)
 	recordSpanResult(lunSpan, err)
+	recordThrottleIfThrottled(lunSpanCtx, err)
 	lunSpan.End()
-	recordThrottleIfThrottled(ctx, err)
 	if err == cloudprovider.InstanceNotFound {
 		return nil, status.Error(codes.NotFound, fmt.Sprintf("failed to get azure instance id for node %q (%v)", nodeName, err))
 	}
@@ -764,7 +777,10 @@ func (d *Driver) ControllerPublishVolume(ctx context.Context, req *csi.Controlle
 			}
 		}
 
-		occupiedLuns := d.getOccupiedLunsFromNode(ctx, nodeName, diskURI)
+		occSpanCtx, occSpan := startSpan(ctx, "getOccupiedLuns")
+		occupiedLuns := d.getOccupiedLunsFromNode(occSpanCtx, nodeName, diskURI)
+		occSpan.SetAttributes(attribute.Int("occupied_lun_count", len(occupiedLuns)))
+		occSpan.End()
 		klog.V(2).Infof("Trying to attach volume %s to node %s", diskName, nodeName)
 
 		attachDiskInitialDelay := azureutils.GetAttachDiskInitialDelay(volumeContext)
@@ -772,11 +788,11 @@ func (d *Driver) ControllerPublishVolume(ctx context.Context, req *csi.Controlle
 			klog.V(2).Infof("attachDiskInitialDelayInMs is set to %d", attachDiskInitialDelay)
 			d.diskController.AttachDetachInitialDelayInMs = attachDiskInitialDelay
 		}
-		_, attachSpan := startSpan(ctx, "AttachDisk")
-		lun, err = d.diskController.AttachDisk(ctx, diskName, diskURI, nodeName, cachingMode, disk, occupiedLuns)
+		attachSpanCtx, attachSpan := startSpan(ctx, "AttachDisk")
+		lun, err = d.diskController.AttachDisk(attachSpanCtx, diskName, diskURI, nodeName, cachingMode, disk, occupiedLuns)
 		recordSpanResult(attachSpan, err)
+		recordThrottleIfThrottled(attachSpanCtx, err)
 		attachSpan.End()
-		recordThrottleIfThrottled(ctx, err)
 		if err != nil {
 			if derr, ok := err.(*volerr.DanglingAttachError); ok {
 				if strings.EqualFold(string(nodeName), string(derr.CurrentNode)) {
@@ -794,21 +810,21 @@ func (d *Driver) ControllerPublishVolume(ctx context.Context, req *csi.Controlle
 					return nil, err
 				}
 				klog.Warningf("volume %s is already attached to node %s, try detach first", diskURI, derr.CurrentNode)
-				_, detachSpan := startSpan(ctx, "DetachDisk",
+				detachSpanCtx, detachSpan := startSpan(ctx, "DetachDisk",
 					attribute.String(attrNode, string(derr.CurrentNode)))
-				err = d.diskController.DetachDisk(ctx, diskName, diskURI, derr.CurrentNode)
+				err = d.diskController.DetachDisk(detachSpanCtx, diskName, diskURI, derr.CurrentNode)
 				recordSpanResult(detachSpan, err)
+				recordThrottleIfThrottled(detachSpanCtx, err)
 				detachSpan.End()
-				recordThrottleIfThrottled(ctx, err)
 				if err != nil {
 					return nil, status.Errorf(codes.Internal, "Could not detach volume %s from node %s: %v", diskURI, derr.CurrentNode, err)
 				}
 				klog.V(2).Infof("Trying to attach volume %s to node %s again", diskName, nodeName)
-				_, retrySpan := startSpan(ctx, "AttachDisk")
-				lun, err = d.diskController.AttachDisk(ctx, diskName, diskURI, nodeName, cachingMode, disk, occupiedLuns)
+				retrySpanCtx, retrySpan := startSpan(ctx, "AttachDisk")
+				lun, err = d.diskController.AttachDisk(retrySpanCtx, diskName, diskURI, nodeName, cachingMode, disk, occupiedLuns)
 				recordSpanResult(retrySpan, err)
+				recordThrottleIfThrottled(retrySpanCtx, err)
 				retrySpan.End()
-				recordThrottleIfThrottled(ctx, err)
 			}
 			if err != nil {
 				klog.Errorf("Attach volume %s to instance %s failed with %v", diskName, nodeName, err)
@@ -852,9 +868,9 @@ func (d *Driver) ControllerUnpublishVolume(ctx context.Context, req *csi.Control
 	// Label the root span so this trace can be correlated by disk and node.
 	oteltrace.SpanFromContext(ctx).SetAttributes(
 		attribute.String(attrDiskURI, diskURI),
-		attribute.String(attrDiskName, diskName),
 		attribute.String(attrNode, string(nodeName)),
 	)
+	ctx = withDiskCorrelation(ctx, diskName)
 
 	mc := csiMetrics.NewCSIMetricContext("controller_unpublish_volume").WithBasicVolumeInfo(d.cloud.ResourceGroup, d.cloud.SubscriptionID, d.Name)
 	isOperationSucceeded := false
@@ -864,11 +880,11 @@ func (d *Driver) ControllerUnpublishVolume(ctx context.Context, req *csi.Control
 
 	klog.V(2).Infof("Trying to detach volume %s from node %s", diskURI, nodeID)
 
-	_, detachSpan := startSpan(ctx, "DetachDisk")
-	err = d.diskController.DetachDisk(ctx, diskName, diskURI, nodeName)
+	detachSpanCtx, detachSpan := startSpan(ctx, "DetachDisk")
+	err = d.diskController.DetachDisk(detachSpanCtx, diskName, diskURI, nodeName)
 	recordSpanResult(detachSpan, err)
+	recordThrottleIfThrottled(detachSpanCtx, err)
 	detachSpan.End()
-	recordThrottleIfThrottled(ctx, err)
 	if err != nil {
 		if strings.Contains(err.Error(), consts.ErrDiskNotFound) {
 			klog.Warningf("volume %s already detached from node %s", diskURI, nodeID)
@@ -1211,6 +1227,11 @@ func (d *Driver) ControllerExpandVolume(ctx context.Context, req *csi.Controller
 	requestSize := *resource.NewQuantity(capacityBytes, resource.BinarySI)
 
 	diskURI := req.GetVolumeId()
+	// Label the root span and propagate the canonical correlation key.
+	oteltrace.SpanFromContext(ctx).SetAttributes(attribute.String(attrDiskURI, diskURI))
+	if _, _, diskName, err := azureutils.GetInfoFromURI(diskURI); err == nil {
+		ctx = withDiskCorrelation(ctx, diskName)
+	}
 	result, rerr := d.diskController.GetDiskByURI(ctx, diskURI)
 	if rerr != nil {
 		return nil, status.Errorf(codes.Internal, "GetDiskByURI(%s) failed with error(%v)", diskURI, rerr)

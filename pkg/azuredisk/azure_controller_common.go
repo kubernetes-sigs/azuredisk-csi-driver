@@ -28,6 +28,7 @@ import (
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/to"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute/v7"
+	"go.opentelemetry.io/otel/attribute"
 
 	"k8s.io/apimachinery/pkg/types"
 	kwait "k8s.io/apimachinery/pkg/util/wait"
@@ -231,7 +232,10 @@ func (c *controllerCommon) AttachDisk(ctx context.Context, diskName, diskURI str
 
 	if !waitForDetachHappened && c.AttachDetachInitialDelayInMs > 0 && requestNum == 1 {
 		klog.V(2).Infof("wait %dms for more requests on node %s, current disk attach: %s", c.AttachDetachInitialDelayInMs, node, diskURI)
+		_, batchSpan := startSpan(ctx, "attachBatchWait",
+			attribute.Int("batch_delay_ms", c.AttachDetachInitialDelayInMs))
 		time.Sleep(time.Duration(c.AttachDetachInitialDelayInMs) * time.Millisecond)
+		batchSpan.End()
 	}
 
 	numDisksAllowed := math.MaxInt
@@ -288,7 +292,10 @@ func (c *controllerCommon) AttachDisk(ctx context.Context, diskName, diskURI str
 		}
 	}
 
-	lun, setLunErr := c.SetDiskLun(ctx, nodeName, diskuri, diskMap, occupiedLuns)
+	setLunCtx, setLunSpan := startSpan(ctx, "setDiskLun")
+	lun, setLunErr := c.SetDiskLun(setLunCtx, nodeName, diskuri, diskMap, occupiedLuns)
+	recordSpanResult(setLunSpan, setLunErr)
+	setLunSpan.End()
 	if setLunErr != nil {
 		return -1, setLunErr
 	}
@@ -308,7 +315,11 @@ func (c *controllerCommon) AttachDisk(ctx context.Context, diskName, diskURI str
 	}()
 
 	klog.V(2).Infof("Trying to attach volume %s lun %d to node %s, diskMap len:%d, %+v", diskURI, lun, nodeName, len(diskMap), diskMap)
-	err = vmset.AttachDisk(ctx, nodeName, diskMap)
+	vmUpdateCtx, vmUpdateSpan := startSpan(ctx, "vmUpdate",
+		attribute.Int("disk_batch_size", len(diskMap)))
+	err = vmset.AttachDisk(vmUpdateCtx, nodeName, diskMap)
+	recordSpanResult(vmUpdateSpan, err)
+	vmUpdateSpan.End()
 	if err != nil {
 		if strings.Contains(err.Error(), util.MaximumDataDiskExceededMsg) {
 			klog.Warningf("hit max data disk count when attaching disk %s, set cache for node(%s)", diskName, nodeName)
@@ -325,7 +336,11 @@ func (c *controllerCommon) AttachDisk(ctx context.Context, diskName, diskURI str
 
 	if !c.DisableDiskLunCheck {
 		// always check disk lun after disk attach complete
-		return c.verifyAttach(ctx, diskName, diskURI, nodeName)
+		verifyCtx, verifySpan := startSpan(ctx, "verifyAttach")
+		lun, err = c.verifyAttach(verifyCtx, diskName, diskURI, nodeName)
+		recordSpanResult(verifySpan, err)
+		verifySpan.End()
+		return lun, err
 	}
 	return lun, nil
 }
