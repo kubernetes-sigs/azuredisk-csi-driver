@@ -30,6 +30,7 @@ import (
 	"time"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
+	azruntime "github.com/Azure/azure-sdk-for-go/sdk/azcore/runtime"
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/to"
 	armcompute "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute/v7"
 	autorestmocks "github.com/Azure/go-autorest/autorest/mocks"
@@ -52,6 +53,37 @@ import (
 
 const testManagedByValue = "some-vm"
 
+type succeededVMPollingHandler struct {
+	response armcompute.VirtualMachinesClientUpdateResponse
+}
+
+func (h *succeededVMPollingHandler) Done() bool { return true }
+
+func (h *succeededVMPollingHandler) Poll(context.Context) (*http.Response, error) {
+	return &http.Response{StatusCode: http.StatusOK, Body: http.NoBody}, nil
+}
+
+func (h *succeededVMPollingHandler) Result(_ context.Context, out *armcompute.VirtualMachinesClientUpdateResponse) error {
+	*out = h.response
+	return nil
+}
+
+func newSucceededVMPoller(vm armcompute.VirtualMachine) *azruntime.Poller[armcompute.VirtualMachinesClientUpdateResponse] {
+	poller, err := azruntime.NewPoller(
+		&http.Response{StatusCode: http.StatusOK, Body: http.NoBody, Request: &http.Request{Method: http.MethodPatch}},
+		azruntime.Pipeline{},
+		&azruntime.NewPollerOptions[armcompute.VirtualMachinesClientUpdateResponse]{
+			Handler: &succeededVMPollingHandler{
+				response: armcompute.VirtualMachinesClientUpdateResponse{VirtualMachine: vm},
+			},
+		},
+	)
+	if err != nil {
+		panic(err)
+	}
+	return poller
+}
+
 func TestCommonAttachDisk(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
@@ -73,6 +105,18 @@ func TestCommonAttachDisk(t *testing.T) {
 		initVM(testCloud, expectedVMs)
 		mockVMClient := testCloud.ComputeClientFactory.GetVirtualMachineClient().(*mockvmclient.MockInterface)
 		mockVMClient.EXPECT().CreateOrUpdate(gomock.Any(), testCloud.ResourceGroup, gomock.Any(), gomock.Any()).Return(nil, nil).MaxTimes(1)
+		if len(expectedVMs) > 0 {
+			mockVMClient.EXPECT().BeginUpdate(gomock.Any(), testCloud.ResourceGroup, gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
+				func(_ context.Context, _ string, vmName string, _ armcompute.VirtualMachineUpdate, _ *armcompute.VirtualMachinesClientBeginUpdateOptions) (*azruntime.Poller[armcompute.VirtualMachinesClientUpdateResponse], error) {
+					for _, vm := range expectedVMs {
+						if ptr.Deref(vm.Name, "") == vmName {
+							return newSucceededVMPoller(vm), nil
+						}
+					}
+					return newSucceededVMPoller(armcompute.VirtualMachine{Name: &vmName}), nil
+				},
+			).MaxTimes(1)
+		}
 	}
 
 	maxShare := int32(1)
@@ -671,9 +715,18 @@ func TestCommonUpdateVM(t *testing.T) {
 		if test.isErrorRetriable {
 			testCloud.CloudProviderBackoff = true
 			testCloud.ResourceRequestBackoff = wait.Backoff{Steps: 1}
-			mockVMClient.EXPECT().CreateOrUpdate(ctx, testCloud.ResourceGroup, gomock.Any(), gomock.Any()).Return(nil, fmt.Errorf("retriable error")).AnyTimes()
+			mockVMClient.EXPECT().BeginUpdate(ctx, testCloud.ResourceGroup, gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, fmt.Errorf("retriable error")).AnyTimes()
 		} else {
-			mockVMClient.EXPECT().CreateOrUpdate(ctx, testCloud.ResourceGroup, gomock.Any(), gomock.Any()).Return(nil, nil).AnyTimes()
+			mockVMClient.EXPECT().BeginUpdate(ctx, testCloud.ResourceGroup, gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
+				func(_ context.Context, _ string, vmName string, _ armcompute.VirtualMachineUpdate, _ *armcompute.VirtualMachinesClientBeginUpdateOptions) (*azruntime.Poller[armcompute.VirtualMachinesClientUpdateResponse], error) {
+					for _, vm := range expectedVMs {
+						if ptr.Deref(vm.Name, "") == vmName {
+							return newSucceededVMPoller(vm), nil
+						}
+					}
+					return newSucceededVMPoller(armcompute.VirtualMachine{Name: &vmName}), nil
+				},
+			).AnyTimes()
 		}
 
 		err := common.UpdateVM(ctx, test.nodeName)
