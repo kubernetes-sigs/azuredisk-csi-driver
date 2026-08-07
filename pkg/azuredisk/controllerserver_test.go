@@ -2148,7 +2148,7 @@ func TestControllerPublishVolume(t *testing.T) {
 				vm.Properties.StorageProfile.DataDisks = dataDisks
 				mockVMClient := d.getCloud().ComputeClientFactory.GetVirtualMachineClient().(*mockvmclient.MockInterface)
 				mockVMClient.EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(&vm, nil).AnyTimes()
-				mockVMClient.EXPECT().CreateOrUpdate(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, fmt.Errorf("Retriable: false, RetryAfter: 0s, HTTPStatusCode: 0, RawError: error")).AnyTimes()
+				mockVMClient.EXPECT().BeginUpdate(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, fmt.Errorf("Retriable: false, RetryAfter: 0s, HTTPStatusCode: 0, RawError: error")).AnyTimes()
 				expectedErr := status.Errorf(codes.Internal, "update instance \"unit-test-node\" failed with Retriable: false, RetryAfter: 0s, HTTPStatusCode: 0, RawError: error")
 				_, err := d.ControllerPublishVolume(context.Background(), req)
 				if !reflect.DeepEqual(err, expectedErr) {
