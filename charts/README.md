@@ -126,7 +126,7 @@ The following table lists the configurable parameters of the latest Azure Disk C
 | `image.csiAttacher.tag`                           | csi-attacher container image tag                              | `v4.12.0`                                                       |
 | `image.csiAttacher.pullPolicy`                    | csi-attacher image pull policy                             | `IfNotPresent`                                                 |
 | `image.csiResizer.repository`                     | csi-resizer container image                                   | `/oss/v2/kubernetes-csi/csi-resizer`             |
-| `image.csiResizer.tag`                            | csi-resizer container image tag                               | `v2.2.0`                                                       |
+| `image.csiResizer.tag`                            | csi-resizer container image tag                               | `v2.2.1`                                                       |
 | `image.csiResizer.pullPolicy`                     | csi-resizer image pull policy                              | `IfNotPresent`                                                 |
 | `image.livenessProbe.repository`                  | liveness-probe container image                                | `/oss/v2/kubernetes-csi/livenessprobe`           |
 | `image.livenessProbe.tag`                         | liveness-probe container image tag                            | `v2.19.0`                                                       |
