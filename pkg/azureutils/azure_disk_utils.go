@@ -153,7 +153,7 @@ func GetCloudProviderFromClient(ctx context.Context, kubeClient clientset.Interf
 	var fromSecret bool
 	var err error
 	az := &azure.Cloud{}
-	if kubeClient != nil {
+	if kubeClient != nil && secretName != "" && secretNamespace != "" {
 		klog.V(2).Infof("reading cloud config from secret %s/%s", secretNamespace, secretName)
 		config, err = configloader.Load[azureconfig.Config](ctx, &configloader.K8sSecretLoaderConfig{
 			K8sSecretConfig: configloader.K8sSecretConfig{
@@ -173,7 +173,11 @@ func GetCloudProviderFromClient(ctx context.Context, kubeClient clientset.Interf
 	}
 
 	if config == nil {
-		klog.V(2).Infof("could not read cloud config from secret %s/%s", secretNamespace, secretName)
+		if secretName == "" || secretNamespace == "" {
+			klog.V(2).Infof("reading cloud config from a Kubernetes secret is disabled")
+		} else {
+			klog.V(2).Infof("could not read cloud config from secret %s/%s", secretNamespace, secretName)
+		}
 		credFile, ok := os.LookupEnv(consts.DefaultAzureCredentialFileEnv)
 		if ok && strings.TrimSpace(credFile) != "" {
 			klog.V(2).Infof("%s env var set as %v", consts.DefaultAzureCredentialFileEnv, credFile)
