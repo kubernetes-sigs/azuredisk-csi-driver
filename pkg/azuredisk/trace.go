@@ -19,6 +19,7 @@ package azuredisk
 import (
 	"context"
 	"fmt"
+	"math"
 	"os"
 	"strconv"
 	"strings"
@@ -259,7 +260,7 @@ func InitOtelTracing() (*trace.TracerProvider, error) {
 	// Allow operators to override the span log verbosity without changing the
 	// driver's global -v level.
 	if v := strings.TrimSpace(os.Getenv(spanVerbosityEnv)); v != "" {
-		if lvl, err := strconv.Atoi(v); err == nil && lvl >= 0 {
+		if lvl, err := strconv.Atoi(v); err == nil && lvl >= 0 && lvl <= math.MaxInt32 {
 			klogSpanVerbosity = klog.Level(lvl)
 		} else {
 			klog.Warningf("otel tracing: ignoring invalid %s=%q", spanVerbosityEnv, v)

@@ -270,6 +270,15 @@ func GetKubeConfig(kubeconfig string, qps float64, burst int) (*rest.Config, err
 	// exhaustion surface as span events.
 	WrapConfigRateLimiterWithTracing(config)
 
+	return config, nil
+}
+
+func GetKubeClient(kubeconfig string, qps float64, burst int) (clientset.Interface, error) {
+	config, err := GetKubeConfig(kubeconfig, qps, burst)
+	if err != nil {
+		return nil, err
+	}
+
 	return clientset.NewForConfig(config)
 }
 
