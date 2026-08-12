@@ -153,6 +153,7 @@ node:
   maxUnavailable: 1
   logLevel: 5
   metricsPort: 29605
+  filesystemShutdownTimeout: 5
   livenessProbe:
     healthPort: 29603
   nodeDriverRegistrar:

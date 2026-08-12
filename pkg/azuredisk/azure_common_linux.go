@@ -29,6 +29,7 @@ import (
 	"time"
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
+	"golang.org/x/sys/unix"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"k8s.io/klog/v2"
@@ -46,6 +47,13 @@ const (
 	fsckErrorsUncorrected = 4
 	// 'fsck' found operational error, e.g fresh block device
 	fsckOperationalError = 8
+	sysFSRoot            = "/sys/fs"
+	procFSJbd2Root       = "/proc/fs/jbd2"
+)
+
+var (
+	openMountPoint = unix.Open
+	fsync          = unix.Fsync
 )
 
 // exclude those used by azure as resource and OS root in /dev/disk/azure, /dev/disk/azure/scsi0
@@ -565,4 +573,310 @@ func (d *Driver) GetVolumeStats(_ context.Context, m *mount.SafeFormatAndMount, 
 			Used:      inodesUsed,
 		},
 	}, nil
+}
+
+// Performs sync operation on the filesystem mounted at the given mount point
+func syncFilesystemAtMountPoint(mountPoint string, mounter *mount.SafeFormatAndMount) error {
+	pathExists, pathErr := mount.PathExists(mountPoint)
+	if mount.IsCorruptedMnt(pathErr) {
+		klog.Warningf("Skipping filesystem sync at corrupted mount point %q: %v", mountPoint, pathErr)
+		return nil
+	}
+	if pathErr != nil {
+		return fmt.Errorf("error checking mount point path %q before sync: %w", mountPoint, pathErr)
+	}
+	if !pathExists {
+		klog.Warningf("Skipping filesystem sync because mount point does not exist: %q", mountPoint)
+		return nil
+	}
+
+	shouldSync, err := shouldSyncFilesystem(mountPoint, mounter)
+	if err != nil {
+		return fmt.Errorf("error checking whether %q is a mount point before sync: %w", mountPoint, err)
+	}
+	if !shouldSync {
+		return nil
+	}
+
+	mountDir, err := openMountPoint(mountPoint, unix.O_RDONLY|unix.O_DIRECTORY|unix.O_CLOEXEC, 0)
+	if err != nil {
+		return err
+	}
+	defer unix.Close(mountDir)
+
+	klog.V(2).Infof("Syncing filesystem at mount point %q", mountPoint)
+	if err := fsync(mountDir); err != nil {
+		return fmt.Errorf("fsync %q: %w", mountPoint, err)
+	}
+	klog.V(2).Infof("Finished syncing filesystem at mount point %q", mountPoint)
+	return nil
+}
+
+func shouldSyncFilesystem(mountPoint string, mounter *mount.SafeFormatAndMount) (bool, error) {
+	isMountPoint, mountErr := mounter.IsMountPoint(mountPoint)
+	if mount.IsCorruptedMnt(mountErr) {
+		klog.Warningf("Skipping filesystem sync at corrupted mount point %q: %v", mountPoint, mountErr)
+		return false, nil
+	}
+	if mountErr != nil {
+		return false, mountErr
+	}
+	if !isMountPoint {
+		klog.V(2).Infof("Skipping filesystem sync because path is not a mount point: %q", mountPoint)
+		return false, nil
+	}
+	return isMountPoint, nil
+}
+
+func waitFSShutdownForDevice(devicePath string, stagingTargetPath string, mounter *mount.SafeFormatAndMount, timeout time.Duration) {
+	fsType, err := mounter.GetDiskFormat(devicePath)
+	if err != nil {
+		klog.Warningf("NodeUnstageVolume - failed to get filesystem type for device %q: %v", devicePath, err)
+		return
+	}
+
+	klog.V(2).Infof("NodeUnstageVolume: waiting for filesystem to shutdown staging path %s device %s", stagingTargetPath, devicePath)
+	waitFSShutdown(devicePath, fsType, timeout)
+}
+
+// waitFSShutdown waits until the filesystem and journal entries disappear.
+func waitFSShutdown(devicePath string, fsType string, timeout time.Duration) {
+	waitFSShutdownWithRoots(devicePath, fsType, timeout, sysFSRoot, procFSJbd2Root, findDeviceMountReferences)
+}
+
+func waitFSShutdownWithRoots(
+	devicePath string,
+	fsType string,
+	timeout time.Duration,
+	sysFSRoot string,
+	jbd2Root string,
+	findMountReferences func(string) ([]mountReference, error),
+) []string {
+	deviceName := strings.TrimPrefix(devicePath, "/dev/")
+	start := time.Now()
+	var errorMessages []string
+
+	if fsType != "" {
+		sysFSEntry := filepath.Join(sysFSRoot, fsType, deviceName)
+		if err := waitFileRemoval(sysFSEntry, start, timeout); err != nil {
+			message := fmt.Sprintf("filesystem sysfs entry %q was not removed: %v", sysFSEntry, err)
+			klog.Warning(message)
+			errorMessages = append(errorMessages, message)
+		}
+	}
+
+	journalPattern := journalEntryGlobAt(jbd2Root, fsType, deviceName)
+	if journalPattern != "" {
+		journalEntries, err := filepath.Glob(journalPattern)
+		if err != nil {
+			message := fmt.Sprintf("failed to find journal entries matching %q: %v", journalPattern, err)
+			klog.Warning(message)
+			errorMessages = append(errorMessages, message)
+		} else {
+			for _, journalEntry := range journalEntries {
+				if err := waitFileRemoval(journalEntry, start, timeout); err != nil {
+					message := fmt.Sprintf("journal entry %q was not removed: %v", journalEntry, err)
+					klog.Warning(message)
+					errorMessages = append(errorMessages, message)
+				}
+			}
+		}
+	}
+
+	if len(errorMessages) == 0 {
+		klog.V(2).Infof("Filesystem shutdown completed for device %q", devicePath)
+		return nil
+	}
+
+	klog.Warningf("Filesystem shutdown checks failed for device %q: %s", devicePath, strings.Join(errorMessages, "; "))
+	references, err := findMountReferences(devicePath)
+	if err != nil {
+		klog.Warningf("Failed to find mount references for device %q: %v", devicePath, err)
+		return errorMessages
+	}
+	for _, ref := range references {
+		klog.Warningf("Device %q is still mounted in namespace %q by process %d (%s) at target %q with source %q, filesystem type %q",
+			devicePath, ref.Namespace, ref.PID, ref.CommandLine, ref.Target, ref.Source, ref.FSType)
+	}
+	return errorMessages
+}
+
+func journalEntryGlob(fsType string, deviceName string) string {
+	return journalEntryGlobAt(procFSJbd2Root, fsType, deviceName)
+}
+
+func journalEntryGlobAt(jbd2Root string, fsType string, deviceName string) string {
+	if fsType != "ext4" {
+		return ""
+	}
+	return filepath.Join(jbd2Root, deviceName+"-*")
+}
+
+func waitFileRemoval(path string, start time.Time, timeout time.Duration) error {
+	deadline := start.Add(timeout)
+	ticker := time.NewTicker(100 * time.Millisecond)
+	defer ticker.Stop()
+
+	for {
+		_, err := os.Stat(path)
+		switch {
+		case os.IsNotExist(err):
+			return nil
+		case err != nil:
+			return fmt.Errorf("stat %q: %w", path, err)
+		}
+
+		if !time.Now().Before(deadline) {
+			return fmt.Errorf("timed out waiting for %q to be removed", path)
+		}
+
+		<-ticker.C
+	}
+}
+
+type mountReference struct {
+	Namespace   string
+	PID         int
+	CommandLine string
+	Target      string
+	Source      string
+	FSType      string
+	Options     string
+}
+
+// Find the mount reference for the given device path by scanning /proc/<pid>/mountinfo for all processes on the system
+func findDeviceMountReferences(devicePath string) ([]mountReference, error) {
+	return findDeviceMountReferencesInProc(devicePath, "/proc")
+}
+
+func findDeviceMountReferencesInProc(devicePath string, procRoot string) ([]mountReference, error) {
+	hostPID, err := isHostPIDNamespace(procRoot)
+	if err != nil {
+		klog.Warningf("Mount reference diagnostic skipped: unable to determine whether the driver is running in the host PID namespace: %v", err)
+		return nil, nil
+	}
+	if !hostPID {
+		klog.Warning("Mount reference diagnostic skipped: not running in host PID namespace")
+		return nil, nil
+	}
+
+	var stat unix.Stat_t
+	if err := unix.Stat(devicePath, &stat); err != nil {
+		return nil, fmt.Errorf("stat device %q: %w", devicePath, err)
+	}
+	deviceID := fmt.Sprintf("%d:%d", unix.Major(uint64(stat.Rdev)), unix.Minor(uint64(stat.Rdev)))
+	entries, err := os.ReadDir(procRoot)
+	if err != nil {
+		return nil, fmt.Errorf("read %q: %w", procRoot, err)
+	}
+	seenNamespaces := make(map[string]struct{})
+	var references []mountReference
+
+	for _, entry := range entries {
+		pid, err := strconv.Atoi(entry.Name())
+		if err != nil {
+			continue
+		}
+
+		namespace, err := os.Readlink(filepath.Join(procRoot, entry.Name(), "ns/mnt"))
+		if err != nil {
+			// The process may have exited while scanning.
+			continue
+		}
+
+		if _, found := seenNamespaces[namespace]; found {
+			// Already seen this namespace, skip to avoid duplicate mountinfo parsing
+			continue
+		}
+
+		mountInfo, err := os.ReadFile(filepath.Join(procRoot, entry.Name(), "mountinfo"))
+		if err != nil {
+			// Try another process from this namespace if this one exited.
+			continue
+		}
+		seenNamespaces[namespace] = struct{}{}
+
+		// Parse mountinfo lines to find references to the device ID
+		// Example mountinfo lines:
+		//    5120 4773 259:5 / /host/var/lib/kubelet/disk1-mnt rw,relatime - ext4 /dev/nvme0n2 rw,stripe=64
+		//    5468 4248 259:5 / /host/var/lib/kubelet/disk1-mnt rw,relatime - ext4 /dev/nvme0n2 rw,stripe=64
+		for _, line := range strings.Split(string(mountInfo), "\n") {
+			left, right, found := strings.Cut(line, " - ")
+			if !found {
+				continue
+			}
+
+			leftFields := strings.Fields(left)
+			rightFields := strings.Fields(right)
+			if len(leftFields) < 6 || len(rightFields) < 3 {
+				continue
+			}
+
+			// mountinfo field 3 contains the device's major:minor ID.
+			if leftFields[2] != deviceID {
+				continue
+			}
+			// If device is found then read the command line of the process to get more context
+			cmdlineBytes, err := os.ReadFile(filepath.Join(procRoot, entry.Name(), "cmdline"))
+			cmdline := ""
+			if err == nil {
+				cmdline = string(cmdlineBytes)
+			}
+
+			references = append(references, mountReference{
+				Namespace:   namespace,
+				PID:         pid,
+				CommandLine: cmdline,
+				Target:      unescapeMountInfo(leftFields[4]),
+				Source:      unescapeMountInfo(rightFields[1]),
+				FSType:      rightFields[0],
+				Options:     leftFields[5] + "," + rightFields[2],
+			})
+		}
+	}
+	return references, nil
+}
+
+func isHostPIDNamespace(procRoot string) (bool, error) {
+	status, err := os.ReadFile(filepath.Join(procRoot, "self/status"))
+	if err != nil {
+		return false, err
+	}
+	for _, line := range strings.Split(string(status), "\n") {
+		if !strings.HasPrefix(line, "NSpid:") {
+			continue
+		}
+		// NSpid contains one PID per nested namespace. A host PID namespace
+		// process has only its host PID.
+		return len(strings.Fields(line)) == 2, nil
+	}
+
+	comm, err := os.ReadFile(filepath.Join(procRoot, "1/comm"))
+	if err == nil {
+		switch strings.TrimSpace(string(comm)) {
+		case "systemd", "init", "kubelet":
+			return true, nil
+		}
+	}
+
+	entries, err := os.ReadDir(procRoot)
+	if err != nil {
+		return false, err
+	}
+	processCount := 0
+	for _, entry := range entries {
+		if _, err := strconv.Atoi(entry.Name()); err == nil {
+			processCount++
+		}
+	}
+	return processCount >= 100, nil
+}
+
+func unescapeMountInfo(value string) string {
+	return strings.NewReplacer(
+		`\040`, " ",
+		`\011`, "\t",
+		`\012`, "\n",
+		`\134`, `\`,
+	).Replace(value)
 }

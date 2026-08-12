@@ -215,11 +215,28 @@ func (d *Driver) NodeUnstageVolume(_ context.Context, req *csi.NodeUnstageVolume
 	}
 	defer d.volumeLocks.Release(volumeID)
 
+	// Read the device path from the mount point before unmounting it
+	devicePath, err := getDevicePathWithMountPath(stagingTargetPath, d.mounter)
+	if err != nil {
+		klog.Warningf("NodeUnstageVolume - failed to get device path for mount point %q: %v", stagingTargetPath, err)
+	}
+
+	// Explicitly sync so we don't rely on FS shutdown for durability; other mount references may keep the superblock alive past unmount
+	if err := syncFilesystemAtMountPoint(stagingTargetPath, d.mounter); err != nil {
+		klog.Errorf("NodeUnstageVolume - sync failed at %q, proceeding with unmount: %v", stagingTargetPath, err)
+		// fall through: better to unmount a partially-synced FS than to hang forever
+	}
+
+	// Unmount the volume and clean up the mount point
 	klog.V(2).Infof("NodeUnstageVolume: unmounting %s", stagingTargetPath)
 	if err := CleanupMountPoint(stagingTargetPath, d.mounter, true /*extensiveMountPointCheck*/); err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to unmount staging target %q: %v", stagingTargetPath, err)
 	}
 	klog.V(2).Infof("NodeUnstageVolume: unmount %s successfully", stagingTargetPath)
+
+	if devicePath != "" {
+		waitFSShutdownForDevice(devicePath, stagingTargetPath, d.mounter, d.filesystemShutdownTimeout)
+	}
 
 	isOperationSucceeded = true
 	return &csi.NodeUnstageVolumeResponse{}, nil

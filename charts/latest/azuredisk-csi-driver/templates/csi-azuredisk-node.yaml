@@ -35,6 +35,8 @@ spec:
 {{ toYaml . | indent 8 }}
 {{- end }}
     spec:
+      # Required for mount-reference diagnostics across pod mount namespaces.
+      hostPID: true
       hostNetwork: {{ .Values.linux.hostNetwork }}
       dnsPolicy: Default
       serviceAccountName: {{ .Values.serviceAccount.node }}
@@ -156,6 +158,7 @@ spec:
             - "--enable-otel-tracing={{ .Values.linux.otelTracing.enabled }}"
             - "--metrics-address=0.0.0.0:{{ .Values.node.metricsPort }}"
             - "--remove-not-ready-taint={{ .Values.node.removeNotReadyTaint }}"
+            - "--filesystem-shutdown-timeout={{ .Values.node.filesystemShutdownTimeout }}"
 {{- if ne .Values.node.hostNetwork true }}
           ports:
             - containerPort: {{ .Values.node.livenessProbe.healthPort }}

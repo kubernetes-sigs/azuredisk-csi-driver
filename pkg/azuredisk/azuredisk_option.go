@@ -78,6 +78,7 @@ type DriverOptions struct {
 	ConvertRWCachingModeForIntreePV    bool
 	KubeAPIQPS                         float64
 	KubeAPIBurst                       int
+	FilesystemShutdownTimeout          int64
 }
 
 func (o *DriverOptions) AddFlags() *flag.FlagSet {
@@ -132,6 +133,7 @@ func (o *DriverOptions) AddFlags() *flag.FlagSet {
 	fs.StringVar(&o.Endpoint, "endpoint", "unix://tmp/csi.sock", "CSI endpoint")
 	fs.Int64Var(&o.MaxConcurrentFormat, "max-concurrent-format", 2, "maximum number of concurrent format exec calls")
 	fs.Int64Var(&o.ConcurrentFormatTimeout, "concurrent-format-timeout", 300, "maximum time in seconds duration of a format operation before its concurrency token is released")
+	fs.Int64Var(&o.FilesystemShutdownTimeout, "filesystem-shutdown-timeout", 5, "timeout in seconds for filesystem shutdown")
 	fs.Int64Var(&o.GoMaxProcs, "max-procs", 2, "maximum number of CPUs that can be executing simultaneously in golang runtime")
 	fs.BoolVar(&o.EnableMigrationMonitor, "enable-migration-monitor", true, "enable migration monitor for Azure Disk CSI Driver")
 	fs.BoolVar(&o.ConvertRWCachingModeForIntreePV, "convert-rw-caching-mode-for-intree-pv", false, "convert ReadWrite cachingMode to ReadOnly for intree PVs to avoid issues")

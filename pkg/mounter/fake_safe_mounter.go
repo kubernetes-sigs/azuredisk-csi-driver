@@ -83,6 +83,9 @@ func (f *FakeSafeMounter) IsLikelyNotMountPoint(file string) (bool, error) {
 
 // IsMountPoint overrides mount.FakeMounter.IsMountPoint.
 func (f *FakeSafeMounter) IsMountPoint(file string) (bool, error) {
+	if strings.Contains(file, "valid_mount") {
+		return true, nil
+	}
 	notMnt, err := f.IsLikelyNotMountPoint(file)
 	if err != nil {
 		return false, err
