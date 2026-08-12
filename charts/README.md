@@ -231,6 +231,7 @@ The following table lists the configurable parameters of the latest Azure Disk C
 | `snapshot.snapshotController.resources.requests.memory`        | csi-snapshot-controller memory requests                 | 20Mi                                                           |
 | `linux.enabled`                                   | whether enable linux feature                               | `true`                                                         |
 | `linux.dsName`                                    | name of driver daemonset on linux                          |`csi-azuredisk-node`                                                         |
+| `linux.filesystemShutdownTimeout`                   | timeout in seconds to wait for filesystem and journal shutdown during node unstage | `5` |
 | `linux.kubelet`                                   | configure kubelet directory path on Linux agent node       | `/var/lib/kubelet`                                                |
 | `linux.getNodeInfoFromLabels`                     | get node info from node labels instead of IMDS on Linux agent node       | `false`                                                |
 | `linux.enableRegistrationProbe`                   | enable [kubelet-registration-probe](https://github.com/kubernetes-csi/node-driver-registrar#health-check-with-an-exec-probe) on Linux driver config     | `true`

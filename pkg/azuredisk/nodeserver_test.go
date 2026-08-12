@@ -778,6 +778,9 @@ func TestNodeUnstageVolumeWithoutKubeClient(t *testing.T) {
 		fakeMounter, err := mounter.NewFakeSafeMounter()
 		require.NoError(t, err)
 		driver.setMounter(fakeMounter)
+		driver.setNextCommandOutputScripts(func() ([]byte, []byte, error) {
+			return nil, nil, fmt.Errorf("findmnt failed")
+		})
 		return driver
 	}
 
@@ -1192,6 +1195,9 @@ func TestNodeUnstageVolume(t *testing.T) {
 	defer cntl.Finish()
 	d, _ := NewFakeDriver(cntl)
 	d.(*fakeDriver).kubeClient = fake.NewClientset(newTestPV("vol_1"))
+	findmntAction := func() ([]byte, []byte, error) {
+		return nil, nil, fmt.Errorf("findmnt failed")
+	}
 	errorTarget, err := testutil.GetWorkDirPath("error_is_likely_target")
 	assert.NoError(t, err)
 	targetFile, err := testutil.GetWorkDirPath("abc.go")
@@ -1205,6 +1211,7 @@ func TestNodeUnstageVolume(t *testing.T) {
 		skipOnDarwin  bool
 		expectedErr   testutil.TestError
 		cleanup       func()
+		outputScripts []testingexec.FakeAction
 	}{
 		{
 			desc: "Volume ID missing",
@@ -1226,9 +1233,10 @@ func TestNodeUnstageVolume(t *testing.T) {
 			skipOnWindows: true, // no error reported in windows
 			skipOnDarwin:  true,
 			expectedErr: testutil.TestError{
-				DefaultError: status.Error(codes.Internal, fmt.Sprintf("failed to unmount staging target \"%s\": "+
+				DefaultError: status.Error(codes.Internal, fmt.Sprintf("failed to unmount staging target %q: "+
 					"fake IsLikelyNotMountPoint: fake error", errorTarget)),
 			},
+			outputScripts: []testingexec.FakeAction{findmntAction},
 		},
 		{
 			desc: "[Error] Volume operation in progress",
@@ -1248,6 +1256,7 @@ func TestNodeUnstageVolume(t *testing.T) {
 			req:           &csi.NodeUnstageVolumeRequest{StagingTargetPath: targetFile, VolumeId: "vol_1"},
 			skipOnWindows: true, // error on Windows
 			expectedErr:   testutil.TestError{},
+			outputScripts: []testingexec.FakeAction{findmntAction},
 		},
 	}
 
@@ -1263,6 +1272,9 @@ func TestNodeUnstageVolume(t *testing.T) {
 		}
 		if !(runtime.GOOS == "windows" && test.skipOnWindows) &&
 			!(runtime.GOOS == "darwin" && test.skipOnDarwin) {
+			if len(test.outputScripts) > 0 {
+				d.setNextCommandOutputScripts(test.outputScripts...)
+			}
 			_, err := d.NodeUnstageVolume(context.Background(), test.req)
 			if !testutil.AssertError(&test.expectedErr, err) {
 				t.Errorf("desc: %s\n actualErr: (%v), expectedErr: (%v)", test.desc, err, test.expectedErr)
@@ -1319,6 +1331,9 @@ func TestNodeUnstageVolumePVLookup(t *testing.T) {
 			fakeMounter, err := mounter.NewFakeSafeMounter()
 			require.NoError(t, err)
 			d.setMounter(fakeMounter)
+			d.setNextCommandOutputScripts(func() ([]byte, []byte, error) {
+				return nil, nil, fmt.Errorf("findmnt failed")
+			})
 
 			result, err := d.NodeUnstageVolume(context.Background(), &csi.NodeUnstageVolumeRequest{
 				VolumeId:          "missing-volume",
@@ -1403,6 +1418,9 @@ func TestNodeUnstageVolumeQADDetachedResponses(t *testing.T) {
 			fakeMounter, err := mounter.NewFakeSafeMounter()
 			require.NoError(t, err)
 			driver.setMounter(fakeMounter)
+			driver.setNextCommandOutputScripts(func() ([]byte, []byte, error) {
+				return nil, nil, fmt.Errorf("findmnt failed")
+			})
 
 			credential := driver.cloud.AuthProvider.GetAzIdentity().(*mock_azclient.MockTokenCredential)
 			credential.EXPECT().GetToken(gomock.Any(), gomock.Any()).Return(azcore.AccessToken{Token: "token"}, nil)

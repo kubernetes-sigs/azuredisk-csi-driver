@@ -17,10 +17,13 @@ limitations under the License.
 package metrics
 
 import (
+	"strings"
 	"testing"
 	"time"
 
+	"github.com/go-logr/logr/funcr"
 	"k8s.io/component-base/metrics/legacyregistry"
+	klog "k8s.io/klog/v2"
 )
 
 func TestCSIMetricContext_NewCSIMetricContext(t *testing.T) {
@@ -63,6 +66,20 @@ func TestCSIMetricContext_WithLabel(t *testing.T) {
 	}
 }
 
+func TestCSIMetricContext_WithLabelInitializesNilLabels(t *testing.T) {
+	mc := NewCSIMetricContext("test_operation")
+	mc.labels = nil
+
+	result := mc.WithLabel(StorageAccountType, "Premium_LRS")
+
+	if result != mc {
+		t.Error("expected WithLabel to return the metric context")
+	}
+	if mc.labels[StorageAccountType] != "Premium_LRS" {
+		t.Errorf("expected %s label to be set, got %v", StorageAccountType, mc.labels)
+	}
+}
+
 func TestCSIMetricContext_Observe(t *testing.T) {
 	// Reset metrics before test
 	operationDuration.Reset()
@@ -102,6 +119,40 @@ func TestCSIMetricContext_Observe(t *testing.T) {
 	}
 	if !foundHistogram {
 		t.Error("expected to find operation duration histogram")
+	}
+}
+
+func TestCSIMetricContext_ObserveLogsVolumeContext(t *testing.T) {
+	var prefix, args string
+	logger := funcr.New(func(gotPrefix, gotArgs string) {
+		prefix = gotPrefix
+		args = gotArgs
+	}, funcr.Options{Verbosity: 3})
+	klog.SetLoggerWithOptions(logger, klog.ContextualLogger(true))
+	t.Cleanup(klog.ClearLogger)
+
+	NewCSIMetricContext("node_stage_volume").
+		WithBasicVolumeInfo("ResourceGroup1", "sub-123", "source-disk").
+		WithAdditionalVolumeInfo("volumeid", "vol-123").
+		Observe(true)
+
+	if !strings.Contains(prefix, "logLatency") {
+		t.Errorf("expected log prefix to contain logLatency, got %q", prefix)
+	}
+	for _, expected := range []string{
+		"Observed Request Latency",
+		"azuredisk_csi_driver_node_stage_volume",
+		"resource_group",
+		"resourcegroup1",
+		"subscription_id",
+		"sub-123",
+		"source-disk",
+		"volumeid",
+		"vol-123",
+	} {
+		if !strings.Contains(args, expected) {
+			t.Errorf("expected log output to contain %q, got %q", expected, args)
+		}
 	}
 }
 
