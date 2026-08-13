@@ -8,8 +8,8 @@ spec:
     - ReadWriteOnce
   resources:
     requests:
-      storage: 4Gi
-  storageClassName: managed-csi-qad
+      storage: 10Gi
+  storageClassName: managed-csi
 ---
 apiVersion: apps/v1
 kind: Deployment

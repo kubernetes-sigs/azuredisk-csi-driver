@@ -14,7 +14,7 @@
 
 PKG = sigs.k8s.io/azuredisk-csi-driver
 GIT_COMMIT ?= $(shell git rev-parse HEAD)
-REGISTRY ?= nearora.azurecr.io
+REGISTRY ?= andyzhangx
 REGISTRY_NAME ?= $(shell echo $(REGISTRY) | sed "s/.azurecr.io//g")
 IMAGE_NAME ?= azuredisk-csi
 PLUGIN_NAME = azurediskplugin
