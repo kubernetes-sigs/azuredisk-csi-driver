@@ -25,6 +25,7 @@ import (
 	"reflect"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute/v7"
@@ -184,6 +185,11 @@ type Driver struct {
 	informerFactory informers.SharedInformerFactory
 	pvLister        corelisters.PersistentVolumeLister
 	pvListerSynced  cache.InformerSynced
+	// owning AKS cluster ARM ID, resolved once from node resource group tags and reused thereafter
+	clusterResourceID     string
+	clusterResourceIDLock sync.Mutex
+	// interval between Azure async operation polls; defaults to 5s when unset
+	pollInterval time.Duration
 }
 
 // NewDriver Creates a NewCSIDriver object. Assumes vendor version is equal to driver version &

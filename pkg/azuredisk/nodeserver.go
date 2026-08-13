@@ -66,10 +66,11 @@ const (
 
 // Define the request payload structure
 type DiskOp struct {
-	BlobURL     string `json:"blobUrl"`
-	QadCounter  int    `json:"qadCounter"`
-	Action      string `json:"action"`
-	CachePolicy string `json:"cachePolicy"`
+	BlobURL         string `json:"blobUrl"`
+	ClaimIdentifier string `json:"claimIdentifier,omitempty"`
+	AttachSequence  int    `json:"attachSequence"`
+	Action          string `json:"action"`
+	CachePolicy     string `json:"cachePolicy"`
 }
 
 type WireserverRequest struct {
@@ -79,9 +80,10 @@ type WireserverRequest struct {
 
 // DiskOperationRequest captures disk details required for a batched attach/detach request.
 type DiskOperationRequest struct {
-	DiskURI    string
-	BlobURL    string
-	QADCounter int
+	DiskURI         string
+	BlobURL         string
+	ClaimIdentifier string
+	AttachSequence  int
 }
 
 type qadDiskBatchResult struct {
@@ -137,15 +139,15 @@ type DiskError struct {
 type DiskErrorType int
 
 const (
-	QADDiskErrUnknown               DiskErrorType = 0
-	QADDiskErrInvalidArgs           DiskErrorType = 1
-	QADDiskErrInternal              DiskErrorType = 2
-	QADDiskErrXFEAuthFailure        DiskErrorType = 3
-	QADDiskErrQADCounterMismatch    DiskErrorType = 4
-	QADDiskErrQADIdentifierMismatch DiskErrorType = 5
-	QADDiskErrFetchDSTSToken        DiskErrorType = 6
-	QADDiskErrDiskNotFound          DiskErrorType = 7
-	QADDiskErrNoLUNAvailable        DiskErrorType = 8
+	QADDiskErrUnknown                 DiskErrorType = 0
+	QADDiskErrInvalidArgs             DiskErrorType = 1
+	QADDiskErrInternal                DiskErrorType = 2
+	QADDiskErrXFEAuthFailure          DiskErrorType = 3
+	QADDiskErrAttachSequenceMismatch  DiskErrorType = 4
+	QADDiskErrClaimIdentifierMismatch DiskErrorType = 5
+	QADDiskErrFetchDSTSToken          DiskErrorType = 6
+	QADDiskErrDiskNotFound            DiskErrorType = 7
+	QADDiskErrNoLUNAvailable          DiskErrorType = 8
 )
 
 // QADErrorResponse represents the JSON error response from QAD agent (HTTP non-2XX)
@@ -238,25 +240,27 @@ func (d *Driver) NodeStageVolume(ctx context.Context, req *csi.NodeStageVolumeRe
 
 	var lun string
 	// Check if this volume is using the QAD path.
-	// If yes, increment the qad-counter and make an HTTP request to the QAD wireserver endpoint.
+	// If yes, increment the attach-sequence and make an HTTP request to the QAD wireserver endpoint.
 	pv, isUsingQAD, err := d.isUsingQADPath(ctx, volumeID)
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "NodeStageVolume: failed to determine if volume %s is using QAD path: %v", volumeID, err)
 	}
 	if isUsingQAD {
 		blobURL := pv.Annotations[consts.BlobURLAnnotation]
-		qadCounterVal, err := incrementQADCounterAnnotation(d.kubeClient, pv)
+		claimIdentifier := pv.Annotations[consts.ClaimIdentifierAnnotation]
+		attachSequenceVal, err := incrementAttachSequenceAnnotation(d.kubeClient, pv)
 		if err != nil {
-			klog.Errorf("NodeStageVolume: failed to increment qad-counter for volume %s: %v", volumeID, err)
-			return nil, status.Error(codes.Internal, "failed to increment qad-counter")
+			klog.Errorf("NodeStageVolume: failed to increment attach-sequence for volume %s: %v", volumeID, err)
+			return nil, status.Error(codes.Internal, "failed to increment attach-sequence")
 		}
-		klog.V(2).Infof("NodeStageVolume: volume %s is using QAD path, making POST call to wireserver with qad-counter %d", volumeID, qadCounterVal)
+		klog.V(2).Infof("NodeStageVolume: volume %s is using QAD path, making POST call to wireserver with attach-sequence %d", volumeID, attachSequenceVal)
 
 		attachTimer := time.Now()
 		attachResponse, err := d.enqueueQADDiskOperation(ctx, DiskOperationRequest{
-			DiskURI:    volumeID,
-			BlobURL:    blobURL,
-			QADCounter: qadCounterVal,
+			DiskURI:         volumeID,
+			BlobURL:         blobURL,
+			ClaimIdentifier: claimIdentifier,
+			AttachSequence:  attachSequenceVal,
 		}, "ATTACH")
 
 		if err != nil {
@@ -298,7 +302,7 @@ func (d *Driver) NodeStageVolume(ctx context.Context, req *csi.NodeStageVolumeRe
 			klog.Infof("NodeStageVolume: Latency observed for attach operation of disk %s is %v", volumeID, time.Since(attachTimer).Milliseconds())
 			lun = strconv.Itoa(statusResp.LUN)
 		} else {
-			return nil, status.Errorf(codes.Internal, "The attach request to the wireserver returned an unexpected status message %s", statusResp.Status)
+			return nil, status.Errorf(codes.Internal, "NodeStageVolume: attach for volume %s returned status %s (message: %q, error: %+v)", volumeID, statusResp.Status, statusResp.StatusMessage, statusResp.Error)
 		}
 	} else {
 		val, ok := req.PublishContext[consts.LUN]
@@ -429,17 +433,19 @@ func (d *Driver) NodeUnstageVolume(ctx context.Context, req *csi.NodeUnstageVolu
 
 	if pv, isUsingQAD, err := d.isUsingQADPath(ctx, volumeID); isUsingQAD && err == nil {
 		blobURL := pv.Annotations[azureconstants.BlobURLAnnotation]
-		qadCounterVal, err := incrementQADCounterAnnotation(d.kubeClient, pv)
+		claimIdentifier := pv.Annotations[azureconstants.ClaimIdentifierAnnotation]
+		attachSequenceVal, err := incrementAttachSequenceAnnotation(d.kubeClient, pv)
 		if err != nil {
-			klog.Errorf("NodeUnStageVolume: failed to increment qad-counter for volume %s: %v", volumeID, err)
-			return nil, status.Error(codes.Internal, "failed to increment qad-counter")
+			klog.Errorf("NodeUnStageVolume: failed to increment attach-sequence for volume %s: %v", volumeID, err)
+			return nil, status.Error(codes.Internal, "failed to increment attach-sequence")
 		}
-		klog.V(2).Infof("NodeUnStageVolume: volume %s is using QAD path, making POST call to wireserver with qad-counter %d", volumeID, qadCounterVal)
+		klog.V(2).Infof("NodeUnStageVolume: volume %s is using QAD path, making POST call to wireserver with attach-sequence %d", volumeID, attachSequenceVal)
 		detachTimer := time.Now()
 		detachResponse, err := d.enqueueQADDiskOperation(ctx, DiskOperationRequest{
-			DiskURI:    volumeID,
-			BlobURL:    blobURL,
-			QADCounter: qadCounterVal,
+			DiskURI:         volumeID,
+			BlobURL:         blobURL,
+			ClaimIdentifier: claimIdentifier,
+			AttachSequence:  attachSequenceVal,
 		}, "DETACH")
 		if err != nil {
 			klog.Errorf("NodeUnStageVolume: failed to make POST call to wireserver for volume %s: %v", volumeID, err)
@@ -477,7 +483,7 @@ func (d *Driver) NodeUnstageVolume(ctx context.Context, req *csi.NodeUnstageVolu
 			}
 
 		} else {
-			return nil, status.Errorf(codes.Internal, "The detach request to the wireserver returned an unexpected status message %s", statusResp.Status)
+			return nil, status.Errorf(codes.Internal, "NodeUnStageVolume: detach for volume %s returned status %s (message: %q, error: %+v)", volumeID, statusResp.Status, statusResp.StatusMessage, statusResp.Error)
 		}
 	}
 	isOperationSucceeded = true
@@ -1017,8 +1023,8 @@ func (d *Driver) isUsingQADPath(ctx context.Context, diskURI string) (*v1.Persis
 
 	if pvName := pv.Name; pvName != "" {
 		// Check for QAD-related annotations or labels
-		if qadCounter, exists := pv.Annotations[azureconstants.QADCounterAnnotation]; exists {
-			klog.V(2).Infof("Found PV %s with matching VolumeHandle %s and QAD counter: %s", pvName, diskURI, qadCounter)
+		if attachSequence, exists := pv.Annotations[azureconstants.AttachSequenceAnnotation]; exists {
+			klog.V(2).Infof("Found PV %s with matching VolumeHandle %s and attach sequence: %s", pvName, diskURI, attachSequence)
 			return pv, true, nil
 		}
 
@@ -1032,19 +1038,19 @@ func (d *Driver) isUsingQADPath(ctx context.Context, diskURI string) (*v1.Persis
 	return nil, false, nil
 }
 
-func incrementQADCounterAnnotation(kubeClient clientset.Interface, pv *v1.PersistentVolume) (int, error) {
-	klog.Infof("Incrementing QAD counter annotation for PV %s", pv.Name)
+func incrementAttachSequenceAnnotation(kubeClient clientset.Interface, pv *v1.PersistentVolume) (int, error) {
+	klog.Infof("Incrementing attach sequence annotation for PV %s", pv.Name)
 
 	// Update the annotation
 	if pv.Annotations == nil {
 		pv.Annotations = make(map[string]string)
 	}
-	currentQADCounter := 0
-	if val, ok := pv.Annotations[azureconstants.QADCounterAnnotation]; ok {
-		currentQADCounter, _ = strconv.Atoi(val)
+	currentAttachSequence := 0
+	if val, ok := pv.Annotations[azureconstants.AttachSequenceAnnotation]; ok {
+		currentAttachSequence, _ = strconv.Atoi(val)
 	}
-	updatedCounter := currentQADCounter + 1
-	pv.Annotations[azureconstants.QADCounterAnnotation] = fmt.Sprintf("%d", updatedCounter)
+	updatedCounter := currentAttachSequence + 1
+	pv.Annotations[azureconstants.AttachSequenceAnnotation] = fmt.Sprintf("%d", updatedCounter)
 
 	// Update the PV in Kubernetes
 	_, err := kubeClient.CoreV1().PersistentVolumes().Update(context.TODO(), pv, metav1.UpdateOptions{})
@@ -1052,7 +1058,7 @@ func incrementQADCounterAnnotation(kubeClient clientset.Interface, pv *v1.Persis
 		return 0, fmt.Errorf("failed to update PersistentVolume %s: %v", pv.Name, err)
 	}
 
-	klog.V(2).Infof("Successfully incremented QAD counter annotation for PV %s to %s", pv.Name, pv.Annotations[azureconstants.QADCounterAnnotation])
+	klog.V(2).Infof("Successfully incremented attach sequence annotation for PV %s to %s", pv.Name, pv.Annotations[azureconstants.AttachSequenceAnnotation])
 	return updatedCounter, nil
 }
 
@@ -1161,9 +1167,11 @@ func attachOrDetachDisksInternal(ctx context.Context, client http.Client, diskRe
 		return WireserverDiskStatusResponse{}, status.Error(codes.InvalidArgument, "no disk requests provided")
 	}
 
-	// Get a fresh token from the credential (SDK handles caching/refresh internally)
+	// Get a fresh token from the credential (SDK handles caching/refresh internally).
+	// XFE validates the token audience as "https://management.azure.com/" (with trailing
+	// slash); the double slash before /.default makes the resulting aud carry that slash.
 	token, err := cred.GetToken(ctx, policy.TokenRequestOptions{
-		Scopes: []string{"https://management.azure.com/.default"},
+		Scopes: []string{"https://management.azure.com//.default"},
 	})
 	if err != nil {
 		return WireserverDiskStatusResponse{}, fmt.Errorf("failed to get VM access token: %v", err)
@@ -1176,10 +1184,11 @@ func attachOrDetachDisksInternal(ctx context.Context, client http.Client, diskRe
 		}
 
 		diskOps[diskRequest.DiskURI] = &DiskOp{
-			BlobURL:     diskRequest.BlobURL,
-			QadCounter:  diskRequest.QADCounter,
-			Action:      operationType,
-			CachePolicy: "None",
+			BlobURL:         diskRequest.BlobURL,
+			ClaimIdentifier: diskRequest.ClaimIdentifier,
+			AttachSequence:  diskRequest.AttachSequence,
+			Action:          operationType,
+			CachePolicy:     "None",
 		}
 	}
 
@@ -1271,9 +1280,9 @@ func mapDiskErrorToCode(errorType DiskErrorType, severity SeverityHint) codes.Co
 			return codes.Unavailable
 		}
 		return codes.Unauthenticated
-	case QADDiskErrQADCounterMismatch:
+	case QADDiskErrAttachSequenceMismatch:
 		return codes.Aborted
-	case QADDiskErrQADIdentifierMismatch:
+	case QADDiskErrClaimIdentifierMismatch:
 		if severity == SeverityHintRetriable {
 			return codes.Unavailable
 		}

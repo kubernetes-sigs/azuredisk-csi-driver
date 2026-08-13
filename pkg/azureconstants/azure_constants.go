@@ -113,8 +113,9 @@ const (
 	AzureDiskDriverTag           = "kubernetes-azure-dd"
 	InstantAccessDurationMinutes = "instantaccessdurationminutes"
 	QADWireserverEndpoint        = "http://168.63.129.16/vmservice/diskstate"
-	QADCounterAnnotation         = "azuredisk.csi.azure.com/qad-counter"
+	AttachSequenceAnnotation     = "azuredisk.csi.azure.com/attach-sequence"
 	BlobURLAnnotation            = "azuredisk.csi.azure.com/blob-url"
+	ClaimIdentifierAnnotation    = "azuredisk.csi.azure.com/claim-identifier"
 )
 
 var (
