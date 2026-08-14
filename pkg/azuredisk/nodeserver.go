@@ -261,10 +261,7 @@ func (d *Driver) NodeStageVolume(ctx context.Context, req *csi.NodeStageVolumeRe
 
 		if err != nil {
 			klog.Errorf("NodeStageVolume: failed to make POST call to wireserver for volume %s: %v", volumeID, err)
-			if s, ok := status.FromError(err); ok {
-				return nil, status.Errorf(s.Code(), "NodeStageVolume: wireserver call failed for volume %s: %v", volumeID, err)
-			}
-			return nil, status.Errorf(codes.Internal, "NodeStageVolume: wireserver call failed for volume %s: %v", volumeID, err)
+			return nil, err
 		}
 
 		lowercaseDiskURI := strings.ToLower(volumeID)

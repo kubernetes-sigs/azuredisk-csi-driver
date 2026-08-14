@@ -727,6 +727,12 @@ func (d *Driver) ControllerPublishVolume(ctx context.Context, req *csi.Controlle
 		volumeContext = map[string]string{}
 	}
 
+	// TODO: Add a driver-level flag indicating whether QAD is enabled.
+	// The current implementation temporarily uses a volume context parameter,
+	// configured through the StorageClass, to determine whether QAD is enabled
+	// for a disk. This should be replaced once the appropriate UX is available.
+	// During preview, VMs flagged for QAD support will support QAD exclusively;
+	// FAD will not be supported.
 	if volumeContext["qadEnabled"] == "true" {
 		klog.V(2).Infof("qad is enabled for disk %s", diskURI)
 
