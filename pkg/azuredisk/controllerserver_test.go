@@ -1767,6 +1767,14 @@ func TestControllerModifyVolume_MigrationLifecycleAndTimeout(t *testing.T) {
 	}
 
 	t.Run("lifecycle: start -> milestones -> completion -> label removed", func(t *testing.T) {
+		// The lifecycle case needs enough headroom to walk the full progress
+		// sequence and emit the completion event even when the goroutine
+		// scheduler is slower (observed as a flake under newer Go toolchains).
+		// Widen the timing here and restore the base values on exit so the
+		// subsequent subtests keep their intended timing semantics.
+		setTiming(20*time.Millisecond, 500*time.Millisecond, 3*time.Second)
+		defer setTiming(baseInterval, baseSlabTimeout, baseMaxTimeout)
+
 		ctrl := gomock.NewController(t)
 		defer ctrl.Finish()
 
