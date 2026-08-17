@@ -18,13 +18,16 @@ package azuredisk
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"net/http"
 	"os"
 	"reflect"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute/v7"
 	"github.com/stretchr/testify/assert"
 	"go.uber.org/mock/gomock"
@@ -760,5 +763,99 @@ func TestGetUsedLunsFromNode(t *testing.T) {
 		if !reflect.DeepEqual(result, test.expectedUsedLunList) {
 			t.Errorf("test(%s): result(%v) != expected result(%v)", test.name, result, test.expectedUsedLunList)
 		}
+	}
+}
+
+func TestDiskHasNoOwner(t *testing.T) {
+	otherVM := "/subscriptions/sub1/resourceGroups/rg1/providers/Microsoft.Compute/virtualMachines/node1"
+	tests := []struct {
+		name     string
+		disk     *armcompute.Disk
+		expected bool
+	}{
+		{
+			name:     "nil disk (e.g. throttled GetDisk) -> false",
+			disk:     nil,
+			expected: false,
+		},
+		{
+			name:     "no owner, no properties -> true",
+			disk:     &armcompute.Disk{},
+			expected: true,
+		},
+		{
+			name:     "no owner, MaxShares=1 -> true",
+			disk:     &armcompute.Disk{Properties: &armcompute.DiskProperties{MaxShares: ptr.To(int32(1))}},
+			expected: true,
+		},
+		{
+			name:     "owned by a VM -> false",
+			disk:     &armcompute.Disk{ManagedBy: ptr.To(otherVM)},
+			expected: false,
+		},
+		{
+			name:     "shared disk (MaxShares>1) detached from all VMs -> true",
+			disk:     &armcompute.Disk{Properties: &armcompute.DiskProperties{MaxShares: ptr.To(int32(2))}},
+			expected: true,
+		},
+		{
+			name:     "shared disk (MaxShares>1) owned via ManagedBy -> false",
+			disk:     &armcompute.Disk{ManagedBy: ptr.To(otherVM), Properties: &armcompute.DiskProperties{MaxShares: ptr.To(int32(2))}},
+			expected: false,
+		},
+		{
+			name:     "shared disk (MaxShares>1) owned via ManagedByExtended -> false",
+			disk:     &armcompute.Disk{ManagedByExtended: []*string{ptr.To(otherVM)}, Properties: &armcompute.DiskProperties{MaxShares: ptr.To(int32(2))}},
+			expected: false,
+		},
+		{
+			name:     "non-shared disk with stale ManagedByExtended entry -> false",
+			disk:     &armcompute.Disk{ManagedByExtended: []*string{ptr.To(otherVM)}},
+			expected: false,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.expected, diskHasNoOwner(tt.disk), tt.name)
+		})
+	}
+}
+
+func TestIsDiskNotFoundError(t *testing.T) {
+	tests := []struct {
+		name     string
+		err      error
+		expected bool
+	}{
+		{
+			name:     "nil error -> false",
+			err:      nil,
+			expected: false,
+		},
+		{
+			name:     "unrelated error -> false",
+			err:      errors.New("some transient failure"),
+			expected: false,
+		},
+		{
+			name:     "ResponseError 404 -> true",
+			err:      &azcore.ResponseError{StatusCode: http.StatusNotFound},
+			expected: true,
+		},
+		{
+			name:     "wrapped ResponseError 404 -> true",
+			err:      fmt.Errorf("get disk failed: %w", &azcore.ResponseError{StatusCode: http.StatusNotFound}),
+			expected: true,
+		},
+		{
+			name:     "ResponseError 429 (throttled) -> false",
+			err:      &azcore.ResponseError{StatusCode: http.StatusTooManyRequests},
+			expected: false,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.expected, isDiskNotFoundError(tt.err), tt.name)
+		})
 	}
 }
