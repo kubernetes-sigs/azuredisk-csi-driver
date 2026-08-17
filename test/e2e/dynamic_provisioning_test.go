@@ -895,6 +895,7 @@ func (t *dynamicProvisioningTestSuite) defineTests(isMultiZone bool) {
 			StorageClassParameters: map[string]string{"skuName": "StandardSSD_LRS"},
 			SnapshotStorageClassParameters: map[string]string{
 				"incremental": "true", "dataAccessAuthMode": "AzureActiveDirectory", "location": "westus2",
+				"tags": "environment=test,owner=e2e", "userAgent": "azuredisk-csi-driver-e2e",
 			},
 		}
 		if location == "westus2" {
