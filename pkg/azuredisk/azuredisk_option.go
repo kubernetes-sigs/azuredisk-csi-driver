@@ -78,6 +78,7 @@ type DriverOptions struct {
 	ConvertRWCachingModeForIntreePV    bool
 	KubeAPIQPS                         float64
 	KubeAPIBurst                       int
+	UseCacheFreeVMSet                  bool
 }
 
 func (o *DriverOptions) AddFlags() *flag.FlagSet {
@@ -137,5 +138,6 @@ func (o *DriverOptions) AddFlags() *flag.FlagSet {
 	fs.BoolVar(&o.ConvertRWCachingModeForIntreePV, "convert-rw-caching-mode-for-intree-pv", false, "convert ReadWrite cachingMode to ReadOnly for intree PVs to avoid issues")
 	fs.Float64Var(&o.KubeAPIQPS, "kube-api-qps", 0, "QPS for kubernetes API client (0 uses default)")
 	fs.IntVar(&o.KubeAPIBurst, "kube-api-burst", 0, "Burst for kubernetes API client (0 uses default)")
+	fs.BoolVar(&o.UseCacheFreeVMSet, "use-cache-free-vmset", false, "boolean flag to use the cache-free DiskVMSet (backed by azclient, no cloud-provider VM caching) for disk attach/detach")
 	return fs
 }
