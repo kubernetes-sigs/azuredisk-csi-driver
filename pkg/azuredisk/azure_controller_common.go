@@ -130,7 +130,16 @@ type ExtendedLocation struct {
 // occupiedLuns is used to avoid conflict with other disk attach in k8s VolumeAttachments
 // return (lun, error)
 func (c *controllerCommon) AttachDisk(ctx context.Context, diskName, diskURI string, nodeName types.NodeName,
-	cachingMode armcompute.CachingTypes, disk *armcompute.Disk, occupiedLuns []int) (int32, error) {
+	cachingMode armcompute.CachingTypes, disk *armcompute.Disk, occupiedLuns []int) (lun int32, err error) {
+	ctx, span := startSpan(ctx, "AttachDisk",
+		attribute.String(attrDiskURI, diskURI),
+		attribute.String(attrNode, string(nodeName)))
+	defer func() {
+		recordSpanResult(span, err)
+		recordThrottleIfThrottled(ctx, err)
+		span.End()
+	}()
+
 	diskEncryptionSetID := ""
 	writeAcceleratorEnabled := false
 
@@ -394,7 +403,16 @@ func (c *controllerCommon) retrieveAttachBatchedDiskRequests(nodeName, diskURI s
 }
 
 // DetachDisk detaches a disk from VM
-func (c *controllerCommon) DetachDisk(ctx context.Context, diskName, diskURI string, nodeName types.NodeName) error {
+func (c *controllerCommon) DetachDisk(ctx context.Context, diskName, diskURI string, nodeName types.NodeName) (err error) {
+	ctx, span := startSpan(ctx, "DetachDisk",
+		attribute.String(attrDiskURI, diskURI),
+		attribute.String(attrNode, string(nodeName)))
+	defer func() {
+		recordSpanResult(span, err)
+		recordThrottleIfThrottled(ctx, err)
+		span.End()
+	}()
+
 	if _, err := c.cloud.InstanceID(ctx, nodeName); err != nil {
 		if errors.Is(err, cloudprovider.InstanceNotFound) {
 			// if host doesn't exist, no need to detach
@@ -514,7 +532,15 @@ func (c *controllerCommon) DetachDisk(ctx context.Context, diskName, diskURI str
 }
 
 // UpdateVM updates a vm
-func (c *controllerCommon) UpdateVM(ctx context.Context, nodeName types.NodeName) error {
+func (c *controllerCommon) UpdateVM(ctx context.Context, nodeName types.NodeName) (err error) {
+	ctx, span := startSpan(ctx, "UpdateVM",
+		attribute.String(attrNode, string(nodeName)))
+	defer func() {
+		recordSpanResult(span, err)
+		recordThrottleIfThrottled(ctx, err)
+		span.End()
+	}()
+
 	vmset, err := c.cloud.GetNodeVMSet(ctx, nodeName, azcache.CacheReadTypeUnsafe)
 	if err != nil {
 		return err
@@ -659,7 +685,16 @@ func (c *controllerCommon) GetNodeDataDisks(ctx context.Context, nodeName types.
 }
 
 // GetDiskLun finds the lun on the host that the vhd is attached to, given a vhd's diskName and diskURI.
-func (c *controllerCommon) GetDiskLun(ctx context.Context, diskName, diskURI string, nodeName types.NodeName) (int32, *string, error) {
+func (c *controllerCommon) GetDiskLun(ctx context.Context, diskName, diskURI string, nodeName types.NodeName) (lun int32, vmState *string, err error) {
+	ctx, span := startSpan(ctx, "GetDiskLun",
+		attribute.String(attrDiskURI, diskURI),
+		attribute.String(attrNode, string(nodeName)))
+	defer func() {
+		recordSpanResult(span, err)
+		recordThrottleIfThrottled(ctx, err)
+		span.End()
+	}()
+
 	// GetNodeDataDisks need to fetch the cached data/fresh data if cache expired here
 	// to ensure we get LUN based on latest entry.
 	disks, provisioningState, err := c.GetNodeDataDisks(ctx, nodeName, azcache.CacheReadTypeDefault)

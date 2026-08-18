@@ -483,12 +483,7 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 		mc.WithAdditionalVolumeInfo(consts.VolumeID, diskURI).ObserveWithLabels(isOperationSucceeded, csiMetrics.StorageAccountType, string(skuName))
 	}()
 
-	createSpanCtx, createSpan := startSpan(ctx, "CreateManagedDisk",
-		attribute.String(attrDiskName, diskParams.DiskName))
-	diskURI, err = localDiskController.CreateManagedDisk(createSpanCtx, volumeOptions)
-	recordSpanResult(createSpan, err)
-	recordThrottleIfThrottled(createSpanCtx, err)
-	createSpan.End()
+	diskURI, err = localDiskController.CreateManagedDisk(ctx, volumeOptions)
 	if err != nil {
 		if strings.Contains(err.Error(), consts.NotFound) {
 			return nil, status.Error(codes.NotFound, err.Error())
@@ -561,11 +556,7 @@ func (d *Driver) DeleteVolume(ctx context.Context, req *csi.DeleteVolumeRequest)
 	}
 
 	klog.V(2).Infof("deleting azure disk(%s)", diskURI)
-	deleteSpanCtx, deleteSpan := startSpan(ctx, "DeleteManagedDisk")
-	err := d.diskController.DeleteManagedDisk(deleteSpanCtx, diskURI)
-	recordSpanResult(deleteSpan, err)
-	recordThrottleIfThrottled(deleteSpanCtx, err)
-	deleteSpan.End()
+	err := d.diskController.DeleteManagedDisk(ctx, diskURI)
 	klog.V(2).Infof("delete azure disk(%s) returned with %v", diskURI, err)
 
 	isOperationSucceeded = (err == nil)
@@ -693,11 +684,7 @@ func (d *Driver) ControllerPublishVolume(ctx context.Context, req *csi.Controlle
 		ctx = withDiskCorrelation(ctx, diskName)
 	}
 
-	checkSpanCtx, checkSpan := startSpan(ctx, "checkDiskExists")
-	disk, err := d.checkDiskExists(checkSpanCtx, diskURI)
-	recordSpanResult(checkSpan, err)
-	recordThrottleIfThrottled(checkSpanCtx, err)
-	checkSpan.End()
+	disk, err := d.checkDiskExists(ctx, diskURI)
 	if err != nil {
 		if strings.Contains(err.Error(), "context deadline") {
 			disk = nil
@@ -731,11 +718,7 @@ func (d *Driver) ControllerPublishVolume(ctx context.Context, req *csi.Controlle
 		mc.WithAdditionalVolumeInfo(consts.VolumeID, diskURI, consts.Node, string(nodeName)).Observe(isOperationSucceeded)
 	}()
 
-	lunSpanCtx, lunSpan := startSpan(ctx, "GetDiskLun")
-	lun, vmState, err := d.diskController.GetDiskLun(lunSpanCtx, diskName, diskURI, nodeName)
-	recordSpanResult(lunSpan, err)
-	recordThrottleIfThrottled(lunSpanCtx, err)
-	lunSpan.End()
+	lun, vmState, err := d.diskController.GetDiskLun(ctx, diskName, diskURI, nodeName)
 	if err == cloudprovider.InstanceNotFound {
 		return nil, status.Error(codes.NotFound, fmt.Sprintf("failed to get azure instance id for node %q (%v)", nodeName, err))
 	}
@@ -788,11 +771,7 @@ func (d *Driver) ControllerPublishVolume(ctx context.Context, req *csi.Controlle
 			klog.V(2).Infof("attachDiskInitialDelayInMs is set to %d", attachDiskInitialDelay)
 			d.diskController.AttachDetachInitialDelayInMs = attachDiskInitialDelay
 		}
-		attachSpanCtx, attachSpan := startSpan(ctx, "AttachDisk")
-		lun, err = d.diskController.AttachDisk(attachSpanCtx, diskName, diskURI, nodeName, cachingMode, disk, occupiedLuns)
-		recordSpanResult(attachSpan, err)
-		recordThrottleIfThrottled(attachSpanCtx, err)
-		attachSpan.End()
+		lun, err = d.diskController.AttachDisk(ctx, diskName, diskURI, nodeName, cachingMode, disk, occupiedLuns)
 		if err != nil {
 			if derr, ok := err.(*volerr.DanglingAttachError); ok {
 				if strings.EqualFold(string(nodeName), string(derr.CurrentNode)) {
@@ -810,21 +789,12 @@ func (d *Driver) ControllerPublishVolume(ctx context.Context, req *csi.Controlle
 					return nil, err
 				}
 				klog.Warningf("volume %s is already attached to node %s, try detach first", diskURI, derr.CurrentNode)
-				detachSpanCtx, detachSpan := startSpan(ctx, "DetachDisk",
-					attribute.String(attrNode, string(derr.CurrentNode)))
-				err = d.diskController.DetachDisk(detachSpanCtx, diskName, diskURI, derr.CurrentNode)
-				recordSpanResult(detachSpan, err)
-				recordThrottleIfThrottled(detachSpanCtx, err)
-				detachSpan.End()
+				err = d.diskController.DetachDisk(ctx, diskName, diskURI, derr.CurrentNode)
 				if err != nil {
 					return nil, status.Errorf(codes.Internal, "Could not detach volume %s from node %s: %v", diskURI, derr.CurrentNode, err)
 				}
 				klog.V(2).Infof("Trying to attach volume %s to node %s again", diskName, nodeName)
-				retrySpanCtx, retrySpan := startSpan(ctx, "AttachDisk")
-				lun, err = d.diskController.AttachDisk(retrySpanCtx, diskName, diskURI, nodeName, cachingMode, disk, occupiedLuns)
-				recordSpanResult(retrySpan, err)
-				recordThrottleIfThrottled(retrySpanCtx, err)
-				retrySpan.End()
+				lun, err = d.diskController.AttachDisk(ctx, diskName, diskURI, nodeName, cachingMode, disk, occupiedLuns)
 			}
 			if err != nil {
 				klog.Errorf("Attach volume %s to instance %s failed with %v", diskName, nodeName, err)
@@ -880,11 +850,7 @@ func (d *Driver) ControllerUnpublishVolume(ctx context.Context, req *csi.Control
 
 	klog.V(2).Infof("Trying to detach volume %s from node %s", diskURI, nodeID)
 
-	detachSpanCtx, detachSpan := startSpan(ctx, "DetachDisk")
-	err = d.diskController.DetachDisk(detachSpanCtx, diskName, diskURI, nodeName)
-	recordSpanResult(detachSpan, err)
-	recordThrottleIfThrottled(detachSpanCtx, err)
-	detachSpan.End()
+	err = d.diskController.DetachDisk(ctx, diskName, diskURI, nodeName)
 	if err != nil {
 		if strings.Contains(err.Error(), consts.ErrDiskNotFound) {
 			klog.Warningf("volume %s already detached from node %s", diskURI, nodeID)

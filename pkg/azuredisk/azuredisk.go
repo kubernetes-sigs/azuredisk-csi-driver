@@ -528,7 +528,15 @@ func (d *Driver) isCheckDiskLunThrottled(ctx context.Context) bool {
 	return cache != nil
 }
 
-func (d *Driver) checkDiskExists(ctx context.Context, diskURI string) (*armcompute.Disk, error) {
+func (d *Driver) checkDiskExists(ctx context.Context, diskURI string) (disk *armcompute.Disk, err error) {
+	ctx, span := startSpan(ctx, "checkDiskExists",
+		attribute.String(attrDiskURI, diskURI))
+	defer func() {
+		recordSpanResult(span, err)
+		recordThrottleIfThrottled(ctx, err)
+		span.End()
+	}()
+
 	if d.isGetDiskThrottled(ctx) {
 		recordThrottleEvent(ctx, eventThrottled, "")
 		klog.Warningf("skip checkDiskExists(%s) since it's still in throttling", diskURI)
