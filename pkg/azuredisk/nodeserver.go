@@ -32,6 +32,8 @@ import (
 	azure "sigs.k8s.io/cloud-provider-azure/pkg/provider"
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
+	"go.opentelemetry.io/otel/attribute"
+	oteltrace "go.opentelemetry.io/otel/trace"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
@@ -60,7 +62,7 @@ func getDefaultFsType() string {
 }
 
 // NodeStageVolume mount disk device to a staging path
-func (d *Driver) NodeStageVolume(_ context.Context, req *csi.NodeStageVolumeRequest) (*csi.NodeStageVolumeResponse, error) {
+func (d *Driver) NodeStageVolume(ctx context.Context, req *csi.NodeStageVolumeRequest) (*csi.NodeStageVolumeResponse, error) {
 	volumeID := req.GetVolumeId()
 	if len(volumeID) == 0 {
 		return nil, status.Error(codes.InvalidArgument, "Volume ID not provided")
@@ -92,6 +94,12 @@ func (d *Driver) NodeStageVolume(_ context.Context, req *csi.NodeStageVolumeRequ
 		mc.WithAdditionalVolumeInfo(consts.VolumeID, volumeID).Observe(isOperationSucceeded)
 	}()
 
+	// Label the root span so this trace can be correlated by volume.
+	oteltrace.SpanFromContext(ctx).SetAttributes(attribute.String(attrVolumeID, volumeID))
+	if _, _, diskName, err := azureutils.GetInfoFromURI(volumeID); err == nil {
+		ctx = withDiskCorrelation(ctx, diskName)
+	}
+
 	if acquired := d.volumeLocks.TryAcquire(volumeID); !acquired {
 		return nil, status.Errorf(codes.Aborted, volumeOperationAlreadyExistsFmt, volumeID)
 	}
@@ -102,7 +110,10 @@ func (d *Driver) NodeStageVolume(_ context.Context, req *csi.NodeStageVolumeRequ
 		return nil, status.Error(codes.InvalidArgument, "lun not provided")
 	}
 
+	_, devSpan := startSpan(ctx, "waitForDevice", attribute.String("lun", lun))
 	source, err := d.getDevicePathWithLUN(lun)
+	recordSpanResult(devSpan, err)
+	devSpan.End()
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to find disk on lun %s. %v", lun, err)
 	}
@@ -163,7 +174,12 @@ func (d *Driver) NodeStageVolume(_ context.Context, req *csi.NodeStageVolumeRequ
 
 	// FormatAndMount will format only if needed
 	klog.V(2).Infof("NodeStageVolume: formatting %s and mounting at %s with mount options(%s)", source, target, options)
-	if err := d.formatAndMount(source, target, fstype, options); err != nil {
+	_, fmtSpan := startSpan(ctx, "formatAndMount",
+		attribute.String("fs_type", fstype))
+	err = d.formatAndMount(source, target, fstype, options)
+	recordSpanResult(fmtSpan, err)
+	fmtSpan.End()
+	if err != nil {
 		return nil, status.Errorf(codes.Internal, "could not format %s(lun: %s), and mount it at %s, failed with %v", source, lun, target, err)
 	}
 	klog.V(2).Infof("NodeStageVolume: format %s and mounting at %s successfully.", source, target)
@@ -183,7 +199,11 @@ func (d *Driver) NodeStageVolume(_ context.Context, req *csi.NodeStageVolumeRequ
 	// if resize is required, resize filesystem
 	if needResize {
 		klog.V(2).Infof("NodeStageVolume: fs resize initiating on target(%s) volumeid(%s)", target, volumeID)
-		if err := resizeVolume(source, target, d.mounter); err != nil {
+		_, resizeSpan := startSpan(ctx, "resizeVolume")
+		err = resizeVolume(source, target, d.mounter)
+		recordSpanResult(resizeSpan, err)
+		resizeSpan.End()
+		if err != nil {
 			return nil, status.Errorf(codes.Internal, "NodeStageVolume: could not resize volume %s (%s):  %v", source, target, err)
 		}
 		klog.V(2).Infof("NodeStageVolume: fs resize successful on target(%s) volumeid(%s).", target, volumeID)
@@ -193,7 +213,7 @@ func (d *Driver) NodeStageVolume(_ context.Context, req *csi.NodeStageVolumeRequ
 }
 
 // NodeUnstageVolume unmount disk device from a staging path
-func (d *Driver) NodeUnstageVolume(_ context.Context, req *csi.NodeUnstageVolumeRequest) (*csi.NodeUnstageVolumeResponse, error) {
+func (d *Driver) NodeUnstageVolume(ctx context.Context, req *csi.NodeUnstageVolumeRequest) (*csi.NodeUnstageVolumeResponse, error) {
 	volumeID := req.GetVolumeId()
 	if len(volumeID) == 0 {
 		return nil, status.Error(codes.InvalidArgument, "Volume ID not provided")
@@ -210,13 +230,23 @@ func (d *Driver) NodeUnstageVolume(_ context.Context, req *csi.NodeUnstageVolume
 		mc.WithAdditionalVolumeInfo(consts.VolumeID, volumeID).Observe(isOperationSucceeded)
 	}()
 
+	// Label the root span and stamp disk.name so teardown correlates by disk.
+	oteltrace.SpanFromContext(ctx).SetAttributes(attribute.String(attrVolumeID, volumeID))
+	if _, _, diskName, err := azureutils.GetInfoFromURI(volumeID); err == nil {
+		ctx = withDiskCorrelation(ctx, diskName)
+	}
+
 	if acquired := d.volumeLocks.TryAcquire(volumeID); !acquired {
 		return nil, status.Errorf(codes.Aborted, volumeOperationAlreadyExistsFmt, volumeID)
 	}
 	defer d.volumeLocks.Release(volumeID)
 
 	klog.V(2).Infof("NodeUnstageVolume: unmounting %s", stagingTargetPath)
-	if err := CleanupMountPoint(stagingTargetPath, d.mounter, true /*extensiveMountPointCheck*/); err != nil {
+	_, umSpan := startSpan(ctx, "unmount")
+	err := CleanupMountPoint(stagingTargetPath, d.mounter, true /*extensiveMountPointCheck*/)
+	recordSpanResult(umSpan, err)
+	umSpan.End()
+	if err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to unmount staging target %q: %v", stagingTargetPath, err)
 	}
 	klog.V(2).Infof("NodeUnstageVolume: unmount %s successfully", stagingTargetPath)
@@ -226,7 +256,7 @@ func (d *Driver) NodeUnstageVolume(_ context.Context, req *csi.NodeUnstageVolume
 }
 
 // NodePublishVolume mount the volume from staging to target path
-func (d *Driver) NodePublishVolume(_ context.Context, req *csi.NodePublishVolumeRequest) (*csi.NodePublishVolumeResponse, error) {
+func (d *Driver) NodePublishVolume(ctx context.Context, req *csi.NodePublishVolumeRequest) (*csi.NodePublishVolumeResponse, error) {
 	mc := csiMetrics.NewCSIMetricContext("node_publish_volume")
 	isOperationSucceeded := false
 	defer func() {
@@ -236,6 +266,13 @@ func (d *Driver) NodePublishVolume(_ context.Context, req *csi.NodePublishVolume
 	volumeID := req.GetVolumeId()
 	if len(volumeID) == 0 {
 		return nil, status.Error(codes.InvalidArgument, "Volume ID missing in the request")
+	}
+
+	// Label the root span so this trace can be correlated by volume, and stamp
+	// the disk name onto the span, its child sub-spans and klog lines.
+	oteltrace.SpanFromContext(ctx).SetAttributes(attribute.String(attrVolumeID, volumeID))
+	if _, _, diskName, err := azureutils.GetInfoFromURI(volumeID); err == nil {
+		ctx = withDiskCorrelation(ctx, diskName)
 	}
 
 	volumeCapability := req.GetVolumeCapability()
@@ -280,7 +317,10 @@ func (d *Driver) NodePublishVolume(_ context.Context, req *csi.NodePublishVolume
 			return nil, status.Error(codes.InvalidArgument, "lun not provided")
 		}
 		var err error
+		_, devSpan := startSpan(ctx, "waitForDevice", attribute.String("lun", lun))
 		source, err = d.getDevicePathWithLUN(lun)
+		recordSpanResult(devSpan, err)
+		devSpan.End()
 		if err != nil {
 			return nil, status.Errorf(codes.Internal, "failed to find device path with lun %s. %v", lun, err)
 		}
@@ -300,7 +340,11 @@ func (d *Driver) NodePublishVolume(_ context.Context, req *csi.NodePublishVolume
 	}
 
 	klog.V(2).Infof("NodePublishVolume: mounting %s at %s", source, target)
-	if err := d.mounter.Mount(source, target, "", mountOptions); err != nil {
+	_, mountSpan := startSpan(ctx, "bindMount")
+	err = d.mounter.Mount(source, target, "", mountOptions)
+	recordSpanResult(mountSpan, err)
+	mountSpan.End()
+	if err != nil {
 		return nil, status.Errorf(codes.Internal, "could not mount %q at %q: %v", source, target, err)
 	}
 
@@ -310,7 +354,7 @@ func (d *Driver) NodePublishVolume(_ context.Context, req *csi.NodePublishVolume
 }
 
 // NodeUnpublishVolume unmount the volume from the target path
-func (d *Driver) NodeUnpublishVolume(_ context.Context, req *csi.NodeUnpublishVolumeRequest) (*csi.NodeUnpublishVolumeResponse, error) {
+func (d *Driver) NodeUnpublishVolume(ctx context.Context, req *csi.NodeUnpublishVolumeRequest) (*csi.NodeUnpublishVolumeResponse, error) {
 	mc := csiMetrics.NewCSIMetricContext("node_unpublish_volume")
 	isOperationSucceeded := false
 	defer func() {
@@ -327,13 +371,23 @@ func (d *Driver) NodeUnpublishVolume(_ context.Context, req *csi.NodeUnpublishVo
 		return nil, status.Error(codes.InvalidArgument, "Target path missing in request")
 	}
 
+	// Label the root span and stamp disk.name so teardown correlates by disk.
+	oteltrace.SpanFromContext(ctx).SetAttributes(attribute.String(attrVolumeID, volumeID))
+	if _, _, diskName, err := azureutils.GetInfoFromURI(volumeID); err == nil {
+		ctx = withDiskCorrelation(ctx, diskName)
+	}
+
 	klog.V(2).Infof("NodeUnpublishVolume: unmounting volume %s on %s", volumeID, targetPath)
 	extensiveMountPointCheck := true
 	if runtime.GOOS == "windows" {
 		// on Windows, this parameter indicates whether to unmount volume, not necessary in NodeUnpublishVolume
 		extensiveMountPointCheck = false
 	}
-	if err := CleanupMountPoint(targetPath, d.mounter, extensiveMountPointCheck); err != nil {
+	_, umSpan := startSpan(ctx, "unmount")
+	err := CleanupMountPoint(targetPath, d.mounter, extensiveMountPointCheck)
+	recordSpanResult(umSpan, err)
+	umSpan.End()
+	if err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to unmount target %q: %v", targetPath, err)
 	}
 
@@ -492,11 +546,18 @@ func (d *Driver) NodeGetVolumeStats(ctx context.Context, req *csi.NodeGetVolumeS
 }
 
 // NodeExpandVolume node expand volume
-func (d *Driver) NodeExpandVolume(_ context.Context, req *csi.NodeExpandVolumeRequest) (*csi.NodeExpandVolumeResponse, error) {
+func (d *Driver) NodeExpandVolume(ctx context.Context, req *csi.NodeExpandVolumeRequest) (*csi.NodeExpandVolumeResponse, error) {
 	volumeID := req.GetVolumeId()
 	if len(volumeID) == 0 {
 		return nil, status.Error(codes.InvalidArgument, "Volume ID not provided")
 	}
+
+	// Label the root span and stamp disk.name so expand correlates by disk.
+	oteltrace.SpanFromContext(ctx).SetAttributes(attribute.String(attrVolumeID, volumeID))
+	if _, _, diskName, err := azureutils.GetInfoFromURI(volumeID); err == nil {
+		ctx = withDiskCorrelation(ctx, diskName)
+	}
+
 	capacityBytes := req.GetCapacityRange().GetRequiredBytes()
 	volSizeBytes := int64(capacityBytes)
 	requestGiB := volumehelper.RoundUpGiB(volSizeBytes)
@@ -546,7 +607,11 @@ func (d *Driver) NodeExpandVolume(_ context.Context, req *csi.NodeExpandVolumeRe
 
 	if d.enableDiskOnlineResize {
 		klog.V(2).Infof("NodeExpandVolume begin to rescan device %s on volume(%s)", devicePath, volumeID)
-		if err := rescanVolume(d.ioHandler, devicePath); err != nil {
+		_, rescanSpan := startSpan(ctx, "rescanDevice")
+		err := rescanVolume(d.ioHandler, devicePath)
+		recordSpanResult(rescanSpan, err)
+		rescanSpan.End()
+		if err != nil {
 			klog.Errorf("NodeExpandVolume rescanVolume failed with error: %v", err)
 		}
 	}
@@ -569,7 +634,11 @@ func (d *Driver) NodeExpandVolume(_ context.Context, req *csi.NodeExpandVolumeRe
 
 	// Now safe to resize filesystem since we've verified the block device is large enough
 	var retErr error
-	if err := resizeVolume(devicePath, volumePath, d.mounter); err != nil {
+	_, resizeSpan := startSpan(ctx, "resizeFilesystem")
+	err = resizeVolume(devicePath, volumePath, d.mounter)
+	recordSpanResult(resizeSpan, err)
+	resizeSpan.End()
+	if err != nil {
 		retErr = status.Errorf(codes.Internal, "could not resize volume %q (%q):  %v", volumeID, devicePath, err)
 		klog.Errorf("%v, will continue checking whether the volume has been resized", retErr)
 	}
