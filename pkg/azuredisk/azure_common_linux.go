@@ -36,6 +36,7 @@ import (
 	mount "k8s.io/mount-utils"
 	utilexec "k8s.io/utils/exec"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
+	csiMetrics "sigs.k8s.io/azuredisk-csi-driver/pkg/metrics"
 )
 
 const (
@@ -151,6 +152,9 @@ func formatAndMount(source, target, fstype string, options []string, m *mount.Sa
 	}
 
 	if diskFSFormat == "" {
+		// blkid found no filesystem signature, so fall back to fsck/wipefs detection before formatting.
+		csiMetrics.NewCSIMetricContext("format_and_mount_blkid_no_signature").WithLabel(csiMetrics.FsType, fstype).Observe(true)
+
 		// As part of auto-recovery from mount failures, we run fsck on the disk. If the disk was pulled
 		// out or a power loss occurred during a previous fsck run, the primary superblocks may have been
 		// corrupted depending on the stage at which fsck was interrupted. We run fsck here to detect and
@@ -167,6 +171,9 @@ func formatAndMount(source, target, fstype string, options []string, m *mount.Sa
 			if readOnly {
 				return fmt.Errorf("formatAndMount - disk %s is not formatted, but mount options specify read-only", source)
 			}
+
+			// blkid, fsck and wipefs all report no signature, so formatting is permitted.
+			csiMetrics.NewCSIMetricContext("format_and_mount_confirmed_no_signature").WithLabel(csiMetrics.FsType, fstype).Observe(true)
 
 			// If filesystem doesn't exist then we can format the disk with the given fstype.
 			// Disk is unformatted
@@ -185,7 +192,9 @@ func formatAndMount(source, target, fstype string, options []string, m *mount.Sa
 			}
 
 			klog.Infof("Disk %q appears to be unformatted, attempting to format as type: %q with options: %v", source, fstype, args)
+			mkfsMetric := csiMetrics.NewCSIMetricContext("format_and_mount_mkfs").WithLabel(csiMetrics.FsType, fstype)
 			output, err := mkfsWithConcurrencyLimit(m, formatSem, formatTimeout, fstype, args)
+			mkfsMetric.Observe(err == nil)
 			if err != nil {
 				klog.Errorf("formatAndMount - failed to format disk %s as type %s with options %v: %v error: %v", source, fstype, args, string(output), err)
 				return fmt.Errorf("failed to format disk %s as type %s with options %v: %v error: %v", source, fstype, args, string(output), err)
@@ -193,6 +202,9 @@ func formatAndMount(source, target, fstype string, options []string, m *mount.Sa
 			// Format was successful
 			diskFSFormat = fstype
 		} else {
+			// blkid was empty, but fsck or wipefs found a filesystem; the disk was saved from a reformat.
+			csiMetrics.NewCSIMetricContext("format_and_mount_detected_fs_signature_from_secondary_sb").WithLabel(csiMetrics.FsType, fstype).Observe(true)
+
 			// Re-read the filesystem signature to determine the existing format.
 			reReadFormat, err := m.GetDiskFormat(source)
 			if err != nil {
@@ -206,14 +218,14 @@ func formatAndMount(source, target, fstype string, options []string, m *mount.Sa
 
 	if !strings.EqualFold(fstype, diskFSFormat) {
 		// Verify that the disk is formatted with filesystem type we are expecting
+		csiMetrics.NewCSIMetricContext("format_and_mount_type_mismatch").WithLabel(csiMetrics.FsType, fstype).Observe(false)
 		klog.Errorf("formatAndMount - configured to mount disk %s as %s but current format is %s, things might break", source, fstype, diskFSFormat)
 		return fmt.Errorf("configured to mount disk %s as %s but current format is %s, things might break", source, fstype, diskFSFormat)
 	}
 
 	// Running fsck on the disk to detect and repair any filesystem issues before mounting
 	if !readOnly {
-		_, err := detectAndRepairFilesystem(source, []string{"-a"}, m)
-		if err != nil {
+		if _, err := detectAndRepairFilesystem(source, []string{"-a"}, m, "format_and_mount_fsck_repair"); err != nil {
 			klog.Errorf("formatAndMount - failed to run fsck on disk %s with error: %v", source, err)
 			return fmt.Errorf("failed to run fsck on disk %s with error: %v", source, err)
 		}
@@ -221,7 +233,10 @@ func formatAndMount(source, target, fstype string, options []string, m *mount.Sa
 
 	klog.V(4).Infof("Attempting to mount disk %s in %s format at %s", source, fstype, target)
 	options = append(options, "defaults")
-	if err := m.Mount(source, target, fstype, options); err != nil {
+	mountMetric := csiMetrics.NewCSIMetricContext("format_and_mount_mount").WithLabel(csiMetrics.FsType, fstype)
+	err = m.Mount(source, target, fstype, options)
+	mountMetric.Observe(err == nil)
+	if err != nil {
 		klog.Errorf("formatAndMount - failed to mount disk %s at %s with options %v and error: %v", source, target, options, err)
 		return fmt.Errorf("failed to mount disk %s at %s with options %v and error: %v", source, target, options, err)
 	}
@@ -426,7 +441,7 @@ func rescanAllVolumes(io azureutils.IOHandler) error {
 // detectFilesystemExistence checks whether the given device already contains a filesystem signature.
 // 2. Detects filesystem signature using wipefs --no-act --noheadings --output TYPE <device>.
 func detectFilesystemExistence(source string, mounter *mount.SafeFormatAndMount) (bool, error) {
-	isFSExist, err := detectAndRepairFilesystem(source, []string{"-n"}, mounter)
+	isFSExist, err := detectAndRepairFilesystem(source, []string{"-n"}, mounter, "format_and_mount_detect_fs_signature")
 	if err != nil {
 		if strings.Contains(strings.ToLower(err.Error()), "superblock could not be read or does not describe a valid ext2/ext3/ext4") {
 			klog.Infof("Device %s may be fresh block device with no filesystem signature, fsck output: %s", source, err.Error())
@@ -462,29 +477,48 @@ func detectFilesystemExistence(source string, mounter *mount.SafeFormatAndMount)
 //
 // fsckOptions control fsck's behavior, e.g. "-n" for a read-only detection check or "-y"/"-E ..."
 // to attempt repairs.
-func detectAndRepairFilesystem(source string, fsckOptions []string, mounter *mount.SafeFormatAndMount) (bool, error) {
+func detectAndRepairFilesystem(source string, fsckOptions []string, mounter *mount.SafeFormatAndMount, operation string) (fsExist bool, retErr error) {
 	klog.V(2).Infof("Checking for issues with fsck on disk: %s with options %v", source, fsckOptions)
 	args := append(append([]string(nil), fsckOptions...), source)
+
+	mc := csiMetrics.NewCSIMetricContext(operation)
+	outcome := "clean"
+	success := true
+	defer func() {
+		mc.ObserveWithLabels(success, csiMetrics.FsckOutcome, outcome)
+	}()
+
 	out, err := mounter.Exec.Command("fsck", args...).CombinedOutput()
 	if err != nil {
 		ee, isExitError := err.(utilexec.ExitError)
 		switch {
 		case err == utilexec.ErrExecutableNotFound:
+			outcome, success = "not_found", false
 			klog.Errorf("'fsck' not found on system; cannot verify filesystem signature on %s, returning error.", source)
 			return false, fmt.Errorf("'fsck' not found to detect filesystem on device %s with options %v: %v", source, fsckOptions, err)
 		case isExitError && ee.ExitStatus() == fsckOperationalError:
+			// A fresh block device reports an unreadable superblock; treat that as a benign fresh device.
+			if strings.Contains(strings.ToLower(string(out)), "superblock could not be read or does not describe a valid ext2/ext3/ext4") {
+				outcome, success = "fresh_device", true
+			} else {
+				outcome, success = "operational_error", false
+			}
 			klog.Warningf("Unable to run fsck on device %s with options %v, fsck output: %s", source, fsckOptions, string(out))
 			return false, fmt.Errorf("Unable to run fsck on device %s with options %v, fsck error: %v output: %s", source, fsckOptions, err, string(out))
 		case isExitError && ee.ExitStatus() == fsckErrorsCorrected:
+			outcome, success = "errors_corrected", true
 			klog.Warningf("Device %s has errors which were corrected by fsck: %s", source, string(out))
 		case isExitError && ee.ExitStatus() == fsckErrorsUncorrected:
 			// Filesystem exists but fsck found errors that it could not correct
+			outcome, success = "errors_uncorrected", false
 			klog.Errorf("Device %s has errors which fsck could not correct with options %v: %s", source, fsckOptions, string(out))
 			return true, fmt.Errorf("'fsck' found errors on device %s with options %v but could not correct them (exit status %d)", source, fsckOptions, ee.ExitStatus())
 		case isExitError && ee.ExitStatus() > fsckErrorsUncorrected:
+			outcome, success = "fatal_error", false
 			klog.Errorf("`fsck` error %s", string(out))
 			return false, fmt.Errorf("'fsck' failed on device %s with options %v: %v", source, fsckOptions, err)
 		default:
+			outcome, success = "unknown", true
 			klog.Warningf("fsck on device %s failed with error %v, output: %v", source, err, string(out))
 		}
 	}
