@@ -18,16 +18,21 @@ package azuredisk
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"reflect"
 	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
 
+	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/to"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute/v7"
+	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/resources/armresources"
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -53,6 +58,7 @@ import (
 	"sigs.k8s.io/cloud-provider-azure/pkg/azclient/diskclient/mock_diskclient"
 	"sigs.k8s.io/cloud-provider-azure/pkg/azclient/mock_azclient"
 	"sigs.k8s.io/cloud-provider-azure/pkg/azclient/policy/retryrepectthrottled"
+	"sigs.k8s.io/cloud-provider-azure/pkg/azclient/resourcegroupclient/mock_resourcegroupclient"
 	"sigs.k8s.io/cloud-provider-azure/pkg/azclient/snapshotclient/mock_snapshotclient"
 	mockvmclient "sigs.k8s.io/cloud-provider-azure/pkg/azclient/virtualmachineclient/mock_virtualmachineclient"
 	azure "sigs.k8s.io/cloud-provider-azure/pkg/provider"
@@ -71,6 +77,242 @@ func checkTestError(t *testing.T, expectedErrCode codes.Code, err error) {
 	if s.Code() != expectedErrCode {
 		t.Errorf("expected error code: %v, actual: %v, err: %v", expectedErrCode, s.Code(), err)
 	}
+}
+
+func TestGetAKSClusterResourceID(t *testing.T) {
+	t.Run("builds resource ID from AKS tags", func(t *testing.T) {
+		cntl := gomock.NewController(t)
+		d, err := NewFakeDriver(cntl)
+		require.NoError(t, err)
+		driver := d.(*fakeDriver)
+		driver.cloud.SubscriptionID = "subscription"
+		driver.cloud.ResourceGroup = "node-resource-group"
+
+		resourceGroupClient := mock_resourcegroupclient.NewMockInterface(cntl)
+		driver.clientFactory.(*mock_azclient.MockClientFactory).EXPECT().GetResourceGroupClient().Return(resourceGroupClient)
+		resourceGroupClient.EXPECT().Get(gomock.Any(), "node-resource-group").Return(&armresources.ResourceGroup{
+			Tags: map[string]*string{
+				aksManagedClusterNameTag:          to.Ptr("cluster"),
+				aksManagedClusterResourceGroupTag: to.Ptr("cluster-resource-group"),
+			},
+		}, nil)
+
+		resourceID, err := driver.getAKSClusterResourceID(context.Background())
+		require.NoError(t, err)
+		assert.Equal(t, "/subscriptions/subscription/resourceGroups/cluster-resource-group/providers/Microsoft.ContainerService/managedClusters/cluster", resourceID)
+	})
+
+	t.Run("caches resolved resource ID", func(t *testing.T) {
+		cntl := gomock.NewController(t)
+		d, err := NewFakeDriver(cntl)
+		require.NoError(t, err)
+		driver := d.(*fakeDriver)
+		driver.cloud.SubscriptionID = "subscription"
+		driver.cloud.ResourceGroup = "node-resource-group"
+
+		resourceGroupClient := mock_resourcegroupclient.NewMockInterface(cntl)
+		// GetResourceGroupClient/Get must be invoked exactly once across both calls.
+		driver.clientFactory.(*mock_azclient.MockClientFactory).EXPECT().GetResourceGroupClient().Return(resourceGroupClient).Times(1)
+		resourceGroupClient.EXPECT().Get(gomock.Any(), "node-resource-group").Return(&armresources.ResourceGroup{
+			Tags: map[string]*string{
+				aksManagedClusterNameTag:          to.Ptr("cluster"),
+				aksManagedClusterResourceGroupTag: to.Ptr("cluster-resource-group"),
+			},
+		}, nil).Times(1)
+
+		first, err := driver.getAKSClusterResourceID(context.Background())
+		require.NoError(t, err)
+		second, err := driver.getAKSClusterResourceID(context.Background())
+		require.NoError(t, err)
+		assert.Equal(t, first, second)
+	})
+
+	t.Run("falls back to subscription when AKS tags are missing", func(t *testing.T) {
+		cntl := gomock.NewController(t)
+		d, err := NewFakeDriver(cntl)
+		require.NoError(t, err)
+		driver := d.(*fakeDriver)
+		driver.cloud.SubscriptionID = "subscription"
+		driver.cloud.ResourceGroup = "node-resource-group"
+
+		resourceGroupClient := mock_resourcegroupclient.NewMockInterface(cntl)
+		driver.clientFactory.(*mock_azclient.MockClientFactory).EXPECT().GetResourceGroupClient().Return(resourceGroupClient)
+		resourceGroupClient.EXPECT().Get(gomock.Any(), "node-resource-group").Return(&armresources.ResourceGroup{}, nil)
+
+		resourceID, err := driver.getAKSClusterResourceID(context.Background())
+		require.NoError(t, err)
+		assert.Equal(t, "/subscriptions/subscription", resourceID)
+	})
+}
+
+func TestClaimDiskResource(t *testing.T) {
+	t.Run("returns blob URL", func(t *testing.T) {
+		cntl := gomock.NewController(t)
+		d, err := NewFakeDriver(cntl)
+		require.NoError(t, err)
+		driver := d.(*fakeDriver)
+
+		ownerResource := "/subscriptions/subscription/resourceGroups/cluster-rg/providers/Microsoft.ContainerService/managedClusters/cluster"
+		diskURI := "/subscriptions/subscription/resourceGroups/rg/providers/Microsoft.Compute/disks/disk"
+		blobURL := "https://md-storage.blob.core.windows.net/container/disk"
+		server := httptest.NewServer(http.HandlerFunc(func(responseWriter http.ResponseWriter, request *http.Request) {
+			assert.Equal(t, http.MethodPost, request.Method)
+			assert.Equal(t, diskURI+"/claimResource", request.URL.Path)
+			assert.Equal(t, claimResourceAPIVersion, request.URL.Query().Get("api-version"))
+			assert.Equal(t, "Bearer token", request.Header.Get("Authorization"))
+
+			var body struct {
+				OwnerResource string `json:"ownerResource"`
+			}
+			require.NoError(t, json.NewDecoder(request.Body).Decode(&body))
+			assert.Equal(t, ownerResource, body.OwnerResource)
+			responseWriter.Header().Set("Content-Type", "application/json")
+			responseWriter.WriteHeader(http.StatusOK)
+			_, err := fmt.Fprintf(responseWriter, `{"properties":{"blobUrl":%q,"claimIdentifier":"identifier"}}`, blobURL)
+			require.NoError(t, err)
+		}))
+		defer server.Close()
+
+		driver.cloud.ARMClientConfig.ResourceManagerEndpoint = server.URL
+		credential := driver.cloud.AuthProvider.GetAzIdentity().(*mock_azclient.MockTokenCredential)
+		credential.EXPECT().GetToken(gomock.Any(), gomock.Any()).Return(azcore.AccessToken{Token: "token"}, nil)
+
+		actualBlobURL, claimIdentifier, err := driver.claimDiskResource(context.Background(), diskURI, ownerResource)
+		require.NoError(t, err)
+		assert.Equal(t, blobURL, actualBlobURL)
+		assert.Equal(t, "identifier", claimIdentifier)
+	})
+
+	t.Run("requires blob URL", func(t *testing.T) {
+		cntl := gomock.NewController(t)
+		d, err := NewFakeDriver(cntl)
+		require.NoError(t, err)
+		driver := d.(*fakeDriver)
+
+		server := httptest.NewServer(http.HandlerFunc(func(responseWriter http.ResponseWriter, _ *http.Request) {
+			responseWriter.WriteHeader(http.StatusOK)
+			_, err := responseWriter.Write([]byte(`{"properties":{"diskState":"Claimed"}}`))
+			require.NoError(t, err)
+		}))
+		defer server.Close()
+
+		driver.cloud.ARMClientConfig.ResourceManagerEndpoint = server.URL
+		credential := driver.cloud.AuthProvider.GetAzIdentity().(*mock_azclient.MockTokenCredential)
+		credential.EXPECT().GetToken(gomock.Any(), gomock.Any()).Return(azcore.AccessToken{Token: "token"}, nil)
+
+		_, _, err = driver.claimDiskResource(context.Background(), "/subscriptions/subscription/resourceGroups/rg/providers/Microsoft.Compute/disks/disk", "owner")
+		require.ErrorContains(t, err, "blobUrl not found")
+	})
+}
+
+func TestUnclaimDiskResource(t *testing.T) {
+	t.Run("sends unclaim request", func(t *testing.T) {
+		cntl := gomock.NewController(t)
+		d, err := NewFakeDriver(cntl)
+		require.NoError(t, err)
+		driver := d.(*fakeDriver)
+
+		ownerResource := "/subscriptions/subscription/resourceGroups/cluster-rg/providers/Microsoft.ContainerService/managedClusters/cluster"
+		diskURI := "/subscriptions/subscription/resourceGroups/rg/providers/Microsoft.Compute/disks/disk"
+		server := httptest.NewServer(http.HandlerFunc(func(responseWriter http.ResponseWriter, request *http.Request) {
+			assert.Equal(t, http.MethodPost, request.Method)
+			assert.Equal(t, diskURI+"/unclaimResource", request.URL.Path)
+			assert.Equal(t, claimResourceAPIVersion, request.URL.Query().Get("api-version"))
+			assert.Equal(t, "Bearer token", request.Header.Get("Authorization"))
+
+			var body struct {
+				OwnerResource string `json:"ownerResource"`
+			}
+			require.NoError(t, json.NewDecoder(request.Body).Decode(&body))
+			assert.Equal(t, ownerResource, body.OwnerResource)
+			responseWriter.Header().Set("Content-Type", "application/json")
+			responseWriter.WriteHeader(http.StatusOK)
+			_, err := responseWriter.Write([]byte(`{"managedBy":null,"properties":{"diskState":"Unattached"}}`))
+			require.NoError(t, err)
+		}))
+		defer server.Close()
+
+		driver.cloud.ARMClientConfig.ResourceManagerEndpoint = server.URL
+		credential := driver.cloud.AuthProvider.GetAzIdentity().(*mock_azclient.MockTokenCredential)
+		credential.EXPECT().GetToken(gomock.Any(), gomock.Any()).Return(azcore.AccessToken{Token: "token"}, nil)
+
+		require.NoError(t, driver.unclaimDiskResource(context.Background(), diskURI, ownerResource))
+	})
+
+	t.Run("returns error on failure status", func(t *testing.T) {
+		cntl := gomock.NewController(t)
+		d, err := NewFakeDriver(cntl)
+		require.NoError(t, err)
+		driver := d.(*fakeDriver)
+
+		server := httptest.NewServer(http.HandlerFunc(func(responseWriter http.ResponseWriter, _ *http.Request) {
+			responseWriter.WriteHeader(http.StatusConflict)
+			_, err := responseWriter.Write([]byte(`{"error":"conflict"}`))
+			require.NoError(t, err)
+		}))
+		defer server.Close()
+
+		driver.cloud.ARMClientConfig.ResourceManagerEndpoint = server.URL
+		credential := driver.cloud.AuthProvider.GetAzIdentity().(*mock_azclient.MockTokenCredential)
+		credential.EXPECT().GetToken(gomock.Any(), gomock.Any()).Return(azcore.AccessToken{Token: "token"}, nil)
+
+		err = driver.unclaimDiskResource(context.Background(), "/subscriptions/subscription/resourceGroups/rg/providers/Microsoft.Compute/disks/disk", "owner")
+		require.ErrorContains(t, err, "unclaimResource returned status 409")
+	})
+}
+
+func TestPollAsyncOperation(t *testing.T) {
+	t.Run("keeps polling on empty 202 then returns 200 body", func(t *testing.T) {
+		cntl := gomock.NewController(t)
+		d, err := NewFakeDriver(cntl)
+		require.NoError(t, err)
+		driver := d.(*fakeDriver)
+		driver.pollInterval = time.Millisecond
+
+		var calls int32
+		server := httptest.NewServer(http.HandlerFunc(func(responseWriter http.ResponseWriter, _ *http.Request) {
+			// First poll: operation still running, 202 with an empty body.
+			if atomic.AddInt32(&calls, 1) == 1 {
+				responseWriter.WriteHeader(http.StatusAccepted)
+				return
+			}
+			responseWriter.Header().Set("Content-Type", "application/json")
+			responseWriter.WriteHeader(http.StatusOK)
+			_, err := responseWriter.Write([]byte(`{"properties":{"blobUrl":"https://md-storage.blob.core.windows.net/container/disk"}}`))
+			require.NoError(t, err)
+		}))
+		defer server.Close()
+
+		credential := driver.cloud.AuthProvider.GetAzIdentity().(*mock_azclient.MockTokenCredential)
+		credential.EXPECT().GetToken(gomock.Any(), gomock.Any()).Return(azcore.AccessToken{Token: "token"}, nil).AnyTimes()
+
+		body, err := driver.pollAsyncOperation(context.Background(), server.URL)
+		require.NoError(t, err)
+		assert.Contains(t, string(body), "blobUrl")
+		assert.GreaterOrEqual(t, atomic.LoadInt32(&calls), int32(2))
+	})
+
+	t.Run("fails on terminal status", func(t *testing.T) {
+		cntl := gomock.NewController(t)
+		d, err := NewFakeDriver(cntl)
+		require.NoError(t, err)
+		driver := d.(*fakeDriver)
+		driver.pollInterval = time.Millisecond
+
+		server := httptest.NewServer(http.HandlerFunc(func(responseWriter http.ResponseWriter, _ *http.Request) {
+			responseWriter.Header().Set("Content-Type", "application/json")
+			responseWriter.WriteHeader(http.StatusOK)
+			_, err := responseWriter.Write([]byte(`{"status":"Failed"}`))
+			require.NoError(t, err)
+		}))
+		defer server.Close()
+
+		credential := driver.cloud.AuthProvider.GetAzIdentity().(*mock_azclient.MockTokenCredential)
+		credential.EXPECT().GetToken(gomock.Any(), gomock.Any()).Return(azcore.AccessToken{Token: "token"}, nil).AnyTimes()
+
+		_, err = driver.pollAsyncOperation(context.Background(), server.URL)
+		require.ErrorContains(t, err, "async operation Failed")
+	})
 }
 
 func TestCreateVolume(t *testing.T) {

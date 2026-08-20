@@ -21,9 +21,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/http"
 	"reflect"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute/v7"
@@ -36,13 +38,18 @@ import (
 
 	grpcprom "github.com/grpc-ecosystem/go-grpc-middleware/providers/prometheus"
 	corev1 "k8s.io/api/core/v1"
+	v1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/labels"
 	k8stypes "k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/wait"
+	"k8s.io/client-go/informers"
 	clientset "k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/kubernetes/scheme"
 	clientcorev1 "k8s.io/client-go/kubernetes/typed/core/v1"
+	corelisters "k8s.io/client-go/listers/core/v1"
+	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/record"
 	"k8s.io/klog/v2"
 	"k8s.io/kubernetes/pkg/volume/util/hostutil"
@@ -52,7 +59,6 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/metadata"
 	"k8s.io/client-go/metadata/metadatainformer"
-	"k8s.io/client-go/tools/cache"
 
 	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
@@ -169,6 +175,21 @@ type Driver struct {
 	nodeLister                      cache.GenericLister
 	nodeInformerSynced              cache.InformerSynced
 	nodeInformerFactory             metadatainformer.SharedInformerFactory
+	// maximum number of data disks attachable to this node, lazily computed in NodeGetInfo
+	maxDataDiskCount int64
+	// HTTP client for wireserver calls
+	httpClient *http.Client
+	// in-process batcher to coalesce concurrent QAD attach/detach requests from node RPC callers
+	qadBatcher *qadDiskBatcher
+	// informer factory and PV lister for cached API access
+	informerFactory informers.SharedInformerFactory
+	pvLister        corelisters.PersistentVolumeLister
+	pvListerSynced  cache.InformerSynced
+	// owning AKS cluster ARM ID, resolved once from node resource group tags and reused thereafter
+	clusterResourceID     string
+	clusterResourceIDLock sync.Mutex
+	// interval between Azure async operation polls; defaults to 5s when unset
+	pollInterval time.Duration
 }
 
 // NewDriver Creates a NewCSIDriver object. Assumes vendor version is equal to driver version &
@@ -267,6 +288,16 @@ func NewDriver(options *DriverOptions) *Driver {
 		}
 	}
 	driver.kubeClient = kubeClient
+
+	if driver.NodeID != "" {
+		// Initialize HTTP client for wireserver calls (node component only)
+		driver.httpClient = &http.Client{
+			Timeout: 30 * time.Second,
+		}
+		// Initialize QAD batcher; batch size is resolved lazily from d.maxDataDiskCount
+		// which is populated on the first NodeGetInfo call.
+		driver.qadBatcher = newQADDiskBatcher(1000 * time.Millisecond)
+	}
 
 	cloud, err := azureutils.GetCloudProviderFromClient(context.Background(), kubeClient, driver.cloudConfigSecretName, driver.cloudConfigSecretNamespace,
 		userAgent, driver.allowEmptyCloudConfig, driver.enableTrafficManager, driver.enableMinimumRetryAfter, driver.trafficManagerPort)
@@ -421,6 +452,13 @@ func NewDriver(options *DriverOptions) *Driver {
 		csi.NodeServiceCapability_RPC_SINGLE_NODE_MULTI_WRITER,
 	})
 
+	if kubeClient != nil {
+		driver.informerFactory = informers.NewSharedInformerFactory(kubeClient, 10*time.Minute)
+		pvInformer := driver.informerFactory.Core().V1().PersistentVolumes()
+		driver.pvLister = pvInformer.Lister()
+		driver.pvListerSynced = pvInformer.Informer().HasSynced
+	}
+
 	if kubeClient != nil && driver.removeNotReadyTaint && driver.NodeID != "" {
 		// Remove taint from node to indicate driver startup success
 		// This is done at the last possible moment to prevent race conditions or false positive removals
@@ -477,9 +515,24 @@ func (d *Driver) Run(ctx context.Context) error {
 		klog.V(2).Infof("started metadata node informer for GetNodeInfoFromLabels caching")
 	}
 
+	// Start informer factory if initialized
+	if d.informerFactory != nil {
+		d.informerFactory.Start(ctx.Done())
+		if !cache.WaitForCacheSync(ctx.Done(), d.pvListerSynced) {
+			klog.Errorf("failed to sync PV informer cache")
+		} else {
+			klog.V(2).Infof("PV informer cache synced successfully")
+		}
+	}
+
 	go func() {
 		//graceful shutdown
 		<-ctx.Done()
+
+		// Shutdown informer factory
+		if d.informerFactory != nil {
+			d.informerFactory.Shutdown()
+		}
 
 		// Stop migration monitor if it exists
 		if d.migrationMonitor != nil {
@@ -764,7 +817,39 @@ func GetNodeInfoFromNodeLister(nodeName string, nodeLister cache.GenericLister) 
 	return zone, instanceType, nil
 }
 
-// GetNodeInfoFromLabels gets zone, instanceType from node labels via the kubeClient API server.
+func (d *Driver) getPVFromDiskURI(ctx context.Context, diskURI string) (*v1.PersistentVolume, error) {
+	klog.Infof("Looking for PV with handle %s", diskURI)
+
+	// Use cached PV lister if available
+	if d.pvLister != nil {
+		pvs, err := d.pvLister.List(labels.Everything())
+		if err != nil {
+			return nil, fmt.Errorf("failed to list PersistentVolumes from cache: %v", err)
+		}
+		for _, pv := range pvs {
+			if pv.Spec.CSI != nil && pv.Spec.CSI.VolumeHandle == diskURI {
+				klog.Infof("Found PV %s with handle %s (from cache)", pv.Name, diskURI)
+				return pv, nil
+			}
+		}
+		return nil, fmt.Errorf("cannot find PV with diskURI(%s)", diskURI)
+	}
+
+	// Fallback to direct API call if lister is not initialized
+	pvList, err := d.kubeClient.CoreV1().PersistentVolumes().List(ctx, metav1.ListOptions{})
+	if err != nil {
+		return nil, fmt.Errorf("failed to list PersistentVolumes: %v", err)
+	}
+	for _, pv := range pvList.Items {
+		if pv.Spec.CSI != nil && pv.Spec.CSI.VolumeHandle == diskURI {
+			klog.Infof("Found PV %s with handle %s", pv.Name, diskURI)
+			return &pv, nil
+		}
+	}
+	return nil, fmt.Errorf("cannot find PV with diskURI(%s)", diskURI)
+}
+
+// getNodeInfoFromLabels get zone, instanceType from node labels
 func GetNodeInfoFromLabels(ctx context.Context, nodeName string, kubeClient clientset.Interface) (string, string, error) {
 	if kubeClient == nil || kubeClient.CoreV1() == nil {
 		return "", "", fmt.Errorf("kubeClient is nil")

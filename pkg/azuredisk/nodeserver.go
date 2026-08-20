@@ -17,15 +17,24 @@ limitations under the License.
 package azuredisk
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
+	"net/http"
 	"os"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"time"
 
+	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
+	"github.com/Azure/azure-sdk-for-go/sdk/azcore/policy"
+	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/optimization"
 	volumehelper "sigs.k8s.io/azuredisk-csi-driver/pkg/util"
 	azcache "sigs.k8s.io/cloud-provider-azure/pkg/cache"
@@ -35,8 +44,12 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
+	v1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/wait"
+	kwait "k8s.io/apimachinery/pkg/util/wait"
+	clientset "k8s.io/client-go/kubernetes"
 	cloudprovider "k8s.io/cloud-provider"
 	"k8s.io/klog/v2"
 	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
@@ -51,6 +64,134 @@ const (
 	volumeOperationAlreadyExistsFmt = "An operation with the given Volume ID %s already exists"
 )
 
+// Define the request payload structure
+type DiskOp struct {
+	BlobURL         string `json:"blobUrl"`
+	ClaimIdentifier string `json:"claimIdentifier,omitempty"`
+	AttachSequence  int    `json:"attachSequence"`
+	Action          string `json:"action"`
+	CachePolicy     string `json:"cachePolicy"`
+}
+
+type WireserverRequest struct {
+	VMAccessToken string             `json:"vmAccessToken"`
+	DiskOps       map[string]*DiskOp `json:"diskOps"`
+}
+
+// DiskOperationRequest captures disk details required for a batched attach/detach request.
+type DiskOperationRequest struct {
+	DiskURI         string
+	BlobURL         string
+	ClaimIdentifier string
+	AttachSequence  int
+}
+
+type qadDiskBatchResult struct {
+	response WireserverDiskStatusResponse
+	err      error
+}
+
+type qadDiskBatchItem struct {
+	request  DiskOperationRequest
+	resultCh chan qadDiskBatchResult
+}
+
+// qadDiskQueue is a per-operation-type queue with its own lock.
+type qadDiskQueue struct {
+	mu    sync.Mutex
+	items []qadDiskBatchItem
+	timer *time.Timer
+}
+
+type qadDiskBatcher struct {
+	attachQueue *qadDiskQueue
+	detachQueue *qadDiskQueue
+	window      time.Duration
+}
+
+func newQADDiskBatcher(window time.Duration) *qadDiskBatcher {
+	if window <= 0 {
+		window = 20 * time.Millisecond
+	}
+
+	return &qadDiskBatcher{
+		attachQueue: &qadDiskQueue{},
+		detachQueue: &qadDiskQueue{},
+		window:      window,
+	}
+}
+
+// DiskStatus represents the status information for a single disk
+type DiskStatus struct {
+	Status        AttachmentStatus `json:"status"`
+	StatusMessage string           `json:"status_message"`
+	LUN           int              `json:"lun"`
+	Error         *DiskError       `json:"error,omitempty"`
+}
+
+// DiskError represents a per-disk error in the wireserver response (HTTP 2XX partial failure)
+type DiskError struct {
+	DiskErrorType DiskErrorType `json:"diskErrorType"`
+	SeverityHint  SeverityHint  `json:"severityHint"`
+	Message       string        `json:"message"`
+}
+
+type DiskErrorType int
+
+const (
+	QADDiskErrUnknown                 DiskErrorType = 0
+	QADDiskErrInvalidArgs             DiskErrorType = 1
+	QADDiskErrInternal                DiskErrorType = 2
+	QADDiskErrXFEAuthFailure          DiskErrorType = 3
+	QADDiskErrAttachSequenceMismatch  DiskErrorType = 4
+	QADDiskErrClaimIdentifierMismatch DiskErrorType = 5
+	QADDiskErrFetchDSTSToken          DiskErrorType = 6
+	QADDiskErrDiskNotFound            DiskErrorType = 7
+	QADDiskErrNoLUNAvailable          DiskErrorType = 8
+)
+
+// QADErrorResponse represents the JSON error response from QAD agent (HTTP non-2XX)
+type QADErrorResponse struct {
+	RequestErrorType RequestErrorType `json:"requestErrorType"`
+	SeverityHint     SeverityHint     `json:"severityHint"`
+	Message          string           `json:"message"`
+}
+
+type RequestErrorType int
+
+const (
+	QADRequestErrUnknown            RequestErrorType = 0
+	QADRequestErrInvalidArgs        RequestErrorType = 1
+	QADRequestErrInternal           RequestErrorType = 2
+	QADRequestErrFetchAttachedDisks RequestErrorType = 3
+	QADRequestErrFetchMadariCGS     RequestErrorType = 4
+	QADRequestErrFetchVMMetadata    RequestErrorType = 5
+	QADRequestErrFetchDeployedVMs   RequestErrorType = 6
+	QADRequestErrVMNotInCCF         RequestErrorType = 7
+	QADRequestErrFetchVMAccessToken RequestErrorType = 8
+	QADRequestErrMadariCGSPublish   RequestErrorType = 9
+)
+
+type SeverityHint string
+
+const (
+	SeverityHintRetriable SeverityHint = "RETRIABLE"
+	SeverityHintFatal     SeverityHint = "FATAL"
+)
+
+type AttachmentStatus string
+
+const (
+	AttachmentStatusAttached  AttachmentStatus = "DISK_STATUS_ATTACHED"
+	AttachmentStatusDetached  AttachmentStatus = "DISK_STATUS_DETACHED"
+	AttachmentStatusAttaching AttachmentStatus = "DISK_STATUS_ATTACHING"
+	AttachmentStatusDetaching AttachmentStatus = "DISK_STATUS_DETACHING"
+)
+
+// WireserverDiskStatusResponse represents the response from wireserver GET call
+// The key is the disk resource ID (e.g., "/subscriptions/.../disks/disk-name")
+type WireserverDiskStatusResponse map[string]*DiskStatus
+
 func getDefaultFsType() string {
 	if runtime.GOOS == "windows" {
 		return defaultWindowsFsType
@@ -60,7 +201,7 @@ func getDefaultFsType() string {
 }
 
 // NodeStageVolume mount disk device to a staging path
-func (d *Driver) NodeStageVolume(_ context.Context, req *csi.NodeStageVolumeRequest) (*csi.NodeStageVolumeResponse, error) {
+func (d *Driver) NodeStageVolume(ctx context.Context, req *csi.NodeStageVolumeRequest) (*csi.NodeStageVolumeResponse, error) {
 	volumeID := req.GetVolumeId()
 	if len(volumeID) == 0 {
 		return nil, status.Error(codes.InvalidArgument, "Volume ID not provided")
@@ -97,9 +238,78 @@ func (d *Driver) NodeStageVolume(_ context.Context, req *csi.NodeStageVolumeRequ
 	}
 	defer d.volumeLocks.Release(volumeID)
 
-	lun, ok := req.PublishContext[consts.LUN]
-	if !ok {
-		return nil, status.Error(codes.InvalidArgument, "lun not provided")
+	var lun string
+	// Check if this volume is using the QAD path.
+	// If yes, increment the attach-sequence and make an HTTP request to the QAD wireserver endpoint.
+	pv, isUsingQAD, err := d.isUsingQADPath(ctx, volumeID)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "NodeStageVolume: failed to determine if volume %s is using QAD path: %v", volumeID, err)
+	}
+	if isUsingQAD {
+		blobURL := pv.Annotations[consts.BlobURLAnnotation]
+		claimIdentifier := pv.Annotations[consts.ClaimIdentifierAnnotation]
+		attachSequenceVal, err := incrementAttachSequenceAnnotation(d.kubeClient, pv)
+		if err != nil {
+			klog.Errorf("NodeStageVolume: failed to increment attach-sequence for volume %s: %v", volumeID, err)
+			return nil, status.Error(codes.Internal, "failed to increment attach-sequence")
+		}
+		klog.V(2).Infof("NodeStageVolume: volume %s is using QAD path, making POST call to wireserver with attach-sequence %d", volumeID, attachSequenceVal)
+
+		attachTimer := time.Now()
+		attachResponse, err := d.enqueueQADDiskOperation(ctx, DiskOperationRequest{
+			DiskURI:         volumeID,
+			BlobURL:         blobURL,
+			ClaimIdentifier: claimIdentifier,
+			AttachSequence:  attachSequenceVal,
+		}, "ATTACH")
+
+		if err != nil {
+			klog.Errorf("NodeStageVolume: failed to make POST call to wireserver for volume %s: %v", volumeID, err)
+			return nil, err
+		}
+
+		lowercaseDiskURI := strings.ToLower(volumeID)
+		statusResp, ok := attachResponse[lowercaseDiskURI]
+		if !ok {
+			return nil, status.Errorf(codes.Internal, "The response from wireserver doesn't contain volume %s", volumeID)
+		}
+		if statusResp.Status == AttachmentStatusAttaching {
+			// Wait for the disk to be attached
+			if err = kwait.PollUntilContextTimeout(ctx, 250*time.Millisecond, 5*time.Second, true, func(context.Context) (bool, error) {
+				getDisksResponse, err := getAttachedDisks(ctx, *d.httpClient)
+				if err != nil {
+					klog.Errorf("NodeStageVolume: failed to get attached disks for volume %s: %v", volumeID, err)
+					return false, err
+				}
+				diskStatus, ok := getDisksResponse[lowercaseDiskURI]
+				if ok && diskStatus.Status == AttachmentStatusAttached {
+					// Disk is attached, get the lun number
+					klog.Infof("NodeStageVolume: Latency observed for attach operation of disk %s is %v", volumeID, time.Since(attachTimer).Milliseconds())
+					lun = strconv.Itoa(diskStatus.LUN)
+					return true, nil
+				} else {
+					// Wait for the disk to be attached
+					return false, nil
+				}
+			}); err != nil {
+				return nil, status.Errorf(codes.Internal, "NodeStageVolume: Error occurred while waiting for disk: %s to be attached on node: %s, error: %v", volumeID, d.NodeID, err)
+			}
+			if lun == "" {
+				return nil, status.Errorf(codes.DeadlineExceeded, "NodeStageVolume: Timed out waiting for disk: %s to be attached on node: %s", volumeID, d.NodeID)
+			}
+
+		} else if statusResp.Status == AttachmentStatusAttached {
+			klog.Infof("NodeStageVolume: Latency observed for attach operation of disk %s is %v", volumeID, time.Since(attachTimer).Milliseconds())
+			lun = strconv.Itoa(statusResp.LUN)
+		} else {
+			return nil, status.Errorf(codes.Internal, "NodeStageVolume: attach for volume %s returned status %s (message: %q, error: %+v)", volumeID, statusResp.Status, statusResp.StatusMessage, statusResp.Error)
+		}
+	} else {
+		val, ok := req.PublishContext[consts.LUN]
+		if !ok {
+			return nil, status.Error(codes.InvalidArgument, "lun not provided")
+		}
+		lun = val
 	}
 
 	source, err := d.getDevicePathWithLUN(lun)
@@ -193,7 +403,7 @@ func (d *Driver) NodeStageVolume(_ context.Context, req *csi.NodeStageVolumeRequ
 }
 
 // NodeUnstageVolume unmount disk device from a staging path
-func (d *Driver) NodeUnstageVolume(_ context.Context, req *csi.NodeUnstageVolumeRequest) (*csi.NodeUnstageVolumeResponse, error) {
+func (d *Driver) NodeUnstageVolume(ctx context.Context, req *csi.NodeUnstageVolumeRequest) (*csi.NodeUnstageVolumeResponse, error) {
 	volumeID := req.GetVolumeId()
 	if len(volumeID) == 0 {
 		return nil, status.Error(codes.InvalidArgument, "Volume ID not provided")
@@ -221,6 +431,61 @@ func (d *Driver) NodeUnstageVolume(_ context.Context, req *csi.NodeUnstageVolume
 	}
 	klog.V(2).Infof("NodeUnstageVolume: unmount %s successfully", stagingTargetPath)
 
+	if pv, isUsingQAD, err := d.isUsingQADPath(ctx, volumeID); isUsingQAD && err == nil {
+		blobURL := pv.Annotations[azureconstants.BlobURLAnnotation]
+		claimIdentifier := pv.Annotations[azureconstants.ClaimIdentifierAnnotation]
+		attachSequenceVal, err := incrementAttachSequenceAnnotation(d.kubeClient, pv)
+		if err != nil {
+			klog.Errorf("NodeUnStageVolume: failed to increment attach-sequence for volume %s: %v", volumeID, err)
+			return nil, status.Error(codes.Internal, "failed to increment attach-sequence")
+		}
+		klog.V(2).Infof("NodeUnStageVolume: volume %s is using QAD path, making POST call to wireserver with attach-sequence %d", volumeID, attachSequenceVal)
+		detachTimer := time.Now()
+		detachResponse, err := d.enqueueQADDiskOperation(ctx, DiskOperationRequest{
+			DiskURI:         volumeID,
+			BlobURL:         blobURL,
+			ClaimIdentifier: claimIdentifier,
+			AttachSequence:  attachSequenceVal,
+		}, "DETACH")
+		if err != nil {
+			klog.Errorf("NodeUnStageVolume: failed to make POST call to wireserver for volume %s: %v", volumeID, err)
+			return nil, err
+		}
+
+		lowercaseVolumeID := strings.ToLower(volumeID)
+		if statusResp, ok := detachResponse[lowercaseVolumeID]; !ok {
+			klog.Infof("The volume with id %s is already detached", volumeID)
+			klog.Infof("NodeUnStageVolume: Latency observed for detach operation of disk %s is %v", volumeID, time.Since(detachTimer).Milliseconds())
+		} else if statusResp.Status == AttachmentStatusDetaching {
+			detached := false
+			if err = kwait.PollUntilContextTimeout(ctx, 500*time.Millisecond, 5*time.Second, true, func(context.Context) (bool, error) {
+				getDisksResponse, err := getAttachedDisks(ctx, *d.httpClient)
+				if err != nil {
+					klog.Errorf("NodeUnStageVolume: failed to get attached disks for volume %s: %v", volumeID, err)
+					return false, err
+				}
+				_, ok := getDisksResponse[lowercaseVolumeID]
+				if ok {
+					// Disk is still attached, wait for it to be detached
+					return false, nil
+				} else {
+					// The disk is detached now
+					klog.Infof("NodeUnStageVolume: Latency observed for detach operation of disk %s is %v", volumeID, time.Since(detachTimer).Milliseconds())
+					detached = true
+					return true, nil
+				}
+			}); err != nil {
+				klog.Errorf("NodeUnstageVolume: Error occurred while waiting for disk: %s to be detached from node: %s, error: %v", volumeID, d.NodeID, err)
+			}
+
+			if !detached {
+				return nil, status.Errorf(codes.DeadlineExceeded, "NodeUnstageVolume: Timed out waiting for disk: %s to be detached from node: %s", volumeID, d.NodeID)
+			}
+
+		} else {
+			return nil, status.Errorf(codes.Internal, "NodeUnStageVolume: detach for volume %s returned status %s (message: %q, error: %+v)", volumeID, statusResp.Status, statusResp.StatusMessage, statusResp.Error)
+		}
+	}
 	isOperationSucceeded = true
 	return &csi.NodeUnstageVolumeResponse{}, nil
 }
@@ -387,6 +652,7 @@ func (d *Driver) NodeGetInfo(ctx context.Context, _ *csi.NodeGetInfoRequest) (*c
 		}
 	}
 
+	// Lazily compute and cache maxDataDiskCount on first call
 	maxDataDiskCount := d.VolumeAttachLimit
 	if maxDataDiskCount < 0 {
 		var instanceType string
@@ -427,6 +693,12 @@ func (d *Driver) NodeGetInfo(ctx context.Context, _ *csi.NodeGetInfoRequest) (*c
 		}
 		totalDiskDataCount, _ := GetMaxDataDiskCount(instanceType)
 		maxDataDiskCount = totalDiskDataCount - d.ReservedDataDiskSlotNum
+	}
+
+	// Cache maxDataDiskCount on first successful computation so the batcher can use it
+	if atomic.LoadInt64(&d.maxDataDiskCount) == 0 {
+		atomic.StoreInt64(&d.maxDataDiskCount, maxDataDiskCount)
+		klog.V(2).Infof("NodeGetInfo: cached maxDataDiskCount=%d for node %s", maxDataDiskCount, d.NodeID)
 	}
 
 	nodeID := d.NodeID
@@ -739,4 +1011,439 @@ func collectMountOptions(fsType string, mntFlags []string) []string {
 		options = append(options, "nouuid")
 	}
 	return options
+}
+
+func (d *Driver) isUsingQADPath(ctx context.Context, diskURI string) (*v1.PersistentVolume, bool, error) {
+
+	klog.Infof("Checking if diskURI %s is using QAD path", diskURI)
+	pv, err := d.getPVFromDiskURI(ctx, diskURI)
+	if err != nil {
+		return nil, false, err
+	}
+
+	if pvName := pv.Name; pvName != "" {
+		// Check for QAD-related annotations or labels
+		if attachSequence, exists := pv.Annotations[azureconstants.AttachSequenceAnnotation]; exists {
+			klog.V(2).Infof("Found PV %s with matching VolumeHandle %s and attach sequence: %s", pvName, diskURI, attachSequence)
+			return pv, true, nil
+		}
+
+		// Found PV but no QAD configuration
+		klog.V(2).Infof("Found PV %s with matching VolumeHandle %s but no QAD configuration", pvName, diskURI)
+		return nil, false, nil
+	}
+
+	// No matching PV found
+	klog.V(2).Infof("No PV found with VolumeHandle matching diskURI: %s", diskURI)
+	return nil, false, nil
+}
+
+func incrementAttachSequenceAnnotation(kubeClient clientset.Interface, pv *v1.PersistentVolume) (int, error) {
+	klog.Infof("Incrementing attach sequence annotation for PV %s", pv.Name)
+
+	// Update the annotation
+	if pv.Annotations == nil {
+		pv.Annotations = make(map[string]string)
+	}
+	currentAttachSequence := 0
+	if val, ok := pv.Annotations[azureconstants.AttachSequenceAnnotation]; ok {
+		currentAttachSequence, _ = strconv.Atoi(val)
+	}
+	updatedCounter := currentAttachSequence + 1
+	pv.Annotations[azureconstants.AttachSequenceAnnotation] = fmt.Sprintf("%d", updatedCounter)
+
+	// Update the PV in Kubernetes
+	_, err := kubeClient.CoreV1().PersistentVolumes().Update(context.TODO(), pv, metav1.UpdateOptions{})
+	if err != nil {
+		return 0, fmt.Errorf("failed to update PersistentVolume %s: %v", pv.Name, err)
+	}
+
+	klog.V(2).Infof("Successfully incremented attach sequence annotation for PV %s to %s", pv.Name, pv.Annotations[azureconstants.AttachSequenceAnnotation])
+	return updatedCounter, nil
+}
+
+func (d *Driver) enqueueQADDiskOperation(ctx context.Context, diskRequest DiskOperationRequest, operationType string) (WireserverDiskStatusResponse, error) {
+	queue := d.qadBatcher.queueForOperation(operationType)
+
+	resultCh := make(chan qadDiskBatchResult, 1)
+	shouldFlushNow := false
+
+	queue.mu.Lock()
+	queue.items = append(queue.items, qadDiskBatchItem{
+		request:  diskRequest,
+		resultCh: resultCh,
+	})
+
+	if queue.timer == nil {
+		queue.timer = time.AfterFunc(d.qadBatcher.window, func() {
+			d.flushQADDiskBatch(operationType)
+		})
+	}
+
+	batchSize := int(atomic.LoadInt64(&d.maxDataDiskCount))
+	if batchSize <= 0 {
+		batchSize = defaultAzureVolumeLimit
+	}
+	if len(queue.items) >= batchSize {
+		queue.timer.Stop()
+		shouldFlushNow = true
+	}
+	queue.mu.Unlock()
+
+	if shouldFlushNow {
+		go d.flushQADDiskBatch(operationType)
+	}
+
+	select {
+	case result := <-resultCh:
+		return result.response, result.err
+	case <-ctx.Done():
+		return WireserverDiskStatusResponse{}, status.Error(codes.DeadlineExceeded, "timed out while waiting for batched wireserver operation")
+	}
+}
+
+func (b *qadDiskBatcher) queueForOperation(operationType string) *qadDiskQueue {
+	if operationType == "ATTACH" {
+		return b.attachQueue
+	}
+	return b.detachQueue
+}
+
+func (d *Driver) flushQADDiskBatch(operationType string) {
+	if d.qadBatcher == nil {
+		return
+	}
+
+	queue := d.qadBatcher.queueForOperation(operationType)
+
+	queue.mu.Lock()
+	if len(queue.items) == 0 {
+		queue.mu.Unlock()
+		return
+	}
+	items := queue.items
+	queue.items = nil
+	queue.timer = nil
+	queue.mu.Unlock()
+
+	diskRequests := make([]DiskOperationRequest, 0, len(items))
+	for _, item := range items {
+		diskRequests = append(diskRequests, item.request)
+	}
+
+	batchCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	batchResponse, err := attachOrDetachDisksInternal(batchCtx, *d.httpClient, diskRequests, d.cloud.AuthProvider.GetAzIdentity(), operationType)
+	if err != nil {
+		for _, item := range items {
+			item.resultCh <- qadDiskBatchResult{err: err}
+		}
+		return
+	}
+
+	for _, item := range items {
+		lowercaseDiskURI := strings.ToLower(item.request.DiskURI)
+		diskStatus, ok := batchResponse[lowercaseDiskURI]
+		if !ok {
+			item.resultCh <- qadDiskBatchResult{err: status.Errorf(codes.Internal, "The response from wireserver doesn't contain volume %s", item.request.DiskURI)}
+			continue
+		}
+
+		if diskStatus.Error != nil {
+			grpcCode := mapDiskErrorToCode(diskStatus.Error.DiskErrorType, diskStatus.Error.SeverityHint)
+			item.resultCh <- qadDiskBatchResult{err: status.Errorf(grpcCode,
+				"wireserver disk operation failed for %s: errorType=%d, severity=%s, message=%s",
+				item.request.DiskURI, diskStatus.Error.DiskErrorType, diskStatus.Error.SeverityHint, diskStatus.Error.Message)}
+			continue
+		}
+
+		item.resultCh <- qadDiskBatchResult{response: WireserverDiskStatusResponse{lowercaseDiskURI: diskStatus}}
+	}
+}
+
+func attachOrDetachDisksInternal(ctx context.Context, client http.Client, diskRequests []DiskOperationRequest, cred azcore.TokenCredential, operationType string) (WireserverDiskStatusResponse, error) {
+	if len(diskRequests) == 0 {
+		return WireserverDiskStatusResponse{}, status.Error(codes.InvalidArgument, "no disk requests provided")
+	}
+
+	// Get a fresh token from the credential (SDK handles caching/refresh internally).
+	// XFE validates the token audience as "https://management.azure.com/" (with trailing
+	// slash); the double slash before /.default makes the resulting aud carry that slash.
+	token, err := cred.GetToken(ctx, policy.TokenRequestOptions{
+		Scopes: []string{"https://management.azure.com//.default"},
+	})
+	if err != nil {
+		return WireserverDiskStatusResponse{}, fmt.Errorf("failed to get VM access token: %v", err)
+	}
+
+	diskOps := make(map[string]*DiskOp, len(diskRequests))
+	for _, diskRequest := range diskRequests {
+		if diskRequest.DiskURI == "" {
+			return WireserverDiskStatusResponse{}, status.Error(codes.InvalidArgument, "disk URI must not be empty")
+		}
+
+		diskOps[diskRequest.DiskURI] = &DiskOp{
+			BlobURL:         diskRequest.BlobURL,
+			ClaimIdentifier: diskRequest.ClaimIdentifier,
+			AttachSequence:  diskRequest.AttachSequence,
+			Action:          operationType,
+			CachePolicy:     "None",
+		}
+	}
+
+	request := &WireserverRequest{
+		VMAccessToken: token.Token,
+		DiskOps:       diskOps,
+	}
+
+	requestBody, err := json.Marshal(request)
+	if err != nil {
+		return WireserverDiskStatusResponse{}, fmt.Errorf("failed to marshal wireserver request: %v", err)
+	}
+
+	headers := map[string]string{
+		"Content-Type": "application/json",
+		"User-Agent":   "csi-node",
+	}
+
+	resp, err := makeHTTPRequest(ctx, client, http.MethodPost, consts.QADWireserverEndpoint, requestBody, headers)
+	if err != nil {
+		return WireserverDiskStatusResponse{}, fmt.Errorf("failed to make HTTP request to wireserver: %v", err)
+	}
+	defer resp.Body.Close()
+
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return WireserverDiskStatusResponse{}, fmt.Errorf("failed to read response body: %v", err)
+	}
+
+	// Log wireserver request and response for debugging (redact token)
+	redactedRequest := &WireserverRequest{
+		VMAccessToken: "[REDACTED]",
+		DiskOps:       request.DiskOps,
+	}
+	if redactedBody, err := json.Marshal(redactedRequest); err == nil {
+		klog.V(2).Infof("Wireserver request: %s", string(redactedBody))
+	}
+	klog.V(2).Infof("Wireserver response (HTTP %d): %s", resp.StatusCode, string(respBody))
+
+	// Case 1: Request succeeded (HTTP 2XX) - may contain per-disk errors (partial failure)
+	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
+		var wireserverDiskStatusResponse WireserverDiskStatusResponse
+		if err := json.Unmarshal(respBody, &wireserverDiskStatusResponse); err != nil {
+			return WireserverDiskStatusResponse{}, fmt.Errorf("failed to unmarshal wireserver response: %v", err)
+		}
+
+		// Convert keys to lowercase and check for per-disk errors
+		lowercaseResponse := make(WireserverDiskStatusResponse)
+		for k, v := range wireserverDiskStatusResponse {
+			lowercaseResponse[strings.ToLower(k)] = v
+		}
+		return lowercaseResponse, nil
+	}
+
+	// Case 2 & 3: Request failed (HTTP non-2XX)
+	// Try JSON parse first (Case 3: QAD agent failure)
+	var qadError QADErrorResponse
+	if err := json.Unmarshal(respBody, &qadError); err == nil && qadError.RequestErrorType > 0 || (err == nil && qadError.SeverityHint != "") {
+		grpcCode := mapRequestErrorToCode(qadError.RequestErrorType, qadError.SeverityHint)
+		diskURIs := make([]string, 0, len(diskRequests))
+		for _, diskRequest := range diskRequests {
+			diskURIs = append(diskURIs, diskRequest.DiskURI)
+		}
+		return WireserverDiskStatusResponse{}, status.Errorf(grpcCode,
+			"QAD agent error for disks [%s]: errorType=%d, severity=%s, message=%s",
+			strings.Join(diskURIs, ","), qadError.RequestErrorType, qadError.SeverityHint, qadError.Message)
+	}
+
+	// Case 2: WireServer XML failure - map HTTP status code
+	grpcCode := mapHTTPStatusToCode(resp.StatusCode)
+	return WireserverDiskStatusResponse{}, status.Errorf(grpcCode, "wireserver returned HTTP %d: %s", resp.StatusCode, string(respBody))
+}
+
+// mapDiskErrorToCode maps a DiskErrorType and SeverityHint to a gRPC status code.
+// Used for HTTP 2XX partial failure responses.
+func mapDiskErrorToCode(errorType DiskErrorType, severity SeverityHint) codes.Code {
+	switch errorType {
+	case QADDiskErrUnknown:
+		return codes.Unknown
+	case QADDiskErrInvalidArgs:
+		return codes.InvalidArgument
+	case QADDiskErrInternal:
+		if severity == SeverityHintRetriable {
+			return codes.Unavailable
+		}
+		return codes.Internal
+	case QADDiskErrXFEAuthFailure:
+		if severity == SeverityHintRetriable {
+			return codes.Unavailable
+		}
+		return codes.Unauthenticated
+	case QADDiskErrAttachSequenceMismatch:
+		return codes.Aborted
+	case QADDiskErrClaimIdentifierMismatch:
+		if severity == SeverityHintRetriable {
+			return codes.Unavailable
+		}
+		return codes.Internal
+	case QADDiskErrFetchDSTSToken:
+		if severity == SeverityHintRetriable {
+			return codes.Unavailable
+		}
+		return codes.Internal
+	case QADDiskErrDiskNotFound:
+		return codes.NotFound
+	case QADDiskErrNoLUNAvailable:
+		return codes.ResourceExhausted
+	default:
+		return codes.Unknown
+	}
+}
+
+// mapRequestErrorToCode maps a RequestErrorType and SeverityHint to a gRPC status code.
+// Used for HTTP non-2XX QAD JSON error responses.
+func mapRequestErrorToCode(errorType RequestErrorType, severity SeverityHint) codes.Code {
+	switch errorType {
+	case QADRequestErrUnknown:
+		return codes.Unknown
+	case QADRequestErrInvalidArgs:
+		return codes.InvalidArgument
+	case QADRequestErrInternal:
+		if severity == SeverityHintRetriable {
+			return codes.Unavailable
+		}
+		return codes.Internal
+	case QADRequestErrFetchAttachedDisks:
+		if severity == SeverityHintRetriable {
+			return codes.Unavailable
+		}
+		return codes.Internal
+	case QADRequestErrFetchMadariCGS:
+		if severity == SeverityHintRetriable {
+			return codes.Unavailable
+		}
+		return codes.Internal
+	case QADRequestErrFetchVMMetadata:
+		if severity == SeverityHintRetriable {
+			return codes.Unavailable
+		}
+		return codes.Internal
+	case QADRequestErrFetchDeployedVMs:
+		if severity == SeverityHintRetriable {
+			return codes.Unavailable
+		}
+		return codes.Internal
+	case QADRequestErrVMNotInCCF:
+		if severity == SeverityHintRetriable {
+			return codes.Unavailable
+		}
+		return codes.Internal
+	case QADRequestErrFetchVMAccessToken:
+		if severity == SeverityHintRetriable {
+			return codes.Unavailable
+		}
+		return codes.Unauthenticated
+	case QADRequestErrMadariCGSPublish:
+		if severity == SeverityHintRetriable {
+			return codes.Unavailable
+		}
+		return codes.Internal
+	default:
+		return codes.Unknown
+	}
+}
+
+// mapHTTPStatusToCode maps an HTTP status code to a gRPC status code.
+// Used for WireServer XML failure responses (HTTP non-2XX).
+func mapHTTPStatusToCode(httpStatus int) codes.Code {
+	switch httpStatus {
+	case http.StatusBadRequest: // 400
+		return codes.InvalidArgument
+	case http.StatusUnauthorized: // 401
+		return codes.Unauthenticated
+	case http.StatusForbidden: // 403
+		return codes.Unauthenticated
+	case http.StatusNotFound: // 404
+		return codes.NotFound
+	case http.StatusMethodNotAllowed: // 405
+		return codes.InvalidArgument
+	case http.StatusGone: // 410
+		return codes.Unavailable
+	case http.StatusLengthRequired: // 411
+		return codes.Internal
+	case http.StatusRequestEntityTooLarge: // 413
+		return codes.Internal
+	case http.StatusRequestURITooLong: // 415
+		return codes.Internal
+	case http.StatusUnsupportedMediaType: // 422
+		return codes.Internal
+	case http.StatusTooManyRequests: // 429
+		return codes.Aborted
+	case http.StatusBadGateway: // 502
+		return codes.Unavailable
+	case http.StatusServiceUnavailable: // 503
+		return codes.Unavailable
+	case http.StatusGatewayTimeout: // 504
+		return codes.DeadlineExceeded
+	default:
+		if httpStatus >= 400 && httpStatus < 500 {
+			return codes.InvalidArgument
+		}
+		return codes.Unknown // Default 5XX
+	}
+}
+
+func getAttachedDisks(ctx context.Context, client http.Client) (WireserverDiskStatusResponse, error) {
+	// Set headers
+	headers := map[string]string{
+		"Content-Type": "application/json",
+		"User-Agent":   "csi-node",
+	}
+
+	resp, err := makeHTTPRequest(ctx, client, http.MethodGet, consts.QADWireserverEndpoint, nil, headers)
+	if err != nil {
+		return WireserverDiskStatusResponse{}, fmt.Errorf("failed to make HTTP request to wireserver: %v", err)
+	}
+	defer resp.Body.Close()
+
+	// Read the response body
+	bytes, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return WireserverDiskStatusResponse{}, fmt.Errorf("failed to read response body: %v", err)
+	}
+
+	// TODO:// Remove this post debugging
+	klog.V(2).Infof("Wireserver response for GET: %s", string(bytes))
+
+	var wireserverDiskStatusResponse WireserverDiskStatusResponse
+	if err := json.Unmarshal(bytes, &wireserverDiskStatusResponse); err != nil {
+		return WireserverDiskStatusResponse{}, fmt.Errorf("failed to unmarshal wireserver response: %v", err)
+	}
+
+	// Convert all the keys in the response to lowercase for case-insensitive comparison
+	lowercaseResponse := make(WireserverDiskStatusResponse)
+	for k, v := range wireserverDiskStatusResponse {
+		lowercaseResponse[strings.ToLower(k)] = v
+	}
+
+	wireserverDiskStatusResponse = lowercaseResponse
+
+	return wireserverDiskStatusResponse, nil
+}
+
+func makeHTTPRequest(ctx context.Context, client http.Client, method, url string, body []byte, headers map[string]string) (*http.Response, error) {
+	// Create the HTTP request
+	req, err := http.NewRequestWithContext(ctx, method, url, bytes.NewBuffer(body))
+	if err != nil {
+		return nil, fmt.Errorf("failed to create HTTP request: %v", err)
+	}
+
+	// Set headers
+	req.Header.Set("Content-Type", "application/json")
+	for key, value := range headers {
+		req.Header.Set(key, value)
+	}
+
+	return client.Do(req)
 }
