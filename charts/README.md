@@ -21,7 +21,6 @@
 
 - [install Helm](https://helm.sh/docs/intro/quickstart/#install-helm)
 - [add the Chart repository](#add-the-helm-chart-repository)
-- The Linux node DaemonSet must run with `hostPID: true` for mount-reference diagnostics to inspect mount namespaces across the node. The latest Helm chart enables this setting.
 
 ### Tips
 

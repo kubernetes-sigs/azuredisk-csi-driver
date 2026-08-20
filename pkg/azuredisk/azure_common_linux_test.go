@@ -204,28 +204,14 @@ func TestWaitFSShutdownWithRoots(t *testing.T) {
 			}
 		}
 
-		diagnosticCalled := false
-		findReferences := func(devicePath string) ([]mountReference, error) {
-			diagnosticCalled = true
-			if devicePath != "/dev/test-device" {
-				t.Errorf("diagnostic device = %q, want %q", devicePath, "/dev/test-device")
-			}
-			return nil, nil
-		}
-
 		errorMessages := waitFSShutdownWithRoots(
 			"/dev/test-device",
 			"ext4",
 			0,
 			sysFSRoot,
-			jbd2Root,
-			findReferences,
-		)
+			jbd2Root)
 		if len(errorMessages) != 2 {
 			t.Fatalf("waitFSShutdownWithRoots() returned %d errors, want 2: %v", len(errorMessages), errorMessages)
-		}
-		if !diagnosticCalled {
-			t.Error("waitFSShutdownWithRoots() did not run mount-reference diagnostics")
 		}
 	})
 
@@ -237,10 +223,6 @@ func TestWaitFSShutdownWithRoots(t *testing.T) {
 			0,
 			filepath.Join(t.TempDir(), "sys", "fs"),
 			filepath.Join(t.TempDir(), "proc", "fs", "jbd2"),
-			func(string) ([]mountReference, error) {
-				diagnosticCalled = true
-				return nil, nil
-			},
 		)
 		if len(errorMessages) != 0 {
 			t.Fatalf("waitFSShutdownWithRoots() returned errors: %v", errorMessages)
@@ -249,137 +231,6 @@ func TestWaitFSShutdownWithRoots(t *testing.T) {
 			t.Error("waitFSShutdownWithRoots() ran diagnostics after successful shutdown")
 		}
 	})
-}
-
-func TestFindDeviceMountReferencesInProc(t *testing.T) {
-	procRoot := t.TempDir()
-	if err := os.MkdirAll(filepath.Join(procRoot, "self"), 0755); err != nil {
-		t.Fatalf("MkdirAll() error = %v", err)
-	}
-	if err := os.WriteFile(
-		filepath.Join(procRoot, "self", "status"),
-		[]byte("Name:\tazuredisk\nNSpid:\t1234\n"),
-		0600,
-	); err != nil {
-		t.Fatalf("WriteFile() error = %v", err)
-	}
-
-	devicePath := filepath.Join(t.TempDir(), "device")
-	if err := os.WriteFile(devicePath, nil, 0600); err != nil {
-		t.Fatalf("WriteFile() error = %v", err)
-	}
-
-	writeProcess := func(pid string, namespace string, mountInfo string, cmdline string) {
-		t.Helper()
-		processRoot := filepath.Join(procRoot, pid)
-		if err := os.MkdirAll(filepath.Join(processRoot, "ns"), 0755); err != nil {
-			t.Fatalf("MkdirAll() error = %v", err)
-		}
-		if err := os.Symlink(namespace, filepath.Join(processRoot, "ns", "mnt")); err != nil {
-			t.Fatalf("Symlink() error = %v", err)
-		}
-		if err := os.WriteFile(filepath.Join(processRoot, "mountinfo"), []byte(mountInfo), 0600); err != nil {
-			t.Fatalf("WriteFile(mountinfo) error = %v", err)
-		}
-		if err := os.WriteFile(filepath.Join(processRoot, "cmdline"), []byte(cmdline), 0600); err != nil {
-			t.Fatalf("WriteFile(cmdline) error = %v", err)
-		}
-	}
-
-	writeProcess(
-		"100",
-		"mnt:[4026533000]",
-		"42 1 0:0 / /mnt/test\\040path rw,relatime - ext4 /dev/fake rw,data=ordered\n"+
-			"43 1 8:1 / /mnt/other rw - ext4 /dev/other rw\n",
-		"sleep\x00infinity\x00",
-	)
-	writeProcess(
-		"101",
-		"mnt:[4026533000]",
-		"44 1 0:0 / /mnt/duplicate rw - ext4 /dev/fake rw\n",
-		"duplicate\x00",
-	)
-
-	references, err := findDeviceMountReferencesInProc(devicePath, procRoot)
-	if err != nil {
-		t.Fatalf("findDeviceMountReferencesInProc() error = %v", err)
-	}
-	want := []mountReference{
-		{
-			Namespace:   "mnt:[4026533000]",
-			PID:         100,
-			CommandLine: "sleep\x00infinity\x00",
-			Target:      "/mnt/test path",
-			Source:      "/dev/fake",
-			FSType:      "ext4",
-			Options:     "rw,relatime,rw,data=ordered",
-		},
-	}
-	if !reflect.DeepEqual(references, want) {
-		t.Errorf("findDeviceMountReferencesInProc() = %#v, want %#v", references, want)
-	}
-}
-
-func TestUnescapeMountInfo(t *testing.T) {
-	tests := []struct {
-		name  string
-		value string
-		want  string
-	}{
-		{name: "space", value: `/mnt/test\040path`, want: "/mnt/test path"},
-		{name: "tab", value: `a\011b`, want: "a\tb"},
-		{name: "newline", value: `a\012b`, want: "a\nb"},
-		{name: "backslash", value: `a\134b`, want: `a\b`},
-		{name: "all escapes", value: `a\040b\011c\012d\134e`, want: "a b\tc\nd\\e"},
-		{name: "unchanged", value: "/mnt/plain", want: "/mnt/plain"},
-	}
-
-	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			if got := unescapeMountInfo(test.value); got != test.want {
-				t.Errorf("unescapeMountInfo(%q) = %q, want %q", test.value, got, test.want)
-			}
-		})
-	}
-}
-
-func TestIsHostPIDNamespace(t *testing.T) {
-	tests := []struct {
-		name          string
-		namespacePIDs string
-		want          bool
-	}{
-		{
-			name:          "host PID namespace",
-			namespacePIDs: "1234",
-			want:          true,
-		},
-		{
-			name:          "nested PID namespace",
-			namespacePIDs: "1234 1",
-		},
-	}
-
-	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			procRoot := t.TempDir()
-			if err := os.MkdirAll(filepath.Join(procRoot, "self"), 0755); err != nil {
-				t.Fatalf("MkdirAll() error = %v", err)
-			}
-			status := []byte("Name:\tazuredisk\nNSpid:\t" + test.namespacePIDs + "\n")
-			if err := os.WriteFile(filepath.Join(procRoot, "self/status"), status, 0600); err != nil {
-				t.Fatalf("WriteFile() error = %v", err)
-			}
-
-			got, err := isHostPIDNamespace(procRoot)
-			if err != nil {
-				t.Fatalf("isHostPIDNamespace() error = %v", err)
-			}
-			if got != test.want {
-				t.Errorf("isHostPIDNamespace() = %t, want %t", got, test.want)
-			}
-		})
-	}
 }
 
 func TestFormatAndMountFormatsUnformattedDisk(t *testing.T) {

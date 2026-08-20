@@ -35,8 +35,6 @@ spec:
 {{ toYaml . | indent 8 }}
 {{- end }}
     spec:
-      # Required for mount-reference diagnostics across pod mount namespaces.
-      hostPID: true
       hostNetwork: {{ .Values.linux.hostNetwork }}
       dnsPolicy: Default
       serviceAccountName: {{ .Values.serviceAccount.node }}

@@ -641,7 +641,7 @@ func waitFSShutdownForDevice(devicePath string, stagingTargetPath string, mounte
 
 // waitFSShutdown waits until the filesystem and journal entries disappear.
 func waitFSShutdown(devicePath string, fsType string, timeout time.Duration) {
-	waitFSShutdownWithRoots(devicePath, fsType, timeout, sysFSRoot, procFSJbd2Root, findDeviceMountReferences)
+	waitFSShutdownWithRoots(devicePath, fsType, timeout, sysFSRoot, procFSJbd2Root)
 }
 
 func waitFSShutdownWithRoots(
@@ -649,9 +649,7 @@ func waitFSShutdownWithRoots(
 	fsType string,
 	timeout time.Duration,
 	sysFSRoot string,
-	jbd2Root string,
-	findMountReferences func(string) ([]mountReference, error),
-) []string {
+	jbd2Root string) []string {
 	deviceName := strings.TrimPrefix(devicePath, "/dev/")
 	start := time.Now()
 	var errorMessages []string
@@ -689,15 +687,6 @@ func waitFSShutdownWithRoots(
 	}
 
 	klog.Warningf("Filesystem shutdown checks failed for device %q: %s", devicePath, strings.Join(errorMessages, "; "))
-	references, err := findMountReferences(devicePath)
-	if err != nil {
-		klog.Warningf("Failed to find mount references for device %q: %v", devicePath, err)
-		return errorMessages
-	}
-	for _, ref := range references {
-		klog.Warningf("Device %q is still mounted in namespace %q by process %d (%s) at target %q with source %q, filesystem type %q",
-			devicePath, ref.Namespace, ref.PID, ref.CommandLine, ref.Target, ref.Source, ref.FSType)
-	}
 	return errorMessages
 }
 
@@ -732,151 +721,4 @@ func waitFileRemoval(path string, start time.Time, timeout time.Duration) error 
 
 		<-ticker.C
 	}
-}
-
-type mountReference struct {
-	Namespace   string
-	PID         int
-	CommandLine string
-	Target      string
-	Source      string
-	FSType      string
-	Options     string
-}
-
-// Find the mount reference for the given device path by scanning /proc/<pid>/mountinfo for all processes on the system
-func findDeviceMountReferences(devicePath string) ([]mountReference, error) {
-	return findDeviceMountReferencesInProc(devicePath, "/proc")
-}
-
-func findDeviceMountReferencesInProc(devicePath string, procRoot string) ([]mountReference, error) {
-	hostPID, err := isHostPIDNamespace(procRoot)
-	if err != nil {
-		klog.Warningf("Mount reference diagnostic skipped: unable to determine whether the driver is running in the host PID namespace: %v", err)
-		return nil, nil
-	}
-	if !hostPID {
-		klog.Warning("Mount reference diagnostic skipped: not running in host PID namespace")
-		return nil, nil
-	}
-
-	var stat unix.Stat_t
-	if err := unix.Stat(devicePath, &stat); err != nil {
-		return nil, fmt.Errorf("stat device %q: %w", devicePath, err)
-	}
-	deviceID := fmt.Sprintf("%d:%d", unix.Major(uint64(stat.Rdev)), unix.Minor(uint64(stat.Rdev)))
-	entries, err := os.ReadDir(procRoot)
-	if err != nil {
-		return nil, fmt.Errorf("read %q: %w", procRoot, err)
-	}
-	seenNamespaces := make(map[string]struct{})
-	var references []mountReference
-
-	for _, entry := range entries {
-		pid, err := strconv.Atoi(entry.Name())
-		if err != nil {
-			continue
-		}
-
-		namespace, err := os.Readlink(filepath.Join(procRoot, entry.Name(), "ns/mnt"))
-		if err != nil {
-			// The process may have exited while scanning.
-			continue
-		}
-
-		if _, found := seenNamespaces[namespace]; found {
-			// Already seen this namespace, skip to avoid duplicate mountinfo parsing
-			continue
-		}
-
-		mountInfo, err := os.ReadFile(filepath.Join(procRoot, entry.Name(), "mountinfo"))
-		if err != nil {
-			// Try another process from this namespace if this one exited.
-			continue
-		}
-		seenNamespaces[namespace] = struct{}{}
-
-		// Parse mountinfo lines to find references to the device ID
-		// Example mountinfo lines:
-		//    5120 4773 259:5 / /host/var/lib/kubelet/disk1-mnt rw,relatime - ext4 /dev/nvme0n2 rw,stripe=64
-		//    5468 4248 259:5 / /host/var/lib/kubelet/disk1-mnt rw,relatime - ext4 /dev/nvme0n2 rw,stripe=64
-		for _, line := range strings.Split(string(mountInfo), "\n") {
-			left, right, found := strings.Cut(line, " - ")
-			if !found {
-				continue
-			}
-
-			leftFields := strings.Fields(left)
-			rightFields := strings.Fields(right)
-			if len(leftFields) < 6 || len(rightFields) < 3 {
-				continue
-			}
-
-			// mountinfo field 3 contains the device's major:minor ID.
-			if leftFields[2] != deviceID {
-				continue
-			}
-			// If device is found then read the command line of the process to get more context
-			cmdlineBytes, err := os.ReadFile(filepath.Join(procRoot, entry.Name(), "cmdline"))
-			cmdline := ""
-			if err == nil {
-				cmdline = string(cmdlineBytes)
-			}
-
-			references = append(references, mountReference{
-				Namespace:   namespace,
-				PID:         pid,
-				CommandLine: cmdline,
-				Target:      unescapeMountInfo(leftFields[4]),
-				Source:      unescapeMountInfo(rightFields[1]),
-				FSType:      rightFields[0],
-				Options:     leftFields[5] + "," + rightFields[2],
-			})
-		}
-	}
-	return references, nil
-}
-
-func isHostPIDNamespace(procRoot string) (bool, error) {
-	status, err := os.ReadFile(filepath.Join(procRoot, "self/status"))
-	if err != nil {
-		return false, err
-	}
-	for _, line := range strings.Split(string(status), "\n") {
-		if !strings.HasPrefix(line, "NSpid:") {
-			continue
-		}
-		// NSpid contains one PID per nested namespace. A host PID namespace
-		// process has only its host PID.
-		return len(strings.Fields(line)) == 2, nil
-	}
-
-	comm, err := os.ReadFile(filepath.Join(procRoot, "1/comm"))
-	if err == nil {
-		switch strings.TrimSpace(string(comm)) {
-		case "systemd", "init", "kubelet":
-			return true, nil
-		}
-	}
-
-	entries, err := os.ReadDir(procRoot)
-	if err != nil {
-		return false, err
-	}
-	processCount := 0
-	for _, entry := range entries {
-		if _, err := strconv.Atoi(entry.Name()); err == nil {
-			processCount++
-		}
-	}
-	return processCount >= 100, nil
-}
-
-func unescapeMountInfo(value string) string {
-	return strings.NewReplacer(
-		`\040`, " ",
-		`\011`, "\t",
-		`\012`, "\n",
-		`\134`, `\`,
-	).Replace(value)
 }
