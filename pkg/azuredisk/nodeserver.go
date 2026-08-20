@@ -222,9 +222,12 @@ func (d *Driver) NodeUnstageVolume(_ context.Context, req *csi.NodeUnstageVolume
 	}
 
 	// Explicitly sync so we don't rely on FS shutdown for durability; other mount references may keep the superblock alive past unmount
-	if err := syncFilesystemAtMountPoint(stagingTargetPath, d.mounter); err != nil {
-		klog.Errorf("NodeUnstageVolume - sync failed at %q, proceeding with unmount: %v", stagingTargetPath, err)
-		// fall through: better to unmount a partially-synced FS than to hang forever
+	if devicePath != "" {
+		// Sync only if device is still mounted
+		if err := syncFilesystemAtMountPoint(stagingTargetPath, d.mounter); err != nil {
+			klog.Errorf("NodeUnstageVolume - sync failed at %q, proceeding with unmount: %v", stagingTargetPath, err)
+			// fall through: better to unmount a partially-synced FS than to hang forever
+		}
 	}
 
 	// Unmount the volume and clean up the mount point

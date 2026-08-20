@@ -53,7 +53,7 @@ const (
 
 var (
 	openMountPoint = unix.Open
-	fsync          = unix.Fsync
+	fsync          = unix.Syncfs
 )
 
 // exclude those used by azure as resource and OS root in /dev/disk/azure, /dev/disk/azure/scsi0
@@ -634,19 +634,40 @@ func waitFSShutdownForDevice(devicePath string, stagingTargetPath string, mounte
 		klog.Warningf("NodeUnstageVolume - failed to get filesystem type for device %q: %v", devicePath, err)
 		return
 	}
+	fsInstance, err := filesystemInstanceName(devicePath, fsType, mounter)
+	if err != nil {
+		klog.Warningf("NodeUnstageVolume - failed to get filesystem instance for device %q: %v", devicePath, err)
+		return
+	}
 
 	klog.V(2).Infof("NodeUnstageVolume: waiting for filesystem to shutdown staging path %s device %s", stagingTargetPath, devicePath)
-	waitFSShutdown(devicePath, fsType, timeout)
+	waitFSShutdown(devicePath, fsType, fsInstance, timeout)
 }
 
 // waitFSShutdown waits until the filesystem and journal entries disappear.
-func waitFSShutdown(devicePath string, fsType string, timeout time.Duration) {
-	waitFSShutdownWithRoots(devicePath, fsType, timeout, sysFSRoot, procFSJbd2Root)
+func waitFSShutdown(devicePath string, fsType string, fsInstance string, timeout time.Duration) {
+	waitFSShutdownWithRoots(devicePath, fsType, fsInstance, timeout, sysFSRoot, procFSJbd2Root)
+}
+
+func filesystemInstanceName(devicePath string, fsType string, mounter *mount.SafeFormatAndMount) (string, error) {
+	if strings.EqualFold(fsType, "btrfs") {
+		output, err := mounter.Exec.Command("blkid", "-s", "UUID", "-o", "value", devicePath).Output()
+		if err != nil {
+			return "", fmt.Errorf("failed to get btrfs FSID for device %q: %w", devicePath, err)
+		}
+		fsID := strings.TrimSpace(string(output))
+		if fsID == "" || fsID == "." || fsID == ".." || filepath.Base(fsID) != fsID {
+			return "", fmt.Errorf("invalid btrfs FSID %q for device %q", fsID, devicePath)
+		}
+		return fsID, nil
+	}
+	return filepath.Base(devicePath), nil
 }
 
 func waitFSShutdownWithRoots(
 	devicePath string,
 	fsType string,
+	fsInstance string,
 	timeout time.Duration,
 	sysFSRoot string,
 	jbd2Root string) []string {
@@ -655,7 +676,7 @@ func waitFSShutdownWithRoots(
 	var errorMessages []string
 
 	if fsType != "" {
-		sysFSEntry := filepath.Join(sysFSRoot, fsType, deviceName)
+		sysFSEntry := filepath.Join(sysFSRoot, fsType, fsInstance)
 		if err := waitFileRemoval(sysFSEntry, start, timeout); err != nil {
 			message := fmt.Sprintf("filesystem sysfs entry %q was not removed: %v", sysFSEntry, err)
 			klog.Warning(message)

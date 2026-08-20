@@ -756,7 +756,9 @@ func TestNodeUnstageVolume(t *testing.T) {
 		}
 		if !(runtime.GOOS == "windows" && test.skipOnWindows) &&
 			!(runtime.GOOS == "darwin" && test.skipOnDarwin) {
-			d.setNextCommandOutputScripts(test.outputScripts...)
+			if len(test.outputScripts) > 0 {
+				d.setNextCommandOutputScripts(test.outputScripts...)
+			}
 			_, err := d.NodeUnstageVolume(context.Background(), test.req)
 			if !testutil.AssertError(&test.expectedErr, err) {
 				t.Errorf("desc: %s\n actualErr: (%v), expectedErr: (%v)", test.desc, err, test.expectedErr)
