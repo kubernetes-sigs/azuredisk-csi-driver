@@ -827,7 +827,8 @@ func (d *Driver) getPVFromDiskURI(ctx context.Context, diskURI string) (*v1.Pers
 			return nil, fmt.Errorf("failed to list PersistentVolumes from cache: %v", err)
 		}
 		for _, pv := range pvs {
-			if pv.Spec.CSI != nil && pv.Spec.CSI.VolumeHandle == diskURI {
+			if pv.Spec.CSI != nil && pv.Spec.CSI.Driver == d.Name &&
+				strings.EqualFold(pv.Spec.CSI.VolumeHandle, diskURI) {
 				klog.Infof("Found PV %s with handle %s (from cache)", pv.Name, diskURI)
 				return pv, nil
 			}
@@ -841,7 +842,8 @@ func (d *Driver) getPVFromDiskURI(ctx context.Context, diskURI string) (*v1.Pers
 		return nil, fmt.Errorf("failed to list PersistentVolumes: %v", err)
 	}
 	for _, pv := range pvList.Items {
-		if pv.Spec.CSI != nil && pv.Spec.CSI.VolumeHandle == diskURI {
+		if pv.Spec.CSI != nil && pv.Spec.CSI.Driver == d.Name &&
+			strings.EqualFold(pv.Spec.CSI.VolumeHandle, diskURI) {
 			klog.Infof("Found PV %s with handle %s", pv.Name, diskURI)
 			return &pv, nil
 		}

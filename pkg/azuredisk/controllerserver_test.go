@@ -1334,6 +1334,18 @@ func TestDeleteVolume(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Error getting driver: %v", err)
 	}
+	_, err = d.(*fakeDriver).kubeClient.CoreV1().PersistentVolumes().Create(context.Background(), &v1.PersistentVolume{
+		ObjectMeta: metav1.ObjectMeta{Name: testVolumeName},
+		Spec: v1.PersistentVolumeSpec{
+			PersistentVolumeSource: v1.PersistentVolumeSource{
+				CSI: &v1.CSIPersistentVolumeSource{
+					Driver:       fakeDriverName,
+					VolumeHandle: testVolumeID,
+				},
+			},
+		},
+	}, metav1.CreateOptions{})
+	require.NoError(t, err)
 
 	tests := []struct {
 		desc            string
@@ -1362,6 +1374,13 @@ func TestDeleteVolume(t *testing.T) {
 				VolumeId: "123",
 			},
 			expectedResp: &csi.DeleteVolumeResponse{},
+		},
+		{
+			desc: "fail when persistent volume cannot be found",
+			req: &csi.DeleteVolumeRequest{
+				VolumeId: fmt.Sprintf(consts.ManagedDiskPath, "subs", "rg", "missing-volume"),
+			},
+			expectedErrCode: codes.Internal,
 		},
 	}
 

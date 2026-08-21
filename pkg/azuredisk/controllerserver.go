@@ -646,6 +646,10 @@ func (d *Driver) claimDiskResource(ctx context.Context, diskURI, ownerResource s
 	if err := json.Unmarshal(body, &result); err != nil {
 		return "", "", fmt.Errorf("failed to parse claimResource response: %w", err)
 	}
+
+	if result.Properties == nil {
+		return "", "", fmt.Errorf("claimResource response missing properties")
+	}
 	return result.Properties.BlobURL, result.Properties.ClaimIdentifier, nil
 }
 
@@ -729,15 +733,15 @@ func (d *Driver) DeleteVolume(ctx context.Context, req *csi.DeleteVolumeRequest)
 	// If the PV is a QAD PV, unclaim the disk before deletion
 	pv, err := d.getPVFromDiskURI(ctx, diskURI)
 	if err != nil {
-		klog.Warningf("failed to get PV from disk URI %s: %v", diskURI, err)
-	} else if pv.Annotations != nil {
+		return nil, status.Errorf(codes.Internal, "failed to get PV from disk URI %s: %v", diskURI, err)
+	} else if pv != nil && pv.Annotations != nil {
 		if _, exists := pv.Annotations[azureconstants.AttachSequenceAnnotation]; exists {
 			klog.V(2).Infof("PV %s has QAD enabled, unclaiming disk %s before deletion", pv.Name, diskURI)
 			ownerResource, ownerErr := d.getAKSClusterResourceID(ctx)
 			if ownerErr != nil {
-				klog.Warningf("failed to determine QAD owner resource for disk %s (proceeding with deletion): %v", diskURI, ownerErr)
+				return nil, status.Errorf(codes.Internal, "failed to determine QAD owner resource for disk %s: %v", diskURI, ownerErr)
 			} else if unclaimErr := d.unclaimDiskResource(ctx, diskURI, ownerResource); unclaimErr != nil {
-				klog.Warningf("failed to unclaim QAD disk %s (proceeding with deletion): %v", diskURI, unclaimErr)
+				return nil, status.Errorf(codes.Internal, "failed to unclaim QAD disk %s: %v", diskURI, unclaimErr)
 			}
 		}
 	}
@@ -774,7 +778,12 @@ func (d *Driver) ControllerModifyVolume(ctx context.Context, req *csi.Controller
 
 	diskURI := volumeID
 
-	if _, isQAD, err := d.isUsingQADPath(ctx, diskURI); err == nil && isQAD {
+	pv, err := d.getPVFromDiskURI(ctx, diskURI)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "failed to get PV from diskURI %s: %v", diskURI, err)
+	}
+
+	if d.isQAD(pv) {
 		return nil, status.Errorf(codes.Unimplemented, "ControllerModifyVolume is not supported for QAD-enabled volume %s", diskURI)
 	}
 
@@ -1065,12 +1074,10 @@ func (d *Driver) ControllerUnpublishVolume(ctx context.Context, req *csi.Control
 	pv, err := d.getPVFromDiskURI(ctx, diskURI)
 	if err != nil {
 		klog.Errorf("failed to get PV from disk URI %s: %v", diskURI, err)
-	} else {
-		if pv.Annotations != nil {
-			if _, exists := pv.Annotations[azureconstants.AttachSequenceAnnotation]; exists {
-				klog.V(2).Infof("PV %s has QAD enabled, skipping detach for disk %s", pv.Name, diskURI)
-				return &csi.ControllerUnpublishVolumeResponse{}, nil
-			}
+	} else if pv != nil && pv.Annotations != nil {
+		if _, exists := pv.Annotations[azureconstants.AttachSequenceAnnotation]; exists {
+			klog.V(2).Infof("PV %s has QAD enabled, skipping detach for disk %s", pv.Name, diskURI)
+			return &csi.ControllerUnpublishVolumeResponse{}, nil
 		}
 	}
 	nodeID := req.GetNodeId()
@@ -1435,7 +1442,11 @@ func (d *Driver) ControllerExpandVolume(ctx context.Context, req *csi.Controller
 
 	diskURI := req.GetVolumeId()
 
-	if _, isQAD, err := d.isUsingQADPath(ctx, diskURI); err == nil && isQAD {
+	pv, err := d.getPVFromDiskURI(ctx, diskURI)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "failed to get PV from diskURI %s: %v", diskURI, err)
+	}
+	if d.isQAD(pv) {
 		return nil, status.Errorf(codes.Unimplemented, "ControllerExpandVolume is not supported for QAD-enabled volume %s", diskURI)
 	}
 
