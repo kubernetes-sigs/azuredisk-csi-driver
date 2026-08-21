@@ -73,6 +73,8 @@ import (
 )
 
 var (
+	errPVNotFound = errors.New("persistent volume not found")
+
 	// taintRemovalBackoff is the exponential backoff configuration for node taint removal
 	taintRemovalBackoff = wait.Backoff{
 		Duration: 500 * time.Millisecond,
@@ -827,12 +829,13 @@ func (d *Driver) getPVFromDiskURI(ctx context.Context, diskURI string) (*v1.Pers
 			return nil, fmt.Errorf("failed to list PersistentVolumes from cache: %v", err)
 		}
 		for _, pv := range pvs {
-			if pv.Spec.CSI != nil && pv.Spec.CSI.VolumeHandle == diskURI {
+			if pv.Spec.CSI != nil && pv.Spec.CSI.Driver == d.Name &&
+				strings.EqualFold(pv.Spec.CSI.VolumeHandle, diskURI) {
 				klog.Infof("Found PV %s with handle %s (from cache)", pv.Name, diskURI)
 				return pv, nil
 			}
 		}
-		return nil, fmt.Errorf("cannot find PV with diskURI(%s)", diskURI)
+		return nil, fmt.Errorf("%w with diskURI(%s)", errPVNotFound, diskURI)
 	}
 
 	// Fallback to direct API call if lister is not initialized
@@ -841,12 +844,13 @@ func (d *Driver) getPVFromDiskURI(ctx context.Context, diskURI string) (*v1.Pers
 		return nil, fmt.Errorf("failed to list PersistentVolumes: %v", err)
 	}
 	for _, pv := range pvList.Items {
-		if pv.Spec.CSI != nil && pv.Spec.CSI.VolumeHandle == diskURI {
+		if pv.Spec.CSI != nil && pv.Spec.CSI.Driver == d.Name &&
+			strings.EqualFold(pv.Spec.CSI.VolumeHandle, diskURI) {
 			klog.Infof("Found PV %s with handle %s", pv.Name, diskURI)
 			return &pv, nil
 		}
 	}
-	return nil, fmt.Errorf("cannot find PV with diskURI(%s)", diskURI)
+	return nil, fmt.Errorf("%w with diskURI(%s)", errPVNotFound, diskURI)
 }
 
 // getNodeInfoFromLabels get zone, instanceType from node labels
