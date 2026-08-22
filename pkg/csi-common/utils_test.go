@@ -158,9 +158,15 @@ func TestLogGRPCEmptyResponse(t *testing.T) {
 	klog.SetOutput(buf)
 	defer klog.SetOutput(io.Discard)
 
+	// Snapshot and restore -v so this test does not leak verbosity state
+	// into other tests (e.g. TestLogGRPC relies on -v=100).
+	vFlag := flag.Lookup("v")
+	var originalV string
+	if vFlag != nil {
+		originalV = vFlag.Value.String()
+		defer func() { _ = vFlag.Value.Set(originalV) }()
+	}
 	var vLevel klog.Level
-	// Restore verbosity after the test so we do not leak state.
-	defer func() { _ = vLevel.Set("100") }()
 
 	info := grpc.UnaryServerInfo{FullMethod: "/csi.v1.Node/NodePublishVolume"}
 	req := &csi.NodePublishVolumeRequest{VolumeId: "vol_1"}
