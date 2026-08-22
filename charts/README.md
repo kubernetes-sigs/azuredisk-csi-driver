@@ -205,6 +205,7 @@ The following table lists the configurable parameters of the latest Azure Disk C
 | `node.allowEmptyCloudConfig`                      | Whether allow running node driver without cloud config               | `true`
 | `node.maxUnavailable`                             | `maxUnavailable` value of driver node daemonset            | `1`
 | `node.metricsPort`                          | metrics port of driver node daemonset                   | `29605`                                                        |
+| `node.filesystemShutdownTimeout`                   | timeout in seconds to wait for filesystem and journal shutdown during node unstage | `5` |
 | `node.livenessProbe.healthPort`                   | health check port for liveness probe                       | `29603` |
 | `node.nodeDriverRegistrar.healthPort`                        | health check port for node-driver-registrar liveness probe                                                 | `29607`                                                 |
 | `node.nodeDriverRegistrar.livenessProbe.enabled`             | enable node-driver-registrar liveness probe                                                                | `true`                                                  |

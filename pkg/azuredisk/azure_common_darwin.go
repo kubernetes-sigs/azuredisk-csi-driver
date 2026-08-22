@@ -55,6 +55,13 @@ func CleanupMountPoint(path string, m *mount.SafeFormatAndMount, extensiveCheck 
 	return nil
 }
 
+func syncFilesystemAtMountPoint(mountPoint string, mounter *mount.SafeFormatAndMount) error {
+	return nil
+}
+
+func waitFSShutdownForDevice(devicePath string, stagingTargetPath string, mounter *mount.SafeFormatAndMount, timeout time.Duration) {
+}
+
 func getDevicePathWithMountPath(mountPath string, m *mount.SafeFormatAndMount) (string, error) {
 	args := []string{"-o", "source", "--noheadings", "--mountpoint", mountPath}
 	output, err := m.Exec.Command("findmnt", args...).Output()
