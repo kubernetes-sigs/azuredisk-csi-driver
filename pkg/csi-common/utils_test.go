@@ -20,6 +20,7 @@ import (
 	"bytes"
 	"context"
 	"flag"
+	"io"
 	"os"
 	"runtime"
 	"testing"
@@ -144,6 +145,71 @@ func TestLogGRPC(t *testing.T) {
 
 			// CLEANUP
 			buf.Reset()
+		})
+	}
+}
+
+func TestLogGRPCEmptyResponse(t *testing.T) {
+	buf := new(bytes.Buffer)
+	klog.SetOutput(buf)
+	defer klog.SetOutput(io.Discard)
+
+	var vLevel klog.Level
+	// Restore verbosity after the test so we do not leak state.
+	defer func() { _ = vLevel.Set("100") }()
+
+	info := grpc.UnaryServerInfo{FullMethod: "/csi.v1.Node/NodePublishVolume"}
+	req := &csi.NodePublishVolumeRequest{VolumeId: "vol_1"}
+
+	emptyHandler := func(_ context.Context, _ interface{}) (interface{}, error) {
+		return &csi.NodePublishVolumeResponse{}, nil
+	}
+	nonEmptyHandler := func(_ context.Context, _ interface{}) (interface{}, error) {
+		return &csi.NodeGetInfoResponse{NodeId: "node-1"}, nil
+	}
+
+	tests := []struct {
+		name             string
+		v                string
+		handler          grpc.UnaryHandler
+		expectResponse   bool
+		expectedResponse string
+	}{
+		{
+			name:           "empty response is suppressed at V(2)",
+			v:              "2",
+			handler:        emptyHandler,
+			expectResponse: false,
+		},
+		{
+			name:             "empty response is visible at V(6)",
+			v:                "6",
+			handler:          emptyHandler,
+			expectResponse:   true,
+			expectedResponse: "GRPC response: {}",
+		},
+		{
+			name:             "non-empty response is still visible at V(2)",
+			v:                "2",
+			handler:          nonEmptyHandler,
+			expectResponse:   true,
+			expectedResponse: `GRPC response: {"node_id":"node-1"}`,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			_ = vLevel.Set(test.v)
+			buf.Reset()
+
+			_, _ = LogGRPC(context.Background(), req, &info, test.handler)
+			klog.Flush()
+
+			if test.expectResponse {
+				assert.Contains(t, buf.String(), test.expectedResponse)
+			} else {
+				assert.NotContains(t, buf.String(), "GRPC response:")
+			}
 		})
 	}
 }
