@@ -22,6 +22,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/to"
@@ -40,6 +41,7 @@ import (
 	"k8s.io/utils/ptr"
 
 	storagev1 "k8s.io/api/storage/v1"
+	"sigs.k8s.io/azuredisk-csi-driver/pkg/azcompute"
 	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
 	csiMetrics "sigs.k8s.io/azuredisk-csi-driver/pkg/metrics"
@@ -231,32 +233,11 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 		return nil, status.Error(codes.InvalidArgument, "After round-up, volume size exceeds the limit specified")
 	}
 
-	localCloud := d.cloud
-	localDiskController := d.diskController
-
-	if diskParams.UserAgent != "" {
-		localCloud, err = azureutils.GetCloudProviderFromClient(ctx, d.kubeClient, d.cloudConfigSecretName, d.cloudConfigSecretNamespace, diskParams.UserAgent,
-			d.allowEmptyCloudConfig, d.enableTrafficManager, d.enableMinimumRetryAfter, d.trafficManagerPort)
-		if err != nil {
-			return nil, status.Errorf(codes.Internal, "create cloud with UserAgent(%s) failed with: (%s)", diskParams.UserAgent, err)
-		}
-		localDiskController = &ManagedDiskController{
-			controllerCommon: &controllerCommon{
-				cloud:                     localCloud,
-				lockMap:                   newLockMap(),
-				DisableDiskLunCheck:       true,
-				clientFactory:             localCloud.ComputeClientFactory,
-				ForceDetachBackoff:        d.forceDetachBackoff,
-				WaitForDetach:             d.waitForDetach,
-				WaitForDetachDiskComplete: d.waitForDetachDiskComplete,
-				CheckDiskCountForBatching: d.checkDiskCountForBatching,
-			},
-		}
-		localDiskController.AttachDetachInitialDelayInMs = int(d.attachDetachInitialDelayInMs)
-		localDiskController.VMSSDetachTimeoutInSeconds = int(d.vmssDetachTimeoutInSeconds)
-		localDiskController.DetachOperationMinTimeoutInSeconds = int(d.detachOperationMinTimeoutInSeconds)
-
+	localDiskController, err := d.getDiskController(ctx, diskParams.UserAgent)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "create cloud with UserAgent(%s) failed with: (%s)", diskParams.UserAgent, err)
 	}
+	localCloud := localDiskController.cloud
 	if azureutils.IsAzureStackCloud(localCloud.Config.Cloud, localCloud.Config.DisableAzureStackCloud) {
 		if diskParams.MaxShares > 1 {
 			return nil, status.Error(codes.InvalidArgument, fmt.Sprintf("Invalid maxShares value: %d as Azure Stack does not support shared disk.", diskParams.MaxShares))
@@ -1117,7 +1098,7 @@ func (d *Driver) listVolumesByResourceGroup(ctx context.Context, resourceGroup s
 			nodeList := []string{}
 
 			if disk.ManagedBy != nil {
-				attachedNode, err := d.cloud.VMSet.GetNodeNameByProviderID(ctx, *disk.ManagedBy)
+				attachedNode, err := d.diskController.resolveCompute().GetNodeNameByProviderID(ctx, *disk.ManagedBy)
 				if err != nil {
 					return listVolumeStatus{err: err}
 				}
@@ -1191,10 +1172,11 @@ func (d *Driver) ControllerExpandVolume(ctx context.Context, req *csi.Controller
 	klog.V(2).Infof("expand azure disk(%s) successfully, currentSize(%d)", diskURI, currentSize)
 
 	if result.ManagedBy != nil {
-		attachedNode, err := d.cloud.VMSet.GetNodeNameByProviderID(ctx, *result.ManagedBy)
+		vmset := d.diskController.resolveCompute()
+		attachedNode, err := vmset.GetNodeNameByProviderID(ctx, *result.ManagedBy)
 		if err == nil {
 			klog.V(2).Infof("delete cache for node (%s, %s) after disk(%s) expanded", attachedNode, *result.ManagedBy, diskURI)
-			if err = d.cloud.VMSet.DeleteCacheForNode(ctx, string(attachedNode)); err != nil {
+			if err = vmset.DeleteCacheForNode(ctx, string(attachedNode)); err != nil {
 				klog.Warningf("failed to delete cache for node %s with error(%v)", attachedNode, err)
 			}
 		} else {
@@ -1643,4 +1625,87 @@ func inlineVolumeSpecMatchesDisk(driverName, diskURI string, va *storagev1.Volum
 		return true
 	}
 	return false
+}
+
+// newManagedDiskController builds a ManagedDiskController for the given cloud and
+// applies the driver's disk-controller options (batching, detach behavior, and
+// timeouts, including the same timeout clamping) and, when enabled, the
+// cache-free VMSet. It is the single construction path for both the long-lived
+// controller created at startup and the per-request controller built for
+// requests that carry a custom userAgent. disableDiskLunCheck is set for the
+// per-request controller, which only performs disk CRUD.
+func (d *Driver) newManagedDiskController(cloud *azure.Cloud, disableDiskLunCheck bool) *ManagedDiskController {
+	dc := NewManagedDiskController(cloud)
+	dc.AttachDetachInitialDelayInMs = int(d.attachDetachInitialDelayInMs)
+	dc.ForceDetachBackoff = d.forceDetachBackoff
+	dc.WaitForDetach = d.waitForDetach
+	dc.WaitForDetachDiskComplete = d.waitForDetachDiskComplete
+	dc.CheckDiskCountForBatching = d.checkDiskCountForBatching
+	dc.DisableDiskLunCheck = disableDiskLunCheck
+	dc.DetachOperationMinTimeoutInSeconds = int(d.detachOperationMinTimeoutInSeconds)
+	dc.VMSSDetachTimeoutInSeconds = int(d.vmssDetachTimeoutInSeconds)
+
+	if dc.DetachOperationMinTimeoutInSeconds <= 0 {
+		klog.V(2).Infof("reset DetachOperationMinTimeoutInSeconds as %d", defaultDetachOperationMinTimeoutInSeconds)
+		dc.DetachOperationMinTimeoutInSeconds = defaultDetachOperationMinTimeoutInSeconds
+	}
+	if dc.VMSSDetachTimeoutInSeconds <= 0 || dc.VMSSDetachTimeoutInSeconds > dc.DetachOperationMinTimeoutInSeconds {
+		if dc.DetachOperationMinTimeoutInSeconds <= defaultVMSSDetachTimeoutInSeconds {
+			klog.V(2).Infof("reset VMSSDetachTimeoutInSeconds as DetachOperationMinTimeoutInSeconds %d with no additional polling", dc.DetachOperationMinTimeoutInSeconds)
+			dc.VMSSDetachTimeoutInSeconds = dc.DetachOperationMinTimeoutInSeconds
+		} else {
+			klog.V(2).Infof("reset VMSSDetachTimeoutInSeconds as %d (default)", defaultVMSSDetachTimeoutInSeconds)
+			dc.VMSSDetachTimeoutInSeconds = defaultVMSSDetachTimeoutInSeconds
+		}
+	}
+
+	if d.useCacheFreeVMSet && cloud != nil && cloud.ComputeClientFactory != nil {
+		isAzureStack := azureutils.IsAzureStackCloud(cloud.Config.Cloud, cloud.Config.DisableAzureStackCloud)
+		dc.compute = azcompute.NewCacheFree(cloud.ComputeClientFactory, d.kubeClient, isAzureStack)
+		klog.V(2).Infof("using cache-free DiskVMSet (azclient-backed, no cloud-provider caching) for disk attach/detach")
+	} else if cloud != nil {
+		dc.compute = newProviderDiskVMSet(cloud)
+	}
+	return dc
+}
+
+// cachedDiskController lazily builds a ManagedDiskController exactly once for a
+// given userAgent, so concurrent requests share a single (expensive) build.
+type cachedDiskController struct {
+	once sync.Once
+	dc   *ManagedDiskController
+	err  error
+}
+
+// getDiskController returns the ManagedDiskController to use for a request. For
+// the default (empty) userAgent it returns the shared controller; for a custom
+// userAgent it returns one from a per-userAgent cache, building it on first use
+// so the cloud client is not reconstructed on every request. The cache is a
+// plain sync.Map, so it carries no dependency on cloud-provider-azure caching.
+func (d *Driver) getDiskController(ctx context.Context, userAgent string) (*ManagedDiskController, error) {
+	if userAgent == "" {
+		return d.diskController, nil
+	}
+	v, _ := d.diskControllerCache.LoadOrStore(userAgent, &cachedDiskController{})
+	entry := v.(*cachedDiskController)
+	entry.once.Do(func() {
+		entry.dc, entry.err = d.buildDiskController(ctx, userAgent)
+	})
+	if entry.err != nil {
+		// Don't cache failures; let a later request retry the build.
+		d.diskControllerCache.Delete(userAgent)
+		return nil, entry.err
+	}
+	return entry.dc, nil
+}
+
+// buildDiskController constructs a per-userAgent cloud client and its
+// ManagedDiskController.
+func (d *Driver) buildDiskController(ctx context.Context, userAgent string) (*ManagedDiskController, error) {
+	localCloud, err := azureutils.GetCloudProviderFromClient(ctx, d.kubeClient, d.cloudConfigSecretName, d.cloudConfigSecretNamespace, userAgent,
+		d.allowEmptyCloudConfig, d.enableTrafficManager, d.enableMinimumRetryAfter, d.trafficManagerPort)
+	if err != nil {
+		return nil, err
+	}
+	return d.newManagedDiskController(localCloud, true), nil
 }

@@ -42,6 +42,7 @@ import (
 	"k8s.io/klog/v2"
 	"k8s.io/utils/ptr"
 
+	"sigs.k8s.io/azuredisk-csi-driver/pkg/azcompute"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 	"sigs.k8s.io/cloud-provider-azure/pkg/azclient/diskclient/mock_diskclient"
 	"sigs.k8s.io/cloud-provider-azure/pkg/azclient/mock_azclient"
@@ -785,7 +786,7 @@ func TestSetDiskLun(t *testing.T) {
 		desc            string
 		nodeName        string
 		diskURI         string
-		diskMap         map[string]*provider.AttachDiskOptions
+		diskMap         map[string]*azcompute.AttachDiskOptions
 		occupiedLuns    []int
 		isDataDisksFull bool
 		expectedErr     bool
@@ -796,7 +797,7 @@ func TestSetDiskLun(t *testing.T) {
 			nodeName:     "nodeName",
 			diskURI:      "diskURI",
 			occupiedLuns: []int{0, 1, 2},
-			diskMap:      map[string]*provider.AttachDiskOptions{"diskURI": {}},
+			diskMap:      map[string]*azcompute.AttachDiskOptions{"diskURI": {}},
 			expectedLun:  3,
 			expectedErr:  false,
 		},
@@ -805,7 +806,7 @@ func TestSetDiskLun(t *testing.T) {
 			nodeName:     "nodeName",
 			diskURI:      "diskURI",
 			occupiedLuns: []int{0, 1, 2, 3},
-			diskMap:      map[string]*provider.AttachDiskOptions{"diskURI": {}},
+			diskMap:      map[string]*azcompute.AttachDiskOptions{"diskURI": {}},
 			expectedLun:  4,
 			expectedErr:  false,
 		},
@@ -813,7 +814,7 @@ func TestSetDiskLun(t *testing.T) {
 			desc:            "LUN -1 and error shall be returned if there's no available LUN",
 			nodeName:        "nodeName",
 			diskURI:         "diskURI",
-			diskMap:         map[string]*provider.AttachDiskOptions{"diskURI": {}},
+			diskMap:         map[string]*azcompute.AttachDiskOptions{"diskURI": {}},
 			isDataDisksFull: true,
 			expectedLun:     -1,
 			expectedErr:     true,
@@ -822,7 +823,7 @@ func TestSetDiskLun(t *testing.T) {
 			desc:        "diskURI1 is not in VM data disk list nor in diskMap",
 			nodeName:    "nodeName",
 			diskURI:     "diskURI1",
-			diskMap:     map[string]*provider.AttachDiskOptions{"diskURI2": {}},
+			diskMap:     map[string]*azcompute.AttachDiskOptions{"diskURI2": {}},
 			expectedLun: -1,
 			expectedErr: true,
 		},
@@ -1111,7 +1112,7 @@ func TestAttachDiskRequest(t *testing.T) {
 		for i := 1; i <= test.diskNum; i++ {
 			diskURI := fmt.Sprintf("%s%d", test.diskURI, i)
 			diskName := fmt.Sprintf("%s%d", test.diskName, i)
-			ops := &provider.AttachDiskOptions{DiskName: diskName}
+			ops := &azcompute.AttachDiskOptions{DiskName: diskName}
 			_, err := common.batchAttachDiskRequest(diskURI, test.nodeName, ops)
 			assert.Equal(t, test.expectedErr, err != nil, "TestCase[%d]: %s", i, test.desc)
 			if test.duplicateDiskRequest {
@@ -1920,7 +1921,7 @@ func TestPollForDetachCompletion(t *testing.T) {
 			}
 
 			// Call pollForDetachCompletion
-			err := common.pollForDetachCompletion(ctx, test.diskName, test.diskURI, test.nodeName, testCloud.VMSet)
+			err := common.pollForDetachCompletion(ctx, test.diskName, test.diskURI, test.nodeName, newProviderDiskVMSet(testCloud))
 
 			// Assert results
 			if test.expectedErr {
@@ -1985,7 +1986,7 @@ func TestPollForDetachCompletionWithCache(t *testing.T) {
 			lockMap: newLockMap(),
 		}
 
-		err := common.pollForDetachCompletion(ctx, diskName, diskURI, nodeName, testCloud.VMSet)
+		err := common.pollForDetachCompletion(ctx, diskName, diskURI, nodeName, newProviderDiskVMSet(testCloud))
 		assert.NoError(t, err)
 		// Verify that Get was called at least twice (once with disk, once without)
 		assert.GreaterOrEqual(t, atomic.LoadInt32(&getCallCount), int32(2), "Expected at least 2 GET calls to verify cache refresh")
