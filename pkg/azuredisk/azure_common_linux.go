@@ -29,6 +29,7 @@ import (
 	"time"
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
+	"golang.org/x/sys/unix"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"k8s.io/klog/v2"
@@ -46,6 +47,13 @@ const (
 	fsckErrorsUncorrected = 4
 	// 'fsck' found operational error, e.g fresh block device
 	fsckOperationalError = 8
+	sysFSRoot            = "/sys/fs"
+	procFSJbd2Root       = "/proc/fs/jbd2"
+)
+
+var (
+	openMountPoint = unix.Open
+	fsync          = unix.Syncfs
 )
 
 // exclude those used by azure as resource and OS root in /dev/disk/azure, /dev/disk/azure/scsi0
@@ -565,4 +573,173 @@ func (d *Driver) GetVolumeStats(_ context.Context, m *mount.SafeFormatAndMount, 
 			Used:      inodesUsed,
 		},
 	}, nil
+}
+
+// Performs sync operation on the filesystem mounted at the given mount point
+func syncFilesystemAtMountPoint(mountPoint string, mounter *mount.SafeFormatAndMount) error {
+	pathExists, pathErr := mount.PathExists(mountPoint)
+	if mount.IsCorruptedMnt(pathErr) {
+		klog.Warningf("Skipping filesystem sync at corrupted mount point %q: %v", mountPoint, pathErr)
+		return nil
+	}
+	if pathErr != nil {
+		return fmt.Errorf("error checking mount point path %q before sync: %w", mountPoint, pathErr)
+	}
+	if !pathExists {
+		klog.Warningf("Skipping filesystem sync because mount point does not exist: %q", mountPoint)
+		return nil
+	}
+
+	shouldSync, err := shouldSyncFilesystem(mountPoint, mounter)
+	if err != nil {
+		return fmt.Errorf("error checking whether %q is a mount point before sync: %w", mountPoint, err)
+	}
+	if !shouldSync {
+		return nil
+	}
+
+	mountDir, err := openMountPoint(mountPoint, unix.O_RDONLY|unix.O_DIRECTORY|unix.O_CLOEXEC, 0)
+	if err != nil {
+		return err
+	}
+	defer unix.Close(mountDir)
+
+	klog.V(2).Infof("Syncing filesystem at mount point %q", mountPoint)
+	if err := fsync(mountDir); err != nil {
+		return fmt.Errorf("fsync %q: %w", mountPoint, err)
+	}
+	klog.V(2).Infof("Finished syncing filesystem at mount point %q", mountPoint)
+	return nil
+}
+
+func shouldSyncFilesystem(mountPoint string, mounter *mount.SafeFormatAndMount) (bool, error) {
+	isMountPoint, mountErr := mounter.IsMountPoint(mountPoint)
+	if mount.IsCorruptedMnt(mountErr) {
+		klog.Warningf("Skipping filesystem sync at corrupted mount point %q: %v", mountPoint, mountErr)
+		return false, nil
+	}
+	if mountErr != nil {
+		return false, mountErr
+	}
+	if !isMountPoint {
+		klog.V(2).Infof("Skipping filesystem sync because path is not a mount point: %q", mountPoint)
+		return false, nil
+	}
+	return isMountPoint, nil
+}
+
+func waitFSShutdownForDevice(devicePath string, stagingTargetPath string, mounter *mount.SafeFormatAndMount, timeout time.Duration) {
+	fsType, err := mounter.GetDiskFormat(devicePath)
+	if err != nil {
+		klog.Warningf("NodeUnstageVolume - failed to get filesystem type for device %q: %v", devicePath, err)
+		return
+	}
+	fsInstance, err := filesystemInstanceName(devicePath, fsType, mounter)
+	if err != nil {
+		klog.Warningf("NodeUnstageVolume - failed to get filesystem instance for device %q: %v", devicePath, err)
+		return
+	}
+
+	klog.V(2).Infof("NodeUnstageVolume: waiting for filesystem to shutdown staging path %s device %s", stagingTargetPath, devicePath)
+	waitFSShutdown(devicePath, fsType, fsInstance, timeout)
+}
+
+// waitFSShutdown waits until the filesystem and journal entries disappear.
+func waitFSShutdown(devicePath string, fsType string, fsInstance string, timeout time.Duration) {
+	waitFSShutdownWithRoots(devicePath, fsType, fsInstance, timeout, sysFSRoot, procFSJbd2Root)
+}
+
+func filesystemInstanceName(devicePath string, fsType string, mounter *mount.SafeFormatAndMount) (string, error) {
+	if strings.EqualFold(fsType, "btrfs") {
+		output, err := mounter.Exec.Command("blkid", "-s", "UUID", "-o", "value", devicePath).Output()
+		if err != nil {
+			return "", fmt.Errorf("failed to get btrfs FSID for device %q: %w", devicePath, err)
+		}
+		fsID := strings.TrimSpace(string(output))
+		if fsID == "" || fsID == "." || fsID == ".." || filepath.Base(fsID) != fsID {
+			return "", fmt.Errorf("invalid btrfs FSID %q for device %q", fsID, devicePath)
+		}
+		return fsID, nil
+	}
+	return filepath.Base(devicePath), nil
+}
+
+func waitFSShutdownWithRoots(
+	devicePath string,
+	fsType string,
+	fsInstance string,
+	timeout time.Duration,
+	sysFSRoot string,
+	jbd2Root string) []string {
+	deviceName := strings.TrimPrefix(devicePath, "/dev/")
+	start := time.Now()
+	var errorMessages []string
+
+	if fsType != "" {
+		sysFSEntry := filepath.Join(sysFSRoot, fsType, fsInstance)
+		if err := waitFileRemoval(sysFSEntry, start, timeout); err != nil {
+			message := fmt.Sprintf("filesystem sysfs entry %q was not removed: %v", sysFSEntry, err)
+			klog.Warning(message)
+			errorMessages = append(errorMessages, message)
+		}
+	}
+
+	journalPattern := journalEntryGlobAt(jbd2Root, fsType, deviceName)
+	if journalPattern != "" {
+		journalEntries, err := filepath.Glob(journalPattern)
+		if err != nil {
+			message := fmt.Sprintf("failed to find journal entries matching %q: %v", journalPattern, err)
+			klog.Warning(message)
+			errorMessages = append(errorMessages, message)
+		} else {
+			for _, journalEntry := range journalEntries {
+				if err := waitFileRemoval(journalEntry, start, timeout); err != nil {
+					message := fmt.Sprintf("journal entry %q was not removed: %v", journalEntry, err)
+					klog.Warning(message)
+					errorMessages = append(errorMessages, message)
+				}
+			}
+		}
+	}
+
+	if len(errorMessages) == 0 {
+		klog.V(2).Infof("Filesystem shutdown completed for device %q", devicePath)
+		return nil
+	}
+
+	klog.Warningf("Filesystem shutdown checks failed for device %q: %s", devicePath, strings.Join(errorMessages, "; "))
+	return errorMessages
+}
+
+func journalEntryGlob(fsType string, deviceName string) string {
+	return journalEntryGlobAt(procFSJbd2Root, fsType, deviceName)
+}
+
+func journalEntryGlobAt(jbd2Root string, fsType string, deviceName string) string {
+	if fsType != "ext4" {
+		return ""
+	}
+	return filepath.Join(jbd2Root, deviceName+"-*")
+}
+
+func waitFileRemoval(path string, start time.Time, timeout time.Duration) error {
+	deadline := start.Add(timeout)
+	ticker := time.NewTicker(100 * time.Millisecond)
+	defer ticker.Stop()
+
+	for {
+		_, err := os.Stat(path)
+		switch {
+		case os.IsNotExist(err):
+			return nil
+		case err != nil:
+			return fmt.Errorf("stat %q: %w", path, err)
+		}
+
+		if !time.Now().Before(deadline) {
+			return fmt.Errorf("timed out waiting for %q to be removed", path)
+		}
+
+		<-ticker.C
+	}
 }

@@ -169,6 +169,7 @@ type Driver struct {
 	nodeLister                      cache.GenericLister
 	nodeInformerSynced              cache.InformerSynced
 	nodeInformerFactory             metadatainformer.SharedInformerFactory
+	filesystemShutdownTimeout       time.Duration
 }
 
 // NewDriver Creates a NewCSIDriver object. Assumes vendor version is equal to driver version &
@@ -223,6 +224,7 @@ func NewDriver(options *DriverOptions) *Driver {
 		driver.formatSem = make(chan any, int(options.MaxConcurrentFormat))
 		driver.formatTimeout = time.Duration(options.ConcurrentFormatTimeout) * time.Second
 	}
+	driver.filesystemShutdownTimeout = time.Duration(options.FilesystemShutdownTimeout) * time.Second
 	driver.enableMinimumRetryAfter = options.EnableMinimumRetryAfter
 	driver.volumeLocks = volumehelper.NewVolumeLocks()
 	driver.ioHandler = azureutils.NewOSIOHandler()
