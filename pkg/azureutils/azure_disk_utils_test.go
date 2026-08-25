@@ -23,6 +23,7 @@ import (
 	"os"
 	"reflect"
 	"regexp"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -427,6 +428,52 @@ func TestGetFStype(t *testing.T) {
 		if result != test.expected {
 			t.Errorf("input: %q, GetFStype result: %s, expected: %s", test.options, result, test.expected)
 		}
+	}
+}
+
+func TestNormalizeFSType(t *testing.T) {
+	type testCase struct {
+		fsType      string
+		expected    string
+		expectError bool
+	}
+
+	// Rejected on every platform.
+	tests := []testCase{
+		{"", "", true},
+		{"vfat", "", true},
+		{"ext4;rm -rf /", "", true},
+		{"../../../bin/sh", "", true},
+		{"-t", "", true},
+	}
+
+	// The supported set is disjoint between platforms: the Linux image ships no NTFS
+	// formatter, and the Windows mounters only ever format NTFS.
+	if runtime.GOOS == "windows" {
+		tests = append(tests,
+			testCase{"ntfs", "ntfs", false},
+			testCase{"NTFS", "ntfs", false},
+			testCase{"  ntfs  ", "ntfs", false},
+			testCase{"ext4", "", true},
+			testCase{"xfs", "", true},
+		)
+	} else {
+		tests = append(tests,
+			testCase{"ext4", "ext4", false},
+			testCase{"ext3", "ext3", false},
+			testCase{"ext2", "ext2", false},
+			testCase{"xfs", "xfs", false},
+			testCase{"btrfs", "btrfs", false},
+			testCase{"XFS", "xfs", false},
+			testCase{"  ext4  ", "ext4", false},
+			testCase{"ntfs", "", true},
+		)
+	}
+
+	for _, test := range tests {
+		result, err := NormalizeFSType(test.fsType)
+		assert.Equal(t, test.expectError, err != nil, "input: %q, err: %v", test.fsType, err)
+		assert.Equal(t, test.expected, result, "input: %q", test.fsType)
 	}
 }
 
