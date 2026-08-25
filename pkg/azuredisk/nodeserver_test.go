@@ -401,6 +401,96 @@ func TestNodeGetVolumeStats(t *testing.T) {
 	}
 }
 
+// TestResolveFSType runs on every platform, including the Windows CI runner, because it
+// needs no mounter: NewFakeSafeMounter returns a real csi-proxy mounter on Windows, which
+// is why the NodeStageVolume cases below are all skipped there.
+func TestResolveFSType(t *testing.T) {
+	mountCap := func(fsType string, flags ...string) *csi.VolumeCapability {
+		return &csi.VolumeCapability{
+			AccessType: &csi.VolumeCapability_Mount{
+				Mount: &csi.VolumeCapability_MountVolume{FsType: fsType, MountFlags: flags},
+			},
+		}
+	}
+	blockCap := &csi.VolumeCapability{
+		AccessType: &csi.VolumeCapability_Block{Block: &csi.VolumeCapability_BlockVolume{}},
+	}
+
+	t.Run("block access type has no fsType", func(t *testing.T) {
+		fstype, flags, err := resolveFSType(blockCap, map[string]string{consts.FsTypeField: "vfat"})
+		require.NoError(t, err)
+		assert.Empty(t, fstype)
+		assert.Empty(t, flags)
+	})
+
+	t.Run("default is used when nothing is set", func(t *testing.T) {
+		fstype, _, err := resolveFSType(mountCap(""), nil)
+		require.NoError(t, err)
+		assert.Equal(t, getDefaultFsType(), fstype)
+	})
+
+	t.Run("mount flags are preserved", func(t *testing.T) {
+		_, flags, err := resolveFSType(mountCap("", "barrier=1", "acl"), nil)
+		require.NoError(t, err)
+		assert.Equal(t, []string{"barrier=1", "acl"}, flags)
+	})
+
+	if runtime.GOOS == "windows" {
+		// The Windows mounters ignore fsType and always format NTFS, so an unsupported
+		// value must degrade to the default rather than fail staging.
+		t.Run("unsupported fsType falls back to ntfs", func(t *testing.T) {
+			for _, fsType := range []string{"ext4", "xfs", "btrfs", "vfat", "ext4;rm -rf /"} {
+				fstype, flags, err := resolveFSType(mountCap(fsType, "acl"), nil)
+				require.NoError(t, err, "fsType %q must not fail staging on windows", fsType)
+				assert.Equal(t, defaultWindowsFsType, fstype, "fsType %q", fsType)
+				assert.Equal(t, []string{"acl"}, flags, "fsType %q", fsType)
+			}
+		})
+
+		t.Run("unsupported fsType from volumeAttributes falls back to ntfs", func(t *testing.T) {
+			fstype, _, err := resolveFSType(mountCap("ntfs"), map[string]string{consts.FsTypeField: "ext4"})
+			require.NoError(t, err)
+			assert.Equal(t, defaultWindowsFsType, fstype)
+		})
+
+		t.Run("ntfs is accepted", func(t *testing.T) {
+			fstype, _, err := resolveFSType(mountCap("NTFS"), nil)
+			require.NoError(t, err)
+			assert.Equal(t, defaultWindowsFsType, fstype)
+		})
+	} else {
+		t.Run("unsupported fsType is rejected", func(t *testing.T) {
+			for _, fsType := range []string{"ntfs", "vfat", "ext4;rm -rf /"} {
+				_, _, err := resolveFSType(mountCap(fsType), nil)
+				require.Error(t, err, "fsType %q must be rejected", fsType)
+			}
+		})
+
+		t.Run("volumeAttributes overrides the capability", func(t *testing.T) {
+			fstype, _, err := resolveFSType(mountCap("ext4"), map[string]string{consts.FsTypeField: "xfs"})
+			require.NoError(t, err)
+			assert.Equal(t, "xfs", fstype)
+		})
+
+		t.Run("casing is normalized", func(t *testing.T) {
+			fstype, _, err := resolveFSType(mountCap("XFS"), nil)
+			require.NoError(t, err)
+			assert.Equal(t, "xfs", fstype)
+		})
+	}
+}
+
+// assertMountedXFSWithNouuid checks that the fstype resolved by NodeStageVolume is what
+// actually reached mount, and that collectMountOptions saw it (xfs implies "nouuid").
+func assertMountedXFSWithNouuid(t *testing.T, d FakeDriver) {
+	t.Helper()
+	fake, ok := d.getMounter().Interface.(*mounter.FakeSafeMounter)
+	require.True(t, ok, "expected a FakeSafeMounter")
+	require.Len(t, fake.MountCalls, 1, "expected exactly one mount")
+	assert.Equal(t, "xfs", fake.MountCalls[0].FSType)
+	assert.Contains(t, fake.MountCalls[0].Options, "nouuid")
+}
+
 func TestNodeStageVolume(t *testing.T) {
 	cntl := gomock.NewController(t)
 	defer cntl.Finish()
@@ -423,6 +513,22 @@ func TestNodeStageVolume(t *testing.T) {
 	volumeContextWithPerfProfileField := map[string]string{
 		consts.PerfProfileField: "wrong",
 	}
+	volumeContextWithInvalidFSType := map[string]string{
+		consts.FsTypeField: "vfat",
+	}
+	volumeContextWithXFS := map[string]string{
+		consts.FsTypeField: "xfs",
+	}
+	volumeContextWithNTFS := map[string]string{
+		consts.FsTypeField: "ntfs",
+	}
+
+	// fsType casing is normalized before it reaches mkfs/mount and collectMountOptions.
+	stdVolCapUpperXFS := &csi.VolumeCapability_Mount{
+		Mount: &csi.VolumeCapability_MountVolume{
+			FsType: "XFS",
+		},
+	}
 
 	stdVolCapBlock := &csi.VolumeCapability_Block{
 		Block: &csi.VolumeCapability_BlockVolume{},
@@ -440,6 +546,9 @@ func TestNodeStageVolume(t *testing.T) {
 	blkidAction := func() ([]byte, []byte, error) {
 		return []byte("DEVICE=/dev/sdd\nTYPE=ext4"), []byte{}, nil
 	}
+	xfsBlkidAction := func() ([]byte, []byte, error) {
+		return []byte("DEVICE=/dev/sdd\nTYPE=xfs"), []byte{}, nil
+	}
 	fsckAction := func() ([]byte, []byte, error) {
 		return []byte{}, []byte{}, nil
 	}
@@ -451,13 +560,18 @@ func TestNodeStageVolume(t *testing.T) {
 	}
 
 	tests := []struct {
-		desc          string
-		setupFunc     func(*testing.T, FakeDriver)
-		req           *csi.NodeStageVolumeRequest
-		expectedErr   error
-		skipOnDarwin  bool
-		skipOnWindows bool
-		cleanupFunc   func(*testing.T, FakeDriver)
+		desc        string
+		setupFunc   func(*testing.T, FakeDriver)
+		req         *csi.NodeStageVolumeRequest
+		expectedErr error
+		// expectedCode/expectedErrContains assert on the status code plus message
+		// substrings, for cases where the exact wording is not what's under test.
+		expectedCode        codes.Code
+		expectedErrContains []string
+		skipOnDarwin        bool
+		skipOnWindows       bool
+		validateFunc        func(*testing.T, FakeDriver)
+		cleanupFunc         func(*testing.T, FakeDriver)
 	}{
 		{
 			desc:        "Volume ID missing",
@@ -513,6 +627,81 @@ func TestNodeStageVolume(t *testing.T) {
 				VolumeContext:  volumeContext,
 			},
 			expectedErr: status.Error(codes.Internal, "failed to find disk on lun /dev/01. cannot parse deviceInfo: /dev/01"),
+		},
+		{
+			desc:          "Unsupported fsType",
+			skipOnDarwin:  true,
+			skipOnWindows: true,
+			req: &csi.NodeStageVolumeRequest{VolumeId: "vol_1", StagingTargetPath: sourceTest,
+				VolumeCapability: &csi.VolumeCapability{AccessMode: &volumeCap,
+					AccessType: stdVolCap},
+				PublishContext: publishContext,
+				VolumeContext:  volumeContextWithInvalidFSType,
+			},
+			expectedCode:        codes.InvalidArgument,
+			expectedErrContains: []string{"vfat", "not supported"},
+		},
+		{
+			// No PublishContext: fsType must be rejected before the LUN is even read, so
+			// that a bad value cannot first trigger a device rescan that polls for minutes.
+			desc:          "invalid fsType rejected before LUN handling",
+			skipOnDarwin:  true,
+			skipOnWindows: true,
+			req: &csi.NodeStageVolumeRequest{VolumeId: "vol_1", StagingTargetPath: sourceTest,
+				VolumeCapability: &csi.VolumeCapability{AccessMode: &volumeCap,
+					AccessType: stdVolCap},
+				VolumeContext: volumeContextWithInvalidFSType,
+			},
+			expectedCode:        codes.InvalidArgument,
+			expectedErrContains: []string{"vfat", "not supported"},
+		},
+		{
+			// The Linux image ships no NTFS formatter. Windows takes the opposite path and
+			// falls back to the default instead of erroring, which needs a Windows runner.
+			desc:          "ntfs rejected on Linux",
+			skipOnDarwin:  true,
+			skipOnWindows: true,
+			req: &csi.NodeStageVolumeRequest{VolumeId: "vol_1", StagingTargetPath: sourceTest,
+				VolumeCapability: &csi.VolumeCapability{AccessMode: &volumeCap,
+					AccessType: stdVolCap},
+				PublishContext: publishContext,
+				VolumeContext:  volumeContextWithNTFS,
+			},
+			expectedCode:        codes.InvalidArgument,
+			expectedErrContains: []string{"ntfs", "not supported"},
+		},
+		{
+			// volumeAttributes.fsType overrides the volume capability, so "nouuid" must be
+			// derived from the override rather than from the capability's ext4.
+			desc:          "xfs from volumeAttributes overrides volume capability and gets nouuid",
+			skipOnDarwin:  true,
+			skipOnWindows: true,
+			setupFunc: func(_ *testing.T, d FakeDriver) {
+				d.setNextCommandOutputScripts(xfsBlkidAction, fsckAction, blockSizeAction, xfsBlkidAction, blockSizeAction, xfsBlkidAction)
+			},
+			req: &csi.NodeStageVolumeRequest{VolumeId: "vol_1", StagingTargetPath: sourceTest,
+				VolumeCapability: &csi.VolumeCapability{AccessMode: &volumeCap,
+					AccessType: stdVolCap},
+				PublishContext: publishContext,
+				VolumeContext:  volumeContextWithXFS,
+			},
+			expectedErr:  nil,
+			validateFunc: assertMountedXFSWithNouuid,
+		},
+		{
+			desc:          "uppercase XFS in volume capability is normalized and gets nouuid",
+			skipOnDarwin:  true,
+			skipOnWindows: true,
+			setupFunc: func(_ *testing.T, d FakeDriver) {
+				d.setNextCommandOutputScripts(xfsBlkidAction, fsckAction, blockSizeAction, xfsBlkidAction, blockSizeAction, xfsBlkidAction)
+			},
+			req: &csi.NodeStageVolumeRequest{VolumeId: "vol_1", StagingTargetPath: sourceTest,
+				VolumeCapability: &csi.VolumeCapability{AccessMode: &volumeCap,
+					AccessType: stdVolCapUpperXFS},
+				PublishContext: publishContext,
+			},
+			expectedErr:  nil,
+			validateFunc: assertMountedXFSWithNouuid,
 		},
 		{
 			desc:          "Successfully staged",
@@ -659,8 +848,17 @@ func TestNodeStageVolume(t *testing.T) {
 			_, err := d.NodeStageVolume(context.Background(), test.req)
 			if test.desc == "Failed volume mount" {
 				assert.Error(t, err)
+			} else if len(test.expectedErrContains) > 0 {
+				require.Error(t, err)
+				assert.Equal(t, test.expectedCode, status.Code(err), "desc: %s", test.desc)
+				for _, substr := range test.expectedErrContains {
+					assert.Contains(t, status.Convert(err).Message(), substr, "desc: %s", test.desc)
+				}
 			} else if !reflect.DeepEqual(err, test.expectedErr) {
 				t.Errorf("desc: %s\n actualErr: (%v), expectedErr: (%v)", test.desc, err, test.expectedErr)
+			}
+			if test.validateFunc != nil {
+				test.validateFunc(t, d)
 			}
 			if test.cleanupFunc != nil {
 				test.cleanupFunc(t, d)
