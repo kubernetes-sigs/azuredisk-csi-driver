@@ -155,6 +155,7 @@ spec:
               name: mountpoint-dir
             - mountPath: /etc/kubernetes/
               name: azure-cred
+              readOnly: true
             - mountPath: /dev
               name: device-dir
             - mountPath: /sys/bus/scsi/devices
