@@ -57,117 +57,12 @@ const (
 	maxSnapshotSizeDifferenceAllowed = 50 // in GiB
 )
 
-// truncateErrMsg truncates long error messages while preserving both the
-// beginning (context) and end (critical details like permission errors).
-// This ensures that important information at the tail of verbose Azure
-// error messages (e.g., missing permissions) remains visible in kube-events
-// which are limited to 1024 bytes.
-func truncateErrMsg(errMsg string) string {
-	if len(errMsg) <= maxErrMsgLength {
-		return errMsg
-	}
-	// Keep head (~40%) for context and tail (~60%) for critical error details.
-	const ellipsis = " ... "
-	headLen := (maxErrMsgLength - len(ellipsis)) * 2 / 5
-	tailLen := maxErrMsgLength - headLen - len(ellipsis)
-	return errMsg[:headLen] + ellipsis + errMsg[len(errMsg)-tailLen:]
-}
-
 // listVolumeStatus explains the return status of `listVolumesByResourceGroup`
 type listVolumeStatus struct {
 	numVisited    int  // the number of iterated azure disks
 	isCompleteRun bool // isCompleteRun is flagged true if the function iterated through all azure disks
 	entries       []*csi.ListVolumesResponse_Entry
 	err           error
-}
-
-// startSKUMigrationMonitor starts (idempotently) an asynchronous monitor that tracks
-// migration of a managed disk from one SKU to another (currently only when moving
-// to PremiumV2).
-//
-// Parameters:
-//
-//	ctx                - request context
-//	isProvisioningFlow - true when invoked from CreateVolume (PV may not exist yet);
-//	                     false when invoked from ModifyVolume (PV should already exist).
-//	fromSKUStr         - original disk SKU name (string form, may differ in casing)
-//	toSKU              - target armcompute.DiskStorageAccountTypes (must be PremiumV2LRS to proceed)
-//	diskURI            - full Azure disk resource ID
-//	pvName             - Kubernetes PV name if known (CreateVolume path supplies req.Name;
-//	                     ModifyVolume path does not, so we derive it from diskURI)
-//	sizeBytes          - disk size (used to derive migration timeout)
-//
-// Workflow / decision points:
-// 1. Guard clauses:
-//   - If no migration monitor is configured OR fromSKUStr empty: do nothing.
-//   - If target SKU is not PremiumV2 OR already matches fromSKU: no migration needed.
-//
-// 2. PV name resolution:
-//   - If pvName is empty (ModifyVolume path) attempt to parse diskURI and use its last
-//     token (disk name) as the PV name.
-//   - If the cluster used static provisioning with a PV name different from the Azure
-//     disk name, this heuristic cannot map the disk to the PV; monitoring is skipped.
-//
-// 3. StartMonitoring call:
-//   - Calls migrationMonitor.StartMigrationMonitoring(ctx, isProvisioningFlow, ...).
-//   - isProvisioningFlow influences initial behavior inside the monitor:
-//   - Provisioning (true): PV may not yet exist. The monitor records a task with
-//     empty PVC metadata, attempts an initial label add (may fail if PV absent),
-//     and defers PV / PVC discovery, labeling, and start event emission to the
-//     periodic polling loop (monitorMigrationProgress).
-//   - Modify (false): PV should exist. The monitor immediately fetches the PV,
-//     derives PVC name/namespace, adds/ensures the migration label, and emits
-//     the "Started" event (unless label already existed; then it logs a resume).
-//
-// 4. Label management:
-//   - addMigrationLabelIfNotExists is executed once at start; if it fails (e.g. PV
-//     not yet created) task.PVLabeled remains false. The polling loop will retry
-//     labeling until successful.
-//
-// 5. Asynchronous monitoring:
-//   - A goroutine watches progress (polling Azure), emitting events for start (if
-//     deferred), incremental progress, completion, failure or timeout.
-//
-// 6. Error handling:
-//   - Non‑fatal issues (parse failure, start error) are logged and abort initiation
-//     for that disk; they do not propagate back to the CSI operation.
-//
-// Concurrency notes:
-//   - This function itself is lightweight and only delegates; StartMigrationMonitoring
-//     handles internal synchronization of task state.
-//   - Idempotency: if monitoring is already active for diskURI, underlying monitor
-//     short‑circuits.
-//
-// Returns: nothing; logs warnings on recoverable issues.
-//
-// NOTE: If future migrations support additional target SKUs, relax the toSKU check.
-func (d *Driver) startSKUMigrationMonitor(
-	ctx context.Context,
-	isProvisioningFlow bool,
-	fromSKUStr string,
-	toSKU armcompute.DiskStorageAccountTypes,
-	diskURI, pvName string,
-	sizeBytes int64,
-) {
-	if d.migrationMonitor == nil || fromSKUStr == "" {
-		return
-	}
-
-	if toSKU != armcompute.DiskStorageAccountTypesPremiumV2LRS || fromSKUStr == string(toSKU) {
-		return
-	}
-	if pvName == "" {
-		var parseErr error
-		_, _, pvName, parseErr = azureutils.GetInfoFromURI(diskURI)
-		if parseErr != nil {
-			klog.Warningf("Skipping monitor, failed to extract pv name from URI %s: %v", diskURI, parseErr)
-			return
-		}
-	}
-	if err := d.migrationMonitor.StartMigrationMonitoring(
-		ctx, isProvisioningFlow, diskURI, pvName, fromSKUStr, toSKU, sizeBytes); err != nil {
-		klog.Warningf("failed to start SKU migration monitoring for %s: %v", diskURI, err)
-	}
 }
 
 // CreateVolume provisions an azure disk
@@ -1610,6 +1505,95 @@ func (d *Driver) getSnapshot(ctx context.Context, sourceID string) (*armcompute.
 	return snapshotRetrieved, nil
 }
 
+// startSKUMigrationMonitor starts (idempotently) an asynchronous monitor that tracks
+// migration of a managed disk from one SKU to another (currently only when moving
+// to PremiumV2).
+//
+// Parameters:
+//
+//	ctx                - request context
+//	isProvisioningFlow - true when invoked from CreateVolume (PV may not exist yet);
+//	                     false when invoked from ModifyVolume (PV should already exist).
+//	fromSKUStr         - original disk SKU name (string form, may differ in casing)
+//	toSKU              - target armcompute.DiskStorageAccountTypes (must be PremiumV2LRS to proceed)
+//	diskURI            - full Azure disk resource ID
+//	pvName             - Kubernetes PV name if known (CreateVolume path supplies req.Name;
+//	                     ModifyVolume path does not, so we derive it from diskURI)
+//	sizeBytes          - disk size (used to derive migration timeout)
+//
+// Workflow / decision points:
+// 1. Guard clauses:
+//   - If no migration monitor is configured OR fromSKUStr empty: do nothing.
+//   - If target SKU is not PremiumV2 OR already matches fromSKU: no migration needed.
+//
+// 2. PV name resolution:
+//   - If pvName is empty (ModifyVolume path) attempt to parse diskURI and use its last
+//     token (disk name) as the PV name.
+//   - If the cluster used static provisioning with a PV name different from the Azure
+//     disk name, this heuristic cannot map the disk to the PV; monitoring is skipped.
+//
+// 3. StartMonitoring call:
+//   - Calls migrationMonitor.StartMigrationMonitoring(ctx, isProvisioningFlow, ...).
+//   - isProvisioningFlow influences initial behavior inside the monitor:
+//   - Provisioning (true): PV may not yet exist. The monitor records a task with
+//     empty PVC metadata, attempts an initial label add (may fail if PV absent),
+//     and defers PV / PVC discovery, labeling, and start event emission to the
+//     periodic polling loop (monitorMigrationProgress).
+//   - Modify (false): PV should exist. The monitor immediately fetches the PV,
+//     derives PVC name/namespace, adds/ensures the migration label, and emits
+//     the "Started" event (unless label already existed; then it logs a resume).
+//
+// 4. Label management:
+//   - addMigrationLabelIfNotExists is executed once at start; if it fails (e.g. PV
+//     not yet created) task.PVLabeled remains false. The polling loop will retry
+//     labeling until successful.
+//
+// 5. Asynchronous monitoring:
+//   - A goroutine watches progress (polling Azure), emitting events for start (if
+//     deferred), incremental progress, completion, failure or timeout.
+//
+// 6. Error handling:
+//   - Non‑fatal issues (parse failure, start error) are logged and abort initiation
+//     for that disk; they do not propagate back to the CSI operation.
+//
+// Concurrency notes:
+//   - This function itself is lightweight and only delegates; StartMigrationMonitoring
+//     handles internal synchronization of task state.
+//   - Idempotency: if monitoring is already active for diskURI, underlying monitor
+//     short‑circuits.
+//
+// Returns: nothing; logs warnings on recoverable issues.
+//
+// NOTE: If future migrations support additional target SKUs, relax the toSKU check.
+func (d *Driver) startSKUMigrationMonitor(
+	ctx context.Context,
+	isProvisioningFlow bool,
+	fromSKUStr string,
+	toSKU armcompute.DiskStorageAccountTypes,
+	diskURI, pvName string,
+	sizeBytes int64,
+) {
+	if d.migrationMonitor == nil || fromSKUStr == "" {
+		return
+	}
+
+	if toSKU != armcompute.DiskStorageAccountTypesPremiumV2LRS || fromSKUStr == string(toSKU) {
+		return
+	}
+	if pvName == "" {
+		var parseErr error
+		_, _, pvName, parseErr = azureutils.GetInfoFromURI(diskURI)
+		if parseErr != nil {
+			klog.Warningf("Skipping monitor, failed to extract pv name from URI %s: %v", diskURI, parseErr)
+			return
+		}
+	}
+	if err := d.migrationMonitor.StartMigrationMonitoring(
+		ctx, isProvisioningFlow, diskURI, pvName, fromSKUStr, toSKU, sizeBytes); err != nil {
+		klog.Warningf("failed to start SKU migration monitoring for %s: %v", diskURI, err)
+	}
+}
+
 // getSnapshotSKU retrieves the SKU of the snapshot and returns the SKU or if any error occurs
 func getSnapshotSKUFromSnapshot(computeSnapshot *armcompute.Snapshot) (string, error) {
 	if computeSnapshot == nil {
@@ -1643,4 +1627,20 @@ func inlineVolumeSpecMatchesDisk(driverName, diskURI string, va *storagev1.Volum
 		return true
 	}
 	return false
+}
+
+// truncateErrMsg truncates long error messages while preserving both the
+// beginning (context) and end (critical details like permission errors).
+// This ensures that important information at the tail of verbose Azure
+// error messages (e.g., missing permissions) remains visible in kube-events
+// which are limited to 1024 bytes.
+func truncateErrMsg(errMsg string) string {
+	if len(errMsg) <= maxErrMsgLength {
+		return errMsg
+	}
+	// Keep head (~40%) for context and tail (~60%) for critical error details.
+	const ellipsis = " ... "
+	headLen := (maxErrMsgLength - len(ellipsis)) * 2 / 5
+	tailLen := maxErrMsgLength - headLen - len(ellipsis)
+	return errMsg[:headLen] + ellipsis + errMsg[len(errMsg)-tailLen:]
 }
