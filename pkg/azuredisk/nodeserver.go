@@ -41,6 +41,7 @@ import (
 	"k8s.io/klog/v2"
 	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
+	csiMetrics "sigs.k8s.io/azuredisk-csi-driver/pkg/metrics"
 )
 
 const (
@@ -60,8 +61,15 @@ func getDefaultFsType() string {
 
 // NodeStageVolume mount disk device to a staging path
 func (d *Driver) NodeStageVolume(_ context.Context, req *csi.NodeStageVolumeRequest) (*csi.NodeStageVolumeResponse, error) {
-	diskURI := req.GetVolumeId()
-	if len(diskURI) == 0 {
+	metricsRequest := "node_stage_volume"
+	csiMC := csiMetrics.NewCSIMetricContext(metricsRequest)
+	isOperationSucceeded := false
+	defer func() {
+		csiMC.Observe(isOperationSucceeded)
+	}()
+
+	volumeID := req.GetVolumeId()
+	if len(volumeID) == 0 {
 		return nil, status.Error(codes.InvalidArgument, "Volume ID not provided")
 	}
 
@@ -85,16 +93,15 @@ func (d *Driver) NodeStageVolume(_ context.Context, req *csi.NodeStageVolumeRequ
 		return nil, status.Error(codes.InvalidArgument, err.Error())
 	}
 
-	mc := metrics.NewMetricContext(consts.AzureDiskCSIDriverName, "node_stage_volume", d.cloud.ResourceGroup, "", d.Name)
-	isOperationSucceeded := false
+	mc := metrics.NewMetricContext(consts.AzureDiskCSIDriverName, metricsRequest, d.cloud.ResourceGroup, "", d.Name)
 	defer func() {
-		mc.ObserveOperationWithResult(isOperationSucceeded, consts.VolumeID, diskURI)
+		mc.ObserveOperationWithResult(isOperationSucceeded, consts.VolumeID, volumeID)
 	}()
 
-	if acquired := d.volumeLocks.TryAcquire(diskURI); !acquired {
-		return nil, status.Errorf(codes.Aborted, volumeOperationAlreadyExistsFmt, diskURI)
+	if acquired := d.volumeLocks.TryAcquire(volumeID); !acquired {
+		return nil, status.Errorf(codes.Aborted, volumeOperationAlreadyExistsFmt, volumeID)
 	}
-	defer d.volumeLocks.Release(diskURI)
+	defer d.volumeLocks.Release(volumeID)
 
 	lun, ok := req.PublishContext[consts.LUN]
 	if !ok {
@@ -175,17 +182,17 @@ func (d *Driver) NodeStageVolume(_ context.Context, req *csi.NodeStageVolumeRequ
 		// Filesystem resize is required after snapshot restore / volume clone
 		// https://github.com/kubernetes/kubernetes/issues/94929
 		if needResize, err = needResizeVolume(source, target, d.mounter); err != nil {
-			klog.Errorf("NodeStageVolume: could not determine if volume %s needs to be resized: %v", diskURI, err)
+			klog.Errorf("NodeStageVolume: could not determine if volume %s needs to be resized: %v", volumeID, err)
 		}
 	}
 
 	// if resize is required, resize filesystem
 	if needResize {
-		klog.V(2).Infof("NodeStageVolume: fs resize initiating on target(%s) volumeid(%s)", target, diskURI)
+		klog.V(2).Infof("NodeStageVolume: fs resize initiating on target(%s) volumeid(%s)", target, volumeID)
 		if err := resizeVolume(source, target, d.mounter); err != nil {
 			return nil, status.Errorf(codes.Internal, "NodeStageVolume: could not resize volume %s (%s):  %v", source, target, err)
 		}
-		klog.V(2).Infof("NodeStageVolume: fs resize successful on target(%s) volumeid(%s).", target, diskURI)
+		klog.V(2).Infof("NodeStageVolume: fs resize successful on target(%s) volumeid(%s).", target, volumeID)
 	}
 	isOperationSucceeded = true
 	return &csi.NodeStageVolumeResponse{}, nil
@@ -193,6 +200,13 @@ func (d *Driver) NodeStageVolume(_ context.Context, req *csi.NodeStageVolumeRequ
 
 // NodeUnstageVolume unmount disk device from a staging path
 func (d *Driver) NodeUnstageVolume(_ context.Context, req *csi.NodeUnstageVolumeRequest) (*csi.NodeUnstageVolumeResponse, error) {
+	metricsRequest := "node_unstage_volume"
+	csiMC := csiMetrics.NewCSIMetricContext(metricsRequest)
+	isOperationSucceeded := false
+	defer func() {
+		csiMC.Observe(isOperationSucceeded)
+	}()
+
 	volumeID := req.GetVolumeId()
 	if len(volumeID) == 0 {
 		return nil, status.Error(codes.InvalidArgument, "Volume ID not provided")
@@ -203,8 +217,7 @@ func (d *Driver) NodeUnstageVolume(_ context.Context, req *csi.NodeUnstageVolume
 		return nil, status.Error(codes.InvalidArgument, "Staging target not provided")
 	}
 
-	mc := metrics.NewMetricContext(consts.AzureDiskCSIDriverName, "node_unstage_volume", d.cloud.ResourceGroup, "", d.Name)
-	isOperationSucceeded := false
+	mc := metrics.NewMetricContext(consts.AzureDiskCSIDriverName, metricsRequest, d.cloud.ResourceGroup, "", d.Name)
 	defer func() {
 		mc.ObserveOperationWithResult(isOperationSucceeded, consts.VolumeID, volumeID)
 	}()
@@ -226,6 +239,12 @@ func (d *Driver) NodeUnstageVolume(_ context.Context, req *csi.NodeUnstageVolume
 
 // NodePublishVolume mount the volume from staging to target path
 func (d *Driver) NodePublishVolume(_ context.Context, req *csi.NodePublishVolumeRequest) (*csi.NodePublishVolumeResponse, error) {
+	csiMC := csiMetrics.NewCSIMetricContext("node_publish_volume")
+	isOperationSucceeded := false
+	defer func() {
+		csiMC.Observe(isOperationSucceeded)
+	}()
+
 	volumeID := req.GetVolumeId()
 	if len(volumeID) == 0 {
 		return nil, status.Error(codes.InvalidArgument, "Volume ID missing in the request")
@@ -298,12 +317,18 @@ func (d *Driver) NodePublishVolume(_ context.Context, req *csi.NodePublishVolume
 	}
 
 	klog.V(2).Infof("NodePublishVolume: mount %s at %s successfully", source, target)
-
+	isOperationSucceeded = true
 	return &csi.NodePublishVolumeResponse{}, nil
 }
 
 // NodeUnpublishVolume unmount the volume from the target path
 func (d *Driver) NodeUnpublishVolume(_ context.Context, req *csi.NodeUnpublishVolumeRequest) (*csi.NodeUnpublishVolumeResponse, error) {
+	csiMC := csiMetrics.NewCSIMetricContext("node_unpublish_volume")
+	isOperationSucceeded := false
+	defer func() {
+		csiMC.Observe(isOperationSucceeded)
+	}()
+
 	targetPath := req.GetTargetPath()
 	volumeID := req.GetVolumeId()
 
@@ -325,7 +350,7 @@ func (d *Driver) NodeUnpublishVolume(_ context.Context, req *csi.NodeUnpublishVo
 	}
 
 	klog.V(2).Infof("NodeUnpublishVolume: unmount volume %s on %s successfully", volumeID, targetPath)
-
+	isOperationSucceeded = true
 	return &csi.NodeUnpublishVolumeResponse{}, nil
 }
 
@@ -480,6 +505,13 @@ func (d *Driver) NodeGetVolumeStats(ctx context.Context, req *csi.NodeGetVolumeS
 
 // NodeExpandVolume node expand volume
 func (d *Driver) NodeExpandVolume(_ context.Context, req *csi.NodeExpandVolumeRequest) (*csi.NodeExpandVolumeResponse, error) {
+	metricsRequest := "node_expand_volume"
+	csiMC := csiMetrics.NewCSIMetricContext(metricsRequest)
+	isOperationSucceeded := false
+	defer func() {
+		csiMC.Observe(isOperationSucceeded)
+	}()
+
 	volumeID := req.GetVolumeId()
 	if len(volumeID) == 0 {
 		return nil, status.Error(codes.InvalidArgument, "Volume ID not provided")
@@ -515,8 +547,7 @@ func (d *Driver) NodeExpandVolume(_ context.Context, req *csi.NodeExpandVolumeRe
 		return &csi.NodeExpandVolumeResponse{}, nil
 	}
 
-	mc := metrics.NewMetricContext(consts.AzureDiskCSIDriverName, "node_expand_volume", d.cloud.ResourceGroup, "", d.Name)
-	isOperationSucceeded := false
+	mc := metrics.NewMetricContext(consts.AzureDiskCSIDriverName, metricsRequest, d.cloud.ResourceGroup, "", d.Name)
 	defer func() {
 		mc.ObserveOperationWithResult(isOperationSucceeded, consts.VolumeID, volumeID)
 	}()
@@ -571,7 +602,6 @@ func (d *Driver) NodeExpandVolume(_ context.Context, req *csi.NodeExpandVolumeRe
 	}
 
 	klog.V(2).Infof("NodeExpandVolume succeeded on resizing volume %v to %v", volumeID, finalBlockSizeBytes)
-
 	isOperationSucceeded = true
 	return &csi.NodeExpandVolumeResponse{
 		CapacityBytes: finalBlockSizeBytes,
