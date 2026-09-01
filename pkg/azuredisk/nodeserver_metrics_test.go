@@ -29,6 +29,7 @@ import (
 	"go.uber.org/mock/gomock"
 	"k8s.io/component-base/metrics/legacyregistry"
 
+	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/mounter"
 )
 
@@ -99,6 +100,9 @@ func TestNodeStageVolume_BlockAccessType_EmitsSuccessMetric(t *testing.T) {
 	req := &csi.NodeStageVolumeRequest{
 		VolumeId:          "vol_1",
 		StagingTargetPath: sourceTest,
+		PublishContext: map[string]string{
+			consts.LUN: "/dev/disk/azure/scsi1/lun1",
+		},
 		VolumeCapability: &csi.VolumeCapability{
 			AccessMode: &csi.VolumeCapability_AccessMode{Mode: 2},
 			AccessType: &csi.VolumeCapability_Block{
