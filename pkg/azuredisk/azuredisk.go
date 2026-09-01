@@ -149,6 +149,7 @@ type Driver struct {
 	removeNotReadyTaint                bool
 	neverStopTaintRemoval              bool
 	kubeClient                         clientset.Interface
+	kataDirectVolume                   kataDirectVolumer
 	// a timed cache storing volume stats <volumeID, volumeStats>
 	volStatsCache           azcache.Resource
 	maxConcurrentFormat     int64
@@ -227,6 +228,7 @@ func NewDriver(options *DriverOptions) *Driver {
 	driver.volumeLocks = volumehelper.NewVolumeLocks()
 	driver.ioHandler = azureutils.NewOSIOHandler()
 	driver.hostUtil = hostutil.NewHostUtil()
+	driver.kataDirectVolume = &kataDirectVolume{}
 	driver.enableMigrationMonitor = options.EnableMigrationMonitor
 	driver.convertRWCachingModeForIntreePV = options.ConvertRWCachingModeForIntreePV
 
