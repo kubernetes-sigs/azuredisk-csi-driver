@@ -988,15 +988,15 @@ func (d *Driver) ControllerExpandVolume(ctx context.Context, req *csi.Controller
 	if rerr != nil {
 		return nil, status.Errorf(codes.Internal, "GetDiskByURI(%s) failed with error(%v)", diskURI, rerr)
 	}
+	if result == nil || result.Properties == nil || result.Properties.DiskSizeGB == nil {
+		return nil, status.Errorf(codes.Internal, "could not get size of the disk(%s)", diskURI)
+	}
 
 	var diskSku string
 	if result.SKU != nil && result.SKU.Name != nil {
 		diskSku = string(*result.SKU.Name)
 	}
 
-	if result == nil || result.Properties == nil || result.Properties.DiskSizeGB == nil {
-		return nil, status.Errorf(codes.Internal, "could not get size of the disk(%s)", diskURI)
-	}
 	oldSize := *resource.NewQuantity(int64(*result.Properties.DiskSizeGB), resource.BinarySI)
 
 	mc := csiMetrics.NewCSIMetricContext("controller_expand_volume").WithBasicVolumeInfo(d.cloud.ResourceGroup, d.cloud.SubscriptionID, d.Name)
