@@ -148,6 +148,7 @@ node:
   reservedDataDiskSlotNum: 0
   supportZone: true
   allowEmptyCloudConfig: true
+  enableKataMount: false
   getNodeIDFromIMDS: false
   removeNotReadyTaint: true
   maxUnavailable: 1

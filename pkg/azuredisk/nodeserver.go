@@ -23,6 +23,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"time"
 
@@ -32,9 +33,11 @@ import (
 	azure "sigs.k8s.io/cloud-provider-azure/pkg/provider"
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
+	directvolume "github.com/kata-containers/kata-containers/src/runtime/pkg/direct-volume"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
+	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/wait"
 	cloudprovider "k8s.io/cloud-provider"
@@ -213,7 +216,7 @@ func (d *Driver) NodeUnstageVolume(_ context.Context, req *csi.NodeUnstageVolume
 }
 
 // NodePublishVolume mount the volume from staging to target path
-func (d *Driver) NodePublishVolume(_ context.Context, req *csi.NodePublishVolumeRequest) (*csi.NodePublishVolumeResponse, error) {
+func (d *Driver) NodePublishVolume(ctx context.Context, req *csi.NodePublishVolumeRequest) (*csi.NodePublishVolumeResponse, error) {
 	mc := csiMetrics.NewCSIMetricContext("node_publish_volume")
 	isOperationSucceeded := false
 	defer func() {
@@ -250,9 +253,92 @@ func (d *Driver) NodePublishVolume(_ context.Context, req *csi.NodePublishVolume
 		return nil, status.Error(codes.InvalidArgument, "Target path not provided")
 	}
 
-	err = preparePublishPath(target, d.mounter)
-	if err != nil {
-		return nil, status.Error(codes.Internal, fmt.Sprintf("Target path could not be prepared: %v", err))
+	var kataPod *corev1.Pod
+	if d.enableKataMount {
+		if kataPod, err = kataGetMountPod(ctx, d.kubeClient, params); err != nil {
+			klog.Warningf("NodePublishVolume: failed to probe pod for Kata mount for %s, falling back to regular mount: %v", target, err)
+			// Don't return, fall back to regular handling.
+		}
+	}
+
+	// Kata already supports raw block volumes through the regular device publish path.
+	if kataPod != nil && volumeCapability.GetBlock() == nil {
+		// Direct assignment requires pod-exclusive access enforced by ReadWriteOncePod.
+		if volumeCapability.GetAccessMode().GetMode() != csi.VolumeCapability_AccessMode_SINGLE_NODE_SINGLE_WRITER {
+			return nil, status.Error(codes.FailedPrecondition, "volume needs ReadWriteOncePod access mode with Kata")
+		}
+
+		// Resolve fsType before device discovery, as in NodeStageVolume.
+		fstype, mountFlags, err := resolveFSType(volumeCapability, params)
+		if err != nil {
+			return nil, status.Error(codes.InvalidArgument, err.Error())
+		}
+
+		lun, ok := req.PublishContext[consts.LUN]
+		if !ok {
+			return nil, status.Error(codes.InvalidArgument, "lun not provided")
+		}
+		device, err := d.getDevicePathWithLUN(lun)
+		if err != nil {
+			return nil, status.Errorf(codes.Internal, "failed to find device path with lun %s. %v", lun, err)
+		}
+		klog.V(2).Infof("NodePublishVolume: found device path %s with lun %s", device, lun)
+
+		// Use the same filesystem partition selected by NodeStageVolume.
+		if partition, ok := params[consts.VolumeAttributePartition]; ok {
+			device = device + "-part" + partition
+		}
+
+		fsGroup, fsGroupChangePolicy := getPodFSGroup(kataPod, volumeCapability, req.GetReadonly())
+		metadata := map[string]string{}
+		if fsGroup != nil {
+			metadata[directvolume.FSGroupMetadataKey] = strconv.FormatInt(*fsGroup, 10)
+		}
+		if fsGroupChangePolicy != nil {
+			metadata[directvolume.FSGroupChangePolicyMetadataKey] = string(*fsGroupChangePolicy)
+		}
+		if fsGroup != nil {
+			// Ensure target is a directory because Kubelet will unconditionally
+			// attempt to apply fsGroup permission to that directory after NodePublishVolume.
+			mounted, err := d.ensureMountPoint(target)
+			if err != nil {
+				return nil, status.Errorf(codes.Internal, "failed to create Kata direct volume target %q: %v", target, err)
+			}
+			if mounted {
+				return nil, status.Errorf(codes.FailedPrecondition, "Kata direct volume target %q is already mounted", target)
+			}
+		}
+
+		// NodeStageVolume mounts the disk so it can be formatted and resized.
+		// Direct assignment requires the host to release it before Kata hotplugs it.
+		if err := CleanupMountPoint(source, d.mounter, true /*extensiveMountPointCheck*/); err != nil {
+			return nil, status.Errorf(codes.Internal, "failed to unmount staging target %q for direct volume: %v", source, err)
+		}
+
+		options := collectMountOptions(fstype, mountFlags)
+		if req.GetReadonly() {
+			options = append(options, "ro")
+		}
+
+		mountInfo := directvolume.MountInfo{
+			VolumeType: kataDirectVolumeType,
+			Device:     device,
+			FsType:     fstype,
+			Metadata:   metadata,
+			Options:    options,
+		}
+
+		if err := d.kataDirectVolume.AddMountInfo(target, mountInfo); err != nil {
+			return nil, status.Errorf(codes.Internal, "failed to add direct volume: %v", err)
+		}
+		klog.V(2).Infof("NodePublishVolume: add direct volume: %v", mountInfo)
+
+		isOperationSucceeded = true
+		return &csi.NodePublishVolumeResponse{}, nil
+	}
+
+	if err := preparePublishPath(target, d.mounter); err != nil {
+		return nil, status.Errorf(codes.Internal, "Target path could not be prepared: %v", err)
 	}
 
 	mountOptions := []string{"bind"}
@@ -323,6 +409,19 @@ func (d *Driver) NodeUnpublishVolume(_ context.Context, req *csi.NodeUnpublishVo
 	}
 	if err := CleanupMountPoint(targetPath, d.mounter, extensiveMountPointCheck); err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to unmount target %q: %v", targetPath, err)
+	}
+
+	if d.enableKataMount {
+		if isKataMount, err := d.kataDirectVolume.IsVolumeMounted(targetPath); err != nil {
+			klog.Warningf("NodeUnpublishVolume: failed to probe pod for Kata mount for %s, falling back to regular mount: %v", targetPath, err)
+			// Don't return, fall back to regular handling.
+		} else if isKataMount {
+			klog.V(2).Infof("NodeUnpublishVolume: removing direct volume %s", targetPath)
+			if err := d.kataDirectVolume.Remove(targetPath); err != nil {
+				return nil, status.Errorf(codes.Internal, "failed to remove direct volume %q: %v", targetPath, err)
+			}
+			klog.V(2).Infof("NodeUnpublishVolume: remove direct volume %s", targetPath)
+		}
 	}
 
 	klog.V(2).Infof("NodeUnpublishVolume: unmount volume %s on %s successfully", volumeID, targetPath)
@@ -469,6 +568,12 @@ func (d *Driver) NodeGetVolumeStats(ctx context.Context, req *csi.NodeGetVolumeS
 	if len(req.VolumePath) == 0 {
 		return nil, status.Error(codes.InvalidArgument, "NodeGetVolumeStats volume path was empty")
 	}
+	if isKataMount, err := d.kataDirectVolume.IsVolumeMounted(req.VolumePath); isKataMount {
+		return nil, status.Error(codes.Unimplemented, "volume stats are not supported for Kata mounts")
+	} else if err != nil {
+		klog.Warningf("NodeGetVolumeStats: failed to probe for Kata mount at %s: %v", req.VolumePath, err)
+		// Don't return, fall back to regular handling.
+	}
 
 	volUsage, err := d.GetVolumeStats(ctx, d.mounter, req.VolumeId, req.VolumePath, d.hostUtil)
 	if err != nil {
@@ -492,6 +597,12 @@ func (d *Driver) NodeExpandVolume(_ context.Context, req *csi.NodeExpandVolumeRe
 	volumePath := req.GetVolumePath()
 	if len(volumePath) == 0 {
 		return nil, status.Error(codes.InvalidArgument, "volume path must be provided")
+	}
+	if isKataMount, err := d.kataDirectVolume.IsVolumeMounted(volumePath); isKataMount {
+		return nil, status.Error(codes.Unimplemented, "volume resize is not supported for Kata mounts")
+	} else if err != nil {
+		klog.Warningf("NodeExpandVolume: failed to probe for Kata mount at %s: %v", volumePath, err)
+		// Don't return, fall back to regular handling.
 	}
 
 	isBlock, err := d.getHostUtil().PathIsDevice(volumePath)
@@ -769,4 +880,18 @@ func collectMountOptions(fsType string, mntFlags []string) []string {
 		options = append(options, "nouuid")
 	}
 	return options
+}
+
+// getPodFSGroup returns the pod's fsGroup settings for a writable filesystem volume.
+func getPodFSGroup(pod *corev1.Pod, volumeCapability *csi.VolumeCapability, readOnly bool) (fsGroup *int64, fsGroupChangePolicy *corev1.PodFSGroupChangePolicy) {
+	// fsGroup only applies to writable filesystem volumes.
+	if readOnly || volumeCapability == nil || volumeCapability.GetMount() == nil {
+		return nil, nil
+	}
+
+	if pod == nil || pod.Spec.SecurityContext == nil || pod.Spec.SecurityContext.FSGroup == nil {
+		return nil, nil
+	}
+
+	return pod.Spec.SecurityContext.FSGroup, pod.Spec.SecurityContext.FSGroupChangePolicy
 }

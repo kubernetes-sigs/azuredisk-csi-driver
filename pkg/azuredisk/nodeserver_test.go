@@ -31,11 +31,17 @@ import (
 
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute/v7"
 	"github.com/container-storage-interface/spec/lib/go/csi"
+	directvolume "github.com/kata-containers/kata-containers/src/runtime/pkg/direct-volume"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+	corev1 "k8s.io/api/core/v1"
+	nodev1 "k8s.io/api/node/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	k8sruntime "k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/client-go/kubernetes/fake"
 	testingexec "k8s.io/utils/exec/testing"
 	"k8s.io/utils/ptr"
 	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
@@ -82,6 +88,24 @@ var (
 	}
 )
 
+type kataStubDirectVolume struct {
+	addMountInfo    func(string, directvolume.MountInfo) error
+	remove          func(string) error
+	isVolumeMounted func(string) (bool, error)
+}
+
+func (f *kataStubDirectVolume) AddMountInfo(volumePath string, mountInfo directvolume.MountInfo) error {
+	return f.addMountInfo(volumePath, mountInfo)
+}
+
+func (f *kataStubDirectVolume) Remove(volumePath string) error {
+	return f.remove(volumePath)
+}
+
+func (f *kataStubDirectVolume) IsVolumeMounted(volumePath string) (bool, error) {
+	return f.isVolumeMounted(volumePath)
+}
+
 func TestMain(m *testing.M) {
 	var err error
 	sourceTest, err = testutil.GetWorkDirPath("source_test")
@@ -118,6 +142,198 @@ func TestNodeGetCapabilities(t *testing.T) {
 	assert.NotNil(t, resp)
 	assert.Equal(t, resp.Capabilities[0].GetType(), capType)
 	assert.NoError(t, err)
+}
+
+func TestKataGetMountPod(t *testing.T) {
+	tests := []struct {
+		name             string
+		volumeContext    map[string]string
+		runtimeClassName *string
+		runtimeClass     *nodev1.RuntimeClass
+		wantPod          bool
+		wantErr          string
+	}{
+		{
+			name: "missing pod metadata",
+		},
+		{
+			name:          "empty pod metadata",
+			volumeContext: map[string]string{},
+		},
+		{
+			name: "missing pod name",
+			volumeContext: map[string]string{
+				podNamespaceField: "namespace",
+			},
+		},
+		{
+			name: "missing pod namespace",
+			volumeContext: map[string]string{
+				podNameField: "pod",
+			},
+		},
+		{
+			name: "annotated runtime class",
+			volumeContext: map[string]string{
+				podNameField:      "pod",
+				podNamespaceField: "namespace",
+			},
+			runtimeClassName: ptr.To("kata"),
+			runtimeClass: &nodev1.RuntimeClass{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:        "kata",
+					Annotations: map[string]string{kataRuntimeClassAnnotationKey: kataRuntimeClassAnnotationValue},
+				},
+				Handler: "kata",
+			},
+			wantPod: true,
+		},
+		{
+			name: "runtime class without direct volume annotation",
+			volumeContext: map[string]string{
+				podNameField:      "pod",
+				podNamespaceField: "namespace",
+			},
+			runtimeClassName: ptr.To("kata"),
+			runtimeClass: &nodev1.RuntimeClass{
+				ObjectMeta: metav1.ObjectMeta{Name: "kata"},
+				Handler:    "kata",
+			},
+		},
+		{
+			name: "runtime class not found",
+			volumeContext: map[string]string{
+				podNameField:      "pod",
+				podNamespaceField: "namespace",
+			},
+			runtimeClassName: ptr.To("missing"),
+			wantErr:          "get runtime class \"missing\"",
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			objects := []k8sruntime.Object{}
+			if test.runtimeClassName != nil {
+				objects = append(objects, &corev1.Pod{
+					ObjectMeta: metav1.ObjectMeta{Name: "pod", Namespace: "namespace"},
+					Spec:       corev1.PodSpec{RuntimeClassName: test.runtimeClassName},
+				})
+			}
+			if test.runtimeClass != nil {
+				objects = append(objects, test.runtimeClass)
+			}
+
+			client := fake.NewSimpleClientset(objects...)
+			got, err := kataGetMountPod(context.Background(), client, test.volumeContext)
+			if test.volumeContext[podNameField] == "" || test.volumeContext[podNamespaceField] == "" {
+				assert.Empty(t, client.Actions())
+			}
+			if test.wantErr != "" {
+				require.ErrorContains(t, err, test.wantErr)
+				return
+			}
+			require.NoError(t, err)
+			if test.wantPod {
+				require.NotNil(t, got)
+				assert.Equal(t, "pod", got.Name)
+			} else {
+				assert.Nil(t, got)
+			}
+		})
+	}
+}
+
+func TestGetPodFSGroup(t *testing.T) {
+	fsGroup := int64(3000)
+	zeroFSGroup := int64(0)
+	onRootMismatch := corev1.FSGroupChangeOnRootMismatch
+	filesystemVolume := &csi.VolumeCapability{AccessType: &csi.VolumeCapability_Mount{
+		Mount: &csi.VolumeCapability_MountVolume{},
+	}}
+	blockVolume := &csi.VolumeCapability{AccessType: &csi.VolumeCapability_Block{
+		Block: &csi.VolumeCapability_BlockVolume{},
+	}}
+
+	tests := []struct {
+		name                    string
+		pod                     *corev1.Pod
+		volumeCapability        *csi.VolumeCapability
+		readOnly                bool
+		wantFSGroup             *int64
+		wantFSGroupChangePolicy *corev1.PodFSGroupChangePolicy
+	}{
+		{
+			name: "fsGroup without policy",
+			pod: &corev1.Pod{Spec: corev1.PodSpec{SecurityContext: &corev1.PodSecurityContext{
+				FSGroup: &fsGroup,
+			}}},
+			volumeCapability: filesystemVolume,
+			wantFSGroup:      &fsGroup,
+		},
+		{
+			name: "zero group with OnRootMismatch",
+			pod: &corev1.Pod{Spec: corev1.PodSpec{SecurityContext: &corev1.PodSecurityContext{
+				FSGroup:             &zeroFSGroup,
+				FSGroupChangePolicy: &onRootMismatch,
+			}}},
+			volumeCapability:        filesystemVolume,
+			wantFSGroup:             &zeroFSGroup,
+			wantFSGroupChangePolicy: &onRootMismatch,
+		},
+		{
+			name:             "nil pod",
+			volumeCapability: filesystemVolume,
+		},
+		{
+			name:             "nil security context",
+			pod:              &corev1.Pod{},
+			volumeCapability: filesystemVolume,
+		},
+		{
+			name: "nil fsGroup",
+			pod: &corev1.Pod{Spec: corev1.PodSpec{
+				SecurityContext: &corev1.PodSecurityContext{},
+			}},
+			volumeCapability: filesystemVolume,
+		},
+		{
+			name: "container runAsGroup is not a volume fsGroup",
+			pod: &corev1.Pod{Spec: corev1.PodSpec{Containers: []corev1.Container{{
+				SecurityContext: &corev1.SecurityContext{RunAsGroup: &fsGroup},
+			}}}},
+			volumeCapability: filesystemVolume,
+		},
+		{
+			name: "read-only filesystem",
+			pod: &corev1.Pod{Spec: corev1.PodSpec{SecurityContext: &corev1.PodSecurityContext{
+				FSGroup: &fsGroup,
+			}}},
+			volumeCapability: filesystemVolume,
+			readOnly:         true,
+		},
+		{
+			name: "block volume",
+			pod: &corev1.Pod{Spec: corev1.PodSpec{SecurityContext: &corev1.PodSecurityContext{
+				FSGroup: &fsGroup,
+			}}},
+			volumeCapability: blockVolume,
+		},
+		{
+			name: "nil volume capability",
+			pod: &corev1.Pod{Spec: corev1.PodSpec{SecurityContext: &corev1.PodSecurityContext{
+				FSGroup: &fsGroup,
+			}}},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			fsGroup, fsGroupChangePolicy := getPodFSGroup(test.pod, test.volumeCapability, test.readOnly)
+			assert.Equal(t, test.wantFSGroup, fsGroup)
+			assert.Equal(t, test.wantFSGroupChangePolicy, fsGroupChangePolicy)
+		})
+	}
 }
 
 func TestGetMaxDataDiskCount(t *testing.T) {
@@ -399,6 +615,55 @@ func TestNodeGetVolumeStats(t *testing.T) {
 		assert.NoError(t, err)
 		cntl.Finish()
 	}
+}
+
+func TestKataVolumeStatsAndResizeNotSupported(t *testing.T) {
+	cntl := gomock.NewController(t)
+	d, _ := NewFakeDriver(cntl)
+	target, err := testutil.GetWorkDirPath("direct_volume_operation_target")
+	require.NoError(t, err)
+	fallbackStatsTarget, err := testutil.GetWorkDirPath("direct_volume_stats_probe_error_target")
+	require.NoError(t, err)
+	require.NoError(t, makeDir(fallbackStatsTarget))
+	t.Cleanup(func() { require.NoError(t, os.RemoveAll(fallbackStatsTarget)) })
+	fallbackResizeTarget := "/tmp/direct-volume-resize-probe-error-target"
+	d.getHostUtil().(*azureutils.FakeHostUtil).SetPathIsDeviceResult(fallbackResizeTarget, true, nil)
+	fakeMounter, err := mounter.NewFakeSafeMounter()
+	require.NoError(t, err)
+	d.setMounter(fakeMounter)
+
+	d.(*fakeDriver).kataDirectVolume = &kataStubDirectVolume{
+		isVolumeMounted: func(path string) (bool, error) {
+			if path == fallbackStatsTarget || path == fallbackResizeTarget {
+				return false, errors.New("fake direct volume probe error")
+			}
+			return path == target, nil
+		},
+	}
+
+	_, err = d.NodeGetVolumeStats(context.Background(), &csi.NodeGetVolumeStatsRequest{
+		VolumeId:   "vol_1",
+		VolumePath: target,
+	})
+	assert.Error(t, err)
+
+	_, err = d.NodeExpandVolume(context.Background(), &csi.NodeExpandVolumeRequest{
+		VolumeId:   "vol_1",
+		VolumePath: target,
+	})
+	assert.Error(t, err)
+
+	_, err = d.NodeGetVolumeStats(context.Background(), &csi.NodeGetVolumeStatsRequest{
+		VolumeId:   "vol_1",
+		VolumePath: fallbackStatsTarget,
+	})
+	assert.NoError(t, err)
+
+	_, err = d.NodeExpandVolume(context.Background(), &csi.NodeExpandVolumeRequest{
+		VolumeId:   "vol_1",
+		VolumePath: fallbackResizeTarget,
+	})
+	assert.NoError(t, err)
 }
 
 // TestResolveFSType runs on every platform, including the Windows CI runner, because it
@@ -877,8 +1142,6 @@ func TestNodeUnstageVolume(t *testing.T) {
 	cntl := gomock.NewController(t)
 	defer cntl.Finish()
 	d, _ := NewFakeDriver(cntl)
-	errorTarget, err := testutil.GetWorkDirPath("error_is_likely_target")
-	assert.NoError(t, err)
 	targetFile, err := testutil.GetWorkDirPath("abc.go")
 	assert.NoError(t, err)
 
@@ -906,16 +1169,6 @@ func TestNodeUnstageVolume(t *testing.T) {
 			},
 		},
 		{
-			desc:          "[Error] CleanupMountPoint error mocked by IsLikelyNotMountPoint",
-			req:           &csi.NodeUnstageVolumeRequest{StagingTargetPath: errorTarget, VolumeId: "vol_1"},
-			skipOnWindows: true, // no error reported in windows
-			skipOnDarwin:  true,
-			expectedErr: testutil.TestError{
-				DefaultError: status.Error(codes.Internal, fmt.Sprintf("failed to unmount staging target \"%s\": "+
-					"fake IsLikelyNotMountPoint: fake error", errorTarget)),
-			},
-		},
-		{
 			desc: "[Error] Volume operation in progress",
 			setup: func() {
 				d.getVolumeLocks().TryAcquire("vol_1")
@@ -936,12 +1189,6 @@ func TestNodeUnstageVolume(t *testing.T) {
 		},
 	}
 
-	//Setup
-	_ = makeDir(errorTarget)
-	fakeMounter, err := mounter.NewFakeSafeMounter()
-	assert.NoError(t, err)
-	d.setMounter(fakeMounter)
-
 	for _, test := range tests {
 		if test.setup != nil {
 			test.setup()
@@ -957,41 +1204,52 @@ func TestNodeUnstageVolume(t *testing.T) {
 			test.cleanup()
 		}
 	}
-
-	// Clean up
-	err = os.RemoveAll(errorTarget)
-	assert.NoError(t, err)
 }
 
 func TestNodePublishVolume(t *testing.T) {
 	cntl := gomock.NewController(t)
 	defer cntl.Finish()
 	d, _ := NewFakeDriver(cntl)
+	d.(*fakeDriver).enableKataMount = true
 
 	volumeCap := csi.VolumeCapability_AccessMode{Mode: csi.VolumeCapability_AccessMode_SINGLE_NODE_SINGLE_WRITER}
+	volumeCapRWO := csi.VolumeCapability_AccessMode{Mode: csi.VolumeCapability_AccessMode_SINGLE_NODE_MULTI_WRITER}
+	volumeCapSingleWriter := csi.VolumeCapability_AccessMode{Mode: csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER}
+	volumeCapReadOnlyMany := csi.VolumeCapability_AccessMode{Mode: csi.VolumeCapability_AccessMode_MULTI_NODE_READER_ONLY}
 	volumeCapWrong := csi.VolumeCapability_AccessMode{Mode: 10}
 	volumeContextWithMaxShare := map[string]string{
 		consts.MaxSharesField: "0.1",
 	}
-	publishContext := map[string]string{
+	invalidPublishContext := map[string]string{
 		consts.LUN: "/dev/01",
 	}
-	errorMountSource, err := testutil.GetWorkDirPath("error_mount_source")
-	assert.NoError(t, err)
-	alreadyMountedTarget, err := testutil.GetWorkDirPath("false_is_likely_exist_target")
-	assert.NoError(t, err)
-
-	azurediskPath := "azuredisk.go"
-
-	// ".\azuredisk.go will get deleted on Windows"
-	if runtime.GOOS == "windows" {
-		azurediskPath = "testfiles\\azuredisk.go"
+	publishContext := map[string]string{
+		consts.LUN: "/dev/disk/azure/scsi1/lun1",
 	}
-	azuredisk, err := testutil.GetWorkDirPath(azurediskPath)
+	directVolumeContext := map[string]string{
+		podNameField:      "direct-volume-pod",
+		podNamespaceField: "default",
+	}
+	directFSGroupVolumeContext := map[string]string{
+		podNameField:      "direct-volume-fsgroup-pod",
+		podNamespaceField: "default",
+	}
+	directVolumeErrorTarget, err := testutil.GetWorkDirPath("direct_volume_error_target")
+	assert.NoError(t, err)
+	standardTarget, err := testutil.GetWorkDirPath("standard_publish_target")
+	assert.NoError(t, err)
+	lookupErrorTarget, err := testutil.GetWorkDirPath("runtime_lookup_error_target")
+	assert.NoError(t, err)
+	directBlockTarget, err := testutil.GetWorkDirPath("direct_block_target")
+	assert.NoError(t, err)
+	blockStagingTarget := t.TempDir()
+	directFSGroupTarget, err := testutil.GetWorkDirPath("direct_fsgroup_target")
 	assert.NoError(t, err)
 
 	stdVolCap := &csi.VolumeCapability_Mount{
-		Mount: &csi.VolumeCapability_MountVolume{},
+		Mount: &csi.VolumeCapability_MountVolume{
+			MountFlags: []string{"discard"},
+		},
 	}
 	stdVolCapBlock := &csi.VolumeCapability_Block{
 		Block: &csi.VolumeCapability_BlockVolume{},
@@ -1004,6 +1262,9 @@ func TestNodePublishVolume(t *testing.T) {
 		skipOnWindows bool
 		skipOnDarwin  bool
 		expectedErr   testutil.TestError
+		expectedInfo  *directvolume.MountInfo
+		expectedMount bool
+		expectTarget  bool
 		cleanup       func()
 	}{
 		{
@@ -1055,24 +1316,10 @@ func TestNodePublishVolume(t *testing.T) {
 			},
 		},
 		{
-			desc: "[Error] Not a directory",
-			req: &csi.NodePublishVolumeRequest{VolumeCapability: &csi.VolumeCapability{AccessMode: &volumeCap, AccessType: stdVolCap},
-				VolumeId:          "vol_1",
-				TargetPath:        azuredisk,
-				StagingTargetPath: sourceTest,
-				Readonly:          true},
-			skipOnWindows: true, // permission issues
-			skipOnDarwin:  true,
-			expectedErr: testutil.TestError{
-				DefaultError: status.Errorf(codes.Internal, "could not mount target \"%s\": "+
-					"mkdir %s: not a directory", azuredisk, azuredisk),
-			},
-		},
-		{
 			desc: "[Error] Lun not provided",
 			req: &csi.NodePublishVolumeRequest{VolumeCapability: &csi.VolumeCapability{AccessMode: &volumeCap, AccessType: stdVolCapBlock},
 				VolumeId:          "vol_1",
-				TargetPath:        azuredisk,
+				TargetPath:        targetTest,
 				StagingTargetPath: sourceTest,
 				Readonly:          true},
 			expectedErr: testutil.TestError{
@@ -1083,65 +1330,260 @@ func TestNodePublishVolume(t *testing.T) {
 			desc: "[Error] Lun not valid",
 			req: &csi.NodePublishVolumeRequest{VolumeCapability: &csi.VolumeCapability{AccessMode: &volumeCap, AccessType: stdVolCapBlock},
 				VolumeId:          "vol_1",
-				TargetPath:        azuredisk,
+				TargetPath:        targetTest,
 				StagingTargetPath: sourceTest,
-				PublishContext:    publishContext,
+				PublishContext:    invalidPublishContext,
 				Readonly:          true},
 			expectedErr: testutil.TestError{
 				DefaultError: status.Error(codes.Internal, "failed to find device path with lun /dev/01. cannot parse deviceInfo: /dev/01"),
 			},
 		},
 		{
-			desc: "[Error] Mount error mocked by Mount",
-			req: &csi.NodePublishVolumeRequest{VolumeCapability: &csi.VolumeCapability{AccessMode: &volumeCap, AccessType: stdVolCap},
+			desc: "[Success] Standard mount for pod without runtime metadata",
+			req: &csi.NodePublishVolumeRequest{VolumeCapability: &csi.VolumeCapability{AccessMode: &volumeCapRWO, AccessType: stdVolCap},
+				VolumeId:          "vol_1",
+				TargetPath:        standardTarget,
+				StagingTargetPath: sourceTest,
+				Readonly:          true},
+			expectedErr:   testutil.TestError{},
+			expectedMount: true,
+		},
+		{
+			desc: "[Error] Kata filesystem volume with ReadWriteOnce access mode",
+			req: &csi.NodePublishVolumeRequest{VolumeCapability: &csi.VolumeCapability{AccessMode: &volumeCapRWO, AccessType: stdVolCap},
 				VolumeId:          "vol_1",
 				TargetPath:        targetTest,
-				StagingTargetPath: errorMountSource,
-				Readonly:          true},
-			skipOnWindows: true, // permission issues
+				StagingTargetPath: sourceTest,
+				VolumeContext:     directVolumeContext},
 			expectedErr: testutil.TestError{
-				DefaultError: status.Errorf(codes.Internal, "could not mount \"%s\" at \"%s\": "+
-					"fake Mount: source error", errorMountSource, targetTest),
+				DefaultError: status.Error(codes.FailedPrecondition, "volume needs ReadWriteOncePod access mode with Kata"),
 			},
 		},
 		{
-			desc: "[Success] Valid request already mounted",
-			req: &csi.NodePublishVolumeRequest{VolumeCapability: &csi.VolumeCapability{AccessMode: &volumeCap, AccessType: stdVolCap},
+			desc: "[Error] Kata filesystem volume with legacy single-writer access mode",
+			req: &csi.NodePublishVolumeRequest{VolumeCapability: &csi.VolumeCapability{AccessMode: &volumeCapSingleWriter, AccessType: stdVolCap},
 				VolumeId:          "vol_1",
-				TargetPath:        alreadyMountedTarget,
+				TargetPath:        targetTest,
 				StagingTargetPath: sourceTest,
-				Readonly:          true},
-			skipOnWindows: true, // permission issues
-			expectedErr:   testutil.TestError{},
+				VolumeContext:     directVolumeContext},
+			expectedErr: testutil.TestError{
+				DefaultError: status.Error(codes.FailedPrecondition, "volume needs ReadWriteOncePod access mode with Kata"),
+			},
 		},
 		{
-			desc: "[Success] Valid request",
+			desc: "[Error] Kata filesystem volume with ReadOnlyMany access mode",
+			req: &csi.NodePublishVolumeRequest{VolumeCapability: &csi.VolumeCapability{AccessMode: &volumeCapReadOnlyMany, AccessType: stdVolCap},
+				VolumeId:          "vol_1",
+				TargetPath:        targetTest,
+				StagingTargetPath: sourceTest,
+				VolumeContext:     directVolumeContext},
+			expectedErr: testutil.TestError{
+				DefaultError: status.Error(codes.InvalidArgument, "mountVolume is not supported for access mode: MULTI_NODE_READER_ONLY"),
+			},
+		},
+		{
+			desc: "[Success] Kata raw block volume with ReadWriteOnce uses regular mount",
+			req: &csi.NodePublishVolumeRequest{VolumeCapability: &csi.VolumeCapability{AccessMode: &volumeCapRWO, AccessType: stdVolCapBlock},
+				VolumeId:          "vol_1",
+				TargetPath:        directBlockTarget,
+				StagingTargetPath: blockStagingTarget,
+				PublishContext:    publishContext,
+				VolumeContext:     directFSGroupVolumeContext},
+			skipOnWindows: true,
+			skipOnDarwin:  true,
+			expectedErr:   testutil.TestError{},
+			expectedMount: true,
+		},
+		{
+			desc: "[Success] Pod lookup error falls back to standard mount",
+			req: &csi.NodePublishVolumeRequest{VolumeCapability: &csi.VolumeCapability{AccessMode: &volumeCap, AccessType: stdVolCap},
+				VolumeId:          "vol_1",
+				TargetPath:        lookupErrorTarget,
+				StagingTargetPath: sourceTest,
+				VolumeContext: map[string]string{
+					podNameField:      "missing-pod",
+					podNamespaceField: "default",
+				},
+				Readonly: true},
+			expectedErr:   testutil.TestError{},
+			expectedMount: true,
+		},
+		{
+			desc: "[Error] Add direct volume",
+			req: &csi.NodePublishVolumeRequest{VolumeCapability: &csi.VolumeCapability{AccessMode: &volumeCap, AccessType: stdVolCap},
+				VolumeId:          "vol_1",
+				TargetPath:        directVolumeErrorTarget,
+				StagingTargetPath: sourceTest,
+				PublishContext:    publishContext,
+				VolumeContext:     directFSGroupVolumeContext,
+				Readonly:          true},
+			expectedErr: testutil.TestError{
+				DefaultError: status.Error(codes.Internal, "failed to add direct volume: fake add direct volume error"),
+			},
+		},
+		{
+			desc: "[Success] Kata read-only filesystem volume with fsGroup",
 			req: &csi.NodePublishVolumeRequest{VolumeCapability: &csi.VolumeCapability{AccessMode: &volumeCap, AccessType: stdVolCap},
 				VolumeId:          "vol_1",
 				TargetPath:        targetTest,
 				StagingTargetPath: sourceTest,
+				PublishContext:    publishContext,
+				VolumeContext:     directFSGroupVolumeContext,
 				Readonly:          true},
-			skipOnWindows: true, // permission issues
+			expectedErr: testutil.TestError{},
+			expectedInfo: &directvolume.MountInfo{
+				VolumeType: kataDirectVolumeType,
+				Device:     "/dev/sdd",
+				FsType:     defaultLinuxFsType,
+				Metadata:   map[string]string{},
+				Options:    []string{"discard", "ro"},
+			},
+		},
+		{
+			desc: "[Success] Kata filesystem volume with partition",
+			req: &csi.NodePublishVolumeRequest{VolumeCapability: &csi.VolumeCapability{AccessMode: &volumeCap, AccessType: stdVolCap},
+				VolumeId:          "vol_1",
+				TargetPath:        targetTest,
+				StagingTargetPath: sourceTest,
+				PublishContext:    publishContext,
+				VolumeContext: map[string]string{
+					podNameField:                    "direct-volume-pod",
+					podNamespaceField:               "default",
+					consts.VolumeAttributePartition: "1",
+				}},
+			expectedErr: testutil.TestError{},
+			expectedInfo: &directvolume.MountInfo{
+				VolumeType: kataDirectVolumeType,
+				Device:     "/dev/sdd-part1",
+				FsType:     defaultLinuxFsType,
+				Metadata:   map[string]string{},
+				Options:    []string{"discard"},
+			},
+		},
+		{
+			desc: "[Success] Kata filesystem volume with fsGroup",
+			req: &csi.NodePublishVolumeRequest{VolumeCapability: &csi.VolumeCapability{AccessMode: &volumeCap, AccessType: stdVolCap},
+				VolumeId:          "vol_1",
+				TargetPath:        directFSGroupTarget,
+				StagingTargetPath: sourceTest,
+				PublishContext:    publishContext,
+				VolumeContext:     directFSGroupVolumeContext},
+			expectedErr: testutil.TestError{},
+			expectedInfo: &directvolume.MountInfo{
+				VolumeType: kataDirectVolumeType,
+				Device:     "/dev/sdd",
+				FsType:     defaultLinuxFsType,
+				Metadata: map[string]string{
+					directvolume.FSGroupMetadataKey: "3000",
+				},
+				Options: []string{"discard"},
+			},
+			expectTarget: true,
+		},
+		{
+			desc: "[Success] Kata read-only raw block volume uses regular mount",
+			req: &csi.NodePublishVolumeRequest{VolumeCapability: &csi.VolumeCapability{AccessMode: &volumeCap, AccessType: stdVolCapBlock},
+				VolumeId:          "vol_1",
+				TargetPath:        directBlockTarget,
+				StagingTargetPath: blockStagingTarget,
+				PublishContext:    publishContext,
+				VolumeContext: map[string]string{
+					podNameField:                    "direct-volume-fsgroup-pod",
+					podNamespaceField:               "default",
+					consts.VolumeAttributePartition: "1",
+				},
+				Readonly: true},
+			skipOnWindows: true,
+			skipOnDarwin:  true,
 			expectedErr:   testutil.TestError{},
+			expectedMount: true,
 		},
 	}
 
 	// Setup
-	_ = makeDir(alreadyMountedTarget)
-	assert.NoError(t, err)
 	fakeMounter, err := mounter.NewFakeSafeMounter()
 	assert.NoError(t, err)
 	d.setMounter(fakeMounter)
+	runtimeClassName := "kata"
+	fsGroup := int64(3000)
+	d.(*fakeDriver).kubeClient = fake.NewSimpleClientset(
+		&corev1.Pod{
+			ObjectMeta: metav1.ObjectMeta{Name: "direct-volume-pod", Namespace: "default"},
+			Spec:       corev1.PodSpec{RuntimeClassName: &runtimeClassName},
+		},
+		&corev1.Pod{
+			ObjectMeta: metav1.ObjectMeta{Name: "direct-volume-fsgroup-pod", Namespace: "default"},
+			Spec: corev1.PodSpec{
+				RuntimeClassName: &runtimeClassName,
+				SecurityContext:  &corev1.PodSecurityContext{FSGroup: &fsGroup},
+			},
+		},
+		&nodev1.RuntimeClass{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:        runtimeClassName,
+				Annotations: map[string]string{kataRuntimeClassAnnotationKey: kataRuntimeClassAnnotationValue},
+			},
+			Handler: "kata",
+		},
+	)
+	var addedTarget string
+	var addedMountInfo directvolume.MountInfo
+	d.(*fakeDriver).kataDirectVolume = &kataStubDirectVolume{
+		addMountInfo: func(target string, mountInfo directvolume.MountInfo) error {
+			if target == directVolumeErrorTarget {
+				return errors.New("fake add direct volume error")
+			}
+			addedTarget = target
+			addedMountInfo = mountInfo
+			return nil
+		},
+	}
 
 	for _, test := range tests {
+		addedTarget = ""
+		addedMountInfo = directvolume.MountInfo{}
+		if fm, ok := fakeMounter.Interface.(*mounter.FakeSafeMounter); ok {
+			fm.MountCalls = nil
+		}
 		if test.setup != nil {
 			test.setup()
 		}
 		if !(test.skipOnWindows && runtime.GOOS == "windows") && !(test.skipOnDarwin && runtime.GOOS == "darwin") {
 			var err error
 			_, err = d.NodePublishVolume(context.Background(), test.req)
-			if !testutil.AssertError(&test.expectedErr, err) && !strings.Contains(err.Error(), "invalid access mode") {
+			if !testutil.AssertError(&test.expectedErr, err) && (err == nil || !strings.Contains(err.Error(), "invalid access mode")) {
 				t.Errorf("desc: %s\n actualErr: (%v), expectedErr: (%v)", test.desc, err, test.expectedErr)
+			}
+			if test.expectedInfo != nil {
+				assert.Equal(t, test.req.TargetPath, addedTarget, test.desc)
+				assert.Equal(t, *test.expectedInfo, addedMountInfo, test.desc)
+			}
+			if test.expectedMount {
+				info, err := os.Stat(test.req.TargetPath)
+				require.NoError(t, err, test.desc)
+				if test.req.GetVolumeCapability().GetBlock() != nil {
+					assert.True(t, info.Mode().IsRegular(), test.desc)
+					assert.DirExists(t, test.req.StagingTargetPath, test.desc)
+					fm := fakeMounter.Interface.(*mounter.FakeSafeMounter)
+					require.Len(t, fm.MountCalls, 1, test.desc)
+					options := []string{"bind"}
+					if test.req.GetReadonly() {
+						options = append(options, "ro")
+					}
+					assert.Equal(t, mounter.MountCall{
+						Source:  "/dev/sdd",
+						Target:  test.req.TargetPath,
+						Options: options,
+					}, fm.MountCalls[0], test.desc)
+				} else {
+					assert.True(t, info.IsDir(), test.desc)
+				}
+				assert.Empty(t, addedTarget, test.desc)
+			}
+			if test.expectTarget {
+				info, err := os.Stat(test.req.TargetPath)
+				require.NoError(t, err, test.desc)
+				assert.True(t, info.IsDir(), test.desc)
 			}
 		}
 		if test.cleanup != nil {
@@ -1152,26 +1594,305 @@ func TestNodePublishVolume(t *testing.T) {
 	// Clean up
 	err = os.RemoveAll(targetTest)
 	assert.NoError(t, err)
-	err = os.RemoveAll(alreadyMountedTarget)
+	err = os.RemoveAll(standardTarget)
 	assert.NoError(t, err)
+	err = os.RemoveAll(lookupErrorTarget)
+	assert.NoError(t, err)
+	err = os.RemoveAll(directBlockTarget)
+	assert.NoError(t, err)
+	err = os.RemoveAll(directFSGroupTarget)
+	assert.NoError(t, err)
+}
+
+func TestNodePublishVolumeKataMountFeatureFlag(t *testing.T) {
+	if runtime.GOOS != "linux" {
+		t.Skip("Kata filesystem mounts are only supported on Linux")
+	}
+
+	tests := []struct {
+		name             string
+		enableKataMount  bool
+		annotated        bool
+		block            bool
+		wantDirectVolume bool
+	}{
+		{name: "disabled annotated filesystem", annotated: true},
+		{name: "enabled annotated filesystem", enableKataMount: true, annotated: true, wantDirectVolume: true},
+		{name: "enabled unannotated filesystem", enableKataMount: true},
+		{name: "disabled raw block", annotated: true, block: true},
+		{name: "enabled raw block", enableKataMount: true, annotated: true, block: true},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			d, err := NewFakeDriver(gomock.NewController(t))
+			require.NoError(t, err)
+			d.(*fakeDriver).enableKataMount = test.enableKataMount
+			fakeMounter, err := mounter.NewFakeSafeMounter()
+			require.NoError(t, err)
+			d.setMounter(fakeMounter)
+			runtimeClass := &nodev1.RuntimeClass{
+				ObjectMeta: metav1.ObjectMeta{Name: "kata"},
+				Handler:    "kata",
+			}
+			if test.annotated {
+				runtimeClass.Annotations = map[string]string{kataRuntimeClassAnnotationKey: kataRuntimeClassAnnotationValue}
+			}
+			client := fake.NewSimpleClientset(
+				&corev1.Pod{
+					ObjectMeta: metav1.ObjectMeta{Name: "pod", Namespace: "default"},
+					Spec:       corev1.PodSpec{RuntimeClassName: ptr.To("kata")},
+				},
+				runtimeClass,
+			)
+			d.(*fakeDriver).kubeClient = client
+			req := &csi.NodePublishVolumeRequest{
+				VolumeId:          "vol_1",
+				TargetPath:        filepath.Join(t.TempDir(), "target"),
+				StagingTargetPath: t.TempDir(),
+				PublishContext:    map[string]string{consts.LUN: "/dev/disk/azure/scsi1/lun1"},
+				VolumeContext: map[string]string{
+					podNameField:      "pod",
+					podNamespaceField: "default",
+				},
+				VolumeCapability: &csi.VolumeCapability{
+					AccessMode: &csi.VolumeCapability_AccessMode{Mode: csi.VolumeCapability_AccessMode_SINGLE_NODE_MULTI_WRITER},
+					AccessType: &csi.VolumeCapability_Mount{Mount: &csi.VolumeCapability_MountVolume{}},
+				},
+			}
+			if test.wantDirectVolume {
+				req.VolumeCapability.AccessMode.Mode = csi.VolumeCapability_AccessMode_SINGLE_NODE_SINGLE_WRITER
+			}
+			if test.block {
+				req.VolumeCapability.AccessType = &csi.VolumeCapability_Block{Block: &csi.VolumeCapability_BlockVolume{}}
+			}
+
+			_, err = d.NodePublishVolume(context.Background(), req)
+			require.NoError(t, err)
+			if test.enableKataMount {
+				require.Len(t, client.Actions(), 2)
+				assert.Equal(t, "pods", client.Actions()[0].GetResource().Resource)
+				assert.Equal(t, "runtimeclasses", client.Actions()[1].GetResource().Resource)
+			} else {
+				assert.Empty(t, client.Actions(), "disabled Kata mounts must not query Pods or RuntimeClasses")
+			}
+
+			mountInfo := d.(*fakeDriver).kataDirectVolume.(*fakeDirectVolumeService).mountInfo
+			mountCalls := fakeMounter.Interface.(*mounter.FakeSafeMounter).MountCalls
+			if test.wantDirectVolume {
+				require.Len(t, mountInfo, 1)
+				assert.Contains(t, mountInfo, req.TargetPath)
+				assert.Empty(t, mountCalls)
+				assert.NoDirExists(t, req.StagingTargetPath)
+			} else {
+				assert.Empty(t, mountInfo)
+				assert.DirExists(t, req.StagingTargetPath)
+				source := req.StagingTargetPath
+				if test.block {
+					source = "/dev/sdd"
+					assert.FileExists(t, req.TargetPath)
+				} else {
+					assert.DirExists(t, req.TargetPath)
+				}
+				assert.Equal(t, []mounter.MountCall{{
+					Source:  source,
+					Target:  req.TargetPath,
+					Options: []string{"bind"},
+				}}, mountCalls)
+			}
+		})
+	}
+}
+
+func TestNodePublishVolumeKataFSType(t *testing.T) {
+	if runtime.GOOS != "linux" {
+		t.Skip("Kata filesystem mounts are only supported on Linux")
+	}
+
+	tests := []struct {
+		name          string
+		fsType        string
+		contextFSType string
+		mountFlags    []string
+		readOnly      bool
+		wantFSType    string
+		wantOptions   []string
+		wantErr       bool
+	}{
+		{
+			name:        "default filesystem",
+			mountFlags:  []string{"discard"},
+			wantFSType:  "ext4",
+			wantOptions: []string{"discard"},
+		},
+		{
+			name:        "uppercase capability gets nouuid",
+			fsType:      "XFS",
+			mountFlags:  []string{"discard"},
+			wantFSType:  "xfs",
+			wantOptions: []string{"discard", "nouuid"},
+		},
+		{
+			name:          "volume context overrides capability and is normalized",
+			fsType:        "ext4",
+			contextFSType: " XfS ",
+			mountFlags:    []string{"discard"},
+			wantFSType:    "xfs",
+			wantOptions:   []string{"discard", "nouuid"},
+		},
+		{
+			name:          "valid context overrides unsupported capability",
+			fsType:        "vfat",
+			contextFSType: "ext4",
+			mountFlags:    []string{"discard"},
+			wantFSType:    "ext4",
+			wantOptions:   []string{"discard"},
+		},
+		{
+			name:        "read-only default filesystem without mount flags",
+			readOnly:    true,
+			wantFSType:  "ext4",
+			wantOptions: []string{"ro"},
+		},
+		{
+			name:        "read-only preserves discard",
+			mountFlags:  []string{"discard"},
+			readOnly:    true,
+			wantFSType:  "ext4",
+			wantOptions: []string{"discard", "ro"},
+		},
+		{
+			name:        "read-only XFS preserves discard and nouuid",
+			fsType:      "XFS",
+			mountFlags:  []string{"discard"},
+			readOnly:    true,
+			wantFSType:  "xfs",
+			wantOptions: []string{"discard", "nouuid", "ro"},
+		},
+		{
+			name:        "read-only takes precedence over rw mount flag",
+			mountFlags:  []string{"discard", "rw"},
+			readOnly:    true,
+			wantFSType:  "ext4",
+			wantOptions: []string{"discard", "rw", "ro"},
+		},
+		{
+			name:        "writable publication preserves explicit ro mount flag",
+			mountFlags:  []string{"discard", "ro"},
+			wantFSType:  "ext4",
+			wantOptions: []string{"discard", "ro"},
+		},
+		{
+			name:       "unsupported capability fails before device discovery",
+			fsType:     "vfat",
+			mountFlags: []string{"discard"},
+			wantErr:    true,
+		},
+		{
+			name:          "unsupported context fails before device discovery",
+			fsType:        "ext4",
+			contextFSType: "vfat",
+			mountFlags:    []string{"discard"},
+			wantErr:       true,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			d, err := NewFakeDriver(gomock.NewController(t))
+			require.NoError(t, err)
+			d.(*fakeDriver).enableKataMount = true
+			fakeMounter, err := mounter.NewFakeSafeMounter()
+			require.NoError(t, err)
+			d.setMounter(fakeMounter)
+			runtimeClassName := "kata"
+			d.(*fakeDriver).kubeClient = fake.NewSimpleClientset(
+				&corev1.Pod{
+					ObjectMeta: metav1.ObjectMeta{Name: "pod", Namespace: "default"},
+					Spec:       corev1.PodSpec{RuntimeClassName: &runtimeClassName},
+				},
+				&nodev1.RuntimeClass{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:        runtimeClassName,
+						Annotations: map[string]string{kataRuntimeClassAnnotationKey: kataRuntimeClassAnnotationValue},
+					},
+					Handler: "kata",
+				},
+			)
+			var addedTarget string
+			var addedInfo directvolume.MountInfo
+			d.(*fakeDriver).kataDirectVolume = &kataStubDirectVolume{
+				addMountInfo: func(target string, info directvolume.MountInfo) error {
+					addedTarget, addedInfo = target, info
+					return nil
+				},
+			}
+			req := &csi.NodePublishVolumeRequest{
+				VolumeId:          "vol_1",
+				TargetPath:        t.TempDir(),
+				StagingTargetPath: t.TempDir(),
+				Readonly:          test.readOnly,
+				PublishContext:    map[string]string{consts.LUN: "/dev/disk/azure/scsi1/lun1"},
+				VolumeContext: map[string]string{
+					podNameField:       "pod",
+					podNamespaceField:  "default",
+					consts.FsTypeField: test.contextFSType,
+				},
+				VolumeCapability: &csi.VolumeCapability{
+					AccessMode: &csi.VolumeCapability_AccessMode{Mode: csi.VolumeCapability_AccessMode_SINGLE_NODE_SINGLE_WRITER},
+					AccessType: &csi.VolumeCapability_Mount{Mount: &csi.VolumeCapability_MountVolume{
+						FsType:     test.fsType,
+						MountFlags: append([]string(nil), test.mountFlags...),
+					}},
+				},
+			}
+			if test.wantErr {
+				// An invalid filesystem must be rejected before the LUN is needed.
+				req.PublishContext = nil
+			}
+
+			_, err = d.NodePublishVolume(context.Background(), req)
+			if test.wantErr {
+				require.Error(t, err)
+				assert.Equal(t, codes.InvalidArgument, status.Code(err))
+				assert.Contains(t, err.Error(), "not supported")
+				assert.Empty(t, addedTarget)
+				assert.DirExists(t, req.StagingTargetPath)
+				return
+			}
+			require.NoError(t, err)
+			assert.Equal(t, req.TargetPath, addedTarget)
+			assert.Equal(t, test.wantFSType, addedInfo.FsType)
+			assert.Equal(t, test.wantOptions, addedInfo.Options)
+			assert.Equal(t, test.mountFlags, req.VolumeCapability.GetMount().MountFlags)
+		})
+	}
 }
 
 func TestNodeUnpublishVolume(t *testing.T) {
 	cntl := gomock.NewController(t)
 	d, _ := NewFakeDriver(cntl)
+	d.(*fakeDriver).enableKataMount = true
 	errorTarget, err := testutil.GetWorkDirPath("error_is_likely_target")
 	assert.NoError(t, err)
 	targetFile, err := testutil.GetWorkDirPath("abc.go")
 	assert.NoError(t, err)
+	standardTarget, err := testutil.GetWorkDirPath("standard_unpublish_target")
+	assert.NoError(t, err)
+	probeErrorTarget, err := testutil.GetWorkDirPath("direct_volume_probe_error_target")
+	assert.NoError(t, err)
+	directFSGroupTarget, err := testutil.GetWorkDirPath("direct_fsgroup_unpublish_target")
+	assert.NoError(t, err)
 
 	tests := []struct {
-		setup         func()
-		desc          string
-		req           *csi.NodeUnpublishVolumeRequest
-		skipOnWindows bool
-		skipOnDarwin  bool
-		expectedErr   testutil.TestError
-		cleanup       func()
+		setup          func()
+		desc           string
+		req            *csi.NodeUnpublishVolumeRequest
+		skipOnWindows  bool
+		skipOnDarwin   bool
+		expectedErr    testutil.TestError
+		expectedTarget string
+		expectRemoved  bool
+		cleanup        func()
 	}{
 		{
 			desc: "Volume ID missing",
@@ -1188,28 +1909,68 @@ func TestNodeUnpublishVolume(t *testing.T) {
 			},
 		},
 		{
-			desc:          "[Error] Unmount error mocked by IsLikelyNotMountPoint",
-			req:           &csi.NodeUnpublishVolumeRequest{TargetPath: errorTarget, VolumeId: "vol_1"},
-			skipOnWindows: true, // no error reported in windows
-			skipOnDarwin:  true, // no error reported in darwin
+			desc: "[Error] Remove direct volume",
+			req:  &csi.NodeUnpublishVolumeRequest{TargetPath: errorTarget, VolumeId: "vol_1"},
 			expectedErr: testutil.TestError{
-				DefaultError: status.Error(codes.Internal, fmt.Sprintf("failed to unmount target \"%s\": fake IsLikelyNotMountPoint: fake error", errorTarget)),
+				DefaultError: status.Errorf(codes.Internal, "failed to remove direct volume %q: fake remove direct volume error", errorTarget),
 			},
 		},
 		{
-			desc:        "[Success] Valid request",
-			req:         &csi.NodeUnpublishVolumeRequest{TargetPath: targetFile, VolumeId: "vol_1"},
-			expectedErr: testutil.TestError{},
+			desc:           "[Success] Valid request",
+			req:            &csi.NodeUnpublishVolumeRequest{TargetPath: targetFile, VolumeId: "vol_1"},
+			expectedErr:    testutil.TestError{},
+			expectedTarget: targetFile,
+		},
+		{
+			desc:           "[Success] Direct volume with fsGroup target",
+			req:            &csi.NodeUnpublishVolumeRequest{TargetPath: directFSGroupTarget, VolumeId: "vol_1"},
+			expectedErr:    testutil.TestError{},
+			expectedTarget: directFSGroupTarget,
+			expectRemoved:  true,
+		},
+		{
+			desc:          "[Success] Standard mount",
+			req:           &csi.NodeUnpublishVolumeRequest{TargetPath: standardTarget, VolumeId: "vol_1"},
+			expectedErr:   testutil.TestError{},
+			expectRemoved: true,
+		},
+		{
+			desc:          "[Success] Direct volume probe error falls back to standard mount",
+			req:           &csi.NodeUnpublishVolumeRequest{TargetPath: probeErrorTarget, VolumeId: "vol_1"},
+			expectedErr:   testutil.TestError{},
+			expectRemoved: true,
 		},
 	}
 
 	// Setup
-	_ = makeDir(errorTarget)
+	_ = makeDir(standardTarget)
+	_ = makeDir(probeErrorTarget)
+	_ = makeDir(directFSGroupTarget)
 	fakeMounter, err := mounter.NewFakeSafeMounter()
 	assert.NoError(t, err)
 	d.setMounter(fakeMounter)
+	var removedTarget string
+	d.(*fakeDriver).kataDirectVolume = &kataStubDirectVolume{
+		isVolumeMounted: func(target string) (bool, error) {
+			if target == errorTarget || target == targetFile || target == directFSGroupTarget {
+				return true, nil
+			}
+			if target == probeErrorTarget {
+				return false, errors.New("fake direct volume probe error")
+			}
+			return false, nil
+		},
+		remove: func(target string) error {
+			if target == errorTarget {
+				return errors.New("fake remove direct volume error")
+			}
+			removedTarget = target
+			return nil
+		},
+	}
 
 	for _, test := range tests {
+		removedTarget = ""
 		if test.setup != nil {
 			test.setup()
 		}
@@ -1219,15 +1980,60 @@ func TestNodeUnpublishVolume(t *testing.T) {
 			if !testutil.AssertError(&test.expectedErr, err) {
 				t.Errorf("desc: %s\n actualErr: (%v), expectedErr: (%v)", test.desc, err, test.expectedErr)
 			}
+			assert.Equal(t, test.expectedTarget, removedTarget, test.desc)
+			if test.expectRemoved {
+				_, err := os.Stat(test.req.TargetPath)
+				assert.ErrorIs(t, err, os.ErrNotExist, test.desc)
+			}
 		}
 		if test.cleanup != nil {
 			test.cleanup()
 		}
 	}
+	_ = os.RemoveAll(standardTarget)
+	_ = os.RemoveAll(probeErrorTarget)
+	_ = os.RemoveAll(directFSGroupTarget)
+}
 
-	// Clean up
-	err = os.RemoveAll(errorTarget)
-	assert.NoError(t, err)
+func TestNodeUnpublishVolumeKataMountFeatureFlag(t *testing.T) {
+	if runtime.GOOS != "linux" {
+		t.Skip("Kata filesystem mounts are only supported on Linux")
+	}
+
+	for _, enabled := range []bool{false, true} {
+		t.Run(fmt.Sprintf("enabled=%t", enabled), func(t *testing.T) {
+			d, err := NewFakeDriver(gomock.NewController(t))
+			require.NoError(t, err)
+			d.(*fakeDriver).enableKataMount = enabled
+			fakeMounter, err := mounter.NewFakeSafeMounter()
+			require.NoError(t, err)
+			d.setMounter(fakeMounter)
+			target := t.TempDir()
+			var probed, removed bool
+			d.(*fakeDriver).kataDirectVolume = &kataStubDirectVolume{
+				isVolumeMounted: func(path string) (bool, error) {
+					assert.Equal(t, target, path)
+					assert.NoDirExists(t, target, "target cleanup must precede metadata cleanup")
+					probed = true
+					return true, nil
+				},
+				remove: func(path string) error {
+					assert.Equal(t, target, path)
+					removed = true
+					return nil
+				},
+			}
+
+			_, err = d.NodeUnpublishVolume(context.Background(), &csi.NodeUnpublishVolumeRequest{
+				VolumeId:   "vol_1",
+				TargetPath: target,
+			})
+			require.NoError(t, err)
+			assert.NoDirExists(t, target)
+			assert.Equal(t, enabled, probed)
+			assert.Equal(t, enabled, removed)
+		})
+	}
 }
 
 func TestNodeExpandVolume(t *testing.T) {
@@ -1632,53 +2438,69 @@ func TestGetDevicePathWithMountPath(t *testing.T) {
 	}
 }
 
-func TestNodePublishVolumeIdempotentMount(t *testing.T) {
+func TestNodePublishVolumeIdempotent(t *testing.T) {
 	cntl := gomock.NewController(t)
 	defer cntl.Finish()
-	if runtime.GOOS == "windows" || os.Getuid() != 0 {
-		return
-	}
 	stdVolCap := &csi.VolumeCapability_Mount{
 		Mount: &csi.VolumeCapability_MountVolume{
 			FsType: defaultLinuxFsType,
 		},
 	}
-	_ = makeDir(sourceTest)
-	_ = makeDir(targetTest)
 	d, _ := NewFakeDriver(cntl)
+	d.(*fakeDriver).enableKataMount = true
+	fakeMounter, err := mounter.NewFakeSafeMounter()
+	assert.NoError(t, err)
+	d.setMounter(fakeMounter)
+	runtimeClassName := "kata"
+	d.(*fakeDriver).kubeClient = fake.NewSimpleClientset(
+		&corev1.Pod{
+			ObjectMeta: metav1.ObjectMeta{Name: "direct-volume-pod", Namespace: "default"},
+			Spec:       corev1.PodSpec{RuntimeClassName: &runtimeClassName},
+		},
+		&nodev1.RuntimeClass{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:        runtimeClassName,
+				Annotations: map[string]string{kataRuntimeClassAnnotationKey: kataRuntimeClassAnnotationValue},
+			},
+			Handler: "kata",
+		},
+	)
 
-	volumeCap := csi.VolumeCapability_AccessMode{Mode: csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER}
+	var calls int
+	d.(*fakeDriver).kataDirectVolume = &kataStubDirectVolume{
+		addMountInfo: func(target string, mountInfo directvolume.MountInfo) error {
+			assert.Equal(t, targetTest, target)
+			assert.Equal(t, directvolume.MountInfo{
+				VolumeType: kataDirectVolumeType,
+				Device:     "/dev/sdd",
+				FsType:     defaultLinuxFsType,
+				Metadata:   map[string]string{},
+				Options:    []string{"ro"},
+			}, mountInfo)
+			calls++
+			return nil
+		},
+	}
+
+	volumeCap := csi.VolumeCapability_AccessMode{Mode: csi.VolumeCapability_AccessMode_SINGLE_NODE_SINGLE_WRITER}
 	req := csi.NodePublishVolumeRequest{VolumeCapability: &csi.VolumeCapability{AccessMode: &volumeCap, AccessType: stdVolCap},
 		VolumeId:          "vol_1",
 		TargetPath:        targetTest,
 		StagingTargetPath: sourceTest,
-		Readonly:          true}
+		PublishContext: map[string]string{
+			consts.LUN: "/dev/disk/azure/scsi1/lun1",
+		},
+		VolumeContext: map[string]string{
+			podNameField:      "direct-volume-pod",
+			podNamespaceField: "default",
+		},
+		Readonly: true}
 
-	_, err := d.NodePublishVolume(context.Background(), &req)
+	_, err = d.NodePublishVolume(context.Background(), &req)
 	assert.NoError(t, err)
 	_, err = d.NodePublishVolume(context.Background(), &req)
 	assert.NoError(t, err)
-
-	// ensure the target not be mounted twice
-	targetAbs, err := filepath.Abs(targetTest)
-	assert.NoError(t, err)
-
-	mountList, err := d.getMounter().List()
-	assert.NoError(t, err)
-	mountPointNum := 0
-	for _, mountPoint := range mountList {
-		if mountPoint.Path == targetAbs {
-			mountPointNum++
-		}
-	}
-	assert.Equal(t, 1, mountPointNum)
-	err = d.getMounter().Unmount(targetTest)
-	assert.NoError(t, err)
-	_ = d.getMounter().Unmount(targetTest)
-	err = os.RemoveAll(sourceTest)
-	assert.NoError(t, err)
-	err = os.RemoveAll(targetTest)
-	assert.NoError(t, err)
+	assert.Equal(t, 2, calls)
 }
 
 func TestValidateBlockDeviceSize(t *testing.T) {
