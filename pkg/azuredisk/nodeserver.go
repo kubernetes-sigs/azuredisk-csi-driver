@@ -127,6 +127,7 @@ func (d *Driver) NodeStageVolume(_ context.Context, req *csi.NodeStageVolumeRequ
 	// If the access type is block, do nothing for stage
 	switch req.GetVolumeCapability().GetAccessType().(type) {
 	case *csi.VolumeCapability_Block:
+		isOperationSucceeded = true
 		return &csi.NodeStageVolumeResponse{}, nil
 	}
 
@@ -136,6 +137,7 @@ func (d *Driver) NodeStageVolume(_ context.Context, req *csi.NodeStageVolumeRequ
 	}
 	if mnt {
 		klog.V(2).Infof("NodeStageVolume: already mounted on target %s", target)
+		isOperationSucceeded = true
 		return &csi.NodeStageVolumeResponse{}, nil
 	}
 
@@ -280,6 +282,7 @@ func (d *Driver) NodePublishVolume(_ context.Context, req *csi.NodePublishVolume
 		}
 		if mnt {
 			klog.V(2).Infof("NodePublishVolume: already mounted on target %s", target)
+			isOperationSucceeded = true
 			return &csi.NodePublishVolumeResponse{}, nil
 		}
 	}
