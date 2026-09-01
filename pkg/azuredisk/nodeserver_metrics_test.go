@@ -88,6 +88,14 @@ func counterValue(m *dto.Metric) float64 {
 // success-metric fix on the block-access-type early return in
 // NodeStageVolume (pkg/azuredisk/nodeserver.go line ~130 in the PR diff).
 func TestNodeStageVolume_BlockAccessType_EmitsSuccessMetric(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		// The Windows safe_mounter bypasses the fake IOHandler and calls the
+		// real ListDiskLocations/CIM APIs to resolve the LUN, which cannot
+		// succeed in a unit-test environment. The block-access-type early
+		// return this test guards is OS-agnostic, so covering it on Linux
+		// (where the fake IOHandler resolves LUN 1) is sufficient.
+		t.Skip("skipping on Windows: fake LUN resolution not supported by safe_mounter_host_process")
+	}
 	cntl := gomock.NewController(t)
 	defer cntl.Finish()
 	d, _ := NewFakeDriver(cntl)
