@@ -41,10 +41,10 @@ import (
 
 	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
+	csiMetrics "sigs.k8s.io/azuredisk-csi-driver/pkg/metrics"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/optimization"
 	volumehelper "sigs.k8s.io/azuredisk-csi-driver/pkg/util"
 	azureconsts "sigs.k8s.io/cloud-provider-azure/pkg/consts"
-	"sigs.k8s.io/cloud-provider-azure/pkg/metrics"
 	azure "sigs.k8s.io/cloud-provider-azure/pkg/provider"
 )
 
@@ -62,95 +62,6 @@ type listVolumeStatus struct {
 	isCompleteRun bool // isCompleteRun is flagged true if the function iterated through all azure disks
 	entries       []*csi.ListVolumesResponse_Entry
 	err           error
-}
-
-// startSKUMigrationMonitor starts (idempotently) an asynchronous monitor that tracks
-// migration of a managed disk from one SKU to another (currently only when moving
-// to PremiumV2).
-//
-// Parameters:
-//
-//	ctx                - request context
-//	isProvisioningFlow - true when invoked from CreateVolume (PV may not exist yet);
-//	                     false when invoked from ModifyVolume (PV should already exist).
-//	fromSKUStr         - original disk SKU name (string form, may differ in casing)
-//	toSKU              - target armcompute.DiskStorageAccountTypes (must be PremiumV2LRS to proceed)
-//	diskURI            - full Azure disk resource ID
-//	pvName             - Kubernetes PV name if known (CreateVolume path supplies req.Name;
-//	                     ModifyVolume path does not, so we derive it from diskURI)
-//	sizeBytes          - disk size (used to derive migration timeout)
-//
-// Workflow / decision points:
-// 1. Guard clauses:
-//   - If no migration monitor is configured OR fromSKUStr empty: do nothing.
-//   - If target SKU is not PremiumV2 OR already matches fromSKU: no migration needed.
-//
-// 2. PV name resolution:
-//   - If pvName is empty (ModifyVolume path) attempt to parse diskURI and use its last
-//     token (disk name) as the PV name.
-//   - If the cluster used static provisioning with a PV name different from the Azure
-//     disk name, this heuristic cannot map the disk to the PV; monitoring is skipped.
-//
-// 3. StartMonitoring call:
-//   - Calls migrationMonitor.StartMigrationMonitoring(ctx, isProvisioningFlow, ...).
-//   - isProvisioningFlow influences initial behavior inside the monitor:
-//   - Provisioning (true): PV may not yet exist. The monitor records a task with
-//     empty PVC metadata, attempts an initial label add (may fail if PV absent),
-//     and defers PV / PVC discovery, labeling, and start event emission to the
-//     periodic polling loop (monitorMigrationProgress).
-//   - Modify (false): PV should exist. The monitor immediately fetches the PV,
-//     derives PVC name/namespace, adds/ensures the migration label, and emits
-//     the "Started" event (unless label already existed; then it logs a resume).
-//
-// 4. Label management:
-//   - addMigrationLabelIfNotExists is executed once at start; if it fails (e.g. PV
-//     not yet created) task.PVLabeled remains false. The polling loop will retry
-//     labeling until successful.
-//
-// 5. Asynchronous monitoring:
-//   - A goroutine watches progress (polling Azure), emitting events for start (if
-//     deferred), incremental progress, completion, failure or timeout.
-//
-// 6. Error handling:
-//   - Non‑fatal issues (parse failure, start error) are logged and abort initiation
-//     for that disk; they do not propagate back to the CSI operation.
-//
-// Concurrency notes:
-//   - This function itself is lightweight and only delegates; StartMigrationMonitoring
-//     handles internal synchronization of task state.
-//   - Idempotency: if monitoring is already active for diskURI, underlying monitor
-//     short‑circuits.
-//
-// Returns: nothing; logs warnings on recoverable issues.
-//
-// NOTE: If future migrations support additional target SKUs, relax the toSKU check.
-func (d *Driver) startSKUMigrationMonitor(
-	ctx context.Context,
-	isProvisioningFlow bool,
-	fromSKUStr string,
-	toSKU armcompute.DiskStorageAccountTypes,
-	diskURI, pvName string,
-	sizeBytes int64,
-) {
-	if d.migrationMonitor == nil || fromSKUStr == "" {
-		return
-	}
-
-	if toSKU != armcompute.DiskStorageAccountTypesPremiumV2LRS || fromSKUStr == string(toSKU) {
-		return
-	}
-	if pvName == "" {
-		var parseErr error
-		_, _, pvName, parseErr = azureutils.GetInfoFromURI(diskURI)
-		if parseErr != nil {
-			klog.Warningf("Skipping monitor, failed to extract pv name from URI %s: %v", diskURI, parseErr)
-			return
-		}
-	}
-	if err := d.migrationMonitor.StartMigrationMonitoring(
-		ctx, isProvisioningFlow, diskURI, pvName, fromSKUStr, toSKU, sizeBytes); err != nil {
-		klog.Warningf("failed to start SKU migration monitoring for %s: %v", diskURI, err)
-	}
 }
 
 // CreateVolume provisions an azure disk
@@ -451,10 +362,10 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 	}
 
 	var diskURI string
-	mc := metrics.NewMetricContext(consts.AzureDiskCSIDriverName, metricsRequest, d.cloud.ResourceGroup, d.cloud.SubscriptionID, d.Name)
+	mc := csiMetrics.NewCSIMetricContext(metricsRequest).WithBasicVolumeInfo(d.cloud.ResourceGroup, d.cloud.SubscriptionID, d.Name)
 	isOperationSucceeded := false
 	defer func() {
-		mc.ObserveOperationWithResult(isOperationSucceeded, consts.VolumeID, diskURI)
+		mc.WithAdditionalVolumeInfo(consts.VolumeID, diskURI).ObserveWithLabels(isOperationSucceeded, csiMetrics.StorageAccountType, string(skuName))
 	}()
 
 	diskURI, err = localDiskController.CreateManagedDisk(ctx, volumeOptions)
@@ -504,15 +415,16 @@ func (d *Driver) DeleteVolume(ctx context.Context, req *csi.DeleteVolumeRequest)
 	}
 	defer d.volumeLocks.Release(volumeID)
 
-	mc := metrics.NewMetricContext(consts.AzureDiskCSIDriverName, "controller_delete_volume", d.cloud.ResourceGroup, d.cloud.SubscriptionID, d.Name)
+	mc := csiMetrics.NewCSIMetricContext("controller_delete_volume").WithBasicVolumeInfo(d.cloud.ResourceGroup, d.cloud.SubscriptionID, d.Name)
 	isOperationSucceeded := false
 	defer func() {
-		mc.ObserveOperationWithResult(isOperationSucceeded, consts.VolumeID, diskURI)
+		mc.WithAdditionalVolumeInfo(consts.VolumeID, diskURI).Observe(isOperationSucceeded)
 	}()
 
 	klog.V(2).Infof("deleting azure disk(%s)", diskURI)
 	err := d.diskController.DeleteManagedDisk(ctx, diskURI)
 	klog.V(2).Infof("delete azure disk(%s) returned with %v", diskURI, err)
+
 	isOperationSucceeded = (err == nil)
 	return &csi.DeleteVolumeResponse{}, err
 }
@@ -585,10 +497,10 @@ func (d *Driver) ControllerModifyVolume(ctx context.Context, req *csi.Controller
 		SourceType:         consts.SourceVolume,
 	}
 
-	mc := metrics.NewMetricContext(consts.AzureDiskCSIDriverName, "controller_modify_volume", d.cloud.ResourceGroup, d.cloud.SubscriptionID, d.Name)
+	mc := csiMetrics.NewCSIMetricContext("controller_modify_volume").WithBasicVolumeInfo(d.cloud.ResourceGroup, d.cloud.SubscriptionID, d.Name)
 	isOperationSucceeded := false
 	defer func() {
-		mc.ObserveOperationWithResult(isOperationSucceeded, consts.VolumeID, diskURI)
+		mc.WithAdditionalVolumeInfo(consts.VolumeID, diskURI).ObserveWithLabels(isOperationSucceeded, csiMetrics.StorageAccountType, string(skuName))
 	}()
 
 	if err = d.diskController.ModifyDisk(ctx, volumeOptions); err != nil {
@@ -598,8 +510,6 @@ func (d *Driver) ControllerModifyVolume(ctx context.Context, req *csi.Controller
 		return nil, status.Errorf(codes.Internal, "%v", err)
 	}
 
-	isOperationSucceeded = true
-
 	// Start migration monitoring if this is a SKU change
 	if monitorSKUMigration {
 		volSizeBytes := int64(*currentDisk.Properties.DiskSizeGB) * 1024 * 1024 * 1024
@@ -608,6 +518,7 @@ func (d *Driver) ControllerModifyVolume(ctx context.Context, req *csi.Controller
 
 	klog.V(2).Infof("modify azure disk(%s) account type(%s) rg(%s) location(%s) successfully", diskParams.DiskName, skuName, diskParams.ResourceGroup, diskParams.Location)
 
+	isOperationSucceeded = true
 	return &csi.ControllerModifyVolumeResponse{}, err
 }
 
@@ -654,10 +565,10 @@ func (d *Driver) ControllerPublishVolume(ctx context.Context, req *csi.Controlle
 		return nil, status.Errorf(codes.Internal, "%v", err)
 	}
 
-	mc := metrics.NewMetricContext(consts.AzureDiskCSIDriverName, "controller_publish_volume", d.cloud.ResourceGroup, d.cloud.SubscriptionID, d.Name)
+	mc := csiMetrics.NewCSIMetricContext("controller_publish_volume").WithBasicVolumeInfo(d.cloud.ResourceGroup, d.cloud.SubscriptionID, d.Name)
 	isOperationSucceeded := false
 	defer func() {
-		mc.ObserveOperationWithResult(isOperationSucceeded, consts.VolumeID, diskURI, consts.Node, string(nodeName))
+		mc.WithAdditionalVolumeInfo(consts.VolumeID, diskURI, consts.Node, string(nodeName)).Observe(isOperationSucceeded)
 	}()
 
 	lun, vmState, err := d.diskController.GetDiskLun(ctx, diskName, diskURI, nodeName)
@@ -730,9 +641,7 @@ func (d *Driver) ControllerPublishVolume(ctx context.Context, req *csi.Controlle
 			if err != nil {
 				klog.Errorf("Attach volume %s to instance %s failed with %v", diskURI, nodeName, err)
 				errMsg := fmt.Sprintf("Attach volume %s to instance %s failed with %v", diskURI, nodeName, err)
-				if len(errMsg) > maxErrMsgLength {
-					errMsg = errMsg[:maxErrMsgLength]
-				}
+				errMsg = truncateErrMsg(errMsg)
 				return nil, status.Errorf(codes.Internal, "%v", errMsg)
 			}
 		}
@@ -768,10 +677,10 @@ func (d *Driver) ControllerUnpublishVolume(ctx context.Context, req *csi.Control
 		return nil, status.Errorf(codes.Internal, "%v", err)
 	}
 
-	mc := metrics.NewMetricContext(consts.AzureDiskCSIDriverName, "controller_unpublish_volume", d.cloud.ResourceGroup, d.cloud.SubscriptionID, d.Name)
+	mc := csiMetrics.NewCSIMetricContext("controller_unpublish_volume").WithBasicVolumeInfo(d.cloud.ResourceGroup, d.cloud.SubscriptionID, d.Name)
 	isOperationSucceeded := false
 	defer func() {
-		mc.ObserveOperationWithResult(isOperationSucceeded, consts.VolumeID, diskURI, consts.Node, string(nodeName))
+		mc.WithAdditionalVolumeInfo(consts.VolumeID, diskURI, consts.Node, string(nodeName)).Observe(isOperationSucceeded)
 	}()
 
 	klog.V(2).Infof("Trying to detach volume %s from node %s", diskURI, nodeID)
@@ -782,9 +691,7 @@ func (d *Driver) ControllerUnpublishVolume(ctx context.Context, req *csi.Control
 		} else {
 			klog.Errorf("Could not detach volume %s from node %s: %v", diskURI, nodeID, err)
 			errMsg := fmt.Sprintf("Could not detach volume %s from node %s: %v", diskURI, nodeID, err)
-			if len(errMsg) > maxErrMsgLength {
-				errMsg = errMsg[:maxErrMsgLength]
-			}
+			errMsg = truncateErrMsg(errMsg)
 			return nil, status.Errorf(codes.Internal, "%v", errMsg)
 		}
 	}
@@ -1084,12 +991,18 @@ func (d *Driver) ControllerExpandVolume(ctx context.Context, req *csi.Controller
 	if result == nil || result.Properties == nil || result.Properties.DiskSizeGB == nil {
 		return nil, status.Errorf(codes.Internal, "could not get size of the disk(%s)", diskURI)
 	}
+
+	var diskSku string
+	if result.SKU != nil && result.SKU.Name != nil {
+		diskSku = string(*result.SKU.Name)
+	}
+
 	oldSize := *resource.NewQuantity(int64(*result.Properties.DiskSizeGB), resource.BinarySI)
 
-	mc := metrics.NewMetricContext(consts.AzureDiskCSIDriverName, "controller_expand_volume", d.cloud.ResourceGroup, d.cloud.SubscriptionID, d.Name)
+	mc := csiMetrics.NewCSIMetricContext("controller_expand_volume").WithBasicVolumeInfo(d.cloud.ResourceGroup, d.cloud.SubscriptionID, d.Name)
 	isOperationSucceeded := false
 	defer func() {
-		mc.ObserveOperationWithResult(isOperationSucceeded, consts.VolumeID, diskURI)
+		mc.WithAdditionalVolumeInfo(consts.VolumeID, diskURI).ObserveWithLabels(isOperationSucceeded, csiMetrics.StorageAccountType, diskSku)
 	}()
 
 	klog.V(2).Infof("begin to expand azure disk(%s) with new size(%d)", diskURI, requestSize.Value())
@@ -1102,8 +1015,6 @@ func (d *Driver) ControllerExpandVolume(ctx context.Context, req *csi.Controller
 	if !ok {
 		return nil, status.Errorf(codes.Internal, "failed to transform disk size with error(%v)", err)
 	}
-
-	isOperationSucceeded = true
 	klog.V(2).Infof("expand azure disk(%s) successfully, currentSize(%d)", diskURI, currentSize)
 
 	if result.ManagedBy != nil {
@@ -1118,6 +1029,7 @@ func (d *Driver) ControllerExpandVolume(ctx context.Context, req *csi.Controller
 		}
 	}
 
+	isOperationSucceeded = true
 	return &csi.ControllerExpandVolumeResponse{
 		CapacityBytes:         currentSize,
 		NodeExpansionRequired: true,
@@ -1272,12 +1184,12 @@ func (d *Driver) CreateSnapshot(ctx context.Context, req *csi.CreateSnapshotRequ
 	if crossRegionSnapshotName != "" {
 		metricsRequest = "controller_create_snapshot_cross_region"
 	}
-	mc := metrics.NewMetricContext(consts.AzureDiskCSIDriverName, metricsRequest, d.cloud.ResourceGroup, d.cloud.SubscriptionID, d.Name)
+	mc := csiMetrics.NewCSIMetricContext(metricsRequest).WithBasicVolumeInfo(d.cloud.ResourceGroup, d.cloud.SubscriptionID, d.Name)
 	isOperationSucceeded := false
 	isOperationInProgress := false
 	defer func() {
 		if !isOperationInProgress {
-			mc.ObserveOperationWithResult(isOperationSucceeded, consts.SourceResourceID, sourceVolumeID, consts.SnapshotName, snapshotName)
+			mc.WithAdditionalVolumeInfo(consts.SourceResourceID, sourceVolumeID, consts.SnapshotName, snapshotName).Observe(isOperationSucceeded)
 		}
 	}()
 
@@ -1365,12 +1277,11 @@ func (d *Driver) CreateSnapshot(ctx context.Context, req *csi.CreateSnapshotRequ
 		// replace the last token of csiSnapshot.SnapshotId with crossRegionSnapshotName
 		csiSnapshot.SnapshotId = strings.TrimSuffix(csiSnapshot.SnapshotId, snapshotName) + crossRegionSnapshotName
 	}
-
 	isOperationInProgress = !csiSnapshot.ReadyToUse
-
 	createResp := &csi.CreateSnapshotResponse{
 		Snapshot: csiSnapshot,
 	}
+
 	isOperationSucceeded = true
 	return createResp, nil
 }
@@ -1394,10 +1305,10 @@ func (d *Driver) DeleteSnapshot(ctx context.Context, req *csi.DeleteSnapshotRequ
 		}
 	}
 
-	mc := metrics.NewMetricContext(consts.AzureDiskCSIDriverName, "controller_delete_snapshot", d.cloud.ResourceGroup, d.cloud.SubscriptionID, d.Name)
+	mc := csiMetrics.NewCSIMetricContext("controller_delete_snapshot").WithBasicVolumeInfo(d.cloud.ResourceGroup, d.cloud.SubscriptionID, d.Name)
 	isOperationSucceeded := false
 	defer func() {
-		mc.ObserveOperationWithResult(isOperationSucceeded, consts.SnapshotID, snapshotID)
+		mc.WithAdditionalVolumeInfo(consts.SnapshotID, snapshotID).Observe(isOperationSucceeded)
 	}()
 
 	klog.V(2).Infof("begin to delete snapshot(%s) under rg(%s)", snapshotName, resourceGroup)
@@ -1515,6 +1426,95 @@ func (d *Driver) getSnapshot(ctx context.Context, sourceID string) (*armcompute.
 	return snapshotRetrieved, nil
 }
 
+// startSKUMigrationMonitor starts (idempotently) an asynchronous monitor that tracks
+// migration of a managed disk from one SKU to another (currently only when moving
+// to PremiumV2).
+//
+// Parameters:
+//
+//	ctx                - request context
+//	isProvisioningFlow - true when invoked from CreateVolume (PV may not exist yet);
+//	                     false when invoked from ModifyVolume (PV should already exist).
+//	fromSKUStr         - original disk SKU name (string form, may differ in casing)
+//	toSKU              - target armcompute.DiskStorageAccountTypes (must be PremiumV2LRS to proceed)
+//	diskURI            - full Azure disk resource ID
+//	pvName             - Kubernetes PV name if known (CreateVolume path supplies req.Name;
+//	                     ModifyVolume path does not, so we derive it from diskURI)
+//	sizeBytes          - disk size (used to derive migration timeout)
+//
+// Workflow / decision points:
+// 1. Guard clauses:
+//   - If no migration monitor is configured OR fromSKUStr empty: do nothing.
+//   - If target SKU is not PremiumV2 OR already matches fromSKU: no migration needed.
+//
+// 2. PV name resolution:
+//   - If pvName is empty (ModifyVolume path) attempt to parse diskURI and use its last
+//     token (disk name) as the PV name.
+//   - If the cluster used static provisioning with a PV name different from the Azure
+//     disk name, this heuristic cannot map the disk to the PV; monitoring is skipped.
+//
+// 3. StartMonitoring call:
+//   - Calls migrationMonitor.StartMigrationMonitoring(ctx, isProvisioningFlow, ...).
+//   - isProvisioningFlow influences initial behavior inside the monitor:
+//   - Provisioning (true): PV may not yet exist. The monitor records a task with
+//     empty PVC metadata, attempts an initial label add (may fail if PV absent),
+//     and defers PV / PVC discovery, labeling, and start event emission to the
+//     periodic polling loop (monitorMigrationProgress).
+//   - Modify (false): PV should exist. The monitor immediately fetches the PV,
+//     derives PVC name/namespace, adds/ensures the migration label, and emits
+//     the "Started" event (unless label already existed; then it logs a resume).
+//
+// 4. Label management:
+//   - addMigrationLabelIfNotExists is executed once at start; if it fails (e.g. PV
+//     not yet created) task.PVLabeled remains false. The polling loop will retry
+//     labeling until successful.
+//
+// 5. Asynchronous monitoring:
+//   - A goroutine watches progress (polling Azure), emitting events for start (if
+//     deferred), incremental progress, completion, failure or timeout.
+//
+// 6. Error handling:
+//   - Non‑fatal issues (parse failure, start error) are logged and abort initiation
+//     for that disk; they do not propagate back to the CSI operation.
+//
+// Concurrency notes:
+//   - This function itself is lightweight and only delegates; StartMigrationMonitoring
+//     handles internal synchronization of task state.
+//   - Idempotency: if monitoring is already active for diskURI, underlying monitor
+//     short‑circuits.
+//
+// Returns: nothing; logs warnings on recoverable issues.
+//
+// NOTE: If future migrations support additional target SKUs, relax the toSKU check.
+func (d *Driver) startSKUMigrationMonitor(
+	ctx context.Context,
+	isProvisioningFlow bool,
+	fromSKUStr string,
+	toSKU armcompute.DiskStorageAccountTypes,
+	diskURI, pvName string,
+	sizeBytes int64,
+) {
+	if d.migrationMonitor == nil || fromSKUStr == "" {
+		return
+	}
+
+	if toSKU != armcompute.DiskStorageAccountTypesPremiumV2LRS || fromSKUStr == string(toSKU) {
+		return
+	}
+	if pvName == "" {
+		var parseErr error
+		_, _, pvName, parseErr = azureutils.GetInfoFromURI(diskURI)
+		if parseErr != nil {
+			klog.Warningf("Skipping monitor, failed to extract pv name from URI %s: %v", diskURI, parseErr)
+			return
+		}
+	}
+	if err := d.migrationMonitor.StartMigrationMonitoring(
+		ctx, isProvisioningFlow, diskURI, pvName, fromSKUStr, toSKU, sizeBytes); err != nil {
+		klog.Warningf("failed to start SKU migration monitoring for %s: %v", diskURI, err)
+	}
+}
+
 // getSnapshotSKU retrieves the SKU of the snapshot and returns the SKU or if any error occurs
 func getSnapshotSKUFromSnapshot(computeSnapshot *armcompute.Snapshot) (string, error) {
 	if computeSnapshot == nil {
@@ -1539,4 +1539,20 @@ func getDiskSizeInBytesFromSnapshot(computeSnapshot *armcompute.Snapshot) (int64
 		return 0, status.Error(codes.NotFound, "Snapshot size not found")
 	}
 	return *computeSnapshot.Properties.DiskSizeBytes, nil
+}
+
+// truncateErrMsg truncates long error messages while preserving both the
+// beginning (context) and end (critical details like permission errors).
+// This ensures that important information at the tail of verbose Azure
+// error messages (e.g., missing permissions) remains visible in kube-events
+// which are limited to 1024 bytes.
+func truncateErrMsg(errMsg string) string {
+	if len(errMsg) <= maxErrMsgLength {
+		return errMsg
+	}
+	// Keep head (~40%) for context and tail (~60%) for critical error details.
+	const ellipsis = " ... "
+	headLen := (maxErrMsgLength - len(ellipsis)) * 2 / 5
+	tailLen := maxErrMsgLength - headLen - len(ellipsis)
+	return errMsg[:headLen] + ellipsis + errMsg[len(errMsg)-tailLen:]
 }

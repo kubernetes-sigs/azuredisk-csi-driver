@@ -28,7 +28,6 @@ import (
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/optimization"
 	volumehelper "sigs.k8s.io/azuredisk-csi-driver/pkg/util"
 	azcache "sigs.k8s.io/cloud-provider-azure/pkg/cache"
-	"sigs.k8s.io/cloud-provider-azure/pkg/metrics"
 	azure "sigs.k8s.io/cloud-provider-azure/pkg/provider"
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
@@ -41,6 +40,7 @@ import (
 	"k8s.io/klog/v2"
 	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
+	csiMetrics "sigs.k8s.io/azuredisk-csi-driver/pkg/metrics"
 )
 
 const (
@@ -50,18 +50,10 @@ const (
 	volumeOperationAlreadyExistsFmt = "An operation with the given Volume ID %s already exists"
 )
 
-func getDefaultFsType() string {
-	if runtime.GOOS == "windows" {
-		return defaultWindowsFsType
-	}
-
-	return defaultLinuxFsType
-}
-
 // NodeStageVolume mount disk device to a staging path
 func (d *Driver) NodeStageVolume(_ context.Context, req *csi.NodeStageVolumeRequest) (*csi.NodeStageVolumeResponse, error) {
-	diskURI := req.GetVolumeId()
-	if len(diskURI) == 0 {
+	volumeID := req.GetVolumeId()
+	if len(volumeID) == 0 {
 		return nil, status.Error(codes.InvalidArgument, "Volume ID not provided")
 	}
 
@@ -85,16 +77,23 @@ func (d *Driver) NodeStageVolume(_ context.Context, req *csi.NodeStageVolumeRequ
 		return nil, status.Error(codes.InvalidArgument, err.Error())
 	}
 
-	mc := metrics.NewMetricContext(consts.AzureDiskCSIDriverName, "node_stage_volume", d.cloud.ResourceGroup, "", d.Name)
+	// Resolve fsType before device discovery so a bad value fails fast, rather than after
+	// a LUN rescan that polls for two minutes.
+	fstype, mountFlags, err := resolveFSType(volumeCapability, params)
+	if err != nil {
+		return nil, status.Error(codes.InvalidArgument, err.Error())
+	}
+
+	mc := csiMetrics.NewCSIMetricContext("node_stage_volume").WithBasicVolumeInfo(d.cloud.ResourceGroup, "", d.Name)
 	isOperationSucceeded := false
 	defer func() {
-		mc.ObserveOperationWithResult(isOperationSucceeded, consts.VolumeID, diskURI)
+		mc.WithAdditionalVolumeInfo(consts.VolumeID, volumeID).Observe(isOperationSucceeded)
 	}()
 
-	if acquired := d.volumeLocks.TryAcquire(diskURI); !acquired {
-		return nil, status.Errorf(codes.Aborted, volumeOperationAlreadyExistsFmt, diskURI)
+	if acquired := d.volumeLocks.TryAcquire(volumeID); !acquired {
+		return nil, status.Errorf(codes.Aborted, volumeOperationAlreadyExistsFmt, volumeID)
 	}
-	defer d.volumeLocks.Release(diskURI)
+	defer d.volumeLocks.Release(volumeID)
 
 	lun, ok := req.PublishContext[consts.LUN]
 	if !ok {
@@ -127,6 +126,7 @@ func (d *Driver) NodeStageVolume(_ context.Context, req *csi.NodeStageVolumeRequ
 	// If the access type is block, do nothing for stage
 	switch req.GetVolumeCapability().GetAccessType().(type) {
 	case *csi.VolumeCapability_Block:
+		isOperationSucceeded = true
 		return &csi.NodeStageVolumeResponse{}, nil
 	}
 
@@ -136,24 +136,11 @@ func (d *Driver) NodeStageVolume(_ context.Context, req *csi.NodeStageVolumeRequ
 	}
 	if mnt {
 		klog.V(2).Infof("NodeStageVolume: already mounted on target %s", target)
+		isOperationSucceeded = true
 		return &csi.NodeStageVolumeResponse{}, nil
 	}
 
-	// Get fsType and mountOptions that the volume will be formatted and mounted with
-	fstype := getDefaultFsType()
-	options := []string{}
-	if mnt := volumeCapability.GetMount(); mnt != nil {
-		if mnt.FsType != "" {
-			fstype = mnt.FsType
-		}
-		options = append(options, collectMountOptions(fstype, mnt.MountFlags)...)
-	}
-
-	volContextFSType := azureutils.GetFStype(req.GetVolumeContext())
-	if volContextFSType != "" {
-		// respect "fstype" setting in storage class parameters
-		fstype = volContextFSType
-	}
+	options := collectMountOptions(fstype, mountFlags)
 
 	// If partition is specified, should mount it only instead of the entire disk.
 	if partition, ok := req.GetVolumeContext()[consts.VolumeAttributePartition]; ok {
@@ -175,17 +162,17 @@ func (d *Driver) NodeStageVolume(_ context.Context, req *csi.NodeStageVolumeRequ
 		// Filesystem resize is required after snapshot restore / volume clone
 		// https://github.com/kubernetes/kubernetes/issues/94929
 		if needResize, err = needResizeVolume(source, target, d.mounter); err != nil {
-			klog.Errorf("NodeStageVolume: could not determine if volume %s needs to be resized: %v", diskURI, err)
+			klog.Errorf("NodeStageVolume: could not determine if volume %s needs to be resized: %v", volumeID, err)
 		}
 	}
 
 	// if resize is required, resize filesystem
 	if needResize {
-		klog.V(2).Infof("NodeStageVolume: fs resize initiating on target(%s) volumeid(%s)", target, diskURI)
+		klog.V(2).Infof("NodeStageVolume: fs resize initiating on target(%s) volumeid(%s)", target, volumeID)
 		if err := resizeVolume(source, target, d.mounter); err != nil {
 			return nil, status.Errorf(codes.Internal, "NodeStageVolume: could not resize volume %s (%s):  %v", source, target, err)
 		}
-		klog.V(2).Infof("NodeStageVolume: fs resize successful on target(%s) volumeid(%s).", target, diskURI)
+		klog.V(2).Infof("NodeStageVolume: fs resize successful on target(%s) volumeid(%s).", target, volumeID)
 	}
 	isOperationSucceeded = true
 	return &csi.NodeStageVolumeResponse{}, nil
@@ -203,10 +190,10 @@ func (d *Driver) NodeUnstageVolume(_ context.Context, req *csi.NodeUnstageVolume
 		return nil, status.Error(codes.InvalidArgument, "Staging target not provided")
 	}
 
-	mc := metrics.NewMetricContext(consts.AzureDiskCSIDriverName, "node_unstage_volume", d.cloud.ResourceGroup, "", d.Name)
+	mc := csiMetrics.NewCSIMetricContext("node_unstage_volume").WithBasicVolumeInfo(d.cloud.ResourceGroup, "", d.Name)
 	isOperationSucceeded := false
 	defer func() {
-		mc.ObserveOperationWithResult(isOperationSucceeded, consts.VolumeID, volumeID)
+		mc.WithAdditionalVolumeInfo(consts.VolumeID, volumeID).Observe(isOperationSucceeded)
 	}()
 
 	if acquired := d.volumeLocks.TryAcquire(volumeID); !acquired {
@@ -226,6 +213,12 @@ func (d *Driver) NodeUnstageVolume(_ context.Context, req *csi.NodeUnstageVolume
 
 // NodePublishVolume mount the volume from staging to target path
 func (d *Driver) NodePublishVolume(_ context.Context, req *csi.NodePublishVolumeRequest) (*csi.NodePublishVolumeResponse, error) {
+	mc := csiMetrics.NewCSIMetricContext("node_publish_volume")
+	isOperationSucceeded := false
+	defer func() {
+		mc.Observe(isOperationSucceeded)
+	}()
+
 	volumeID := req.GetVolumeId()
 	if len(volumeID) == 0 {
 		return nil, status.Error(codes.InvalidArgument, "Volume ID missing in the request")
@@ -288,6 +281,7 @@ func (d *Driver) NodePublishVolume(_ context.Context, req *csi.NodePublishVolume
 		}
 		if mnt {
 			klog.V(2).Infof("NodePublishVolume: already mounted on target %s", target)
+			isOperationSucceeded = true
 			return &csi.NodePublishVolumeResponse{}, nil
 		}
 	}
@@ -298,12 +292,18 @@ func (d *Driver) NodePublishVolume(_ context.Context, req *csi.NodePublishVolume
 	}
 
 	klog.V(2).Infof("NodePublishVolume: mount %s at %s successfully", source, target)
-
+	isOperationSucceeded = true
 	return &csi.NodePublishVolumeResponse{}, nil
 }
 
 // NodeUnpublishVolume unmount the volume from the target path
 func (d *Driver) NodeUnpublishVolume(_ context.Context, req *csi.NodeUnpublishVolumeRequest) (*csi.NodeUnpublishVolumeResponse, error) {
+	mc := csiMetrics.NewCSIMetricContext("node_unpublish_volume")
+	isOperationSucceeded := false
+	defer func() {
+		mc.Observe(isOperationSucceeded)
+	}()
+
 	targetPath := req.GetTargetPath()
 	volumeID := req.GetVolumeId()
 
@@ -325,7 +325,7 @@ func (d *Driver) NodeUnpublishVolume(_ context.Context, req *csi.NodeUnpublishVo
 	}
 
 	klog.V(2).Infof("NodeUnpublishVolume: unmount volume %s on %s successfully", volumeID, targetPath)
-
+	isOperationSucceeded = true
 	return &csi.NodeUnpublishVolumeResponse{}, nil
 }
 
@@ -515,10 +515,10 @@ func (d *Driver) NodeExpandVolume(_ context.Context, req *csi.NodeExpandVolumeRe
 		return &csi.NodeExpandVolumeResponse{}, nil
 	}
 
-	mc := metrics.NewMetricContext(consts.AzureDiskCSIDriverName, "node_expand_volume", d.cloud.ResourceGroup, "", d.Name)
+	mc := csiMetrics.NewCSIMetricContext("node_expand_volume").WithBasicVolumeInfo(d.cloud.ResourceGroup, "", d.Name)
 	isOperationSucceeded := false
 	defer func() {
-		mc.ObserveOperationWithResult(isOperationSucceeded, consts.VolumeID, volumeID)
+		mc.WithAdditionalVolumeInfo(consts.VolumeID, volumeID).Observe(isOperationSucceeded)
 	}()
 
 	if acquired := d.volumeLocks.TryAcquire(volumeID); !acquired {
@@ -571,7 +571,6 @@ func (d *Driver) NodeExpandVolume(_ context.Context, req *csi.NodeExpandVolumeRe
 	}
 
 	klog.V(2).Infof("NodeExpandVolume succeeded on resizing volume %v to %v", volumeID, finalBlockSizeBytes)
-
 	isOperationSucceeded = true
 	return &csi.NodeExpandVolumeResponse{
 		CapacityBytes: finalBlockSizeBytes,
@@ -706,6 +705,48 @@ func (d *Driver) validateBlockDeviceSize(devicePath string, requestGiB int64) (i
 	}
 
 	return blockSizeBytes, nil
+}
+
+func getDefaultFsType() string {
+	if runtime.GOOS == "windows" {
+		return defaultWindowsFsType
+	}
+
+	return defaultLinuxFsType
+}
+
+// resolveFSType returns the filesystem type and mount flags to stage a volume with,
+// or an empty fsType for the block access type, which has no filesystem. Values outside
+// the supported set are rejected, except on Windows where the mounters ignore fsType and
+// always format NTFS, so rejecting would break configurations that already worked.
+func resolveFSType(volumeCapability *csi.VolumeCapability, params map[string]string) (string, []string, error) {
+	// IsValidVolumeCapabilities rejects caps with block and mount both set or both nil,
+	// so a nil mount here is the block access type.
+	mnt := volumeCapability.GetMount()
+	if mnt == nil {
+		return "", nil, nil
+	}
+
+	fstype := getDefaultFsType()
+	if mnt.FsType != "" {
+		fstype = mnt.FsType
+	}
+
+	if volContextFSType := azureutils.GetFStype(params); volContextFSType != "" {
+		// respect "fstype" setting in storage class parameters
+		fstype = volContextFSType
+	}
+
+	// fstype is attacker-controllable via volume attributes and ends up in mkfs/mount, so allowlist it
+	normalized, err := azureutils.NormalizeFSType(fstype)
+	if err != nil {
+		if runtime.GOOS != "windows" {
+			return "", nil, err
+		}
+		normalized = getDefaultFsType()
+		klog.Warningf("NodeStageVolume: %v, falling back to %s", err, normalized)
+	}
+	return normalized, mnt.MountFlags, nil
 }
 
 func collectMountOptions(fsType string, mntFlags []string) []string {
