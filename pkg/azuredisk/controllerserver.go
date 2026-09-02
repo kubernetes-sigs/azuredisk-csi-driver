@@ -1632,15 +1632,23 @@ func inlineVolumeSpecMatchesDisk(driverName, diskURI string, va *storagev1.Volum
 // truncateErrMsg truncates long error messages while preserving both the
 // beginning (context) and end (critical details like permission errors).
 // This ensures that important information at the tail of verbose Azure
-// error messages (e.g., missing permissions) remains visible in kube-events
-// which are limited to 1024 bytes.
+// error messages (e.g., missing role assignments and the ClientId /
+// ObjectId of the identity that needs the permission) remains visible in
+// kube-events which are limited to 1024 bytes.
+//
+// Head/tail split favors the tail because the head is mostly boilerplate
+// ("Attach volume <pvc> to instance <node> failed with rpc error: ...")
+// that the user typically already has from surrounding context, while
+// the tail is where the actionable Azure error details land: the missing
+// action (e.g. "Microsoft.Compute/diskEncryptionSets/read"), the target
+// scope, and the ClientId/ObjectId of the identity that lacks permission.
 func truncateErrMsg(errMsg string) string {
 	if len(errMsg) <= maxErrMsgLength {
 		return errMsg
 	}
-	// Keep head (~40%) for context and tail (~60%) for critical error details.
+	// Keep head (~20%) for context and tail (~80%) for critical error details.
 	const ellipsis = " ... "
-	headLen := (maxErrMsgLength - len(ellipsis)) * 2 / 5
+	headLen := (maxErrMsgLength - len(ellipsis)) / 5
 	tailLen := maxErrMsgLength - headLen - len(ellipsis)
 	return errMsg[:headLen] + ellipsis + errMsg[len(errMsg)-tailLen:]
 }
