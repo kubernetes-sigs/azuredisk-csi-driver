@@ -5094,6 +5094,17 @@ func TestTruncateErrMsg(t *testing.T) {
 			wantLen:  maxErrMsgLength,
 			wantTail: "diskEncryptionSets/read' on the linked scope",
 		},
+		{
+			// Regression: verbose DES permission errors end with the
+			// ClientId / ObjectId of the identity that lacks the role
+			// assignment. Those IDs are the actionable part for the
+			// customer (they tell them which managed identity needs the
+			// role) and must survive truncation.
+			name:     "DES permission error preserves ClientId and ObjectId at tail",
+			input:    "Attach volume pvc-abcd-1234 to instance aks-nodepool1-12345678-vmss000000 failed with rpc error: code = Internal desc = " + strings.Repeat("filler junk from long Azure error body ", 30) + "does not have authorization to perform action 'Microsoft.Compute/diskEncryptionSets/read' over scope '/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-des/providers/Microsoft.Compute/diskEncryptionSets/my-des' or the scope is invalid. ClientId=11111111-2222-3333-4444-555555555555 ObjectId=66666666-7777-8888-9999-aaaaaaaaaaaa",
+			wantLen:  maxErrMsgLength,
+			wantTail: "ClientId=11111111-2222-3333-4444-555555555555 ObjectId=66666666-7777-8888-9999-aaaaaaaaaaaa",
+		},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
