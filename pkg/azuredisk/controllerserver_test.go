@@ -2457,6 +2457,32 @@ func TestControllerExpandVolume(t *testing.T) {
 				}
 			},
 		},
+		{
+			// Regression guard for the nil-dereference fix in this PR: the
+			// disk client can legitimately return (nil, nil) (e.g. NotFound
+			// mapped to a nil result with a nil error). Before the fix, the
+			// controller dereferenced result.SKU before the nil check and
+			// panicked; now it must return an Internal error naming the disk.
+			name: "disk client returns (nil, nil) - no panic, Internal error",
+			testFunc: func(t *testing.T) {
+				req := &csi.ControllerExpandVolumeRequest{
+					VolumeId:      testVolumeID,
+					CapacityRange: stdCapRange,
+				}
+				ctx := context.Background()
+				cntl := gomock.NewController(t)
+				defer cntl.Finish()
+				d, _ := NewFakeDriver(cntl)
+				diskClient := mock_diskclient.NewMockInterface(cntl)
+				d.getClientFactory().(*mock_azclient.MockClientFactory).EXPECT().GetDiskClientForSub(gomock.Any()).Return(diskClient, nil).AnyTimes()
+				diskClient.EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, nil).AnyTimes()
+				expectedErr := status.Errorf(codes.Internal, "could not get size of the disk(/subscriptions/subs/resourceGroups/rg/providers/Microsoft.Compute/disks/unit-test-volume)")
+				_, err := d.ControllerExpandVolume(ctx, req)
+				if !reflect.DeepEqual(err, expectedErr) {
+					t.Errorf("actualErr: (%v), expectedErr: (%v)", err, expectedErr)
+				}
+			},
+		},
 	}
 	for _, tc := range testCases {
 		t.Run(tc.name, tc.testFunc)
