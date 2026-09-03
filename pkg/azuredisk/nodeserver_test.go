@@ -275,7 +275,7 @@ func TestNodeGetInfo(t *testing.T) {
 		},
 		{
 			desc:        "[Failure] Get node information for non-existing VM",
-			expectedErr: status.Error(codes.Internal, fmt.Sprintf("getNodeInfoFromLabels on node(%s) failed with %s", "fakeNodeID", "kubeClient is nil")),
+			expectedErr: status.Error(codes.Internal, fmt.Sprintf("GetNodeInfoFromLabels on node(%s) failed with %s", "fakeNodeID", "kubeClient is nil")),
 			setupFunc: func(_ *testing.T, d FakeDriver) {
 				mockVMClient := d.getCloud().ComputeClientFactory.GetVirtualMachineClient().(*mockvmclient.MockInterface)
 				mockVMClient.EXPECT().
