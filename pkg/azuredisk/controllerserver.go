@@ -22,7 +22,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"net/url"
+	// "net/url"
 	"sort"
 	"strconv"
 	"strings"
@@ -39,6 +39,8 @@ import (
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
+	clientset "k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/util/retry"
 	cloudprovider "k8s.io/cloud-provider"
 	volerr "k8s.io/cloud-provider/volume/errors"
 	"k8s.io/klog/v2"
@@ -580,11 +582,13 @@ func (d *Driver) getAKSClusterResourceID(ctx context.Context) (string, error) {
 	}
 
 	d.clusterResourceID = fmt.Sprintf("/subscriptions/%s/resourceGroups/%s/providers/Microsoft.ContainerService/managedClusters/%s", d.cloud.SubscriptionID, clusterResourceGroup, clusterName)
+
+	klog.V(2).Infof("resolved AKS cluster resource ID for QAD owner: %s", d.clusterResourceID)
 	return d.clusterResourceID, nil
 }
 
 // claimDiskResource claims a managed disk and returns its QAD blob URL and identifier.
-func (d *Driver) claimDiskResource(ctx context.Context, diskURI, ownerResource string) (string, string, error) {
+func (d *Driver) claimDiskResource(ctx context.Context, diskURI, ownerResourceID string) (string, string, error) {
 	cred := d.cloud.AuthProvider.GetAzIdentity()
 	if cred == nil {
 		return "", "", fmt.Errorf("no Azure credential available")
@@ -597,8 +601,8 @@ func (d *Driver) claimDiskResource(ctx context.Context, diskURI, ownerResource s
 	}
 
 	requestBody, err := json.Marshal(struct {
-		OwnerResource string `json:"ownerResource"`
-	}{OwnerResource: ownerResource})
+		OwnerResourceID string `json:"ownerResourceId"`
+	}{OwnerResourceID: ownerResourceID})
 	if err != nil {
 		return "", "", fmt.Errorf("failed to marshal claim request: %w", err)
 	}
@@ -646,11 +650,15 @@ func (d *Driver) claimDiskResource(ctx context.Context, diskURI, ownerResource s
 	if err := json.Unmarshal(body, &result); err != nil {
 		return "", "", fmt.Errorf("failed to parse claimResource response: %w", err)
 	}
+
+	if result.Properties == nil {
+		return "", "", fmt.Errorf("claimResource response missing properties")
+	}
 	return result.Properties.BlobURL, result.Properties.ClaimIdentifier, nil
 }
 
 // unclaimDiskResource releases a QAD-claimed managed disk via the DiskRP UnclaimResource API.
-func (d *Driver) unclaimDiskResource(ctx context.Context, diskURI, ownerResource string) error {
+func (d *Driver) unclaimDiskResource(ctx context.Context, diskURI, ownerResourceID string) error {
 	cred := d.cloud.AuthProvider.GetAzIdentity()
 	if cred == nil {
 		return fmt.Errorf("no Azure credential available")
@@ -663,8 +671,8 @@ func (d *Driver) unclaimDiskResource(ctx context.Context, diskURI, ownerResource
 	}
 
 	requestBody, err := json.Marshal(struct {
-		OwnerResource string `json:"ownerResource"`
-	}{OwnerResource: ownerResource})
+		OwnerResourceID string `json:"ownerResourceId"`
+	}{OwnerResourceID: ownerResourceID})
 	if err != nil {
 		return fmt.Errorf("failed to marshal unclaim request: %w", err)
 	}
@@ -729,15 +737,15 @@ func (d *Driver) DeleteVolume(ctx context.Context, req *csi.DeleteVolumeRequest)
 	// If the PV is a QAD PV, unclaim the disk before deletion
 	pv, err := d.getPVFromDiskURI(ctx, diskURI)
 	if err != nil {
-		klog.Warningf("failed to get PV from disk URI %s: %v", diskURI, err)
-	} else if pv.Annotations != nil {
+		return nil, status.Errorf(codes.Internal, "failed to get PV from disk URI %s: %v", diskURI, err)
+	} else if pv != nil && pv.Annotations != nil {
 		if _, exists := pv.Annotations[azureconstants.AttachSequenceAnnotation]; exists {
 			klog.V(2).Infof("PV %s has QAD enabled, unclaiming disk %s before deletion", pv.Name, diskURI)
 			ownerResource, ownerErr := d.getAKSClusterResourceID(ctx)
 			if ownerErr != nil {
-				klog.Warningf("failed to determine QAD owner resource for disk %s (proceeding with deletion): %v", diskURI, ownerErr)
+				return nil, status.Errorf(codes.Internal, "failed to determine QAD owner resource for disk %s: %v", diskURI, ownerErr)
 			} else if unclaimErr := d.unclaimDiskResource(ctx, diskURI, ownerResource); unclaimErr != nil {
-				klog.Warningf("failed to unclaim QAD disk %s (proceeding with deletion): %v", diskURI, unclaimErr)
+				return nil, status.Errorf(codes.Internal, "failed to unclaim QAD disk %s: %v", diskURI, unclaimErr)
 			}
 		}
 	}
@@ -774,7 +782,12 @@ func (d *Driver) ControllerModifyVolume(ctx context.Context, req *csi.Controller
 
 	diskURI := volumeID
 
-	if _, isQAD, err := d.isUsingQADPath(ctx, diskURI); err == nil && isQAD {
+	pv, err := d.getPVFromDiskURI(ctx, diskURI)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "failed to get PV from diskURI %s: %v", diskURI, err)
+	}
+
+	if d.isQAD(pv) {
 		return nil, status.Errorf(codes.Unimplemented, "ControllerModifyVolume is not supported for QAD-enabled volume %s", diskURI)
 	}
 
@@ -917,47 +930,16 @@ func (d *Driver) ControllerPublishVolume(ctx context.Context, req *csi.Controlle
 	qadEnabledValue, _ := azureutils.ParseDiskParametersForKey(volumeContext, azureconstants.QADEnabledField)
 	if strings.EqualFold(qadEnabledValue, consts.TrueValue) {
 		klog.V(2).Infof("qad is enabled for disk %s", diskURI)
-
-		// TEMPORARY (testing only): static-provisioned volumes skip CreateVolume, so the
-		// blob URL is never populated in the volume context. Restore the commented code below.
-		qadOwnerResource, err := d.getAKSClusterResourceID(ctx)
-		if err != nil {
-			return nil, status.Errorf(codes.Internal, "failed to determine QAD owner resource: %v", err)
-		}
-		blobURL, claimIdentifier, err := d.claimDiskResource(ctx, diskURI, qadOwnerResource)
-		if err != nil {
-			return nil, status.Errorf(codes.Internal, "failed to claim QAD disk %s: %v", diskURI, err)
-		}
-
-		// blobURL := volumeContext[azureconstants.BlobURLAnnotation]
-		if blobURL == "" {
-			return nil, status.Errorf(codes.Internal, "QAD blob URL missing for disk %s", diskName)
-		}
-		// claimIdentifier := volumeContext[azureconstants.ClaimIdentifierAnnotation]
-		if claimIdentifier == "" {
-			return nil, status.Errorf(codes.Internal, "QAD claim identifier missing for disk %s", diskName)
-		}
+		blobURL := volumeContext[azureconstants.BlobURLAnnotation]
+		claimIdentifier := volumeContext[azureconstants.ClaimIdentifierAnnotation]
 
 		pv, err := d.getPVFromDiskURI(ctx, diskURI)
 		if err != nil {
 			return nil, status.Errorf(codes.Internal, "failed to get PV from disk URI %s: %v", diskURI, err)
 		}
 
-		// Check if the PV has existing annotations, if not add them and update the PV
-		if _, exists := pv.Annotations[azureconstants.AttachSequenceAnnotation]; !exists {
-			klog.Infof("PV %s doesn't have attach-sequence annotation, adding annotation for QAD", pv.Name)
-			if pv.Annotations == nil {
-				pv.Annotations = make(map[string]string)
-			}
-			pv.Annotations[azureconstants.AttachSequenceAnnotation] = "0"
-			pv.Annotations[azureconstants.BlobURLAnnotation] = blobURL
-			pv.Annotations[azureconstants.ClaimIdentifierAnnotation] = claimIdentifier
-
-			// Update the PV in Kubernetes
-			_, err := d.kubeClient.CoreV1().PersistentVolumes().Update(context.TODO(), pv, metav1.UpdateOptions{})
-			if err != nil {
-				return nil, status.Errorf(codes.Internal, "failed to update PV %s with QAD annotations: %v", pv.Name, err)
-			}
+		if err := ensureQADPVAnnotations(ctx, d.kubeClient, pv.Name, blobURL, claimIdentifier); err != nil {
+			return nil, status.Errorf(codes.Internal, "failed to update PV %s with QAD annotations: %v", pv.Name, err)
 		}
 		isOperationSucceeded = true
 		return &csi.ControllerPublishVolumeResponse{}, nil
@@ -1053,6 +1035,29 @@ func (d *Driver) ControllerPublishVolume(ctx context.Context, req *csi.Controlle
 	return &csi.ControllerPublishVolumeResponse{PublishContext: publishContext}, nil
 }
 
+func ensureQADPVAnnotations(ctx context.Context, kubeClient clientset.Interface, pvName, blobURL, claimIdentifier string) error {
+	return retry.RetryOnConflict(retry.DefaultRetry, func() error {
+		pv, err := kubeClient.CoreV1().PersistentVolumes().Get(ctx, pvName, metav1.GetOptions{})
+		if err != nil {
+			return err
+		}
+		if _, exists := pv.Annotations[azureconstants.AttachSequenceAnnotation]; exists {
+			return nil
+		}
+
+		klog.Infof("PV %s doesn't have attach-sequence annotation, adding annotation for QAD", pv.Name)
+		pv = pv.DeepCopy()
+		if pv.Annotations == nil {
+			pv.Annotations = make(map[string]string)
+		}
+		pv.Annotations[azureconstants.AttachSequenceAnnotation] = "0"
+		pv.Annotations[azureconstants.BlobURLAnnotation] = blobURL
+		pv.Annotations[azureconstants.ClaimIdentifierAnnotation] = claimIdentifier
+		_, err = kubeClient.CoreV1().PersistentVolumes().Update(ctx, pv, metav1.UpdateOptions{})
+		return err
+	})
+}
+
 // ControllerUnpublishVolume detach an azure disk from a required node
 func (d *Driver) ControllerUnpublishVolume(ctx context.Context, req *csi.ControllerUnpublishVolumeRequest) (*csi.ControllerUnpublishVolumeResponse, error) {
 	diskURI := req.GetVolumeId()
@@ -1065,12 +1070,10 @@ func (d *Driver) ControllerUnpublishVolume(ctx context.Context, req *csi.Control
 	pv, err := d.getPVFromDiskURI(ctx, diskURI)
 	if err != nil {
 		klog.Errorf("failed to get PV from disk URI %s: %v", diskURI, err)
-	} else {
-		if pv.Annotations != nil {
-			if _, exists := pv.Annotations[azureconstants.AttachSequenceAnnotation]; exists {
-				klog.V(2).Infof("PV %s has QAD enabled, skipping detach for disk %s", pv.Name, diskURI)
-				return &csi.ControllerUnpublishVolumeResponse{}, nil
-			}
+	} else if pv != nil && pv.Annotations != nil {
+		if _, exists := pv.Annotations[azureconstants.AttachSequenceAnnotation]; exists {
+			klog.V(2).Infof("PV %s has QAD enabled, skipping detach for disk %s", pv.Name, diskURI)
+			return &csi.ControllerUnpublishVolumeResponse{}, nil
 		}
 	}
 	nodeID := req.GetNodeId()
@@ -1435,7 +1438,11 @@ func (d *Driver) ControllerExpandVolume(ctx context.Context, req *csi.Controller
 
 	diskURI := req.GetVolumeId()
 
-	if _, isQAD, err := d.isUsingQADPath(ctx, diskURI); err == nil && isQAD {
+	pv, err := d.getPVFromDiskURI(ctx, diskURI)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "failed to get PV from diskURI %s: %v", diskURI, err)
+	}
+	if d.isQAD(pv) {
 		return nil, status.Errorf(codes.Unimplemented, "ControllerExpandVolume is not supported for QAD-enabled volume %s", diskURI)
 	}
 
@@ -1927,162 +1934,162 @@ func inlineVolumeSpecMatchesDisk(driverName, diskURI string, va *storagev1.Volum
 	return false
 }
 
-// getDiskAccessSAS calls the Azure REST API beginGetAccess to obtain an access SAS URL for the given disk.
-func (d *Driver) getDiskAccessSAS(ctx context.Context, subsID, resourceGroup, diskName string) (string, error) {
-	cred := d.cloud.AuthProvider.GetAzIdentity()
-	if cred == nil {
-		return "", fmt.Errorf("no Azure credential available")
-	}
-	tokenResp, err := cred.GetToken(ctx, policy.TokenRequestOptions{
-		Scopes: []string{"https://management.azure.com/.default"},
-	})
-	if err != nil {
-		return "", fmt.Errorf("failed to get access token: %w", err)
-	}
-	token := tokenResp.Token
+// // getDiskAccessSAS calls the Azure REST API beginGetAccess to obtain an access SAS URL for the given disk.
+// func (d *Driver) getDiskAccessSAS(ctx context.Context, subsID, resourceGroup, diskName string) (string, error) {
+// 	cred := d.cloud.AuthProvider.GetAzIdentity()
+// 	if cred == nil {
+// 		return "", fmt.Errorf("no Azure credential available")
+// 	}
+// 	tokenResp, err := cred.GetToken(ctx, policy.TokenRequestOptions{
+// 		Scopes: []string{"https://management.azure.com/.default"},
+// 	})
+// 	if err != nil {
+// 		return "", fmt.Errorf("failed to get access token: %w", err)
+// 	}
+// 	token := tokenResp.Token
 
-	url := fmt.Sprintf("https://management.azure.com/subscriptions/%s/resourceGroups/%s/providers/Microsoft.Compute/disks/%s/beginGetAccess?api-version=2022-03-02",
-		subsID, resourceGroup, diskName)
+// 	url := fmt.Sprintf("https://management.azure.com/subscriptions/%s/resourceGroups/%s/providers/Microsoft.Compute/disks/%s/beginGetAccess?api-version=2022-03-02",
+// 		subsID, resourceGroup, diskName)
 
-	reqBody := strings.NewReader(`{"access": "Read", "durationInSeconds": 3600}`)
-	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, url, reqBody)
-	if err != nil {
-		return "", fmt.Errorf("failed to create HTTP request: %w", err)
-	}
-	httpReq.Header.Set("Authorization", "Bearer "+token)
-	httpReq.Header.Set("Content-Type", "application/json")
+// 	reqBody := strings.NewReader(`{"access": "Read", "durationInSeconds": 3600}`)
+// 	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, url, reqBody)
+// 	if err != nil {
+// 		return "", fmt.Errorf("failed to create HTTP request: %w", err)
+// 	}
+// 	httpReq.Header.Set("Authorization", "Bearer "+token)
+// 	httpReq.Header.Set("Content-Type", "application/json")
 
-	resp, err := http.DefaultClient.Do(httpReq)
-	if err != nil {
-		return "", fmt.Errorf("beginGetAccess request failed: %w", err)
-	}
-	defer resp.Body.Close()
+// 	resp, err := http.DefaultClient.Do(httpReq)
+// 	if err != nil {
+// 		return "", fmt.Errorf("beginGetAccess request failed: %w", err)
+// 	}
+// 	defer resp.Body.Close()
 
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return "", fmt.Errorf("failed to read response body: %w", err)
-	}
+// 	body, err := io.ReadAll(resp.Body)
+// 	if err != nil {
+// 		return "", fmt.Errorf("failed to read response body: %w", err)
+// 	}
 
-	// beginGetAccess is a long-running operation; follow the Azure-AsyncOperation header
-	if resp.StatusCode == http.StatusAccepted {
-		asyncURL := resp.Header.Get("Azure-AsyncOperation")
-		if asyncURL == "" {
-			asyncURL = resp.Header.Get("Location")
-		}
-		if asyncURL == "" {
-			return "", fmt.Errorf("beginGetAccess returned 202 but no Azure-AsyncOperation or Location header")
-		}
+// 	// beginGetAccess is a long-running operation; follow the Azure-AsyncOperation header
+// 	if resp.StatusCode == http.StatusAccepted {
+// 		asyncURL := resp.Header.Get("Azure-AsyncOperation")
+// 		if asyncURL == "" {
+// 			asyncURL = resp.Header.Get("Location")
+// 		}
+// 		if asyncURL == "" {
+// 			return "", fmt.Errorf("beginGetAccess returned 202 but no Azure-AsyncOperation or Location header")
+// 		}
 
-		klog.V(2).Infof("beginGetAccess for disk %s returned 202, polling %s", diskName, asyncURL)
-		body, err = d.pollAsyncOperation(ctx, asyncURL)
-		if err != nil {
-			return "", fmt.Errorf("polling beginGetAccess failed: %w", err)
-		}
-	} else if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("beginGetAccess returned status %d: %s", resp.StatusCode, string(body))
-	}
+// 		klog.V(2).Infof("beginGetAccess for disk %s returned 202, polling %s", diskName, asyncURL)
+// 		body, err = d.pollAsyncOperation(ctx, asyncURL)
+// 		if err != nil {
+// 			return "", fmt.Errorf("polling beginGetAccess failed: %w", err)
+// 		}
+// 	} else if resp.StatusCode != http.StatusOK {
+// 		return "", fmt.Errorf("beginGetAccess returned status %d: %s", resp.StatusCode, string(body))
+// 	}
 
-	var result struct {
-		AccessSAS string `json:"accessSAS"`
-		// Nested under "properties.output" when polling async operation
-		Properties *struct {
-			Output *struct {
-				AccessSAS string `json:"accessSAS"`
-			} `json:"output"`
-		} `json:"properties"`
-	}
-	if err := json.Unmarshal(body, &result); err != nil {
-		return "", fmt.Errorf("failed to parse response: %w", err)
-	}
+// 	var result struct {
+// 		AccessSAS string `json:"accessSAS"`
+// 		// Nested under "properties.output" when polling async operation
+// 		Properties *struct {
+// 			Output *struct {
+// 				AccessSAS string `json:"accessSAS"`
+// 			} `json:"output"`
+// 		} `json:"properties"`
+// 	}
+// 	if err := json.Unmarshal(body, &result); err != nil {
+// 		return "", fmt.Errorf("failed to parse response: %w", err)
+// 	}
 
-	var sasURL string
-	if result.AccessSAS != "" {
-		sasURL = result.AccessSAS
-	} else if result.Properties != nil && result.Properties.Output != nil && result.Properties.Output.AccessSAS != "" {
-		sasURL = result.Properties.Output.AccessSAS
-	} else {
-		return "", fmt.Errorf("accessSAS not found in response: %s", string(body))
-	}
+// 	var sasURL string
+// 	if result.AccessSAS != "" {
+// 		sasURL = result.AccessSAS
+// 	} else if result.Properties != nil && result.Properties.Output != nil && result.Properties.Output.AccessSAS != "" {
+// 		sasURL = result.Properties.Output.AccessSAS
+// 	} else {
+// 		return "", fmt.Errorf("accessSAS not found in response: %s", string(body))
+// 	}
 
-	sanitized, err := sanitizeSASURL(sasURL)
-	if err != nil {
-		return "", fmt.Errorf("failed to sanitize accessSAS URL: %w", err)
-	}
-	return sanitized, nil
-}
+// 	sanitized, err := sanitizeSASURL(sasURL)
+// 	if err != nil {
+// 		return "", fmt.Errorf("failed to sanitize accessSAS URL: %w", err)
+// 	}
+// 	return sanitized, nil
+// }
 
-// revokeDiskAccess calls the Azure REST API endGetAccess to revoke access from a disk.
-func (d *Driver) revokeDiskAccess(ctx context.Context, subsID, resourceGroup, diskName string) error {
-	cred := d.cloud.AuthProvider.GetAzIdentity()
-	if cred == nil {
-		return fmt.Errorf("no Azure credential available")
-	}
-	tokenResp, err := cred.GetToken(ctx, policy.TokenRequestOptions{
-		Scopes: []string{"https://management.azure.com/.default"},
-	})
-	if err != nil {
-		return fmt.Errorf("failed to get access token: %w", err)
-	}
+// // revokeDiskAccess calls the Azure REST API endGetAccess to revoke access from a disk.
+// func (d *Driver) revokeDiskAccess(ctx context.Context, subsID, resourceGroup, diskName string) error {
+// 	cred := d.cloud.AuthProvider.GetAzIdentity()
+// 	if cred == nil {
+// 		return fmt.Errorf("no Azure credential available")
+// 	}
+// 	tokenResp, err := cred.GetToken(ctx, policy.TokenRequestOptions{
+// 		Scopes: []string{"https://management.azure.com/.default"},
+// 	})
+// 	if err != nil {
+// 		return fmt.Errorf("failed to get access token: %w", err)
+// 	}
 
-	revokeURL := fmt.Sprintf("https://management.azure.com/subscriptions/%s/resourceGroups/%s/providers/Microsoft.Compute/disks/%s/endGetAccess?api-version=2022-03-02",
-		subsID, resourceGroup, diskName)
+// 	revokeURL := fmt.Sprintf("https://management.azure.com/subscriptions/%s/resourceGroups/%s/providers/Microsoft.Compute/disks/%s/endGetAccess?api-version=2022-03-02",
+// 		subsID, resourceGroup, diskName)
 
-	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, revokeURL, nil)
-	if err != nil {
-		return fmt.Errorf("failed to create HTTP request: %w", err)
-	}
-	httpReq.Header.Set("Authorization", "Bearer "+tokenResp.Token)
-	httpReq.Header.Set("Content-Type", "application/json")
+// 	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, revokeURL, nil)
+// 	if err != nil {
+// 		return fmt.Errorf("failed to create HTTP request: %w", err)
+// 	}
+// 	httpReq.Header.Set("Authorization", "Bearer "+tokenResp.Token)
+// 	httpReq.Header.Set("Content-Type", "application/json")
 
-	resp, err := http.DefaultClient.Do(httpReq)
-	if err != nil {
-		return fmt.Errorf("endGetAccess request failed: %w", err)
-	}
-	defer resp.Body.Close()
+// 	resp, err := http.DefaultClient.Do(httpReq)
+// 	if err != nil {
+// 		return fmt.Errorf("endGetAccess request failed: %w", err)
+// 	}
+// 	defer resp.Body.Close()
 
-	if resp.StatusCode == http.StatusAccepted {
-		asyncURL := resp.Header.Get("Azure-AsyncOperation")
-		if asyncURL == "" {
-			asyncURL = resp.Header.Get("Location")
-		}
-		if asyncURL == "" {
-			return fmt.Errorf("endGetAccess returned 202 but no Azure-AsyncOperation or Location header")
-		}
+// 	if resp.StatusCode == http.StatusAccepted {
+// 		asyncURL := resp.Header.Get("Azure-AsyncOperation")
+// 		if asyncURL == "" {
+// 			asyncURL = resp.Header.Get("Location")
+// 		}
+// 		if asyncURL == "" {
+// 			return fmt.Errorf("endGetAccess returned 202 but no Azure-AsyncOperation or Location header")
+// 		}
 
-		klog.V(2).Infof("endGetAccess for disk %s returned 202, polling %s", diskName, asyncURL)
-		if _, err = d.pollAsyncOperation(ctx, asyncURL); err != nil {
-			return fmt.Errorf("polling endGetAccess failed: %w", err)
-		}
-	} else if resp.StatusCode == http.StatusConflict {
-		// 409 Conflict: disk is already marked for deletion or has no active access grant — treat as success
-		klog.V(2).Infof("endGetAccess for disk %s returned 409 (disk may already be marked for deletion), treating as no-op", diskName)
-	} else if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-		return fmt.Errorf("endGetAccess returned status %d: %s", resp.StatusCode, string(body))
-	}
+// 		klog.V(2).Infof("endGetAccess for disk %s returned 202, polling %s", diskName, asyncURL)
+// 		if _, err = d.pollAsyncOperation(ctx, asyncURL); err != nil {
+// 			return fmt.Errorf("polling endGetAccess failed: %w", err)
+// 		}
+// 	} else if resp.StatusCode == http.StatusConflict {
+// 		// 409 Conflict: disk is already marked for deletion or has no active access grant — treat as success
+// 		klog.V(2).Infof("endGetAccess for disk %s returned 409 (disk may already be marked for deletion), treating as no-op", diskName)
+// 	} else if resp.StatusCode != http.StatusOK {
+// 		body, _ := io.ReadAll(resp.Body)
+// 		return fmt.Errorf("endGetAccess returned status %d: %s", resp.StatusCode, string(body))
+// 	}
 
-	klog.V(2).Infof("successfully revoked disk access for disk %s", diskName)
-	return nil
-}
+// 	klog.V(2).Infof("successfully revoked disk access for disk %s", diskName)
+// 	return nil
+// }
 
-// sanitizeSASURL parses a SAS URL, strips all query parameters, and adds
-// comp=disksession and timeout=30 as the only query parameters.
-func sanitizeSASURL(raw string) (string, error) {
-	// The Azure response may contain JSON unicode escapes for '&' that survive unmarshaling.
-	raw = strings.ReplaceAll(raw, `\u0026`, "&")
+// // sanitizeSASURL parses a SAS URL, strips all query parameters, and adds
+// // comp=disksession and timeout=30 as the only query parameters.
+// func sanitizeSASURL(raw string) (string, error) {
+// 	// The Azure response may contain JSON unicode escapes for '&' that survive unmarshaling.
+// 	raw = strings.ReplaceAll(raw, `\u0026`, "&")
 
-	parsed, err := url.Parse(raw)
-	if err != nil {
-		return "", err
-	}
+// 	parsed, err := url.Parse(raw)
+// 	if err != nil {
+// 		return "", err
+// 	}
 
-	cleaned := url.Values{}
-	cleaned.Set("comp", "disksession")
-	cleaned.Set("timeout", "30")
+// 	cleaned := url.Values{}
+// 	cleaned.Set("comp", "disksession")
+// 	cleaned.Set("timeout", "30")
 
-	parsed.RawQuery = cleaned.Encode()
-	return parsed.String(), nil
-}
+// 	parsed.RawQuery = cleaned.Encode()
+// 	return parsed.String(), nil
+// }
 
 // pollAsyncOperation polls an Azure async operation URL until it completes or the context is cancelled.
 func (d *Driver) pollAsyncOperation(ctx context.Context, asyncURL string) ([]byte, error) {

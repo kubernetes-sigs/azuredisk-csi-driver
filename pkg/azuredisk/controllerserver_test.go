@@ -45,7 +45,10 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/kubernetes/fake"
+	k8stesting "k8s.io/client-go/testing"
 	"k8s.io/client-go/tools/record"
 	"k8s.io/klog/v2"
 	"k8s.io/utils/ptr"
@@ -162,10 +165,10 @@ func TestClaimDiskResource(t *testing.T) {
 			assert.Equal(t, "Bearer token", request.Header.Get("Authorization"))
 
 			var body struct {
-				OwnerResource string `json:"ownerResource"`
+				OwnerResourceID string `json:"ownerResourceId"`
 			}
 			require.NoError(t, json.NewDecoder(request.Body).Decode(&body))
-			assert.Equal(t, ownerResource, body.OwnerResource)
+			assert.Equal(t, ownerResource, body.OwnerResourceID)
 			responseWriter.Header().Set("Content-Type", "application/json")
 			responseWriter.WriteHeader(http.StatusOK)
 			_, err := fmt.Fprintf(responseWriter, `{"properties":{"blobUrl":%q,"claimIdentifier":"identifier"}}`, blobURL)
@@ -183,7 +186,7 @@ func TestClaimDiskResource(t *testing.T) {
 		assert.Equal(t, "identifier", claimIdentifier)
 	})
 
-	t.Run("requires blob URL", func(t *testing.T) {
+	t.Run("returns empty blob URL when absent", func(t *testing.T) {
 		cntl := gomock.NewController(t)
 		d, err := NewFakeDriver(cntl)
 		require.NoError(t, err)
@@ -200,8 +203,10 @@ func TestClaimDiskResource(t *testing.T) {
 		credential := driver.cloud.AuthProvider.GetAzIdentity().(*mock_azclient.MockTokenCredential)
 		credential.EXPECT().GetToken(gomock.Any(), gomock.Any()).Return(azcore.AccessToken{Token: "token"}, nil)
 
-		_, _, err = driver.claimDiskResource(context.Background(), "/subscriptions/subscription/resourceGroups/rg/providers/Microsoft.Compute/disks/disk", "owner")
-		require.ErrorContains(t, err, "blobUrl not found")
+		blobURL, claimIdentifier, err := driver.claimDiskResource(context.Background(), "/subscriptions/subscription/resourceGroups/rg/providers/Microsoft.Compute/disks/disk", "owner")
+		require.NoError(t, err)
+		assert.Empty(t, blobURL)
+		assert.Empty(t, claimIdentifier)
 	})
 }
 
@@ -221,10 +226,10 @@ func TestUnclaimDiskResource(t *testing.T) {
 			assert.Equal(t, "Bearer token", request.Header.Get("Authorization"))
 
 			var body struct {
-				OwnerResource string `json:"ownerResource"`
+				OwnerResourceID string `json:"ownerResourceId"`
 			}
 			require.NoError(t, json.NewDecoder(request.Body).Decode(&body))
-			assert.Equal(t, ownerResource, body.OwnerResource)
+			assert.Equal(t, ownerResource, body.OwnerResourceID)
 			responseWriter.Header().Set("Content-Type", "application/json")
 			responseWriter.WriteHeader(http.StatusOK)
 			_, err := responseWriter.Write([]byte(`{"managedBy":null,"properties":{"diskState":"Unattached"}}`))
@@ -1334,6 +1339,19 @@ func TestDeleteVolume(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Error getting driver: %v", err)
 	}
+	driver := d.(*fakeDriver)
+	_, err = driver.kubeClient.CoreV1().PersistentVolumes().Create(context.Background(), &v1.PersistentVolume{
+		ObjectMeta: metav1.ObjectMeta{Name: "standard-pv"},
+		Spec: v1.PersistentVolumeSpec{
+			PersistentVolumeSource: v1.PersistentVolumeSource{
+				CSI: &v1.CSIPersistentVolumeSource{
+					Driver:       driver.Name,
+					VolumeHandle: testVolumeID,
+				},
+			},
+		},
+	}, metav1.CreateOptions{})
+	require.NoError(t, err)
 
 	tests := []struct {
 		desc            string
@@ -2523,6 +2541,36 @@ func TestControllerPublishVolume(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.name, tc.testFunc)
 	}
+}
+
+func TestEnsureQADPVAnnotationsRetriesConflict(t *testing.T) {
+	const (
+		pvName          = "qad-pv"
+		blobURL         = "https://example.blob.storage.azure.net/container/disk"
+		claimIdentifier = "claim-id"
+	)
+	kubeClient := fake.NewSimpleClientset(&v1.PersistentVolume{
+		ObjectMeta: metav1.ObjectMeta{Name: pvName},
+	})
+
+	updateAttempts := 0
+	kubeClient.Fake.PrependReactor("update", "persistentvolumes", func(action k8stesting.Action) (bool, runtime.Object, error) {
+		updateAttempts++
+		if updateAttempts == 1 {
+			return true, nil, apierrors.NewConflict(
+				schema.GroupResource{Resource: "persistentvolumes"}, pvName, errors.New("concurrent update"))
+		}
+		return false, nil, nil
+	})
+
+	require.NoError(t, ensureQADPVAnnotations(context.Background(), kubeClient, pvName, blobURL, claimIdentifier))
+	assert.Equal(t, 2, updateAttempts)
+
+	pv, err := kubeClient.CoreV1().PersistentVolumes().Get(context.Background(), pvName, metav1.GetOptions{})
+	require.NoError(t, err)
+	assert.Equal(t, "0", pv.Annotations[consts.AttachSequenceAnnotation])
+	assert.Equal(t, blobURL, pv.Annotations[consts.BlobURLAnnotation])
+	assert.Equal(t, claimIdentifier, pv.Annotations[consts.ClaimIdentifierAnnotation])
 }
 
 func TestControllerUnpublishVolume(t *testing.T) {

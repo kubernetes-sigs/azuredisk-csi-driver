@@ -50,6 +50,7 @@ import (
 	"k8s.io/apimachinery/pkg/util/wait"
 	kwait "k8s.io/apimachinery/pkg/util/wait"
 	clientset "k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/util/retry"
 	cloudprovider "k8s.io/cloud-provider"
 	"k8s.io/klog/v2"
 	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
@@ -183,9 +184,9 @@ type AttachmentStatus string
 
 const (
 	AttachmentStatusAttached  AttachmentStatus = "DISK_STATUS_ATTACHED"
-	AttachmentStatusDetached  AttachmentStatus = "DISK_STATUS_DETACHED"
 	AttachmentStatusAttaching AttachmentStatus = "DISK_STATUS_ATTACHING"
 	AttachmentStatusDetaching AttachmentStatus = "DISK_STATUS_DETACHING"
+	AttachmentStatusDetached  AttachmentStatus = "DISK_STATUS_DETACHED"
 )
 
 // WireserverDiskStatusResponse represents the response from wireserver GET call
@@ -241,11 +242,13 @@ func (d *Driver) NodeStageVolume(ctx context.Context, req *csi.NodeStageVolumeRe
 	var lun string
 	// Check if this volume is using the QAD path.
 	// If yes, increment the attach-sequence and make an HTTP request to the QAD wireserver endpoint.
-	pv, isUsingQAD, err := d.isUsingQADPath(ctx, volumeID)
+
+	pv, err := d.getPVFromDiskURI(ctx, volumeID)
 	if err != nil {
-		return nil, status.Errorf(codes.Internal, "NodeStageVolume: failed to determine if volume %s is using QAD path: %v", volumeID, err)
+		return nil, status.Errorf(codes.Internal, "NodeStageVolume: failed to get PV from diskURI %s: %v", volumeID, err)
 	}
-	if isUsingQAD {
+
+	if d.isQAD(pv) {
 		blobURL := pv.Annotations[consts.BlobURLAnnotation]
 		claimIdentifier := pv.Annotations[consts.ClaimIdentifierAnnotation]
 		attachSequenceVal, err := incrementAttachSequenceAnnotation(d.kubeClient, pv)
@@ -275,8 +278,8 @@ func (d *Driver) NodeStageVolume(ctx context.Context, req *csi.NodeStageVolumeRe
 		}
 		if statusResp.Status == AttachmentStatusAttaching {
 			// Wait for the disk to be attached
-			if err = kwait.PollUntilContextTimeout(ctx, 250*time.Millisecond, 5*time.Second, true, func(context.Context) (bool, error) {
-				getDisksResponse, err := getAttachedDisks(ctx, *d.httpClient)
+			if err = kwait.PollUntilContextTimeout(ctx, 250*time.Millisecond, 15*time.Second, true, func(context.Context) (bool, error) {
+				getDisksResponse, err := getDiskStatuses(ctx, *d.httpClient)
 				if err != nil {
 					klog.Errorf("NodeStageVolume: failed to get attached disks for volume %s: %v", volumeID, err)
 					return false, err
@@ -431,7 +434,12 @@ func (d *Driver) NodeUnstageVolume(ctx context.Context, req *csi.NodeUnstageVolu
 	}
 	klog.V(2).Infof("NodeUnstageVolume: unmount %s successfully", stagingTargetPath)
 
-	if pv, isUsingQAD, err := d.isUsingQADPath(ctx, volumeID); isUsingQAD && err == nil {
+	pv, err := d.getPVFromDiskURI(ctx, volumeID)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "NodeUnstageVolume: failed to get PV from diskURI %s: %v", volumeID, err)
+	}
+
+	if d.isQAD(pv) {
 		blobURL := pv.Annotations[azureconstants.BlobURLAnnotation]
 		claimIdentifier := pv.Annotations[azureconstants.ClaimIdentifierAnnotation]
 		attachSequenceVal, err := incrementAttachSequenceAnnotation(d.kubeClient, pv)
@@ -453,20 +461,20 @@ func (d *Driver) NodeUnstageVolume(ctx context.Context, req *csi.NodeUnstageVolu
 		}
 
 		lowercaseVolumeID := strings.ToLower(volumeID)
-		if statusResp, ok := detachResponse[lowercaseVolumeID]; !ok {
+		if statusResp, ok := detachResponse[lowercaseVolumeID]; !ok || statusResp.Status == AttachmentStatusDetached {
 			klog.Infof("The volume with id %s is already detached", volumeID)
 			klog.Infof("NodeUnStageVolume: Latency observed for detach operation of disk %s is %v", volumeID, time.Since(detachTimer).Milliseconds())
 		} else if statusResp.Status == AttachmentStatusDetaching {
 			detached := false
-			if err = kwait.PollUntilContextTimeout(ctx, 500*time.Millisecond, 5*time.Second, true, func(context.Context) (bool, error) {
-				getDisksResponse, err := getAttachedDisks(ctx, *d.httpClient)
+			if err = kwait.PollUntilContextTimeout(ctx, 500*time.Millisecond, 15*time.Second, true, func(context.Context) (bool, error) {
+				getDisksResponse, err := getDiskStatuses(ctx, *d.httpClient)
 				if err != nil {
 					klog.Errorf("NodeUnStageVolume: failed to get attached disks for volume %s: %v", volumeID, err)
 					return false, err
 				}
 				_, ok := getDisksResponse[lowercaseVolumeID]
 				if ok {
-					// Disk is still attached, wait for it to be detached
+					// Disk is still detaching, wait for it to be detached
 					return false, nil
 				} else {
 					// The disk is detached now
@@ -1013,53 +1021,63 @@ func collectMountOptions(fsType string, mntFlags []string) []string {
 	return options
 }
 
-func (d *Driver) isUsingQADPath(ctx context.Context, diskURI string) (*v1.PersistentVolume, bool, error) {
-
-	klog.Infof("Checking if diskURI %s is using QAD path", diskURI)
-	pv, err := d.getPVFromDiskURI(ctx, diskURI)
-	if err != nil {
-		return nil, false, err
+func (d *Driver) isQAD(pv *v1.PersistentVolume) bool {
+	if pv == nil {
+		klog.V(2).Infof("PV is nil")
+		return false
 	}
 
-	if pvName := pv.Name; pvName != "" {
-		// Check for QAD-related annotations or labels
-		if attachSequence, exists := pv.Annotations[azureconstants.AttachSequenceAnnotation]; exists {
-			klog.V(2).Infof("Found PV %s with matching VolumeHandle %s and attach sequence: %s", pvName, diskURI, attachSequence)
-			return pv, true, nil
-		}
-
-		// Found PV but no QAD configuration
-		klog.V(2).Infof("Found PV %s with matching VolumeHandle %s but no QAD configuration", pvName, diskURI)
-		return nil, false, nil
+	pvName := pv.Name
+	if pvName == "" {
+		klog.V(2).Infof("PV name is empty")
+		return false
 	}
 
-	// No matching PV found
-	klog.V(2).Infof("No PV found with VolumeHandle matching diskURI: %s", diskURI)
-	return nil, false, nil
+	// Check for QAD-related annotations or labels
+	if attachSequence, exists := pv.Annotations[azureconstants.AttachSequenceAnnotation]; exists {
+		klog.V(2).Infof("Found PV %s with attach sequence: %s", pvName, attachSequence)
+		return true
+	}
+	// Found PV but no QAD configuration
+	klog.V(2).Infof("Found PV %s but no QAD configuration", pvName)
+	return false
 }
 
 func incrementAttachSequenceAnnotation(kubeClient clientset.Interface, pv *v1.PersistentVolume) (int, error) {
 	klog.Infof("Incrementing attach sequence annotation for PV %s", pv.Name)
 
-	// Update the annotation
-	if pv.Annotations == nil {
-		pv.Annotations = make(map[string]string)
-	}
-	currentAttachSequence := 0
-	if val, ok := pv.Annotations[azureconstants.AttachSequenceAnnotation]; ok {
-		currentAttachSequence, _ = strconv.Atoi(val)
-	}
-	updatedCounter := currentAttachSequence + 1
-	pv.Annotations[azureconstants.AttachSequenceAnnotation] = fmt.Sprintf("%d", updatedCounter)
+	pv = pv.DeepCopy()
+	updatedSequence := 0
+	attempt := 0
+	err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
+		if attempt > 0 {
+			var err error
+			pv, err = kubeClient.CoreV1().PersistentVolumes().Get(context.TODO(), pv.Name, metav1.GetOptions{})
+			if err != nil {
+				return err
+			}
+		}
+		attempt++
 
-	// Update the PV in Kubernetes
-	_, err := kubeClient.CoreV1().PersistentVolumes().Update(context.TODO(), pv, metav1.UpdateOptions{})
+		if pv.Annotations == nil {
+			pv.Annotations = make(map[string]string)
+		}
+		currentAttachSequence := 0
+		if val, ok := pv.Annotations[azureconstants.AttachSequenceAnnotation]; ok {
+			currentAttachSequence, _ = strconv.Atoi(val)
+		}
+		updatedSequence = currentAttachSequence + 1
+		pv.Annotations[azureconstants.AttachSequenceAnnotation] = strconv.Itoa(updatedSequence)
+
+		_, err := kubeClient.CoreV1().PersistentVolumes().Update(context.TODO(), pv, metav1.UpdateOptions{})
+		return err
+	})
 	if err != nil {
 		return 0, fmt.Errorf("failed to update PersistentVolume %s: %v", pv.Name, err)
 	}
 
-	klog.V(2).Infof("Successfully incremented attach sequence annotation for PV %s to %s", pv.Name, pv.Annotations[azureconstants.AttachSequenceAnnotation])
-	return updatedCounter, nil
+	klog.V(2).Infof("Successfully incremented attach sequence annotation for PV %s to %d", pv.Name, updatedSequence)
+	return updatedSequence, nil
 }
 
 func (d *Driver) enqueueQADDiskOperation(ctx context.Context, diskRequest DiskOperationRequest, operationType string) (WireserverDiskStatusResponse, error) {
@@ -1146,6 +1164,11 @@ func (d *Driver) flushQADDiskBatch(operationType string) {
 		lowercaseDiskURI := strings.ToLower(item.request.DiskURI)
 		diskStatus, ok := batchResponse[lowercaseDiskURI]
 		if !ok {
+			if operationType == "DETACH" {
+				// a missing entry on detach means the disk is no longer attached
+				item.resultCh <- qadDiskBatchResult{response: WireserverDiskStatusResponse{}}
+				continue
+			}
 			item.resultCh <- qadDiskBatchResult{err: status.Errorf(codes.Internal, "The response from wireserver doesn't contain volume %s", item.request.DiskURI)}
 			continue
 		}
@@ -1394,7 +1417,7 @@ func mapHTTPStatusToCode(httpStatus int) codes.Code {
 	}
 }
 
-func getAttachedDisks(ctx context.Context, client http.Client) (WireserverDiskStatusResponse, error) {
+func getDiskStatuses(ctx context.Context, client http.Client) (WireserverDiskStatusResponse, error) {
 	// Set headers
 	headers := map[string]string{
 		"Content-Type": "application/json",

@@ -36,6 +36,13 @@ import (
 	"go.uber.org/mock/gomock"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+	v1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	k8sruntime "k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/client-go/kubernetes/fake"
+	clienttesting "k8s.io/client-go/testing"
 	testingexec "k8s.io/utils/exec/testing"
 	"k8s.io/utils/ptr"
 	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
@@ -81,6 +88,46 @@ var (
 		},
 	}
 )
+
+func TestIncrementAttachSequenceAnnotationRetriesConflict(t *testing.T) {
+	pv := &v1.PersistentVolume{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:            "test-pv",
+			ResourceVersion: "1",
+			Annotations: map[string]string{
+				consts.AttachSequenceAnnotation: "4",
+			},
+		},
+	}
+	kubeClient := fake.NewSimpleClientset(pv.DeepCopy())
+	updateAttempts := 0
+	kubeClient.PrependReactor("update", "persistentvolumes", func(clienttesting.Action) (bool, k8sruntime.Object, error) {
+		updateAttempts++
+		if updateAttempts > 1 {
+			return false, nil, nil
+		}
+
+		latestPV := pv.DeepCopy()
+		latestPV.ResourceVersion = "2"
+		latestPV.Annotations[consts.AttachSequenceAnnotation] = "8"
+		resource := schema.GroupVersionResource{Version: "v1", Resource: "persistentvolumes"}
+		if err := kubeClient.Tracker().Update(resource, latestPV, ""); err != nil {
+			return true, nil, err
+		}
+		return true, nil, apierrors.NewConflict(
+			schema.GroupResource{Resource: "persistentvolumes"}, pv.Name, errors.New("concurrent update"))
+	})
+
+	updatedSequence, err := incrementAttachSequenceAnnotation(kubeClient, pv)
+	require.NoError(t, err)
+	assert.Equal(t, 9, updatedSequence)
+	assert.Equal(t, 2, updateAttempts)
+	assert.Equal(t, "4", pv.Annotations[consts.AttachSequenceAnnotation])
+
+	updatedPV, err := kubeClient.CoreV1().PersistentVolumes().Get(context.Background(), pv.Name, metav1.GetOptions{})
+	require.NoError(t, err)
+	assert.Equal(t, "9", updatedPV.Annotations[consts.AttachSequenceAnnotation])
+}
 
 func TestMain(m *testing.M) {
 	var err error
