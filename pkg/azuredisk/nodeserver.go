@@ -186,6 +186,7 @@ const (
 	AttachmentStatusAttached  AttachmentStatus = "DISK_STATUS_ATTACHED"
 	AttachmentStatusAttaching AttachmentStatus = "DISK_STATUS_ATTACHING"
 	AttachmentStatusDetaching AttachmentStatus = "DISK_STATUS_DETACHING"
+	AttachmentStatusDetached  AttachmentStatus = "DISK_STATUS_DETACHED"
 )
 
 // WireserverDiskStatusResponse represents the response from wireserver GET call
@@ -277,8 +278,8 @@ func (d *Driver) NodeStageVolume(ctx context.Context, req *csi.NodeStageVolumeRe
 		}
 		if statusResp.Status == AttachmentStatusAttaching {
 			// Wait for the disk to be attached
-			if err = kwait.PollUntilContextTimeout(ctx, 250*time.Millisecond, 5*time.Second, true, func(context.Context) (bool, error) {
-				getDisksResponse, err := getAttachedDisks(ctx, *d.httpClient)
+			if err = kwait.PollUntilContextTimeout(ctx, 250*time.Millisecond, 15*time.Second, true, func(context.Context) (bool, error) {
+				getDisksResponse, err := getDiskStatuses(ctx, *d.httpClient)
 				if err != nil {
 					klog.Errorf("NodeStageVolume: failed to get attached disks for volume %s: %v", volumeID, err)
 					return false, err
@@ -460,20 +461,20 @@ func (d *Driver) NodeUnstageVolume(ctx context.Context, req *csi.NodeUnstageVolu
 		}
 
 		lowercaseVolumeID := strings.ToLower(volumeID)
-		if statusResp, ok := detachResponse[lowercaseVolumeID]; !ok {
+		if statusResp, ok := detachResponse[lowercaseVolumeID]; !ok || statusResp.Status == AttachmentStatusDetached {
 			klog.Infof("The volume with id %s is already detached", volumeID)
 			klog.Infof("NodeUnStageVolume: Latency observed for detach operation of disk %s is %v", volumeID, time.Since(detachTimer).Milliseconds())
 		} else if statusResp.Status == AttachmentStatusDetaching {
 			detached := false
-			if err = kwait.PollUntilContextTimeout(ctx, 500*time.Millisecond, 5*time.Second, true, func(context.Context) (bool, error) {
-				getDisksResponse, err := getAttachedDisks(ctx, *d.httpClient)
+			if err = kwait.PollUntilContextTimeout(ctx, 500*time.Millisecond, 15*time.Second, true, func(context.Context) (bool, error) {
+				getDisksResponse, err := getDiskStatuses(ctx, *d.httpClient)
 				if err != nil {
 					klog.Errorf("NodeUnStageVolume: failed to get attached disks for volume %s: %v", volumeID, err)
 					return false, err
 				}
 				_, ok := getDisksResponse[lowercaseVolumeID]
 				if ok {
-					// Disk is still attached, wait for it to be detached
+					// Disk is still detaching, wait for it to be detached
 					return false, nil
 				} else {
 					// The disk is detached now
@@ -1163,6 +1164,11 @@ func (d *Driver) flushQADDiskBatch(operationType string) {
 		lowercaseDiskURI := strings.ToLower(item.request.DiskURI)
 		diskStatus, ok := batchResponse[lowercaseDiskURI]
 		if !ok {
+			if operationType == "DETACH" {
+				// a missing entry on detach means the disk is no longer attached
+				item.resultCh <- qadDiskBatchResult{response: WireserverDiskStatusResponse{}}
+				continue
+			}
 			item.resultCh <- qadDiskBatchResult{err: status.Errorf(codes.Internal, "The response from wireserver doesn't contain volume %s", item.request.DiskURI)}
 			continue
 		}
@@ -1411,7 +1417,7 @@ func mapHTTPStatusToCode(httpStatus int) codes.Code {
 	}
 }
 
-func getAttachedDisks(ctx context.Context, client http.Client) (WireserverDiskStatusResponse, error) {
+func getDiskStatuses(ctx context.Context, client http.Client) (WireserverDiskStatusResponse, error) {
 	// Set headers
 	headers := map[string]string{
 		"Content-Type": "application/json",

@@ -81,7 +81,7 @@ spec:
 {{- end }}
             - "--csi-address=$(ADDRESS)"
             - "--v=2"
-            - "--timeout=30s"
+            - "--timeout=120s"
             - "--leader-election"
             - "--leader-election-namespace={{ .Release.Namespace }}"
             - "--worker-threads={{ .Values.controller.provisionerWorkerThreads }}"
