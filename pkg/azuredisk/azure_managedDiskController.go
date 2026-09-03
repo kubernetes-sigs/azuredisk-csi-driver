@@ -374,22 +374,6 @@ func (c *ManagedDiskController) DeleteManagedDisk(ctx context.Context, diskURI s
 	return nil
 }
 
-func (c *ManagedDiskController) GetDiskByURI(ctx context.Context, diskURI string) (*armcompute.Disk, error) {
-	subsID, resourceGroup, diskName, err := azureutils.GetInfoFromURI(diskURI)
-	if err != nil {
-		return nil, err
-	}
-	return c.GetDisk(ctx, subsID, resourceGroup, diskName)
-}
-
-func (c *ManagedDiskController) GetDisk(ctx context.Context, subsID, resourceGroup, diskName string) (*armcompute.Disk, error) {
-	diskclient, err := c.clientFactory.GetDiskClientForSub(subsID)
-	if err != nil {
-		return nil, err
-	}
-	return diskclient.Get(ctx, resourceGroup, diskName)
-}
-
 // ResizeDisk Expand the disk to new size
 func (c *ManagedDiskController) ResizeDisk(ctx context.Context, diskURI string, oldSize resource.Quantity, newSize resource.Quantity, supportOnlineResize bool) (resource.Quantity, error) {
 	subsID, resourceGroup, diskName, err := azureutils.GetInfoFromURI(diskURI)
