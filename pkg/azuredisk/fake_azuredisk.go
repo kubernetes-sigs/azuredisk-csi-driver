@@ -22,6 +22,7 @@ import (
 
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute/v7"
 	"github.com/container-storage-interface/spec/lib/go/csi"
+	directvolume "github.com/kata-containers/kata-containers/src/runtime/pkg/direct-volume"
 	"go.uber.org/mock/gomock"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes/fake"
@@ -62,6 +63,29 @@ var (
 		LimitBytes:    volumehelper.GiBToBytes(15),
 	}
 )
+
+type fakeDirectVolumeService struct {
+	mountInfo map[string]directvolume.MountInfo
+}
+
+func newFakeKataDirectVolume() *fakeDirectVolumeService {
+	return &fakeDirectVolumeService{mountInfo: map[string]directvolume.MountInfo{}}
+}
+
+func (f *fakeDirectVolumeService) AddMountInfo(volumePath string, mountInfo directvolume.MountInfo) error {
+	f.mountInfo[volumePath] = mountInfo
+	return nil
+}
+
+func (f *fakeDirectVolumeService) Remove(volumePath string) error {
+	delete(f.mountInfo, volumePath)
+	return nil
+}
+
+func (f *fakeDirectVolumeService) IsVolumeMounted(volumePath string) (bool, error) {
+	_, ok := f.mountInfo[volumePath]
+	return ok, nil
+}
 
 // FakeDriver defines an interface unit tests use to test the implementation of the Azure Disk CSI Driver.
 type FakeDriver interface {
@@ -128,6 +152,7 @@ func NewFakeDriver(ctrl *gomock.Controller) (FakeDriver, error) {
 	driver.endpoint = "tcp://127.0.0.1:0"
 	driver.disableAVSetNodes = true
 	driver.kubeClient = fake.NewSimpleClientset()
+	driver.kataDirectVolume = newFakeKataDirectVolume()
 	driver.enableMigrationMonitor = true
 
 	driver.cloud = azure.GetTestCloud(ctrl)
