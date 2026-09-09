@@ -685,9 +685,9 @@ func ParseDiskParameters(parameters map[string]string) (ManagedDiskParameters, e
 			}
 		case consts.TagValueDelimiterField:
 			tagValueDelimiter = v
-		case consts.QADEnabledField:
+		case consts.AttachModeField:
 			// No need to do anything, just don't fail the validation.
-			// This parameter only needs to remain available in the volume context.
+			// These parameters only need to remain available in the volume context.
 			continue
 		default:
 			// accept all device settings params

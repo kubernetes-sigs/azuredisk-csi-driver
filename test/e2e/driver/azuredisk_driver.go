@@ -88,7 +88,7 @@ func (d *azureDiskDriver) GetDynamicProvisionStorageClass(parameters map[string]
 	if IsQADEnabled {
 		qadDefaults := map[string]string{
 			"skuName":             "Premium_LRS",
-			"qadEnabled":          "true",
+			"attachMode":          "NodeDriven",
 			"networkAccessPolicy": "AllowAll",
 			"publicNetworkAccess": "Enabled",
 		}
@@ -154,7 +154,7 @@ func GetParameters() map[string]string {
 	if IsQADEnabled {
 		return map[string]string{
 			"skuName":             "Premium_LRS",
-			"qadEnabled":          "true",
+			"attachMode":          "NodeDriven",
 			"networkAccessPolicy": "AllowAll",
 			"publicNetworkAccess": "Enabled",
 		}
