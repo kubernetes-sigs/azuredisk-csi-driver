@@ -205,6 +205,9 @@ feature:
 
 driver:
   name: disk.csi.azure.com
+  # Azure Disk CSI driver feature gates. Alpha features are disabled by default.
+  featureGates:
+    NodeDrivenAttachDetach: false
   # maximum number of attachable volumes per node,
   # maximum number is defined according to node instance type by default(-1)
   volumeAttachLimit: -1

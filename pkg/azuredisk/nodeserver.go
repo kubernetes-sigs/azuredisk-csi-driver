@@ -1023,6 +1023,10 @@ func (d *Driver) isUsingQADPath(ctx context.Context, diskURI string) (*v1.Persis
 
 	if pvName := pv.Name; pvName != "" {
 		// Check for QAD-related annotations or labels
+		if attachMode, exists := pv.Annotations[azureconstants.AttachModeAnnotation]; exists && strings.EqualFold(attachMode, consts.AttachModeNodeDriven) {
+			klog.V(2).Infof("Found PV %s with matching VolumeHandle %s and attachment mode %s", pvName, diskURI, attachMode)
+			return pv, true, nil
+		}
 		if attachSequence, exists := pv.Annotations[azureconstants.AttachSequenceAnnotation]; exists {
 			klog.V(2).Infof("Found PV %s with matching VolumeHandle %s and attach sequence: %s", pvName, diskURI, attachSequence)
 			return pv, true, nil

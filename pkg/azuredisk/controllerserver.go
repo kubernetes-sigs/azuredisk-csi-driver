@@ -196,6 +196,13 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 	if err != nil {
 		return nil, status.Errorf(codes.InvalidArgument, "Failed parsing disk parameters: %v", err)
 	}
+	attachMode, err := getAttachMode(params)
+	if err != nil {
+		return nil, status.Errorf(codes.InvalidArgument, "Failed parsing disk parameters: %v", err)
+	}
+	if attachMode == consts.AttachModeNodeDriven && !d.nodeDrivenAttachDetachEnabled {
+		return nil, status.Errorf(codes.FailedPrecondition, "%s=%s requires the Alpha %s feature gate", consts.AttachModeField, consts.AttachModeNodeDriven, NodeDrivenAttachDetach)
+	}
 
 	name := req.GetName()
 	if len(name) == 0 {
@@ -509,9 +516,8 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 		return nil, status.Errorf(codes.Internal, "%v", err)
 	}
 
-	qadEnabledValue, _ := azureutils.ParseDiskParametersForKey(params, azureconstants.QADEnabledField)
-	qadEnabled := strings.EqualFold(qadEnabledValue, consts.TrueValue)
-	if qadEnabled {
+	nodeDriven := attachMode == consts.AttachModeNodeDriven
+	if nodeDriven {
 		qadOwnerResource, err := d.getAKSClusterResourceID(ctx)
 		if err != nil {
 			return nil, status.Errorf(codes.Internal, "failed to determine QAD owner resource: %v", err)
@@ -908,14 +914,22 @@ func (d *Driver) ControllerPublishVolume(ctx context.Context, req *csi.Controlle
 		volumeContext = map[string]string{}
 	}
 
-	// TODO: Add a driver-level flag indicating whether QAD is enabled.
-	// The current implementation temporarily uses a volume context parameter,
-	// configured through the StorageClass, to determine whether QAD is enabled
-	// for a disk. This should be replaced once the appropriate UX is available.
-	// During preview, VMs flagged for QAD support will support QAD exclusively;
-	// FAD will not be supported.
-	qadEnabledValue, _ := azureutils.ParseDiskParametersForKey(volumeContext, azureconstants.QADEnabledField)
-	if strings.EqualFold(qadEnabledValue, consts.TrueValue) {
+	// The feature gate permits adoption of the Alpha architecture, while the
+	// persisted volume attachment mode selects QAD for this disk.
+	attachMode, err := getAttachMode(volumeContext)
+	if err != nil {
+		return nil, status.Errorf(codes.InvalidArgument, "failed to determine attachment mode: %v", err)
+	}
+	if attachMode == consts.AttachModeNodeDriven {
+		if !d.nodeDrivenAttachDetachEnabled {
+			pv, pvErr := d.getPVFromDiskURI(ctx, diskURI)
+			if pvErr != nil || pv == nil {
+				return nil, status.Errorf(codes.FailedPrecondition, "%s=%s requires the Alpha %s feature gate", consts.AttachModeField, consts.AttachModeNodeDriven, NodeDrivenAttachDetach)
+			}
+			if _, exists := pv.Annotations[azureconstants.AttachSequenceAnnotation]; !exists {
+				return nil, status.Errorf(codes.FailedPrecondition, "%s=%s requires the Alpha %s feature gate", consts.AttachModeField, consts.AttachModeNodeDriven, NodeDrivenAttachDetach)
+			}
+		}
 		klog.V(2).Infof("qad is enabled for disk %s", diskURI)
 
 		// TEMPORARY (testing only): static-provisioned volumes skip CreateVolume, so the
@@ -950,6 +964,7 @@ func (d *Driver) ControllerPublishVolume(ctx context.Context, req *csi.Controlle
 				pv.Annotations = make(map[string]string)
 			}
 			pv.Annotations[azureconstants.AttachSequenceAnnotation] = "0"
+			pv.Annotations[azureconstants.AttachModeAnnotation] = consts.AttachModeNodeDriven
 			pv.Annotations[azureconstants.BlobURLAnnotation] = blobURL
 			pv.Annotations[azureconstants.ClaimIdentifierAnnotation] = claimIdentifier
 
