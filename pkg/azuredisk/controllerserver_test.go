@@ -2760,7 +2760,7 @@ func TestControllerPublishVolumeRejectsIncompleteQADMetadata(t *testing.T) {
 		{
 			name: "new QAD PV without claim metadata",
 			volumeContext: map[string]string{
-				consts.QADEnabledField: "true",
+				consts.AttachModeField: consts.AttachModeNodeDriven,
 			},
 			expectedErr: "without blob URL and claim identifier",
 		},
@@ -2771,7 +2771,7 @@ func TestControllerPublishVolumeRejectsIncompleteQADMetadata(t *testing.T) {
 				consts.BlobURLAnnotation:        "https://example.blob.storage.azure.net/container/disk",
 			},
 			volumeContext: map[string]string{
-				consts.QADEnabledField:           "true",
+				consts.AttachModeField:           consts.AttachModeNodeDriven,
 				consts.BlobURLAnnotation:         "https://example.blob.storage.azure.net/container/disk",
 				consts.ClaimIdentifierAnnotation: "claim-id",
 			},
@@ -2785,6 +2785,7 @@ func TestControllerPublishVolumeRejectsIncompleteQADMetadata(t *testing.T) {
 			d, err := NewFakeDriver(cntl)
 			require.NoError(t, err)
 			driver := d.(*fakeDriver)
+			driver.nodeDrivenAttachDetachEnabled = true
 			_, err = driver.kubeClient.CoreV1().PersistentVolumes().Create(context.Background(), &v1.PersistentVolume{
 				ObjectMeta: metav1.ObjectMeta{Name: "qad-pv", Annotations: test.annotations},
 				Spec: v1.PersistentVolumeSpec{PersistentVolumeSource: v1.PersistentVolumeSource{

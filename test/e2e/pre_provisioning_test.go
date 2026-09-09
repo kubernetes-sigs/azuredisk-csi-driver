@@ -344,7 +344,7 @@ func makeCreateVolumeReq(volumeName string, sizeGiB int64) *csi.CreateVolumeRequ
 	parameters := map[string]string{}
 	if driver.IsQADEnabled {
 		parameters["skuName"] = "Premium_LRS"
-		parameters["qadEnabled"] = "true"
+		parameters["attachMode"] = "NodeDriven"
 		parameters["networkAccessPolicy"] = "AllowAll"
 		parameters["publicNetworkAccess"] = "Enabled"
 	}

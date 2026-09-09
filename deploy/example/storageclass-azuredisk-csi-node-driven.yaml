@@ -1,0 +1,16 @@
+# Node-driven attach/detach is an Alpha feature. The driver must be deployed with
+# --feature-gates=NodeDrivenAttachDetach=true, and the Azure platform and node
+# pools must support QAD. Do not make this the default StorageClass during preview.
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: managed-csi-node-driven
+provisioner: disk.csi.azure.com
+parameters:
+  skuName: Premium_LRS
+  attachMode: NodeDriven
+  networkAccessPolicy: AllowAll
+  publicNetworkAccess: Enabled
+reclaimPolicy: Delete
+volumeBindingMode: WaitForFirstConsumer
+allowVolumeExpansion: true

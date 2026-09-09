@@ -144,6 +144,7 @@ spec:
             - "--enable-perf-optimization={{ .Values.linux.enablePerfOptimization }}"
             - "--enable-kata-mount={{ .Values.node.enableKataMount }}"
             - "--drivername={{ .Values.driver.name }}"
+            - "--feature-gates=NodeDrivenAttachDetach={{ .Values.driver.featureGates.NodeDrivenAttachDetach }}"
             - "--volume-attach-limit={{ .Values.driver.volumeAttachLimit }}"
             - "--reserved-data-disk-slot-num={{ .Values.node.reservedDataDiskSlotNum }}"
             - "--cloud-config-secret-name={{ .Values.node.cloudConfigSecretName }}"

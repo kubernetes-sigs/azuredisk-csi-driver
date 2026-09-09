@@ -181,6 +181,8 @@ type Driver struct {
 	nodeInformerFactory             metadatainformer.SharedInformerFactory
 	// HTTP client for wireserver calls
 	httpClient *http.Client
+	// nodeDrivenAttachDetachEnabled controls adoption of the Alpha node-driven attach/detach architecture.
+	nodeDrivenAttachDetachEnabled bool
 	// informer factory and PV lister for cached API access
 	informerFactory informers.SharedInformerFactory
 	pvLister        corelisters.PersistentVolumeLister
@@ -196,6 +198,9 @@ type Driver struct {
 // does not support optional driver plugin info manifest field. Refer to CSI spec for more details.
 func NewDriver(options *DriverOptions) *Driver {
 	driver := Driver{}
+	if options.FeatureGates == nil {
+		options.FeatureGates = newDriverFeatureGate()
+	}
 	driver.Name = options.DriverName
 	driver.Version = driverVersion
 	driver.NodeID = options.NodeID
@@ -245,6 +250,10 @@ func NewDriver(options *DriverOptions) *Driver {
 		driver.formatTimeout = time.Duration(options.ConcurrentFormatTimeout) * time.Second
 	}
 	driver.enableMinimumRetryAfter = options.EnableMinimumRetryAfter
+	driver.nodeDrivenAttachDetachEnabled = options.FeatureGates.Enabled(NodeDrivenAttachDetach)
+	if driver.nodeDrivenAttachDetachEnabled {
+		klog.Warningf("Alpha feature gate %s is enabled", NodeDrivenAttachDetach)
+	}
 	driver.volumeLocks = volumehelper.NewVolumeLocks()
 	driver.ioHandler = azureutils.NewOSIOHandler()
 	driver.hostUtil = hostutil.NewHostUtil()
