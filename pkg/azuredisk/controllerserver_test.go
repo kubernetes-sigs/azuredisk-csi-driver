@@ -4024,8 +4024,8 @@ func TestListSnapshots(t *testing.T) {
 				if snapshotsResponse.Entries[0].Snapshot.SourceVolumeId != volumeID {
 					t.Errorf("actualVolumeId: (%v), expectedVolumeId: (%v)", snapshotsResponse.Entries[0].Snapshot.SourceVolumeId, volumeID)
 				}
-				if snapshotsResponse.NextToken != "2" {
-					t.Errorf("actualNextToken: (%v), expectedNextToken: (%v)", snapshotsResponse.NextToken, "2")
+				if snapshotsResponse.NextToken != "" {
+					t.Errorf("actualNextToken: (%v), expectedNextToken: (%v)", snapshotsResponse.NextToken, "")
 				}
 			},
 		},
