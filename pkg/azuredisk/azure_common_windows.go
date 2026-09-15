@@ -95,6 +95,9 @@ func CleanupMountPoint(path string, m *mount.SafeFormatAndMount, unmountVolume b
 	return fmt.Errorf("could not cast to csi proxy class")
 }
 
+func waitFSShutdownForDevice(devicePath string, stagingTargetPath string, mounter *mount.SafeFormatAndMount, timeout time.Duration) {
+}
+
 func getDevicePathWithMountPath(mountPath string, m *mount.SafeFormatAndMount) (string, error) {
 	if proxy, ok := m.Interface.(mounter.CSIProxyMounter); ok {
 		return proxy.GetDeviceNameFromMount(mountPath, "")

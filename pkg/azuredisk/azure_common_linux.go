@@ -36,6 +36,7 @@ import (
 	mount "k8s.io/mount-utils"
 	utilexec "k8s.io/utils/exec"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
+	csiMetrics "sigs.k8s.io/azuredisk-csi-driver/pkg/metrics"
 )
 
 const (
@@ -46,6 +47,8 @@ const (
 	fsckErrorsUncorrected = 4
 	// 'fsck' found operational error, e.g fresh block device
 	fsckOperationalError = 8
+	sysFSRoot            = "/sys/fs"
+	procFSJbd2Root       = "/proc/fs/jbd2"
 )
 
 // exclude those used by azure as resource and OS root in /dev/disk/azure, /dev/disk/azure/scsi0
@@ -565,4 +568,126 @@ func (d *Driver) GetVolumeStats(_ context.Context, m *mount.SafeFormatAndMount, 
 			Used:      inodesUsed,
 		},
 	}, nil
+}
+
+func waitFSShutdownForDevice(devicePath string, stagingTargetPath string, mounter *mount.SafeFormatAndMount, timeout time.Duration) {
+	fsType, err := mounter.GetDiskFormat(devicePath)
+	if err != nil {
+		klog.Warningf("NodeUnstageVolume - failed to get filesystem type for device %q: %v", devicePath, err)
+		return
+	}
+	fsInstance, err := filesystemInstanceName(devicePath, fsType, mounter)
+	if err != nil {
+		klog.Warningf("NodeUnstageVolume - failed to get filesystem instance for device %q: %v", devicePath, err)
+		return
+	}
+
+	klog.V(2).Infof("NodeUnstageVolume: waiting for filesystem to shutdown staging path %s device %s", stagingTargetPath, devicePath)
+	waitFSShutdown(devicePath, fsType, fsInstance, timeout)
+}
+
+// waitFSShutdown waits until the filesystem and journal entries disappear.
+func waitFSShutdown(devicePath string, fsType string, fsInstance string, timeout time.Duration) {
+	waitFSShutdownWithRoots(devicePath, fsType, fsInstance, timeout, sysFSRoot, procFSJbd2Root)
+}
+
+func filesystemInstanceName(devicePath string, fsType string, mounter *mount.SafeFormatAndMount) (string, error) {
+	if strings.EqualFold(fsType, "btrfs") {
+		output, err := mounter.Exec.Command("blkid", "-s", "UUID", "-o", "value", devicePath).Output()
+		if err != nil {
+			return "", fmt.Errorf("failed to get btrfs FSID for device %q: %w", devicePath, err)
+		}
+		fsID := strings.TrimSpace(string(output))
+		if fsID == "" || fsID == "." || fsID == ".." || filepath.Base(fsID) != fsID {
+			return "", fmt.Errorf("invalid btrfs FSID %q for device %q", fsID, devicePath)
+		}
+		return fsID, nil
+	}
+	return filepath.Base(devicePath), nil
+}
+
+func waitFSShutdownWithRoots(
+	devicePath string,
+	fsType string,
+	fsInstance string,
+	timeout time.Duration,
+	sysFSRoot string,
+	jbd2Root string) []string {
+	deviceName := strings.TrimPrefix(devicePath, "/dev/")
+	start := time.Now()
+	var errorMessages []string
+
+	if fsType != "" {
+		sysFSName := fsType
+		if fsType == "ext2" || fsType == "ext3" {
+			sysFSName = "ext4"
+		}
+		sysFSEntry := filepath.Join(sysFSRoot, sysFSName, fsInstance)
+		if err := waitFileRemoval(sysFSEntry, start, timeout); err != nil {
+			message := fmt.Sprintf("filesystem sysfs entry %q was not removed: %v", sysFSEntry, err)
+			klog.Warning(message)
+			csiMetrics.NewCSIMetricContext("wait_fs_shutdown_sysfs_entry_exist").WithLabel(csiMetrics.FSType, fsType).Observe(true)
+			errorMessages = append(errorMessages, message)
+		}
+	}
+
+	journalPattern := journalEntryGlobAt(jbd2Root, fsType, deviceName)
+	if journalPattern != "" {
+		journalEntries, err := filepath.Glob(journalPattern)
+		if err != nil {
+			message := fmt.Sprintf("failed to find journal entries matching %q: %v", journalPattern, err)
+			klog.Warning(message)
+			errorMessages = append(errorMessages, message)
+		} else {
+			for _, journalEntry := range journalEntries {
+				if err := waitFileRemoval(journalEntry, start, timeout); err != nil {
+					message := fmt.Sprintf("journal entry %q was not removed: %v", journalEntry, err)
+					klog.Warning(message)
+					csiMetrics.NewCSIMetricContext("wait_fs_shutdown_jbd_entry_exist").WithLabel(csiMetrics.FSType, fsType).Observe(true)
+					errorMessages = append(errorMessages, message)
+				}
+			}
+		}
+	}
+
+	if len(errorMessages) == 0 {
+		klog.V(2).Infof("Filesystem shutdown completed for device %q", devicePath)
+		return nil
+	}
+
+	klog.Warningf("Filesystem shutdown checks failed for device %q: %s", devicePath, strings.Join(errorMessages, "; "))
+	return errorMessages
+}
+
+func journalEntryGlob(fsType string, deviceName string) string {
+	return journalEntryGlobAt(procFSJbd2Root, fsType, deviceName)
+}
+
+func journalEntryGlobAt(jbd2Root string, fsType string, deviceName string) string {
+	if fsType != "ext4" && fsType != "ext3" {
+		return ""
+	}
+	return filepath.Join(jbd2Root, deviceName+"-*")
+}
+
+func waitFileRemoval(path string, start time.Time, timeout time.Duration) error {
+	deadline := start.Add(timeout)
+	ticker := time.NewTicker(100 * time.Millisecond)
+	defer ticker.Stop()
+
+	for {
+		_, err := os.Stat(path)
+		switch {
+		case os.IsNotExist(err):
+			return nil
+		case err != nil:
+			return fmt.Errorf("stat %q: %w", path, err)
+		}
+
+		if !time.Now().Before(deadline) {
+			return fmt.Errorf("timed out waiting for %q to be removed", path)
+		}
+
+		<-ticker.C
+	}
 }

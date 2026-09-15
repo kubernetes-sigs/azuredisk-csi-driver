@@ -20,6 +20,8 @@ limitations under the License.
 package azuredisk
 
 import (
+	"os"
+	"path/filepath"
 	"reflect"
 	"testing"
 	"time"
@@ -29,6 +31,143 @@ import (
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
 	testmounter "sigs.k8s.io/azuredisk-csi-driver/pkg/mounter"
 )
+
+func TestJournalEntryGlob(t *testing.T) {
+	tests := []struct {
+		name       string
+		fsType     string
+		deviceName string
+		want       string
+	}{
+		{
+			name:       "ext4 journal",
+			fsType:     "ext4",
+			deviceName: "nvme0n2",
+			want:       "/proc/fs/jbd2/nvme0n2-*",
+		},
+		{
+			name:       "xfs has no jbd2 journal",
+			fsType:     "xfs",
+			deviceName: "nvme0n2",
+		},
+		{
+			name:       "unknown filesystem has no jbd2 journal",
+			deviceName: "nvme0n2",
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			if got := journalEntryGlob(test.fsType, test.deviceName); got != test.want {
+				t.Errorf("journalEntryGlob() = %q, want %q", got, test.want)
+			}
+		})
+	}
+}
+
+func TestFilesystemInstanceName(t *testing.T) {
+	t.Run("uses device name for xfs", func(t *testing.T) {
+		got, err := filesystemInstanceName("/dev/nvme0n2", "xfs", nil)
+		if err != nil {
+			t.Fatalf("filesystemInstanceName() error = %v", err)
+		}
+		if got != "nvme0n2" {
+			t.Errorf("filesystemInstanceName() = %q, want %q", got, "nvme0n2")
+		}
+	})
+
+	t.Run("uses btrfs FSID", func(t *testing.T) {
+		fakeMounter, err := testmounter.NewFakeSafeMounter()
+		if err != nil {
+			t.Fatalf("NewFakeSafeMounter failed: %v", err)
+		}
+		const fsID = "d21d0da4-6af5-4b0f-9d43-91a60c72b6f7"
+		fakeExec := fakeMounter.Exec.(*testmounter.FakeSafeMounter)
+		fakeExec.CommandScript = []testingexec.FakeCommandAction{
+			func(cmd string, args ...string) exec.Cmd {
+				expectedArgs := []string{"-s", "UUID", "-o", "value", "/dev/sdc"}
+				if cmd != "blkid" || !reflect.DeepEqual(args, expectedArgs) {
+					t.Fatalf("unexpected blkid command: %s %v", cmd, args)
+				}
+				fakeCmd := &testingexec.FakeCmd{OutputScript: []testingexec.FakeAction{
+					func() ([]byte, []byte, error) {
+						return []byte(fsID + "\n"), nil, nil
+					},
+				}}
+				return testingexec.InitFakeCmd(fakeCmd, cmd, args...)
+			},
+		}
+
+		got, err := filesystemInstanceName("/dev/sdc", "btrfs", fakeMounter)
+		if err != nil {
+			t.Fatalf("filesystemInstanceName() error = %v", err)
+		}
+		if got != fsID {
+			t.Errorf("filesystemInstanceName() = %q, want %q", got, fsID)
+		}
+	})
+}
+
+func TestWaitFSShutdownWithRoots(t *testing.T) {
+	t.Run("collects filesystem and journal errors before diagnostics", func(t *testing.T) {
+		root := t.TempDir()
+		sysFSRoot := filepath.Join(root, "sys", "fs")
+		jbd2Root := filepath.Join(root, "proc", "fs", "jbd2")
+		sysFSEntry := filepath.Join(sysFSRoot, "ext4", "test-device")
+		journalEntry := filepath.Join(jbd2Root, "test-device-8")
+		for _, path := range []string{sysFSEntry, journalEntry} {
+			if err := os.MkdirAll(path, 0755); err != nil {
+				t.Fatalf("MkdirAll(%q) error = %v", path, err)
+			}
+		}
+
+		errorMessages := waitFSShutdownWithRoots(
+			"/dev/test-device",
+			"ext4",
+			"test-device",
+			0,
+			sysFSRoot,
+			jbd2Root)
+		if len(errorMessages) != 2 {
+			t.Fatalf("waitFSShutdownWithRoots() returned %d errors, want 2: %v", len(errorMessages), errorMessages)
+		}
+	})
+
+	t.Run("returns no errors after successful shutdown", func(t *testing.T) {
+		errorMessages := waitFSShutdownWithRoots(
+			"/dev/test-device",
+			"xfs",
+			"test-device",
+			0,
+			filepath.Join(t.TempDir(), "sys", "fs"),
+			filepath.Join(t.TempDir(), "proc", "fs", "jbd2"),
+		)
+		if len(errorMessages) != 0 {
+			t.Fatalf("waitFSShutdownWithRoots() returned errors: %v", errorMessages)
+		}
+	})
+
+	t.Run("waits for btrfs FSID entry", func(t *testing.T) {
+		root := t.TempDir()
+		sysFSRoot := filepath.Join(root, "sys", "fs")
+		fsID := "d21d0da4-6af5-4b0f-9d43-91a60c72b6f7"
+		if err := os.MkdirAll(filepath.Join(sysFSRoot, "btrfs", fsID), 0755); err != nil {
+			t.Fatalf("MkdirAll() error = %v", err)
+		}
+
+		errorMessages := waitFSShutdownWithRoots(
+			"/dev/test-device",
+			"btrfs",
+			fsID,
+			0,
+			sysFSRoot,
+			filepath.Join(root, "proc", "fs", "jbd2"),
+		)
+		if len(errorMessages) != 1 {
+			t.Fatalf("waitFSShutdownWithRoots() returned %d errors, want 1: %v", len(errorMessages), errorMessages)
+		}
+	})
+}
 
 func TestFormatAndMountFormatsUnformattedDisk(t *testing.T) {
 	fakeSafeMounter, err := testmounter.NewFakeSafeMounter()

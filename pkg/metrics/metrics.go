@@ -30,6 +30,9 @@ const (
 
 	// Label keys for metrics
 	StorageAccountType = "storage_account_type"
+
+	// Filesystem type label key
+	FSType = "fs_type"
 )
 
 var (
@@ -52,7 +55,7 @@ var (
 			Buckets:        []float64{0.1, 0.2, 0.5, 1, 5, 10, 15, 20, 30, 40, 50, 60, 100, 200, 300},
 			StabilityLevel: metrics.ALPHA,
 		},
-		[]string{"operation", "success", StorageAccountType},
+		[]string{"operation", "success", StorageAccountType, FSType},
 	)
 
 	operationTotal = metrics.NewCounterVec(
@@ -148,11 +151,13 @@ func (mc *CSIMetricContext) Observe(success bool) {
 	// Record detailed metrics if labels are present
 	if len(mc.labels) > 0 {
 		storageAccountType := mc.labels[StorageAccountType]
+		fsType := mc.labels[FSType]
 
 		operationDurationWithLabels.WithLabelValues(
 			mc.operation,
 			successStr,
 			storageAccountType,
+			fsType,
 		).Observe(duration)
 	}
 
