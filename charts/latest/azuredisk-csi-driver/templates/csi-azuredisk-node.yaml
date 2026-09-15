@@ -156,7 +156,7 @@ spec:
             - "--enable-otel-tracing={{ .Values.linux.otelTracing.enabled }}"
             - "--metrics-address=0.0.0.0:{{ .Values.node.metricsPort }}"
             - "--remove-not-ready-taint={{ .Values.node.removeNotReadyTaint }}"
-            - "--filesystem-shutdown-timeout={{ .Values.node.filesystemShutdownTimeout }}"
+            - "--filesystem-shutdown-timeout={{ .Values.linux.filesystemShutdownTimeout }}"
 {{- if ne .Values.node.hostNetwork true }}
           ports:
             - containerPort: {{ .Values.node.livenessProbe.healthPort }}

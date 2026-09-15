@@ -29,7 +29,6 @@ import (
 	"time"
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
-	"golang.org/x/sys/unix"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"k8s.io/klog/v2"
@@ -50,11 +49,6 @@ const (
 	fsckOperationalError = 8
 	sysFSRoot            = "/sys/fs"
 	procFSJbd2Root       = "/proc/fs/jbd2"
-)
-
-var (
-	openMountPoint = unix.Open
-	fsync          = unix.Syncfs
 )
 
 // exclude those used by azure as resource and OS root in /dev/disk/azure, /dev/disk/azure/scsi0

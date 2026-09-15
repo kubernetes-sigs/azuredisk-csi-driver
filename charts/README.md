@@ -205,7 +205,6 @@ The following table lists the configurable parameters of the latest Azure Disk C
 | `node.allowEmptyCloudConfig`                      | Whether allow running node driver without cloud config               | `true`
 | `node.maxUnavailable`                             | `maxUnavailable` value of driver node daemonset            | `1`
 | `node.metricsPort`                          | metrics port of driver node daemonset                   | `29605`                                                        |
-| `node.filesystemShutdownTimeout`                   | timeout in seconds to wait for filesystem and journal shutdown during node unstage | `5` |
 | `node.livenessProbe.healthPort`                   | health check port for liveness probe                       | `29603` |
 | `node.nodeDriverRegistrar.healthPort`                        | health check port for node-driver-registrar liveness probe                                                 | `29607`                                                 |
 | `node.nodeDriverRegistrar.livenessProbe.enabled`             | enable node-driver-registrar liveness probe                                                                | `true`                                                  |
@@ -232,6 +231,7 @@ The following table lists the configurable parameters of the latest Azure Disk C
 | `snapshot.snapshotController.resources.requests.memory`        | csi-snapshot-controller memory requests                 | 20Mi                                                           |
 | `linux.enabled`                                   | whether enable linux feature                               | `true`                                                         |
 | `linux.dsName`                                    | name of driver daemonset on linux                          |`csi-azuredisk-node`                                                         |
+| `linux.filesystemShutdownTimeout`                   | timeout in seconds to wait for filesystem and journal shutdown during node unstage | `5` |
 | `linux.kubelet`                                   | configure kubelet directory path on Linux agent node       | `/var/lib/kubelet`                                                |
 | `linux.getNodeInfoFromLabels`                     | get node info from node labels instead of IMDS on Linux agent node       | `false`                                                |
 | `linux.enableRegistrationProbe`                   | enable [kubelet-registration-probe](https://github.com/kubernetes-csi/node-driver-registrar#health-check-with-an-exec-probe) on Linux driver config     | `true`
