@@ -104,6 +104,21 @@ func (d *Driver) NodeStageVolume(_ context.Context, req *csi.NodeStageVolumeRequ
 		return nil, status.Error(codes.InvalidArgument, "lun not provided")
 	}
 
+	// Ensure this is idempotent for Kata mounts (otherwise we might
+	// attempt to remount and reformat a disk that is owned by a guest
+	// VM, e.g. if the driver restarts).
+	// Block volumes are ignored as they don't use MountInfo.
+	if d.enableKataMount && volumeCapability.GetBlock() == nil {
+		assigned, err := d.kataDirectVolume.IsVolumeMountedByID(volumeID)
+		if err != nil {
+			return nil, status.Errorf(codes.Internal, "could not check Kata assignment for %s: %v", volumeID, err)
+		}
+		if assigned {
+			isOperationSucceeded = true
+			return &csi.NodeStageVolumeResponse{}, nil
+		}
+	}
+
 	source, err := d.getDevicePathWithLUN(lun)
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to find disk on lun %s. %v", lun, err)
@@ -255,6 +270,12 @@ func (d *Driver) NodePublishVolume(ctx context.Context, req *csi.NodePublishVolu
 
 	var kataPod *corev1.Pod
 	if d.enableKataMount {
+		// Stage and publish must not race between releasing the host mount and
+		// committing metadata, including when discovery falls back to ordinary CSI.
+		if acquired := d.volumeLocks.TryAcquire(volumeID); !acquired {
+			return nil, status.Errorf(codes.Aborted, volumeOperationAlreadyExistsFmt, volumeID)
+		}
+		defer d.volumeLocks.Release(volumeID)
 		if kataPod, err = kataGetMountPod(ctx, d.kubeClient, params); err != nil {
 			klog.Warningf("NodePublishVolume: failed to probe pod for Kata mount for %s, falling back to regular mount: %v", target, err)
 			// Don't return, fall back to regular handling.
@@ -290,7 +311,7 @@ func (d *Driver) NodePublishVolume(ctx context.Context, req *csi.NodePublishVolu
 		}
 
 		fsGroup, fsGroupChangePolicy := getPodFSGroup(kataPod, volumeCapability, req.GetReadonly())
-		metadata := map[string]string{}
+		metadata := map[string]string{kataVolumeIDKey: volumeID}
 		if fsGroup != nil {
 			metadata[directvolume.FSGroupMetadataKey] = strconv.FormatInt(*fsGroup, 10)
 		}
@@ -315,10 +336,7 @@ func (d *Driver) NodePublishVolume(ctx context.Context, req *csi.NodePublishVolu
 			return nil, status.Errorf(codes.Internal, "failed to unmount staging target %q for direct volume: %v", source, err)
 		}
 
-		options := collectMountOptions(fstype, mountFlags)
-		if req.GetReadonly() {
-			options = append(options, "ro")
-		}
+		options := kataMountOptions(fstype, mountFlags, req.GetReadonly())
 
 		mountInfo := directvolume.MountInfo{
 			VolumeType: kataDirectVolumeType,
@@ -401,6 +419,15 @@ func (d *Driver) NodeUnpublishVolume(_ context.Context, req *csi.NodeUnpublishVo
 		return nil, status.Error(codes.InvalidArgument, "Target path missing in request")
 	}
 
+	if d.enableKataMount {
+		// Serialize cleanup against NodePublishVolume and NodeStageVolume when
+		// recovery RPCs overlap after a restart or timeout.
+		if acquired := d.volumeLocks.TryAcquire(volumeID); !acquired {
+			return nil, status.Errorf(codes.Aborted, volumeOperationAlreadyExistsFmt, volumeID)
+		}
+		defer d.volumeLocks.Release(volumeID)
+	}
+
 	klog.V(2).Infof("NodeUnpublishVolume: unmounting volume %s on %s", volumeID, targetPath)
 	extensiveMountPointCheck := true
 	if runtime.GOOS == "windows" {
@@ -412,15 +439,8 @@ func (d *Driver) NodeUnpublishVolume(_ context.Context, req *csi.NodeUnpublishVo
 	}
 
 	if d.enableKataMount {
-		if isKataMount, err := d.kataDirectVolume.IsVolumeMounted(targetPath); err != nil {
-			klog.Warningf("NodeUnpublishVolume: failed to probe pod for Kata mount for %s, falling back to regular mount: %v", targetPath, err)
-			// Don't return, fall back to regular handling.
-		} else if isKataMount {
-			klog.V(2).Infof("NodeUnpublishVolume: removing direct volume %s", targetPath)
-			if err := d.kataDirectVolume.Remove(targetPath); err != nil {
-				return nil, status.Errorf(codes.Internal, "failed to remove direct volume %q: %v", targetPath, err)
-			}
-			klog.V(2).Infof("NodeUnpublishVolume: remove direct volume %s", targetPath)
+		if err := d.kataDirectVolume.Remove(targetPath); err != nil { // Remove is idempotent.
+			return nil, status.Errorf(codes.Internal, "failed to remove direct volume %q: %v", targetPath, err)
 		}
 	}
 
@@ -598,11 +618,31 @@ func (d *Driver) NodeExpandVolume(_ context.Context, req *csi.NodeExpandVolumeRe
 	if len(volumePath) == 0 {
 		return nil, status.Error(codes.InvalidArgument, "volume path must be provided")
 	}
-	if isKataMount, err := d.kataDirectVolume.IsVolumeMounted(volumePath); isKataMount {
-		return nil, status.Error(codes.Unimplemented, "volume resize is not supported for Kata mounts")
-	} else if err != nil {
-		klog.Warningf("NodeExpandVolume: failed to probe for Kata mount at %s: %v", volumePath, err)
-		// Don't return, fall back to regular handling.
+
+	if d.enableKataMount {
+		if acquired := d.volumeLocks.TryAcquire(volumeID); !acquired {
+			return nil, status.Errorf(codes.Aborted, volumeOperationAlreadyExistsFmt, volumeID)
+		}
+		defer d.volumeLocks.Release(volumeID)
+
+		// CSI may supply the staging path rather than the DAV target. A target-only
+		// check cannot protect a guest-owned filesystem from host expansion.
+		if req.GetVolumeCapability().GetBlock() == nil {
+			assigned, err := d.kataDirectVolume.IsVolumeMountedByID(volumeID)
+			if err != nil {
+				return nil, status.Errorf(codes.Internal, "could not check Kata assignment for %s: %v", volumeID, err)
+			}
+			if assigned {
+				return nil, status.Error(codes.Unimplemented, "volume resize is not supported for Kata mounts")
+			}
+		}
+
+		if isKataMount, err := d.kataDirectVolume.IsVolumeMounted(volumePath); isKataMount {
+			return nil, status.Error(codes.Unimplemented, "volume resize is not supported for Kata mounts")
+		} else if err != nil {
+			klog.Warningf("NodeExpandVolume: failed to probe for Kata mount at %s: %v", volumePath, err)
+			// Don't return, fall back to regular handling.
+		}
 	}
 
 	isBlock, err := d.getHostUtil().PathIsDevice(volumePath)
@@ -633,10 +673,12 @@ func (d *Driver) NodeExpandVolume(_ context.Context, req *csi.NodeExpandVolumeRe
 		mc.WithAdditionalVolumeInfo(consts.VolumeID, volumeID).Observe(isOperationSucceeded)
 	}()
 
-	if acquired := d.volumeLocks.TryAcquire(volumeID); !acquired {
-		return nil, status.Errorf(codes.Aborted, volumeOperationAlreadyExistsFmt, volumeID)
+	if !d.enableKataMount {
+		if acquired := d.volumeLocks.TryAcquire(volumeID); !acquired {
+			return nil, status.Errorf(codes.Aborted, volumeOperationAlreadyExistsFmt, volumeID)
+		}
+		defer d.volumeLocks.Release(volumeID)
 	}
-	defer d.volumeLocks.Release(volumeID)
 
 	devicePath, err := getDevicePathWithMountPath(volumePath, d.mounter)
 	if err != nil {

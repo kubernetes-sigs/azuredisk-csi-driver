@@ -18,9 +18,15 @@ package azuredisk
 
 import (
 	"context"
+	"encoding/base64"
+	"encoding/json"
 	"fmt"
 
+	"os"
+	"path/filepath"
+
 	directvolume "github.com/kata-containers/kata-containers/src/runtime/pkg/direct-volume"
+
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	clientset "k8s.io/client-go/kubernetes"
@@ -34,6 +40,9 @@ const (
 	kataRuntimeClassAnnotationValue = "direct-volume"
 
 	kataDirectVolumeType = "directvol"
+	kataVolumeRoot       = "/run/kata-containers/shared/direct-volumes"
+	kataMountInfoFile    = "mountInfo.json"
+	kataVolumeIDKey      = "azure.csi.disk/volume-id"
 )
 
 // kataDirectVolumer is the interface for Kata's DirectVolume API.
@@ -42,20 +51,96 @@ type kataDirectVolumer interface {
 	AddMountInfo(string, directvolume.MountInfo) error
 	Remove(string) error
 	IsVolumeMounted(string) (bool, error)
+
+	IsVolumeMountedByID(string) (bool, error)
+	FindMountInfo(string) (string, error)
 }
 
 type kataDirectVolume struct{}
 
-func (*kataDirectVolume) AddMountInfo(volumePath string, mountInfo directvolume.MountInfo) error {
-	return directvolume.AddMountInfo(volumePath, mountInfo)
+// AddMountInfo publishes a new volume without overwriting an assignment.
+func (*kataDirectVolume) AddMountInfo(target string, info directvolume.MountInfo) error {
+	return writeKataMountInfo(kataVolumeRoot, target, info)
 }
 
-func (*kataDirectVolume) Remove(volumePath string) error {
-	return directvolume.Remove(volumePath)
+// writeKataMountInfo exclusively creates metadata, preserving existing assignments.
+// Interrupted writes fail closed during lookup until target-scoped unpublish cleanup.
+func writeKataMountInfo(root, target string, info directvolume.MountInfo) error {
+	data, err := json.Marshal(info)
+	if err != nil {
+		return err
+	}
+	dir := filepath.Join(root, base64.URLEncoding.EncodeToString([]byte(target)))
+	if err := os.Mkdir(dir, 0700); err != nil && !os.IsExist(err) {
+		return err
+	}
+	f, err := os.OpenFile(filepath.Join(dir, kataMountInfoFile), os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
+	if err != nil {
+		return err
+	}
+	_, err = f.Write(data)
+	closeErr := f.Close()
+	if err != nil {
+		return err
+	}
+	return closeErr
 }
 
-func (*kataDirectVolume) IsVolumeMounted(volumePath string) (bool, error) {
-	return directvolume.IsVolumeMounted(volumePath)
+// Remove finishes target-scoped cleanup, including an interrupted earlier removal.
+func (*kataDirectVolume) Remove(target string) error {
+	return directvolume.Remove(target)
+}
+
+// IsVolumeMounted reports whether Kata has metadata for the target.
+func (*kataDirectVolume) IsVolumeMounted(target string) (bool, error) {
+	return directvolume.IsVolumeMounted(target)
+}
+
+// IsVolumeMountedByID reports a metadata assignment, not an observed guest mount.
+func (s *kataDirectVolume) IsVolumeMountedByID(volumeID string) (bool, error) {
+	target, err := s.FindMountInfo(volumeID)
+	return target != "", err
+}
+
+// FindMountInfo returns the metadata assignment target, or empty if absent; it does not observe guest mounts.
+func (*kataDirectVolume) FindMountInfo(volumeID string) (string, error) {
+	return kataFindMountInfo(kataVolumeRoot, volumeID, directvolume.VolumeMountInfo)
+}
+
+// kataFindMountInfo scans assignments; callers hold the CSI volume lock.
+// Like directvolume.VolumeMountInfo, read must return nonnil info on success.
+func kataFindMountInfo(root, volumeID string, read func(string) (*directvolume.MountInfo, error)) (string, error) {
+	entries, err := os.ReadDir(root)
+	if err != nil {
+		return "", err
+	}
+	for _, entry := range entries {
+		path, err := base64.URLEncoding.DecodeString(entry.Name())
+		if err != nil {
+			return "", fmt.Errorf("invalid Kata record %q", entry.Name())
+		}
+		info, err := read(string(path))
+		if os.IsNotExist(err) {
+			// Cleanup can outlive a released record, which Kata can no longer consume.
+			continue
+		}
+		if err != nil {
+			return "", fmt.Errorf("unusable Kata record at %q: %v", path, err)
+		}
+		if info.Metadata[kataVolumeIDKey] == volumeID {
+			return string(path), nil
+		}
+	}
+	return "", nil
+}
+
+// kataMountOptions returns the guest mount options for a publication request.
+func kataMountOptions(fsType string, flags []string, readonly bool) []string {
+	options := collectMountOptions(fsType, flags)
+	if readonly {
+		options = append(options, "ro")
+	}
+	return options
 }
 
 // kataGetMountPod returns the pod described by volumeContext if the

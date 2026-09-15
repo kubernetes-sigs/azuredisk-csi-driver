@@ -18,6 +18,8 @@ package azuredisk
 
 import (
 	"context"
+	"fmt"
+	"sync"
 	"time"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute/v7"
@@ -66,25 +68,54 @@ var (
 
 type fakeDirectVolumeService struct {
 	mountInfo map[string]directvolume.MountInfo
+	mu        sync.Mutex
 }
 
 func newFakeKataDirectVolume() *fakeDirectVolumeService {
 	return &fakeDirectVolumeService{mountInfo: map[string]directvolume.MountInfo{}}
 }
 
+// AddMountInfo records a new fake publication without overwriting an existing one.
 func (f *fakeDirectVolumeService) AddMountInfo(volumePath string, mountInfo directvolume.MountInfo) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if _, exists := f.mountInfo[volumePath]; exists {
+		return fmt.Errorf("direct volume %q already exists", volumePath)
+	}
 	f.mountInfo[volumePath] = mountInfo
 	return nil
 }
 
 func (f *fakeDirectVolumeService) Remove(volumePath string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
 	delete(f.mountInfo, volumePath)
 	return nil
 }
 
 func (f *fakeDirectVolumeService) IsVolumeMounted(volumePath string) (bool, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
 	_, ok := f.mountInfo[volumePath]
 	return ok, nil
+}
+
+// FindMountInfo finds a fake publication by CSI volume identity.
+func (f *fakeDirectVolumeService) FindMountInfo(volumeID string) (string, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	for target, info := range f.mountInfo {
+		if info.Metadata[kataVolumeIDKey] == volumeID {
+			return target, nil
+		}
+	}
+	return "", nil
+}
+
+// IsVolumeMountedByID reports a metadata assignment, not an observed guest mount.
+func (f *fakeDirectVolumeService) IsVolumeMountedByID(volumeID string) (bool, error) {
+	target, err := f.FindMountInfo(volumeID)
+	return target != "", err
 }
 
 // FakeDriver defines an interface unit tests use to test the implementation of the Azure Disk CSI Driver.

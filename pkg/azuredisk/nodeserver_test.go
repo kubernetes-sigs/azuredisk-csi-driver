@@ -42,6 +42,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	k8sruntime "k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/kubernetes/fake"
+
 	testingexec "k8s.io/utils/exec/testing"
 	"k8s.io/utils/ptr"
 	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
@@ -92,6 +93,7 @@ type kataStubDirectVolume struct {
 	addMountInfo    func(string, directvolume.MountInfo) error
 	remove          func(string) error
 	isVolumeMounted func(string) (bool, error)
+	findMountInfo   func(string) (string, error)
 }
 
 func (f *kataStubDirectVolume) AddMountInfo(volumePath string, mountInfo directvolume.MountInfo) error {
@@ -104,6 +106,14 @@ func (f *kataStubDirectVolume) Remove(volumePath string) error {
 
 func (f *kataStubDirectVolume) IsVolumeMounted(volumePath string) (bool, error) {
 	return f.isVolumeMounted(volumePath)
+}
+
+// FindMountInfo delegates assignment lookup or reports an empty store.
+func (f *kataStubDirectVolume) FindMountInfo(volumeID string) (string, error) {
+	if f.findMountInfo != nil {
+		return f.findMountInfo(volumeID)
+	}
+	return "", nil
 }
 
 func TestMain(m *testing.M) {
@@ -1556,6 +1566,7 @@ func TestNodePublishVolume(t *testing.T) {
 			}
 			if test.expectedInfo != nil {
 				assert.Equal(t, test.req.TargetPath, addedTarget, test.desc)
+				test.expectedInfo.Metadata[kataVolumeIDKey] = test.req.VolumeId
 				assert.Equal(t, *test.expectedInfo, addedMountInfo, test.desc)
 			}
 			if test.expectedMount {
@@ -1929,15 +1940,18 @@ func TestNodeUnpublishVolume(t *testing.T) {
 			expectRemoved:  true,
 		},
 		{
-			desc:          "[Success] Standard mount",
-			req:           &csi.NodeUnpublishVolumeRequest{TargetPath: standardTarget, VolumeId: "vol_1"},
-			expectedErr:   testutil.TestError{},
-			expectRemoved: true,
+			desc:           "[Success] Standard mount",
+			req:            &csi.NodeUnpublishVolumeRequest{TargetPath: standardTarget, VolumeId: "vol_1"},
+			expectedErr:    testutil.TestError{},
+			expectedTarget: standardTarget,
+			expectRemoved:  true,
 		},
 		{
-			desc:          "[Success] Direct volume probe error falls back to standard mount",
-			req:           &csi.NodeUnpublishVolumeRequest{TargetPath: probeErrorTarget, VolumeId: "vol_1"},
-			expectedErr:   testutil.TestError{},
+			desc: "[Error] Direct volume removal failure after target cleanup",
+			req:  &csi.NodeUnpublishVolumeRequest{TargetPath: probeErrorTarget, VolumeId: "vol_1"},
+			expectedErr: testutil.TestError{
+				DefaultError: status.Errorf(codes.Internal, "failed to remove direct volume %q: fake remove direct volume error", probeErrorTarget),
+			},
 			expectRemoved: true,
 		},
 	}
@@ -1952,16 +1966,11 @@ func TestNodeUnpublishVolume(t *testing.T) {
 	var removedTarget string
 	d.(*fakeDriver).kataDirectVolume = &kataStubDirectVolume{
 		isVolumeMounted: func(target string) (bool, error) {
-			if target == errorTarget || target == targetFile || target == directFSGroupTarget {
-				return true, nil
-			}
-			if target == probeErrorTarget {
-				return false, errors.New("fake direct volume probe error")
-			}
+			t.Fatal("unpublish must not parse metadata before removal")
 			return false, nil
 		},
 		remove: func(target string) error {
-			if target == errorTarget {
+			if target == errorTarget || target == probeErrorTarget {
 				return errors.New("fake remove direct volume error")
 			}
 			removedTarget = target
@@ -2019,6 +2028,7 @@ func TestNodeUnpublishVolumeKataMountFeatureFlag(t *testing.T) {
 				},
 				remove: func(path string) error {
 					assert.Equal(t, target, path)
+					assert.NoDirExists(t, target, "target cleanup must precede metadata cleanup")
 					removed = true
 					return nil
 				},
@@ -2030,7 +2040,7 @@ func TestNodeUnpublishVolumeKataMountFeatureFlag(t *testing.T) {
 			})
 			require.NoError(t, err)
 			assert.NoDirExists(t, target)
-			assert.Equal(t, enabled, probed)
+			assert.False(t, probed, "unpublish must not probe metadata")
 			assert.Equal(t, enabled, removed)
 		})
 	}
@@ -2474,7 +2484,7 @@ func TestNodePublishVolumeIdempotent(t *testing.T) {
 				VolumeType: kataDirectVolumeType,
 				Device:     "/dev/sdd",
 				FsType:     defaultLinuxFsType,
-				Metadata:   map[string]string{},
+				Metadata:   map[string]string{kataVolumeIDKey: "vol_1"},
 				Options:    []string{"ro"},
 			}, mountInfo)
 			calls++
