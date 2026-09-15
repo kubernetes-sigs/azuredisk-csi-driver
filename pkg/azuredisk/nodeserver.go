@@ -269,21 +269,39 @@ func (d *Driver) NodePublishVolume(ctx context.Context, req *csi.NodePublishVolu
 	}
 
 	var kataPod *corev1.Pod
-	if d.enableKataMount {
+	// Kata already supports raw block volumes through the regular device publish path.
+	if d.enableKataMount && volumeCapability.GetBlock() == nil {
 		// Stage and publish must not race between releasing the host mount and
 		// committing metadata, including when discovery falls back to ordinary CSI.
 		if acquired := d.volumeLocks.TryAcquire(volumeID); !acquired {
 			return nil, status.Errorf(codes.Aborted, volumeOperationAlreadyExistsFmt, volumeID)
 		}
 		defer d.volumeLocks.Release(volumeID)
+
+		// Ensure this is idempotent and preserve an existing
+		// NodePublish (either Kata or non-Kata) on retries before
+		// kataGetMountPod can select a runtime.
+		//
+		// Otherwise, a NodePublish retry could select a different
+		// runtime, leading to a double mount (kataGetMountPod fails ->
+		// regular publish succeeds -> response lost -> kataGetMountPod
+		// retry succeeds -> double mount).
+		published, err := d.kataPublished(req)
+		if err != nil {
+			return nil, err
+		}
+		if published {
+			isOperationSucceeded = true
+			return &csi.NodePublishVolumeResponse{}, nil
+		}
+
 		if kataPod, err = kataGetMountPod(ctx, d.kubeClient, params); err != nil {
 			klog.Warningf("NodePublishVolume: failed to probe pod for Kata mount for %s, falling back to regular mount: %v", target, err)
 			// Don't return, fall back to regular handling.
 		}
 	}
 
-	// Kata already supports raw block volumes through the regular device publish path.
-	if kataPod != nil && volumeCapability.GetBlock() == nil {
+	if kataPod != nil {
 		// Direct assignment requires pod-exclusive access enforced by ReadWriteOncePod.
 		if volumeCapability.GetAccessMode().GetMode() != csi.VolumeCapability_AccessMode_SINGLE_NODE_SINGLE_WRITER {
 			return nil, status.Error(codes.FailedPrecondition, "volume needs ReadWriteOncePod access mode with Kata")

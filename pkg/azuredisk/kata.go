@@ -19,14 +19,13 @@ package azuredisk
 import (
 	"context"
 	"encoding/base64"
-	"encoding/json"
 	"fmt"
-
 	"os"
-	"path/filepath"
 
+	"github.com/container-storage-interface/spec/lib/go/csi"
 	directvolume "github.com/kata-containers/kata-containers/src/runtime/pkg/direct-volume"
-
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	clientset "k8s.io/client-go/kubernetes"
@@ -41,7 +40,6 @@ const (
 
 	kataDirectVolumeType = "directvol"
 	kataVolumeRoot       = "/run/kata-containers/shared/direct-volumes"
-	kataMountInfoFile    = "mountInfo.json"
 	kataVolumeIDKey      = "azure.csi.disk/volume-id"
 )
 
@@ -58,32 +56,11 @@ type kataDirectVolumer interface {
 
 type kataDirectVolume struct{}
 
-// AddMountInfo publishes a new volume without overwriting an assignment.
+// AddMountInfo delegates publication to Kata's writer, which overwrites metadata.
+// The driver is the sole writer for its CSI targets; kataPublished checks existing
+// assignments under volumeLocks before NodePublishVolume calls this method.
 func (*kataDirectVolume) AddMountInfo(target string, info directvolume.MountInfo) error {
-	return writeKataMountInfo(kataVolumeRoot, target, info)
-}
-
-// writeKataMountInfo exclusively creates metadata, preserving existing assignments.
-// Interrupted writes fail closed during lookup until target-scoped unpublish cleanup.
-func writeKataMountInfo(root, target string, info directvolume.MountInfo) error {
-	data, err := json.Marshal(info)
-	if err != nil {
-		return err
-	}
-	dir := filepath.Join(root, base64.URLEncoding.EncodeToString([]byte(target)))
-	if err := os.Mkdir(dir, 0700); err != nil && !os.IsExist(err) {
-		return err
-	}
-	f, err := os.OpenFile(filepath.Join(dir, kataMountInfoFile), os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
-	if err != nil {
-		return err
-	}
-	_, err = f.Write(data)
-	closeErr := f.Close()
-	if err != nil {
-		return err
-	}
-	return closeErr
+	return directvolume.AddMountInfo(target, info)
 }
 
 // Remove finishes target-scoped cleanup, including an interrupted earlier removal.
@@ -141,6 +118,35 @@ func kataMountOptions(fsType string, flags []string, readonly bool) []string {
 		options = append(options, "ro")
 	}
 	return options
+}
+
+// kataIsMountPoint checks existing mounts without creating or repairing a target.
+func (d *Driver) kataIsMountPoint(path string) (bool, error) {
+	mounted, err := d.mounter.IsMountPoint(path)
+	if os.IsNotExist(err) {
+		return false, nil
+	}
+	return mounted, err
+}
+
+// kataPublished preserves an established publication before RuntimeClass discovery.
+func (d *Driver) kataPublished(req *csi.NodePublishVolumeRequest) (bool, error) {
+	target, err := d.kataDirectVolume.FindMountInfo(req.VolumeId)
+	if err != nil {
+		return false, status.Errorf(codes.Internal, "could not check Kata assignment: %v", err)
+	}
+	if target == "" {
+		// Unmounting a damaged target here would erase its mode before a retry.
+		mounted, err := d.kataIsMountPoint(req.TargetPath)
+		if err != nil {
+			return false, status.Errorf(codes.Internal, "could not verify target %q: %v", req.TargetPath, err)
+		}
+		return mounted, nil
+	}
+	if target != req.GetTargetPath() {
+		return false, status.Errorf(codes.FailedPrecondition, "volume %s conflicts with the Kata publication at %q", req.VolumeId, target)
+	}
+	return true, nil
 }
 
 // kataGetMountPod returns the pod described by volumeContext if the

@@ -38,7 +38,9 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	nodev1 "k8s.io/api/node/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	k8sruntime "k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/kubernetes/fake"
+	k8stesting "k8s.io/client-go/testing"
 	"k8s.io/mount-utils"
 	"k8s.io/utils/ptr"
 	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
@@ -48,6 +50,8 @@ import (
 	azure "sigs.k8s.io/cloud-provider-azure/pkg/provider"
 )
 
+const kataMountInfoFile = "mountInfo.json"
+
 // kataTestDirectVolume confines metadata operations to a test-owned root.
 type kataTestDirectVolume struct{ rootPath string }
 
@@ -56,9 +60,17 @@ func (s *kataTestDirectVolume) volumeDir(target string) string {
 	return filepath.Join(s.rootPath, base64.URLEncoding.EncodeToString([]byte(target)))
 }
 
-// AddMountInfo exercises the production exclusive writer without the real Kata root.
+// AddMountInfo mirrors the vendor's mkdir/write (including overwrite) semantics
+// without writing to the live Kata root. Lifecycle checks must prevent replacement.
 func (s *kataTestDirectVolume) AddMountInfo(target string, info directvolume.MountInfo) error {
-	return writeKataMountInfo(s.rootPath, target, info)
+	data, err := json.Marshal(&info)
+	if err != nil {
+		return err
+	}
+	if err := os.MkdirAll(s.volumeDir(target), 0700); err != nil {
+		return err
+	}
+	return os.WriteFile(filepath.Join(s.volumeDir(target), kataMountInfoFile), data, 0600)
 }
 
 // FindMountInfo scans assignments in the test root.
@@ -189,6 +201,34 @@ func kataTestRequest(t *testing.T) *csi.NodePublishVolumeRequest {
 	}
 }
 
+func TestKataRawBlockPublishSkipsKataWork(t *testing.T) {
+	for _, held := range []bool{false, true} {
+		t.Run(strconv.FormatBool(held), func(t *testing.T) {
+			d, mounts, _ := newKataTestDriver(t)
+			req := kataTestRequest(t)
+			req.VolumeCapability.AccessType = &csi.VolumeCapability_Block{Block: &csi.VolumeCapability_BlockVolume{}}
+			// Any metadata inventory or other Kata adapter call would panic.
+			d.kataDirectVolume = nil
+			if held {
+				require.True(t, d.volumeLocks.TryAcquire(req.VolumeId))
+				defer d.volumeLocks.Release(req.VolumeId)
+			}
+			_, err := d.NodePublishVolume(context.Background(), req)
+			require.NoError(t, err)
+			assert.Empty(t, d.kubeClient.(*fake.Clientset).Actions())
+			require.Len(t, mounts.MountPoints, 1)
+			assert.Equal(t, req.TargetPath, mounts.MountPoints[0].Path)
+			assert.Contains(t, mounts.MountPoints[0].Opts, "bind")
+			if held {
+				assert.False(t, d.volumeLocks.TryAcquire(req.VolumeId), "raw block must not release an existing lifecycle lock")
+			} else {
+				require.True(t, d.volumeLocks.TryAcquire(req.VolumeId), "raw block must not retain a lifecycle lock")
+				d.volumeLocks.Release(req.VolumeId)
+			}
+		})
+	}
+}
+
 // kataTestStageRequest preserves the publication's immutable staging inputs.
 func kataTestStageRequest(req *csi.NodePublishVolumeRequest) *csi.NodeStageVolumeRequest {
 	return &csi.NodeStageVolumeRequest{
@@ -233,13 +273,13 @@ func TestKataDirectVolumeStore(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, os.FileMode(0600), stat.Mode().Perm())
 
-	require.Error(t, store.AddMountInfo(req.TargetPath, info), "even identical assignments must not be replaced")
+	require.NoError(t, store.AddMountInfo(req.TargetPath, info))
 	changed := info
 	changed.Device = "/dev/sde"
-	require.Error(t, store.AddMountInfo(req.TargetPath, changed))
+	require.NoError(t, store.AddMountInfo(req.TargetPath, changed))
 	got, err = store.VolumeMountInfo(req.TargetPath)
 	require.NoError(t, err)
-	assert.Equal(t, info, *got, "a committed publication must never be overwritten")
+	assert.Equal(t, changed, *got, "the vendor-compatible fake must allow overwrites")
 
 	require.NoError(t, store.Remove(req.TargetPath))
 	require.NoError(t, store.Remove(req.TargetPath))
@@ -678,23 +718,332 @@ func TestKataNativeBlockExpandSkipsInventory(t *testing.T) {
 	assert.Zero(t, exec.CommandCalls)
 }
 
-func TestKataDirectVolumeConcurrentCreation(t *testing.T) {
-	store := &kataTestDirectVolume{rootPath: t.TempDir()}
-	req := kataTestRequest(t)
-	start := make(chan struct{})
-	results := make(chan error, 2)
-	for i := 0; i < 2; i++ {
-		info := kataTestInfo(t, req)
-		go func() {
-			<-start
-			results <- store.AddMountInfo(req.TargetPath, info)
-		}()
+func TestKataPublishRetryPreservesDAV(t *testing.T) {
+	for _, scenario := range []string{"lookup failure", "annotation removed", "driver restart"} {
+		t.Run(scenario, func(t *testing.T) {
+			d, mounts, exec := newKataTestDriver(t)
+			req := kataTestRequest(t)
+			req.Readonly = true
+			require.NoError(t, mounts.Mount("/dev/sdd", req.StagingTargetPath, "ext4", []string{"discard"}))
+			_, err := d.NodePublishVolume(context.Background(), req)
+			require.NoError(t, err)
+			store := d.kataDirectVolume.(*kataTestDirectVolume)
+			before, err := os.ReadFile(filepath.Join(store.volumeDir(req.TargetPath), kataMountInfoFile))
+			require.NoError(t, err)
+			mounts.ResetLog()
+			if scenario == "driver restart" {
+				d, mounts, exec = newKataTestDriver(t)
+				d.kataDirectVolume = &kataTestDirectVolume{rootPath: store.rootPath}
+			}
+			client := d.kubeClient.(*fake.Clientset)
+			if scenario == "annotation removed" {
+				class, err := client.NodeV1().RuntimeClasses().Get(context.Background(), "kata", metav1.GetOptions{})
+				require.NoError(t, err)
+				class.Annotations = nil
+				_, err = client.NodeV1().RuntimeClasses().Update(context.Background(), class, metav1.UpdateOptions{})
+				require.NoError(t, err)
+			} else {
+				client.PrependReactor("*", "*", func(k8stesting.Action) (bool, k8sruntime.Object, error) {
+					return true, nil, errors.New("API unavailable")
+				})
+			}
+			client.ClearActions()
+			_, err = d.NodePublishVolume(context.Background(), req)
+			require.NoError(t, err)
+			assert.Empty(t, client.Actions())
+			assert.Empty(t, mounts.GetLog())
+			assert.Zero(t, exec.CommandCalls)
+			after, err := os.ReadFile(filepath.Join(store.volumeDir(req.TargetPath), kataMountInfoFile))
+			require.NoError(t, err)
+			assert.Equal(t, before, after)
+			assert.NoDirExists(t, req.StagingTargetPath)
+		})
 	}
-	close(start)
-	first, second := <-results, <-results
-	assert.True(t, (first == nil) != (second == nil), "exactly one exclusive create must succeed: %v, %v", first, second)
-	info, err := store.VolumeMountInfo(req.TargetPath)
+}
+
+func TestKataPublishRetryPreservesOrdinary(t *testing.T) {
+	for _, withFSGroup := range []bool{false, true} {
+		t.Run(map[bool]string{false: "without fsGroup", true: "with fsGroup"}[withFSGroup], func(t *testing.T) {
+			d, mounts, exec := newKataTestDriver(t)
+			req := kataTestRequest(t)
+			client := d.kubeClient.(*fake.Clientset)
+			if withFSGroup {
+				pod, err := client.CoreV1().Pods("default").Get(context.Background(), "pod", metav1.GetOptions{})
+				require.NoError(t, err)
+				pod.Spec.SecurityContext = &corev1.PodSecurityContext{FSGroup: ptr.To(int64(3000))}
+				_, err = client.CoreV1().Pods("default").Update(context.Background(), pod, metav1.UpdateOptions{})
+				require.NoError(t, err)
+			}
+			failLookup := true
+			client.PrependReactor("get", "pods", func(k8stesting.Action) (bool, k8sruntime.Object, error) {
+				if failLookup {
+					return true, nil, errors.New("transient Pod lookup failure")
+				}
+				return false, nil, nil
+			})
+			require.NoError(t, mounts.Mount("/dev/sdd", req.StagingTargetPath, "ext4", []string{"discard"}))
+			_, err := d.NodePublishVolume(context.Background(), req)
+			require.NoError(t, err)
+			failLookup = false
+			client.ClearActions()
+			mounts.ResetLog()
+			_, err = d.NodePublishVolume(context.Background(), req)
+			require.NoError(t, err)
+			assert.Empty(t, client.Actions(), "lost reply must not turn an ordinary publication into DAV")
+			assert.Empty(t, mounts.GetLog())
+			assert.Zero(t, exec.CommandCalls)
+			assert.DirExists(t, req.StagingTargetPath)
+			target, err := d.kataDirectVolume.FindMountInfo(req.VolumeId)
+			require.NoError(t, err)
+			assert.Empty(t, target)
+		})
+	}
+}
+
+// TestKataPublishPreservesDamagedTarget keeps ordinary mode without destructive repair.
+func TestKataPublishPreservesDamagedTarget(t *testing.T) {
+	for _, failure := range []string{"inspection", "readability not probed"} {
+		t.Run(failure, func(t *testing.T) {
+			d, mounts, exec := newKataTestDriver(t)
+			req := kataTestRequest(t)
+			client := d.kubeClient.(*fake.Clientset)
+			failLookup := true
+			client.PrependReactor("get", "pods", func(k8stesting.Action) (bool, k8sruntime.Object, error) {
+				if failLookup {
+					return true, nil, errors.New("transient API failure")
+				}
+				return false, nil, nil
+			})
+			require.NoError(t, mounts.Mount("/dev/sdd", req.StagingTargetPath, "ext4", []string{"discard"}))
+			_, err := d.NodePublishVolume(context.Background(), req)
+			require.NoError(t, err)
+			failLookup = false
+			if failure == "inspection" {
+				mounts.MountCheckErrors = map[string]error{req.TargetPath: errors.New("mount inspection failed")}
+			} else {
+				// A fake mount entry is enough for an ordinary RW retry; no ReadDir probe.
+				require.NoError(t, os.Remove(req.TargetPath))
+				require.NoError(t, os.WriteFile(req.TargetPath, nil, 0600))
+			}
+			mounts.ResetLog()
+			for attempt := 0; attempt < 2; attempt++ {
+				client.ClearActions()
+				_, err = d.NodePublishVolume(context.Background(), req)
+				if failure == "inspection" {
+					assert.Equal(t, codes.Internal, status.Code(err))
+				} else {
+					require.NoError(t, err)
+				}
+				assert.Empty(t, client.Actions())
+				assert.Empty(t, mounts.GetLog())
+				assert.Len(t, mounts.MountPoints, 2, "failed inspection must not remove mode evidence")
+				restarted, _, _ := newKataTestDriver(t)
+				restarted.mounter = d.mounter
+				restarted.kataDirectVolume = &kataTestDirectVolume{rootPath: d.kataDirectVolume.(*kataTestDirectVolume).rootPath}
+				d, client = restarted, restarted.kubeClient.(*fake.Clientset)
+			}
+			if failure == "inspection" {
+				delete(mounts.MountCheckErrors, req.TargetPath)
+			} else {
+				require.NoError(t, os.Remove(req.TargetPath))
+				require.NoError(t, os.Mkdir(req.TargetPath, 0755))
+			}
+			_, err = d.NodePublishVolume(context.Background(), req)
+			require.NoError(t, err)
+			assert.Empty(t, client.Actions())
+			assert.Empty(t, mounts.GetLog())
+			assert.Zero(t, exec.CommandCalls)
+			target, err := d.kataDirectVolume.FindMountInfo(req.VolumeId)
+			require.NoError(t, err)
+			assert.Empty(t, target, "recovery must not change an ordinary publication into DAV")
+		})
+	}
+}
+
+func TestKataPublishComparesMatchedTarget(t *testing.T) {
+	for _, scenario := range []string{"other target", "foreign type"} {
+		t.Run(scenario, func(t *testing.T) {
+			d, mounts, exec := newKataTestDriver(t)
+			req := kataTestRequest(t)
+			info := kataTestInfo(t, req)
+			if scenario == "foreign type" {
+				info.VolumeType = "blk"
+			}
+			require.NoError(t, d.kataDirectVolume.AddMountInfo(req.TargetPath, info))
+			store := d.kataDirectVolume.(*kataTestDirectVolume)
+			path := filepath.Join(store.volumeDir(req.TargetPath), kataMountInfoFile)
+			before, err := os.ReadFile(path)
+			require.NoError(t, err)
+			want := codes.FailedPrecondition
+			switch scenario {
+			case "foreign type":
+				want = codes.OK
+			case "other target":
+				req.TargetPath += "-other"
+			}
+			mounts.ResetLog()
+			_, err = d.NodePublishVolume(context.Background(), req)
+			assert.Equal(t, want, status.Code(err))
+			after, err := os.ReadFile(path)
+			require.NoError(t, err)
+			assert.Equal(t, before, after, "matched publications must not be overwritten")
+			assert.Empty(t, d.kubeClient.(*fake.Clientset).Actions())
+			assert.Empty(t, mounts.GetLog())
+			assert.Zero(t, exec.CommandCalls)
+		})
+	}
+}
+
+// TestKataPublishDetectsOrdinaryMount checks supported CSI mount-point retry behavior.
+func TestKataPublishDetectsOrdinaryMount(t *testing.T) {
+	for _, scenario := range []string{"mounted", "inspection failure"} {
+		t.Run(scenario, func(t *testing.T) {
+			d, mounts, exec := newKataTestDriver(t)
+			req := kataTestRequest(t)
+			require.NoError(t, mounts.Mount("/dev/sdd", req.StagingTargetPath, "ext4", []string{"discard"}))
+			require.NoError(t, os.MkdirAll(req.TargetPath, 0755))
+			require.NoError(t, mounts.Mount("/dev/sdd", req.TargetPath, "ext4", []string{"discard"}))
+			if scenario == "inspection failure" {
+				mounts.MountCheckErrors = map[string]error{req.TargetPath: errors.New("cannot inspect mount point")}
+			}
+			mounts.ResetLog()
+			_, err := d.NodePublishVolume(context.Background(), req)
+			if scenario == "mounted" {
+				require.NoError(t, err)
+			} else {
+				require.Error(t, err)
+			}
+			assert.Empty(t, d.kubeClient.(*fake.Clientset).Actions())
+			assert.Empty(t, mounts.GetLog())
+			assert.Zero(t, exec.CommandCalls)
+		})
+	}
+}
+
+func TestKataPublishCommitBoundaries(t *testing.T) {
+	for _, scenario := range []string{"unmount failure", "error after metadata visible"} {
+		t.Run(scenario, func(t *testing.T) {
+			d, mounts, exec := newKataTestDriver(t)
+			req := kataTestRequest(t)
+			require.NoError(t, mounts.Mount("/dev/sdd", req.StagingTargetPath, "ext4", []string{"discard"}))
+			store := d.kataDirectVolume
+			if scenario == "unmount failure" {
+				mounts.UnmountFunc = func(string) error { return errors.New("unmount failed") }
+			} else {
+				d.kataDirectVolume = &kataStubDirectVolume{
+					findMountInfo: store.FindMountInfo,
+					addMountInfo: func(path string, info directvolume.MountInfo) error {
+						require.NoError(t, store.AddMountInfo(path, info))
+						return errors.New("sync or response failure after publication")
+					},
+				}
+			}
+			_, err := d.NodePublishVolume(context.Background(), req)
+			require.Error(t, err)
+			target, err := store.FindMountInfo(req.VolumeId)
+			require.NoError(t, err)
+			if scenario == "unmount failure" {
+				assert.Empty(t, target)
+				assert.DirExists(t, req.StagingTargetPath)
+			} else {
+				require.Equal(t, req.TargetPath, target)
+				mounts.ResetLog()
+				_, err = d.NodeStageVolume(context.Background(), kataTestStageRequest(req))
+				require.NoError(t, err)
+				_, err = d.NodePublishVolume(context.Background(), req)
+				require.NoError(t, err)
+				assert.Empty(t, mounts.GetLog(), "a visible publication must not be rolled back into a host mount")
+				assert.NoDirExists(t, req.StagingTargetPath)
+			}
+			assert.Zero(t, exec.CommandCalls)
+		})
+	}
+}
+
+func TestKataPublishRetryWithSymlinkedPaths(t *testing.T) {
+	d, mounts, exec := newKataTestDriver(t)
+	req := kataTestRequest(t)
+	parent := t.TempDir()
+	real := filepath.Join(parent, "real")
+	alias := filepath.Join(parent, "alias")
+	require.NoError(t, os.MkdirAll(filepath.Join(real, "stage"), 0755))
+	require.NoError(t, os.MkdirAll(filepath.Join(real, "target"), 0755))
+	require.NoError(t, os.Symlink(real, alias))
+	req.StagingTargetPath, req.TargetPath = filepath.Join(alias, "stage"), filepath.Join(alias, "target")
+	require.NoError(t, mounts.Mount("/dev/sdd", req.StagingTargetPath, "ext4", []string{"discard"}))
+	require.NoError(t, mounts.Mount("/dev/sdd", req.TargetPath, "ext4", []string{"discard"}))
+	mounts.ResetLog()
+	_, err := d.NodePublishVolume(context.Background(), req)
 	require.NoError(t, err)
-	require.NotNil(t, info)
-	assert.Equal(t, kataTestInfo(t, req), *info)
+	assert.Empty(t, d.kubeClient.(*fake.Clientset).Actions())
+	assert.Empty(t, mounts.GetLog())
+	assert.Zero(t, exec.CommandCalls)
+}
+
+// TestKataPublishMetadataReadErrors rejects lookup failures before discovery or mounting.
+func TestKataPublishMetadataReadErrors(t *testing.T) {
+	for _, scenario := range []string{"inventory", "target", "corrupt target file"} {
+		t.Run(scenario, func(t *testing.T) {
+			d, mounts, exec := newKataTestDriver(t)
+			req := kataTestRequest(t)
+			if scenario == "corrupt target file" {
+				store := d.kataDirectVolume.(*kataTestDirectVolume)
+				require.NoError(t, store.AddMountInfo(req.TargetPath, kataTestInfo(t, req)))
+				require.NoError(t, os.WriteFile(filepath.Join(store.volumeDir(req.TargetPath), kataMountInfoFile), []byte("{"), 0600))
+			} else {
+				d.kataDirectVolume = &kataStubDirectVolume{
+					findMountInfo: func(volumeID string) (string, error) {
+						assert.Equal(t, req.VolumeId, volumeID)
+						return "", errors.New(scenario + " metadata unavailable")
+					},
+				}
+			}
+			_, err := d.NodePublishVolume(context.Background(), req)
+			require.Error(t, err)
+			assert.Equal(t, codes.Internal, status.Code(err))
+			if scenario == "corrupt target file" {
+				assert.ErrorContains(t, err, "unusable Kata record")
+			}
+			assert.Empty(t, d.kubeClient.(*fake.Clientset).Actions())
+			assert.Empty(t, mounts.GetLog())
+			assert.Zero(t, exec.CommandCalls)
+		})
+	}
+}
+
+// TestKataReadonlyRetryPreservesOrdinary leaves baseline read-only retry repair out of scope.
+func TestKataReadonlyRetryPreservesOrdinary(t *testing.T) {
+	for _, scenario := range []string{"already readonly", "writable target left unchanged", "symlinked target"} {
+		t.Run(scenario, func(t *testing.T) {
+			d, mounts, exec := newKataTestDriver(t)
+			req := kataTestRequest(t)
+			req.Readonly = true
+			path := req.TargetPath
+			require.NoError(t, os.MkdirAll(path, 0755))
+			if scenario == "symlinked target" {
+				req.TargetPath = filepath.Join(t.TempDir(), "alias")
+				require.NoError(t, os.Symlink(path, req.TargetPath))
+			}
+			flags := []string{"rw", "nosuid", "nodev", "noexec", "relatime"}
+			require.NoError(t, mounts.Mount("/dev/sdd", req.StagingTargetPath, "ext4", flags))
+			if scenario == "already readonly" {
+				flags[0] = "ro"
+			}
+			require.NoError(t, mounts.Mount("/dev/sdd", path, "ext4", flags))
+			mounts.ResetLog()
+			_, err := d.NodePublishVolume(context.Background(), req)
+			require.NoError(t, err)
+			_, err = d.NodePublishVolume(context.Background(), req)
+			require.NoError(t, err)
+			assert.Zero(t, exec.CommandCalls, "mounted ordinary retries must not verify or repair read-only options")
+			require.Len(t, mounts.MountPoints, 2)
+			assert.Equal(t, "rw", mounts.MountPoints[0].Opts[0], "staging must remain writable")
+			assert.Equal(t, flags, mounts.MountPoints[1].Opts, "target options must remain unchanged")
+			assert.Empty(t, mounts.GetLog())
+			assert.Empty(t, d.kubeClient.(*fake.Clientset).Actions())
+			target, err := d.kataDirectVolume.FindMountInfo(req.VolumeId)
+			require.NoError(t, err)
+			assert.Empty(t, target)
+		})
+	}
 }

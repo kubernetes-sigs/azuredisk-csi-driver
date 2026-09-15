@@ -1679,12 +1679,12 @@ func TestNodePublishVolumeKataMountFeatureFlag(t *testing.T) {
 
 			_, err = d.NodePublishVolume(context.Background(), req)
 			require.NoError(t, err)
-			if test.enableKataMount {
+			if test.enableKataMount && !test.block {
 				require.Len(t, client.Actions(), 2)
 				assert.Equal(t, "pods", client.Actions()[0].GetResource().Resource)
 				assert.Equal(t, "runtimeclasses", client.Actions()[1].GetResource().Resource)
 			} else {
-				assert.Empty(t, client.Actions(), "disabled Kata mounts must not query Pods or RuntimeClasses")
+				assert.Empty(t, client.Actions(), "disabled Kata mounts and raw block must not query Pods or RuntimeClasses")
 			}
 
 			mountInfo := d.(*fakeDriver).kataDirectVolume.(*fakeDirectVolumeService).mountInfo
@@ -2477,7 +2477,9 @@ func TestNodePublishVolumeIdempotent(t *testing.T) {
 	)
 
 	var calls int
+	store := &kataTestDirectVolume{rootPath: t.TempDir()}
 	d.(*fakeDriver).kataDirectVolume = &kataStubDirectVolume{
+		findMountInfo: store.FindMountInfo,
 		addMountInfo: func(target string, mountInfo directvolume.MountInfo) error {
 			assert.Equal(t, targetTest, target)
 			assert.Equal(t, directvolume.MountInfo{
@@ -2488,7 +2490,7 @@ func TestNodePublishVolumeIdempotent(t *testing.T) {
 				Options:    []string{"ro"},
 			}, mountInfo)
 			calls++
-			return nil
+			return store.AddMountInfo(target, mountInfo)
 		},
 	}
 
@@ -2510,7 +2512,8 @@ func TestNodePublishVolumeIdempotent(t *testing.T) {
 	assert.NoError(t, err)
 	_, err = d.NodePublishVolume(context.Background(), &req)
 	assert.NoError(t, err)
-	assert.Equal(t, 2, calls)
+	assert.Equal(t, 1, calls)
+	assert.Len(t, d.(*fakeDriver).kubeClient.(*fake.Clientset).Actions(), 2, "retry must skip discovery")
 }
 
 func TestValidateBlockDeviceSize(t *testing.T) {
