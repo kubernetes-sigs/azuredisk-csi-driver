@@ -398,6 +398,16 @@ func (d *Driver) NodePublishVolume(ctx context.Context, req *csi.NodePublishVolu
 			return nil, status.Errorf(codes.Internal, "%v", err)
 		}
 	case *csi.VolumeCapability_Mount:
+		if d.enableKataMount {
+			// It's possible that a volume went through:
+			// - Kata NodePublish
+			// - No intermediary NodeStage
+			// - Non-Kata NodePublish
+			// In this case, we need to restore the staging for the volume.
+			if err := d.kataRestoreStaging(req); err != nil {
+				return nil, status.Errorf(codes.Internal, "could not restore staging for %s: %v", volumeID, err)
+			}
+		}
 		mnt, err := d.ensureMountPoint(target)
 		if err != nil {
 			return nil, status.Errorf(codes.Internal, "could not mount target %q: %v", target, err)

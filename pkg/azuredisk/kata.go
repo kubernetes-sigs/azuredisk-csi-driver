@@ -29,6 +29,9 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	clientset "k8s.io/client-go/kubernetes"
+	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
+	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
+	volumehelper "sigs.k8s.io/azuredisk-csi-driver/pkg/util"
 )
 
 const (
@@ -147,6 +150,31 @@ func (d *Driver) kataPublished(req *csi.NodePublishVolumeRequest) (bool, error) 
 		return false, status.Errorf(codes.FailedPrecondition, "volume %s conflicts with the Kata publication at %q", req.VolumeId, target)
 	}
 	return true, nil
+}
+
+// kataRestoreStaging remounts an existing filesystem after kataPublished ruled out DAV.
+func (d *Driver) kataRestoreStaging(req *csi.NodePublishVolumeRequest) error {
+	if mounted, err := d.kataIsMountPoint(req.StagingTargetPath); mounted || err != nil {
+		return err // nil if already mounted
+	}
+	fsType, flags, err := resolveFSType(req.VolumeCapability, req.VolumeContext)
+	if err != nil {
+		return err
+	}
+	device, err := d.getDevicePathWithLUN(req.PublishContext[consts.LUN])
+	if err != nil {
+		return err
+	}
+	if partition, ok := req.VolumeContext[consts.VolumeAttributePartition]; ok {
+		device += "-part" + partition
+	}
+	if err := volumehelper.MakeDir(req.StagingTargetPath); err != nil {
+		return err
+	}
+	options, _ := azureutils.RemoveOptionIfExists(collectMountOptions(fsType, flags), "directmount")
+	// A typed mount fails for an absent/wrong filesystem; it never invokes mkfs
+	// or fsck. Publish Readonly belongs on the target bind, not this staging mount.
+	return d.mounter.Mount(device, req.StagingTargetPath, fsType, options)
 }
 
 // kataGetMountPod returns the pod described by volumeContext if the

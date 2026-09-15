@@ -42,7 +42,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	k8sruntime "k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/kubernetes/fake"
-
+	"k8s.io/mount-utils"
 	testingexec "k8s.io/utils/exec/testing"
 	"k8s.io/utils/ptr"
 	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
@@ -1554,6 +1554,12 @@ func TestNodePublishVolume(t *testing.T) {
 		addedMountInfo = directvolume.MountInfo{}
 		if fm, ok := fakeMounter.Interface.(*mounter.FakeSafeMounter); ok {
 			fm.MountCalls = nil
+			fm.MountPoints = nil
+			if test.expectedMount && test.req.VolumeCapability.GetMount() != nil {
+				// Ordinary publish starts with a real staging mount in the CSI lifecycle.
+				test.req.PublishContext = publishContext
+				fm.MountPoints = []mount.MountPoint{{Device: "/dev/sdd", Path: test.req.StagingTargetPath, Type: "ext4", Opts: []string{"discard"}}}
+			}
 		}
 		if test.setup != nil {
 			test.setup()
@@ -1676,7 +1682,6 @@ func TestNodePublishVolumeKataMountFeatureFlag(t *testing.T) {
 			if test.block {
 				req.VolumeCapability.AccessType = &csi.VolumeCapability_Block{Block: &csi.VolumeCapability_BlockVolume{}}
 			}
-
 			_, err = d.NodePublishVolume(context.Background(), req)
 			require.NoError(t, err)
 			if test.enableKataMount && !test.block {
@@ -1704,11 +1709,17 @@ func TestNodePublishVolumeKataMountFeatureFlag(t *testing.T) {
 				} else {
 					assert.DirExists(t, req.TargetPath)
 				}
-				assert.Equal(t, []mounter.MountCall{{
+				expectedCalls := []mounter.MountCall{}
+				if test.enableKataMount && !test.block {
+					// Without a staging mount, enabled ordinary publication restores it first.
+					expectedCalls = append(expectedCalls, mounter.MountCall{Source: "/dev/sdd", Target: req.StagingTargetPath, FSType: "ext4"})
+				}
+				expectedCalls = append(expectedCalls, mounter.MountCall{
 					Source:  source,
 					Target:  req.TargetPath,
 					Options: []string{"bind"},
-				}}, mountCalls)
+				})
+				assert.Equal(t, expectedCalls, mountCalls)
 			}
 		})
 	}
