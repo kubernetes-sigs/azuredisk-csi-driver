@@ -37,6 +37,7 @@ type DriverOptions struct {
 	UseCSIProxyGAInterface     bool
 	EnableOtelTracing          bool
 	EnableMinimumRetryAfter    bool
+	EnableKataMount            bool
 
 	//only used in v1
 	EnableDiskOnlineResize             bool
@@ -97,6 +98,7 @@ func (o *DriverOptions) AddFlags() *flag.FlagSet {
 	fs.BoolVar(&o.UseCSIProxyGAInterface, "use-csiproxy-ga-interface", true, "boolean flag to enable csi-proxy GA interface on Windows")
 	fs.BoolVar(&o.EnableOtelTracing, "enable-otel-tracing", false, "If set, enable opentelemetry tracing for the driver. The tracing is disabled by default. Configure the exporter endpoint with OTEL_EXPORTER_OTLP_ENDPOINT and other env variables, see https://opentelemetry.io/docs/specs/otel/configuration/sdk-environment-variables/#general-sdk-configuration.")
 	fs.BoolVar(&o.EnableMinimumRetryAfter, "enable-minimum-retry-after", true, "boolean flag to enable minimum retry after policy in azclient")
+	fs.BoolVar(&o.EnableKataMount, "enable-kata-mount", false, "enable Kata Containers mounts with virtio-blk")
 	//only used in v1
 	fs.BoolVar(&o.EnableDiskOnlineResize, "enable-disk-online-resize", true, "boolean flag to enable disk online resize")
 	fs.BoolVar(&o.AllowEmptyCloudConfig, "allow-empty-cloud-config", true, "Whether allow running driver without cloud config")
