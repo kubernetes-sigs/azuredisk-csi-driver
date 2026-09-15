@@ -129,7 +129,7 @@ func NewFakeDriver(ctrl *gomock.Controller) (FakeDriver, error) {
 	driver.disableAVSetNodes = true
 	driver.maxDataDiskCount = defaultAzureVolumeLimit
 	driver.qadBatcher = newQADDiskBatcher(1000 * time.Millisecond)
-	driver.kubeClient = fake.NewSimpleClientset()
+	driver.kubeClient = fake.NewClientset()
 	driver.enableMigrationMonitor = true
 
 	driver.cloud = azure.GetTestCloud(ctrl)

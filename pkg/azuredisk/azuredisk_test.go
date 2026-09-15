@@ -420,7 +420,7 @@ func TestGetNodeInfoFromLabels(t *testing.T) {
 		{
 			name:     "kubeClient returns node with labels",
 			nodeName: "node1",
-			kubeClient: fake.NewSimpleClientset(&corev1.Node{
+			kubeClient: fake.NewClientset(&corev1.Node{
 				ObjectMeta: metav1.ObjectMeta{
 					Name: "node1",
 					Labels: map[string]string{
@@ -436,7 +436,7 @@ func TestGetNodeInfoFromLabels(t *testing.T) {
 		{
 			name:          "kubeClient node not found",
 			nodeName:      "missing-node",
-			kubeClient:    fake.NewSimpleClientset(),
+			kubeClient:    fake.NewClientset(),
 			expectedError: fmt.Errorf("get node(missing-node) failed with nodes \"missing-node\" not found"),
 		},
 	}
