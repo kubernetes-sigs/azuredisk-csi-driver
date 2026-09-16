@@ -29,8 +29,6 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
-	"sync"
-	"sync/atomic"
 	"time"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
@@ -82,47 +80,12 @@ type WireserverRequest struct {
 	DiskOps       map[string]*DiskOp `json:"diskOps"`
 }
 
-// DiskOperationRequest captures disk details required for a batched attach/detach request.
+// DiskOperationRequest captures disk details required for an attach/detach request.
 type DiskOperationRequest struct {
 	DiskURI         string
 	BlobURL         string
 	ClaimIdentifier string
 	AttachSequence  int
-}
-
-type qadDiskBatchResult struct {
-	response WireserverDiskStatusResponse
-	err      error
-}
-
-type qadDiskBatchItem struct {
-	request  DiskOperationRequest
-	resultCh chan qadDiskBatchResult
-}
-
-// qadDiskQueue is a per-operation-type queue with its own lock.
-type qadDiskQueue struct {
-	mu    sync.Mutex
-	items []qadDiskBatchItem
-	timer *time.Timer
-}
-
-type qadDiskBatcher struct {
-	attachQueue *qadDiskQueue
-	detachQueue *qadDiskQueue
-	window      time.Duration
-}
-
-func newQADDiskBatcher(window time.Duration) *qadDiskBatcher {
-	if window <= 0 {
-		window = 20 * time.Millisecond
-	}
-
-	return &qadDiskBatcher{
-		attachQueue: &qadDiskQueue{},
-		detachQueue: &qadDiskQueue{},
-		window:      window,
-	}
 }
 
 // DiskStatus represents the status information for a single disk
@@ -190,7 +153,7 @@ const (
 	AttachmentStatusAttaching AttachmentStatus = "DISK_STATUS_ATTACHING"
 	AttachmentStatusDetaching AttachmentStatus = "DISK_STATUS_DETACHING"
 	AttachmentStatusDetached  AttachmentStatus = "DISK_STATUS_DETACHED"
-	AttachmentStatusFailed    AttachmentStatus = "DISK_STATUS_ERR"
+	AttachmentStatusError     AttachmentStatus = "DISK_STATUS_ERR"
 )
 
 // WireserverDiskStatusResponse represents the response from wireserver GET call
@@ -263,7 +226,7 @@ func (d *Driver) NodeStageVolume(ctx context.Context, req *csi.NodeStageVolumeRe
 		klog.V(2).Infof("NodeStageVolume: volume %s is using QAD path, making POST call to wireserver with attach-sequence %d", volumeID, attachSequenceVal)
 
 		attachTimer := time.Now()
-		attachResponse, err := d.enqueueQADDiskOperation(ctx, DiskOperationRequest{
+		statusResp, err := d.executeQADDiskOperation(ctx, DiskOperationRequest{
 			DiskURI:         volumeID,
 			BlobURL:         blobURL,
 			ClaimIdentifier: claimIdentifier,
@@ -275,33 +238,31 @@ func (d *Driver) NodeStageVolume(ctx context.Context, req *csi.NodeStageVolumeRe
 			return nil, err
 		}
 
-		lowercaseDiskURI := strings.ToLower(volumeID)
-		statusResp, ok := attachResponse[lowercaseDiskURI]
-		if !ok {
-			return nil, status.Errorf(codes.Internal, "The response from wireserver doesn't contain volume %s", volumeID)
-		}
 		if statusResp.Status == AttachmentStatusAttaching {
 			// Wait for the disk to be attached
 			if err = kwait.PollUntilContextTimeout(ctx, 250*time.Millisecond, 15*time.Second, true, func(pollCtx context.Context) (bool, error) {
-				getDisksResponse, err := getDiskStates(pollCtx, *d.httpClient)
+				diskState, err := getDiskState(pollCtx, *d.httpClient, volumeID)
 				if err != nil {
-					klog.Errorf("NodeStageVolume: failed to get disk states: %v", err)
+					if status.Code(err) == codes.NotFound {
+						klog.V(4).Infof("NodeStageVolume: QAD status does not yet contain volume %s", volumeID)
+						return false, nil
+					}
+					klog.Errorf("NodeStageVolume: failed to get disk state: %v", err)
 					return false, err
 				}
-				diskStatus, ok := getDisksResponse[lowercaseDiskURI]
-				if !ok || diskStatus == nil {
+				if diskState == nil {
 					klog.V(4).Infof("NodeStageVolume: QAD status does not yet contain volume %s", volumeID)
 					return false, nil
 				}
-				switch diskStatus.Status {
+				switch diskState.Status {
 				case AttachmentStatusAttached:
 					// Disk is attached, get the lun number
 					klog.Infof("NodeStageVolume: Latency observed for attach operation of disk %s is %v", volumeID, time.Since(attachTimer).Milliseconds())
-					lun = strconv.Itoa(diskStatus.LUN)
+					lun = strconv.Itoa(diskState.LUN)
 					return true, nil
-				case AttachmentStatusFailed:
-					klog.Errorf("NodeStageVolume: QAD attach failed for volume %s: status=%s, message=%q, error=%+v", volumeID, diskStatus.Status, diskStatus.StatusMessage, diskStatus.Error)
-					return false, status.Errorf(codes.Internal, "NodeStageVolume: QAD attach failed for volume %q with status %q", volumeID, diskStatus.Status)
+				case AttachmentStatusError:
+					klog.Errorf("NodeStageVolume: QAD attach failed for volume %s: status=%s, message=%q, error=%+v", volumeID, diskState.Status, diskState.StatusMessage, diskState.Error)
+					return false, status.Errorf(codes.Internal, "NodeStageVolume: QAD attach failed for volume %q with status %q", volumeID, diskState.Status)
 				default:
 					// Wait for the disk to be attached
 					return false, nil
@@ -467,7 +428,7 @@ func (d *Driver) NodeUnstageVolume(ctx context.Context, req *csi.NodeUnstageVolu
 		}
 		klog.V(2).Infof("NodeUnStageVolume: volume %s is using QAD path, making POST call to wireserver with attach-sequence %d", volumeID, attachSequenceVal)
 		detachTimer := time.Now()
-		detachResponse, err := d.enqueueQADDiskOperation(ctx, DiskOperationRequest{
+		statusResp, err := d.executeQADDiskOperation(ctx, DiskOperationRequest{
 			DiskURI:         volumeID,
 			BlobURL:         blobURL,
 			ClaimIdentifier: claimIdentifier,
@@ -478,38 +439,35 @@ func (d *Driver) NodeUnstageVolume(ctx context.Context, req *csi.NodeUnstageVolu
 			return nil, err
 		}
 
-		lowercaseVolumeID := strings.ToLower(volumeID)
-		if statusResp, ok := detachResponse[lowercaseVolumeID]; !ok || statusResp.Status == AttachmentStatusDetached {
+		if statusResp == nil || statusResp.Status == AttachmentStatusDetached {
 			klog.Infof("The volume with id %s is already detached", volumeID)
 			klog.Infof("NodeUnStageVolume: Latency observed for detach operation of disk %s is %v", volumeID, time.Since(detachTimer).Milliseconds())
 		} else if statusResp.Status == AttachmentStatusDetaching {
 			detached := false
 			if err = kwait.PollUntilContextTimeout(ctx, 500*time.Millisecond, 15*time.Second, true, func(pollCtx context.Context) (bool, error) {
-				getDisksResponse, err := getDiskStates(pollCtx, *d.httpClient)
+				diskState, err := getDiskState(pollCtx, *d.httpClient, volumeID)
 				if err != nil {
-					klog.Errorf("NodeUnStageVolume: failed to get disk states: %v", err)
+					if status.Code(err) == codes.NotFound {
+						klog.Infof("NodeUnStageVolume: Latency observed for detach operation of disk %s is %v", volumeID, time.Since(detachTimer).Milliseconds())
+						detached = true
+						return true, nil
+					}
+					klog.Errorf("NodeUnStageVolume: failed to get disk state: %v", err)
 					return false, err
 				}
-				diskStatus, ok := getDisksResponse[lowercaseVolumeID]
-				if !ok {
-					// The disk is detached now
-					klog.Infof("NodeUnStageVolume: Latency observed for detach operation of disk %s is %v", volumeID, time.Since(detachTimer).Milliseconds())
-					detached = true
-					return true, nil
-				}
-				if diskStatus == nil {
+				if diskState == nil {
 					// Disk is still detaching, wait for it to be detached
 					return false, nil
 				}
-				switch diskStatus.Status {
+				switch diskState.Status {
 				case AttachmentStatusDetached:
 					// The disk is detached now
 					klog.Infof("NodeUnStageVolume: Latency observed for detach operation of disk %s is %v", volumeID, time.Since(detachTimer).Milliseconds())
 					detached = true
 					return true, nil
-				case AttachmentStatusFailed:
-					klog.Errorf("NodeUnstageVolume: QAD detach failed for volume %s: status=%s, message=%q, error=%+v", volumeID, diskStatus.Status, diskStatus.StatusMessage, diskStatus.Error)
-					return false, status.Errorf(codes.Internal, "NodeUnstageVolume: QAD detach failed for volume %q with status %q", volumeID, diskStatus.Status)
+				case AttachmentStatusError:
+					klog.Errorf("NodeUnstageVolume: QAD detach failed for volume %s: status=%s, message=%q, error=%+v", volumeID, diskState.Status, diskState.StatusMessage, diskState.Error)
+					return false, status.Errorf(codes.Internal, "NodeUnstageVolume: QAD detach failed for volume %q with status %q", volumeID, diskState.Status)
 				default:
 					// Disk is still detaching, wait for it to be detached
 					return false, nil
@@ -734,12 +692,6 @@ func (d *Driver) NodeGetInfo(ctx context.Context, _ *csi.NodeGetInfoRequest) (*c
 		}
 		totalDiskDataCount, _ := GetMaxDataDiskCount(instanceType)
 		maxDataDiskCount = totalDiskDataCount - d.ReservedDataDiskSlotNum
-	}
-
-	// Cache maxDataDiskCount on first successful computation so the batcher can use it
-	if atomic.LoadInt64(&d.maxDataDiskCount) == 0 {
-		atomic.StoreInt64(&d.maxDataDiskCount, maxDataDiskCount)
-		klog.V(2).Infof("NodeGetInfo: cached maxDataDiskCount=%d for node %s", maxDataDiskCount, d.NodeID)
 	}
 
 	nodeID := d.NodeID
@@ -1113,114 +1065,33 @@ func incrementAttachSequenceAnnotation(ctx context.Context, kubeClient clientset
 	return updatedSequence, nil
 }
 
-func (d *Driver) enqueueQADDiskOperation(ctx context.Context, diskRequest DiskOperationRequest, operationType string) (WireserverDiskStatusResponse, error) {
-	queue := d.qadBatcher.queueForOperation(operationType)
-
-	resultCh := make(chan qadDiskBatchResult, 1)
-	shouldFlushNow := false
-
-	queue.mu.Lock()
-	queue.items = append(queue.items, qadDiskBatchItem{
-		request:  diskRequest,
-		resultCh: resultCh,
-	})
-
-	if queue.timer == nil {
-		queue.timer = time.AfterFunc(d.qadBatcher.window, func() {
-			d.flushQADDiskBatch(operationType)
-		})
-	}
-
-	batchSize := int(atomic.LoadInt64(&d.maxDataDiskCount))
-	if batchSize <= 0 {
-		batchSize = defaultAzureVolumeLimit
-	}
-	if len(queue.items) >= batchSize {
-		queue.timer.Stop()
-		shouldFlushNow = true
-	}
-	queue.mu.Unlock()
-
-	if shouldFlushNow {
-		go d.flushQADDiskBatch(operationType)
-	}
-
-	select {
-	case result := <-resultCh:
-		return result.response, result.err
-	case <-ctx.Done():
-		return WireserverDiskStatusResponse{}, status.Error(codes.DeadlineExceeded, "timed out while waiting for batched wireserver operation")
-	}
-}
-
-func (b *qadDiskBatcher) queueForOperation(operationType string) *qadDiskQueue {
-	if operationType == attachOperation {
-		return b.attachQueue
-	}
-	return b.detachQueue
-}
-
-func (d *Driver) flushQADDiskBatch(operationType string) {
-	if d.qadBatcher == nil {
-		return
-	}
-
-	queue := d.qadBatcher.queueForOperation(operationType)
-
-	queue.mu.Lock()
-	if len(queue.items) == 0 {
-		queue.mu.Unlock()
-		return
-	}
-	items := queue.items
-	queue.items = nil
-	queue.timer = nil
-	queue.mu.Unlock()
-
-	diskRequests := make([]DiskOperationRequest, 0, len(items))
-	for _, item := range items {
-		diskRequests = append(diskRequests, item.request)
-	}
-
-	batchCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
-
-	batchResponse, err := attachOrDetachDisksInternal(batchCtx, *d.httpClient, diskRequests, d.cloud.AuthProvider.GetAzIdentity(), operationType)
+func (d *Driver) executeQADDiskOperation(ctx context.Context, diskRequest DiskOperationRequest, operationType string) (*DiskStatus, error) {
+	response, err := attachOrDetachDiskInternal(ctx, *d.httpClient, diskRequest, d.cloud.AuthProvider.GetAzIdentity(), operationType)
 	if err != nil {
-		for _, item := range items {
-			item.resultCh <- qadDiskBatchResult{err: err}
-		}
-		return
+		return nil, err
 	}
 
-	for _, item := range items {
-		lowercaseDiskURI := strings.ToLower(item.request.DiskURI)
-		diskStatus, ok := batchResponse[lowercaseDiskURI]
-		if !ok {
-			if operationType == detachOperation {
-				// a missing entry on detach means the disk is no longer attached
-				item.resultCh <- qadDiskBatchResult{response: WireserverDiskStatusResponse{}}
-				continue
-			}
-			item.resultCh <- qadDiskBatchResult{err: status.Errorf(codes.Internal, "The response from wireserver doesn't contain volume %s", item.request.DiskURI)}
-			continue
+	lowercaseDiskURI := strings.ToLower(diskRequest.DiskURI)
+	diskStatus, ok := response[lowercaseDiskURI]
+	if !ok {
+		if operationType == detachOperation {
+			return nil, nil
 		}
-
-		if diskStatus.Error != nil {
-			grpcCode := mapDiskErrorToCode(diskStatus.Error.DiskErrorType, diskStatus.Error.SeverityHint)
-			item.resultCh <- qadDiskBatchResult{err: status.Errorf(grpcCode,
-				"wireserver disk operation failed for %s: errorType=%d, severity=%s, message=%s",
-				item.request.DiskURI, diskStatus.Error.DiskErrorType, diskStatus.Error.SeverityHint, diskStatus.Error.Message)}
-			continue
-		}
-
-		item.resultCh <- qadDiskBatchResult{response: WireserverDiskStatusResponse{lowercaseDiskURI: diskStatus}}
+		return nil, status.Errorf(codes.Internal, "The response from wireserver doesn't contain volume %s", diskRequest.DiskURI)
 	}
+	if diskStatus.Error != nil {
+		grpcCode := mapDiskErrorToCode(diskStatus.Error.DiskErrorType, diskStatus.Error.SeverityHint)
+		return nil, status.Errorf(grpcCode,
+			"wireserver disk operation failed for %s: errorType=%d, severity=%s, message=%s",
+			diskRequest.DiskURI, diskStatus.Error.DiskErrorType, diskStatus.Error.SeverityHint, diskStatus.Error.Message)
+	}
+
+	return diskStatus, nil
 }
 
-func attachOrDetachDisksInternal(ctx context.Context, client http.Client, diskRequests []DiskOperationRequest, cred azcore.TokenCredential, operationType string) (WireserverDiskStatusResponse, error) {
-	if len(diskRequests) == 0 {
-		return WireserverDiskStatusResponse{}, status.Error(codes.InvalidArgument, "no disk requests provided")
+func attachOrDetachDiskInternal(ctx context.Context, client http.Client, diskRequest DiskOperationRequest, cred azcore.TokenCredential, operationType string) (WireserverDiskStatusResponse, error) {
+	if diskRequest.DiskURI == "" {
+		return WireserverDiskStatusResponse{}, status.Error(codes.InvalidArgument, "disk URI must not be empty")
 	}
 
 	// Get a fresh token from the credential (SDK handles caching/refresh internally).
@@ -1233,19 +1104,14 @@ func attachOrDetachDisksInternal(ctx context.Context, client http.Client, diskRe
 		return WireserverDiskStatusResponse{}, fmt.Errorf("failed to get VM access token: %v", err)
 	}
 
-	diskOps := make(map[string]*DiskOp, len(diskRequests))
-	for _, diskRequest := range diskRequests {
-		if diskRequest.DiskURI == "" {
-			return WireserverDiskStatusResponse{}, status.Error(codes.InvalidArgument, "disk URI must not be empty")
-		}
-
-		diskOps[diskRequest.DiskURI] = &DiskOp{
+	diskOps := map[string]*DiskOp{
+		diskRequest.DiskURI: {
 			BlobURL:         diskRequest.BlobURL,
 			ClaimIdentifier: diskRequest.ClaimIdentifier,
 			AttachSequence:  diskRequest.AttachSequence,
 			Action:          operationType,
 			CachePolicy:     "None",
-		}
+		},
 	}
 
 	request := &WireserverRequest{
@@ -1304,13 +1170,9 @@ func attachOrDetachDisksInternal(ctx context.Context, client http.Client, diskRe
 	var qadError QADErrorResponse
 	if err := json.Unmarshal(respBody, &qadError); err == nil && qadError.RequestErrorType > 0 || (err == nil && qadError.SeverityHint != "") {
 		grpcCode := mapRequestErrorToCode(qadError.RequestErrorType, qadError.SeverityHint)
-		diskURIs := make([]string, 0, len(diskRequests))
-		for _, diskRequest := range diskRequests {
-			diskURIs = append(diskURIs, diskRequest.DiskURI)
-		}
 		return WireserverDiskStatusResponse{}, status.Errorf(grpcCode,
-			"QAD agent error for disks [%s]: errorType=%d, severity=%s, message=%s",
-			strings.Join(diskURIs, ","), qadError.RequestErrorType, qadError.SeverityHint, qadError.Message)
+			"QAD agent error for disk %s: errorType=%d, severity=%s, message=%s",
+			diskRequest.DiskURI, qadError.RequestErrorType, qadError.SeverityHint, qadError.Message)
 	}
 
 	// Case 2: WireServer XML failure - map HTTP status code
@@ -1450,7 +1312,7 @@ func mapHTTPStatusToCode(httpStatus int) codes.Code {
 	}
 }
 
-func getDiskStates(ctx context.Context, client http.Client) (WireserverDiskStatusResponse, error) {
+func getDiskState(ctx context.Context, client http.Client, diskURI string) (*DiskStatus, error) {
 	// Set headers
 	headers := map[string]string{
 		"Content-Type": "application/json",
@@ -1459,14 +1321,14 @@ func getDiskStates(ctx context.Context, client http.Client) (WireserverDiskStatu
 
 	resp, err := makeHTTPRequest(ctx, client, http.MethodGet, consts.QADWireserverEndpoint, nil, headers)
 	if err != nil {
-		return WireserverDiskStatusResponse{}, fmt.Errorf("failed to make HTTP request to wireserver: %v", err)
+		return nil, fmt.Errorf("failed to make HTTP request to wireserver: %v", err)
 	}
 	defer resp.Body.Close()
 
 	// Read the response body
 	bytes, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return WireserverDiskStatusResponse{}, fmt.Errorf("failed to read response body: %v", err)
+		return nil, fmt.Errorf("failed to read response body: %v", err)
 	}
 
 	// TODO:// Remove this post debugging
@@ -1474,18 +1336,16 @@ func getDiskStates(ctx context.Context, client http.Client) (WireserverDiskStatu
 
 	var wireserverDiskStatusResponse WireserverDiskStatusResponse
 	if err := json.Unmarshal(bytes, &wireserverDiskStatusResponse); err != nil {
-		return WireserverDiskStatusResponse{}, fmt.Errorf("failed to unmarshal wireserver response: %v", err)
+		return nil, fmt.Errorf("failed to unmarshal wireserver response: %v", err)
 	}
 
-	// Convert all the keys in the response to lowercase for case-insensitive comparison
-	lowercaseResponse := make(WireserverDiskStatusResponse)
-	for k, v := range wireserverDiskStatusResponse {
-		lowercaseResponse[strings.ToLower(k)] = v
+	for responseDiskURI, diskStatus := range wireserverDiskStatusResponse {
+		if strings.EqualFold(responseDiskURI, diskURI) {
+			return diskStatus, nil
+		}
 	}
 
-	wireserverDiskStatusResponse = lowercaseResponse
-
-	return wireserverDiskStatusResponse, nil
+	return nil, status.Errorf(codes.NotFound, "wireserver response does not contain volume %s", diskURI)
 }
 
 func makeHTTPRequest(ctx context.Context, client http.Client, method, url string, body []byte, headers map[string]string) (*http.Response, error) {

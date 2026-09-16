@@ -30,7 +30,6 @@ import (
 	"strings"
 	"syscall"
 	"testing"
-	"time"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute/v7"
@@ -886,6 +885,7 @@ func TestNodeUnstageVolumeQADDetachedResponses(t *testing.T) {
 		name              string
 		postStatus        AttachmentStatus
 		getResponseStatus AttachmentStatus
+		emptyPostResponse bool
 		expectedRequests  []string
 		expectedCode      codes.Code
 	}{
@@ -893,6 +893,11 @@ func TestNodeUnstageVolumeQADDetachedResponses(t *testing.T) {
 			name:             "immediate detached response",
 			postStatus:       AttachmentStatusDetached,
 			expectedRequests: []string{http.MethodPost},
+		},
+		{
+			name:              "missing response means detached",
+			emptyPostResponse: true,
+			expectedRequests:  []string{http.MethodPost},
 		},
 		{
 			name:              "polling observes explicit detached response",
@@ -903,7 +908,7 @@ func TestNodeUnstageVolumeQADDetachedResponses(t *testing.T) {
 		{
 			name:              "polling observes failed response",
 			postStatus:        AttachmentStatusDetaching,
-			getResponseStatus: AttachmentStatusFailed,
+			getResponseStatus: AttachmentStatusError,
 			expectedRequests:  []string{http.MethodPost, http.MethodGet},
 			expectedCode:      codes.Internal,
 		},
@@ -923,7 +928,6 @@ func TestNodeUnstageVolumeQADDetachedResponses(t *testing.T) {
 				consts.ClaimIdentifierAnnotation: "claim-id",
 			}
 			driver.kubeClient = fake.NewClientset(pv)
-			driver.qadBatcher = newQADDiskBatcher(time.Millisecond)
 			fakeMounter, err := mounter.NewFakeSafeMounter()
 			require.NoError(t, err)
 			driver.setMounter(fakeMounter)
@@ -942,6 +946,9 @@ func TestNodeUnstageVolumeQADDetachedResponses(t *testing.T) {
 				}
 				requestCount++
 				body := fmt.Sprintf(`{"%s":{"status":"%s"}}`, volumeID, responseStatus)
+				if request.Method == http.MethodPost && test.emptyPostResponse {
+					body = `{}`
+				}
 				return &http.Response{
 					StatusCode: http.StatusOK,
 					Body:       io.NopCloser(strings.NewReader(body)),
@@ -962,6 +969,53 @@ func TestNodeUnstageVolumeQADDetachedResponses(t *testing.T) {
 			require.NoError(t, err)
 			require.Equal(t, &csi.NodeUnstageVolumeResponse{}, result)
 			assert.Equal(t, len(test.expectedRequests), requestCount)
+		})
+	}
+}
+
+func TestGetDiskState(t *testing.T) {
+	tests := []struct {
+		name         string
+		responseBody string
+		expectedNil  bool
+		expectedCode codes.Code
+	}{
+		{
+			name:         "disk status found case insensitively",
+			responseBody: `{"QAD-VOLUME":{"status":"DISK_STATUS_ATTACHED","lun":1}}`,
+		},
+		{
+			name:         "null disk status",
+			responseBody: `{"qad-volume":null}`,
+			expectedNil:  true,
+		},
+		{
+			name:         "disk status not found",
+			responseBody: `{}`,
+			expectedNil:  true,
+			expectedCode: codes.NotFound,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			client := http.Client{Transport: testRoundTripper(func(_ *http.Request) (*http.Response, error) {
+				return &http.Response{
+					StatusCode: http.StatusOK,
+					Body:       io.NopCloser(strings.NewReader(test.responseBody)),
+					Header:     make(http.Header),
+				}, nil
+			})}
+
+			diskStatus, err := getDiskState(context.Background(), client, "qad-volume")
+			require.Equal(t, test.expectedCode, status.Code(err))
+			if test.expectedNil {
+				require.Nil(t, diskStatus)
+				return
+			}
+			require.NotNil(t, diskStatus)
+			assert.Equal(t, AttachmentStatusAttached, diskStatus.Status)
+			assert.Equal(t, 1, diskStatus.LUN)
 		})
 	}
 }

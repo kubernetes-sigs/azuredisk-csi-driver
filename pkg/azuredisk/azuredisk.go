@@ -177,12 +177,8 @@ type Driver struct {
 	nodeLister                      cache.GenericLister
 	nodeInformerSynced              cache.InformerSynced
 	nodeInformerFactory             metadatainformer.SharedInformerFactory
-	// maximum number of data disks attachable to this node, lazily computed in NodeGetInfo
-	maxDataDiskCount int64
 	// HTTP client for wireserver calls
 	httpClient *http.Client
-	// in-process batcher to coalesce concurrent QAD attach/detach requests from node RPC callers
-	qadBatcher *qadDiskBatcher
 	// informer factory and PV lister for cached API access
 	informerFactory informers.SharedInformerFactory
 	pvLister        corelisters.PersistentVolumeLister
@@ -296,9 +292,6 @@ func NewDriver(options *DriverOptions) *Driver {
 		driver.httpClient = &http.Client{
 			Timeout: 30 * time.Second,
 		}
-		// Initialize QAD batcher; batch size is resolved lazily from d.maxDataDiskCount
-		// which is populated on the first NodeGetInfo call.
-		driver.qadBatcher = newQADDiskBatcher(1000 * time.Millisecond)
 	}
 
 	cloud, err := azureutils.GetCloudProviderFromClient(context.Background(), kubeClient, driver.cloudConfigSecretName, driver.cloudConfigSecretNamespace,
