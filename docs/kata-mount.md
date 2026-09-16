@@ -7,7 +7,12 @@ virtio-fs.
 Instead the driver can pass the block device directly to the pod VM with
 virtio-blk to be mounted inside the pod VM for improved performance.
 
-This virtio-blk integration can be enabled by setting the following
+## How to enable
+
+First enable Kata mounts with Helm `node.enableKataMount=true` or the
+node driver flag `--enable-kata-mount=true`.
+
+Then the virtio-blk integration can be enabled by setting the following
 annotation on your Kata Containers RuntimeClass:
 
 ```yaml
@@ -19,11 +24,11 @@ azure.csi.disk/kata-mount: direct-volume
 ```yaml
 ---
 kind: RuntimeClass
-apiVersion: v1
+apiVersion: node.k8s.io/v1
 metadata:
   name: kata
   annotations:
-    io.katacontainers.csi-mount: "direct-volume"
+    azure.csi.disk/kata-mount: "direct-volume"
 handler: kata
 ---
 apiVersion: v1

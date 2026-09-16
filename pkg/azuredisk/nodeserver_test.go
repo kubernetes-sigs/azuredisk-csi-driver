@@ -256,7 +256,7 @@ func TestKataGetMountPod(t *testing.T) {
 
 func TestGetPodFSGroup(t *testing.T) {
 	fsGroup := int64(3000)
-	zeroFSGroup := int64(0)
+	oneFSGroup := int64(1)
 	onRootMismatch := corev1.FSGroupChangeOnRootMismatch
 	filesystemVolume := &csi.VolumeCapability{AccessType: &csi.VolumeCapability_Mount{
 		Mount: &csi.VolumeCapability_MountVolume{},
@@ -282,13 +282,13 @@ func TestGetPodFSGroup(t *testing.T) {
 			wantFSGroup:      &fsGroup,
 		},
 		{
-			name: "zero group with OnRootMismatch",
+			name: "group one with OnRootMismatch",
 			pod: &corev1.Pod{Spec: corev1.PodSpec{SecurityContext: &corev1.PodSecurityContext{
-				FSGroup:             &zeroFSGroup,
+				FSGroup:             &oneFSGroup,
 				FSGroupChangePolicy: &onRootMismatch,
 			}}},
 			volumeCapability:        filesystemVolume,
-			wantFSGroup:             &zeroFSGroup,
+			wantFSGroup:             &oneFSGroup,
 			wantFSGroupChangePolicy: &onRootMismatch,
 		},
 		{
@@ -630,6 +630,7 @@ func TestNodeGetVolumeStats(t *testing.T) {
 func TestKataVolumeStatsAndResizeNotSupported(t *testing.T) {
 	cntl := gomock.NewController(t)
 	d, _ := NewFakeDriver(cntl)
+	d.(*fakeDriver).enableKataMount = true
 	target, err := testutil.GetWorkDirPath("direct_volume_operation_target")
 	require.NoError(t, err)
 	fallbackStatsTarget, err := testutil.GetWorkDirPath("direct_volume_stats_probe_error_target")
@@ -655,13 +656,13 @@ func TestKataVolumeStatsAndResizeNotSupported(t *testing.T) {
 		VolumeId:   "vol_1",
 		VolumePath: target,
 	})
-	assert.Error(t, err)
+	assert.Equal(t, codes.Unimplemented, status.Code(err))
 
 	_, err = d.NodeExpandVolume(context.Background(), &csi.NodeExpandVolumeRequest{
 		VolumeId:   "vol_1",
 		VolumePath: target,
 	})
-	assert.Error(t, err)
+	assert.Equal(t, codes.Unimplemented, status.Code(err))
 
 	_, err = d.NodeGetVolumeStats(context.Background(), &csi.NodeGetVolumeStatsRequest{
 		VolumeId:   "vol_1",

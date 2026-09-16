@@ -616,11 +616,14 @@ func (d *Driver) NodeGetVolumeStats(ctx context.Context, req *csi.NodeGetVolumeS
 	if len(req.VolumePath) == 0 {
 		return nil, status.Error(codes.InvalidArgument, "NodeGetVolumeStats volume path was empty")
 	}
-	if isKataMount, err := d.kataDirectVolume.IsVolumeMounted(req.VolumePath); isKataMount {
-		return nil, status.Error(codes.Unimplemented, "volume stats are not supported for Kata mounts")
-	} else if err != nil {
-		klog.Warningf("NodeGetVolumeStats: failed to probe for Kata mount at %s: %v", req.VolumePath, err)
-		// Don't return, fall back to regular handling.
+
+	if d.enableKataMount {
+		if isKataMount, err := d.kataDirectVolume.IsVolumeMounted(req.VolumePath); isKataMount {
+			return nil, status.Error(codes.Unimplemented, "volume stats are not supported for Kata mounts")
+		} else if err != nil {
+			klog.Warningf("NodeGetVolumeStats: failed to probe for Kata mount at %s: %v", req.VolumePath, err)
+			// Don't return, fall back to regular handling.
+		}
 	}
 
 	volUsage, err := d.GetVolumeStats(ctx, d.mounter, req.VolumeId, req.VolumePath, d.hostUtil)
