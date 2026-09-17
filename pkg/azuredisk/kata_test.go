@@ -183,7 +183,7 @@ func newKataTestDriver(t *testing.T) (*Driver, *mount.FakeMounter, *mounter.Fake
 	d.enableKataMount = true
 	d.kataDirectVolume = &kataTestDirectVolume{rootPath: t.TempDir()}
 	d.kubeClient = fake.NewSimpleClientset(
-		&corev1.Pod{ObjectMeta: metav1.ObjectMeta{Name: "pod", Namespace: "default"}, Spec: corev1.PodSpec{RuntimeClassName: ptr.To("kata")}},
+		&corev1.Pod{ObjectMeta: metav1.ObjectMeta{Name: "pod", Namespace: "default", UID: "test-pod-uid"}, Spec: corev1.PodSpec{RuntimeClassName: ptr.To("kata")}},
 		&nodev1.RuntimeClass{ObjectMeta: metav1.ObjectMeta{Name: "kata", Annotations: map[string]string{kataRuntimeClassAnnotationKey: kataRuntimeClassAnnotationValue}}, Handler: "kata"},
 	)
 	return d, mounts, exec
@@ -195,12 +195,44 @@ func kataTestRequest(t *testing.T) *csi.NodePublishVolumeRequest {
 	return &csi.NodePublishVolumeRequest{
 		VolumeId: "volume-1", StagingTargetPath: t.TempDir(), TargetPath: filepath.Join(t.TempDir(), "target"),
 		PublishContext: map[string]string{consts.LUN: "1"},
-		VolumeContext:  map[string]string{podNameField: "pod", podNamespaceField: "default"},
+		VolumeContext:  map[string]string{podNameField: "pod", podNamespaceField: "default", podUIDField: "test-pod-uid"},
 		VolumeCapability: &csi.VolumeCapability{
 			AccessMode: &csi.VolumeCapability_AccessMode{Mode: csi.VolumeCapability_AccessMode_SINGLE_NODE_SINGLE_WRITER},
 			AccessType: &csi.VolumeCapability_Mount{Mount: &csi.VolumeCapability_MountVolume{FsType: "ext4", MountFlags: []string{"discard"}}},
 		},
 	}
+}
+
+func TestKataPublishFallsBackOnPodUIDMismatch(t *testing.T) {
+	for _, uid := range []string{"", "deleted-pod-uid"} {
+		t.Run(uid, func(t *testing.T) {
+			d, mounts, _ := newKataTestDriver(t)
+			req := kataTestRequest(t)
+			req.VolumeContext[podUIDField] = uid
+			require.NoError(t, mounts.Mount("/dev/sdd", req.StagingTargetPath, "ext4", nil))
+			mounts.ResetLog()
+			_, err := d.NodePublishVolume(context.Background(), req)
+			require.NoError(t, err)
+			require.Len(t, mounts.GetLog(), 1)
+			assert.Equal(t, mount.FakeActionMount, mounts.GetLog()[0].Action)
+			assert.Equal(t, "/dev/sdd", mounts.GetLog()[0].Source)
+			assert.Equal(t, req.TargetPath, mounts.GetLog()[0].Target)
+			assert.DirExists(t, req.TargetPath)
+			assert.DirExists(t, req.StagingTargetPath)
+			client := d.kubeClient.(*fake.Clientset)
+			require.Len(t, client.Actions(), 1)
+			assert.Equal(t, "pods", client.Actions()[0].GetResource().Resource)
+			target, err := d.kataDirectVolume.FindMountInfo(req.VolumeId)
+			require.NoError(t, err)
+			assert.Empty(t, target)
+		})
+	}
+}
+
+func TestKataMountOptionsStripsDirectmount(t *testing.T) {
+	assert.Equal(t, []string{"discard"}, kataMountOptions("ext4", []string{"directmount", "discard"}, false))
+	assert.Equal(t, []string{"discard", "nouuid", "ro"}, kataMountOptions("xfs", []string{"directmount", "discard"}, true))
+	assert.Equal(t, []string{"discard", "ro"}, kataMountOptions("ext4", []string{"discard"}, true))
 }
 
 func TestKataRawBlockPublishSkipsKataWork(t *testing.T) {

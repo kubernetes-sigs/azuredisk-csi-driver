@@ -173,7 +173,7 @@ func TestKataGetMountPod(t *testing.T) {
 		{
 			name: "missing pod name",
 			volumeContext: map[string]string{
-				podNamespaceField: "namespace",
+				podNamespaceField: "namespace", podUIDField: "test-pod-uid",
 			},
 		},
 		{
@@ -186,7 +186,7 @@ func TestKataGetMountPod(t *testing.T) {
 			name: "annotated runtime class",
 			volumeContext: map[string]string{
 				podNameField:      "pod",
-				podNamespaceField: "namespace",
+				podNamespaceField: "namespace", podUIDField: "test-pod-uid",
 			},
 			runtimeClassName: ptr.To("kata"),
 			runtimeClass: &nodev1.RuntimeClass{
@@ -202,7 +202,7 @@ func TestKataGetMountPod(t *testing.T) {
 			name: "runtime class without direct volume annotation",
 			volumeContext: map[string]string{
 				podNameField:      "pod",
-				podNamespaceField: "namespace",
+				podNamespaceField: "namespace", podUIDField: "test-pod-uid",
 			},
 			runtimeClassName: ptr.To("kata"),
 			runtimeClass: &nodev1.RuntimeClass{
@@ -214,7 +214,7 @@ func TestKataGetMountPod(t *testing.T) {
 			name: "runtime class not found",
 			volumeContext: map[string]string{
 				podNameField:      "pod",
-				podNamespaceField: "namespace",
+				podNamespaceField: "namespace", podUIDField: "test-pod-uid",
 			},
 			runtimeClassName: ptr.To("missing"),
 			wantErr:          "get runtime class \"missing\"",
@@ -226,7 +226,7 @@ func TestKataGetMountPod(t *testing.T) {
 			objects := []k8sruntime.Object{}
 			if test.runtimeClassName != nil {
 				objects = append(objects, &corev1.Pod{
-					ObjectMeta: metav1.ObjectMeta{Name: "pod", Namespace: "namespace"},
+					ObjectMeta: metav1.ObjectMeta{Name: "pod", Namespace: "namespace", UID: "test-pod-uid"},
 					Spec:       corev1.PodSpec{RuntimeClassName: test.runtimeClassName},
 				})
 			}
@@ -1239,11 +1239,11 @@ func TestNodePublishVolume(t *testing.T) {
 	}
 	directVolumeContext := map[string]string{
 		podNameField:      "direct-volume-pod",
-		podNamespaceField: "default",
+		podNamespaceField: "default", podUIDField: "test-pod-uid",
 	}
 	directFSGroupVolumeContext := map[string]string{
 		podNameField:      "direct-volume-fsgroup-pod",
-		podNamespaceField: "default",
+		podNamespaceField: "default", podUIDField: "test-pod-uid",
 	}
 	directVolumeErrorTarget, err := testutil.GetWorkDirPath("direct_volume_error_target")
 	assert.NoError(t, err)
@@ -1413,7 +1413,7 @@ func TestNodePublishVolume(t *testing.T) {
 				StagingTargetPath: sourceTest,
 				VolumeContext: map[string]string{
 					podNameField:      "missing-pod",
-					podNamespaceField: "default",
+					podNamespaceField: "default", podUIDField: "test-pod-uid",
 				},
 				Readonly: true},
 			expectedErr:   testutil.TestError{},
@@ -1458,8 +1458,8 @@ func TestNodePublishVolume(t *testing.T) {
 				StagingTargetPath: sourceTest,
 				PublishContext:    publishContext,
 				VolumeContext: map[string]string{
-					podNameField:                    "direct-volume-pod",
-					podNamespaceField:               "default",
+					podNameField:      "direct-volume-pod",
+					podNamespaceField: "default", podUIDField: "test-pod-uid",
 					consts.VolumeAttributePartition: "1",
 				}},
 			expectedErr: testutil.TestError{},
@@ -1499,8 +1499,8 @@ func TestNodePublishVolume(t *testing.T) {
 				StagingTargetPath: blockStagingTarget,
 				PublishContext:    publishContext,
 				VolumeContext: map[string]string{
-					podNameField:                    "direct-volume-fsgroup-pod",
-					podNamespaceField:               "default",
+					podNameField:      "direct-volume-fsgroup-pod",
+					podNamespaceField: "default", podUIDField: "test-pod-uid",
 					consts.VolumeAttributePartition: "1",
 				},
 				Readonly: true},
@@ -1519,11 +1519,11 @@ func TestNodePublishVolume(t *testing.T) {
 	fsGroup := int64(3000)
 	d.(*fakeDriver).kubeClient = fake.NewSimpleClientset(
 		&corev1.Pod{
-			ObjectMeta: metav1.ObjectMeta{Name: "direct-volume-pod", Namespace: "default"},
+			ObjectMeta: metav1.ObjectMeta{Name: "direct-volume-pod", Namespace: "default", UID: "test-pod-uid"},
 			Spec:       corev1.PodSpec{RuntimeClassName: &runtimeClassName},
 		},
 		&corev1.Pod{
-			ObjectMeta: metav1.ObjectMeta{Name: "direct-volume-fsgroup-pod", Namespace: "default"},
+			ObjectMeta: metav1.ObjectMeta{Name: "direct-volume-fsgroup-pod", Namespace: "default", UID: "test-pod-uid"},
 			Spec: corev1.PodSpec{
 				RuntimeClassName: &runtimeClassName,
 				SecurityContext:  &corev1.PodSecurityContext{FSGroup: &fsGroup},
@@ -1657,7 +1657,7 @@ func TestNodePublishVolumeKataMountFeatureFlag(t *testing.T) {
 			}
 			client := fake.NewSimpleClientset(
 				&corev1.Pod{
-					ObjectMeta: metav1.ObjectMeta{Name: "pod", Namespace: "default"},
+					ObjectMeta: metav1.ObjectMeta{Name: "pod", Namespace: "default", UID: "test-pod-uid"},
 					Spec:       corev1.PodSpec{RuntimeClassName: ptr.To("kata")},
 				},
 				runtimeClass,
@@ -1670,7 +1670,7 @@ func TestNodePublishVolumeKataMountFeatureFlag(t *testing.T) {
 				PublishContext:    map[string]string{consts.LUN: "/dev/disk/azure/scsi1/lun1"},
 				VolumeContext: map[string]string{
 					podNameField:      "pod",
-					podNamespaceField: "default",
+					podNamespaceField: "default", podUIDField: "test-pod-uid",
 				},
 				VolumeCapability: &csi.VolumeCapability{
 					AccessMode: &csi.VolumeCapability_AccessMode{Mode: csi.VolumeCapability_AccessMode_SINGLE_NODE_MULTI_WRITER},
@@ -1830,7 +1830,7 @@ func TestNodePublishVolumeKataFSType(t *testing.T) {
 			runtimeClassName := "kata"
 			d.(*fakeDriver).kubeClient = fake.NewSimpleClientset(
 				&corev1.Pod{
-					ObjectMeta: metav1.ObjectMeta{Name: "pod", Namespace: "default"},
+					ObjectMeta: metav1.ObjectMeta{Name: "pod", Namespace: "default", UID: "test-pod-uid"},
 					Spec:       corev1.PodSpec{RuntimeClassName: &runtimeClassName},
 				},
 				&nodev1.RuntimeClass{
@@ -1856,8 +1856,8 @@ func TestNodePublishVolumeKataFSType(t *testing.T) {
 				Readonly:          test.readOnly,
 				PublishContext:    map[string]string{consts.LUN: "/dev/disk/azure/scsi1/lun1"},
 				VolumeContext: map[string]string{
-					podNameField:       "pod",
-					podNamespaceField:  "default",
+					podNameField:      "pod",
+					podNamespaceField: "default", podUIDField: "test-pod-uid",
 					consts.FsTypeField: test.contextFSType,
 				},
 				VolumeCapability: &csi.VolumeCapability{
@@ -2476,7 +2476,7 @@ func TestNodePublishVolumeIdempotent(t *testing.T) {
 	runtimeClassName := "kata"
 	d.(*fakeDriver).kubeClient = fake.NewSimpleClientset(
 		&corev1.Pod{
-			ObjectMeta: metav1.ObjectMeta{Name: "direct-volume-pod", Namespace: "default"},
+			ObjectMeta: metav1.ObjectMeta{Name: "direct-volume-pod", Namespace: "default", UID: "test-pod-uid"},
 			Spec:       corev1.PodSpec{RuntimeClassName: &runtimeClassName},
 		},
 		&nodev1.RuntimeClass{
@@ -2516,7 +2516,7 @@ func TestNodePublishVolumeIdempotent(t *testing.T) {
 		},
 		VolumeContext: map[string]string{
 			podNameField:      "direct-volume-pod",
-			podNamespaceField: "default",
+			podNamespaceField: "default", podUIDField: "test-pod-uid",
 		},
 		Readonly: true}
 

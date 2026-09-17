@@ -37,6 +37,7 @@ import (
 const (
 	podNameField      = "csi.storage.k8s.io/pod.name"
 	podNamespaceField = "csi.storage.k8s.io/pod.namespace"
+	podUIDField       = "csi.storage.k8s.io/pod.uid"
 
 	kataRuntimeClassAnnotationKey   = "azure.csi.disk/kata-mount"
 	kataRuntimeClassAnnotationValue = "direct-volume"
@@ -116,7 +117,7 @@ func kataFindMountInfo(root, volumeID string, read func(string) (*directvolume.M
 
 // kataMountOptions returns the guest mount options for a publication request.
 func kataMountOptions(fsType string, flags []string, readonly bool) []string {
-	options := collectMountOptions(fsType, flags)
+	options, _ := azureutils.RemoveOptionIfExists(collectMountOptions(fsType, flags), "directmount")
 	if readonly {
 		options = append(options, "ro")
 	}
@@ -194,6 +195,12 @@ func kataGetMountPod(ctx context.Context, kubeClient clientset.Interface, volume
 	pod, err := kubeClient.CoreV1().Pods(podNamespace).Get(ctx, podName, metav1.GetOptions{})
 	if err != nil {
 		return nil, fmt.Errorf("get pod %s/%s: %w", podNamespace, podName, err)
+	}
+	if string(pod.UID) != volumeContext[podUIDField] {
+		// If a pod was recreated with the same name in the meantime,
+		// return a nil pod as it no longer matches the volume, but
+		// don't bother returning an error.
+		return nil, nil
 	}
 	if pod.Spec.RuntimeClassName == nil || *pod.Spec.RuntimeClassName == "" {
 		return nil, nil
