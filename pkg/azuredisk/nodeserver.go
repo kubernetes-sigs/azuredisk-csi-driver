@@ -618,7 +618,8 @@ func (d *Driver) NodeGetVolumeStats(ctx context.Context, req *csi.NodeGetVolumeS
 	}
 
 	if d.enableKataMount {
-		if isKataMount, err := d.kataDirectVolume.IsVolumeMounted(req.VolumePath); isKataMount {
+		// NOTE: This cannot detect CSI block requests passed through Kata.
+		if isKataMount, err := d.kataDirectVolume.IsVolumeMountedByID(req.VolumeId); isKataMount {
 			return nil, status.Error(codes.Unimplemented, "volume stats are not supported for Kata mounts")
 		} else if err != nil {
 			klog.Warningf("NodeGetVolumeStats: failed to probe for Kata mount at %s: %v", req.VolumePath, err)
@@ -656,23 +657,15 @@ func (d *Driver) NodeExpandVolume(_ context.Context, req *csi.NodeExpandVolumeRe
 		}
 		defer d.volumeLocks.Release(volumeID)
 
-		// CSI may supply the staging path rather than the DAV target. A target-only
-		// check cannot protect a guest-owned filesystem from host expansion.
-		if req.GetVolumeCapability().GetBlock() == nil {
-			assigned, err := d.kataDirectVolume.IsVolumeMountedByID(volumeID)
-			if err != nil {
-				return nil, status.Errorf(codes.Internal, "could not check Kata assignment for %s: %v", volumeID, err)
-			}
-			if assigned {
-				return nil, status.Error(codes.Unimplemented, "volume resize is not supported for Kata mounts")
-			}
+		// NOTE: This cannot detect CSI block requests passed through Kata.
+		assigned, err := d.kataDirectVolume.IsVolumeMountedByID(volumeID)
+		if err != nil {
+			// We must not fall back to non-Kata handling here,
+			// as that could resize a disk owned by a guest VM.
+			return nil, status.Errorf(codes.Internal, "could not check Kata assignment for %s: %v", volumeID, err)
 		}
-
-		if isKataMount, err := d.kataDirectVolume.IsVolumeMounted(volumePath); isKataMount {
+		if assigned {
 			return nil, status.Error(codes.Unimplemented, "volume resize is not supported for Kata mounts")
-		} else if err != nil {
-			klog.Warningf("NodeExpandVolume: failed to probe for Kata mount at %s: %v", volumePath, err)
-			// Don't return, fall back to regular handling.
 		}
 	}
 

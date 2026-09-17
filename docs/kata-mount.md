@@ -9,8 +9,11 @@ virtio-blk to be mounted inside the pod VM for improved performance.
 
 ## How to enable
 
-First enable Kata mounts with Helm `node.enableKataMount=true` or the
-node driver flag `--enable-kata-mount=true`.
+First enable Kata mounts with the Helm flag:
+
+```helm
+node.enableKataMount=true
+```
 
 Then the virtio-blk integration can be enabled by setting the following
 annotation on your Kata Containers RuntimeClass:

@@ -455,37 +455,74 @@ func TestKataVolumeStatsAndResizeUnimplemented(t *testing.T) {
 	d.setMounter(fakeMounter)
 
 	d.(*fakeDriver).kataDirectVolume = &kataStubDirectVolume{
-		isVolumeMounted: func(path string) (bool, error) {
-			if path == fallbackStatsTarget || path == fallbackResizeTarget {
-				return false, errors.New("fake direct volume probe error")
+		findMountInfo: func(volumeID string) (string, error) {
+			switch volumeID {
+			case "vol_1":
+				return target, nil
+			case "lookup_error":
+				return "", errors.New("fake direct volume probe error")
+			default:
+				return "", nil
 			}
-			return path == target, nil
+		},
+		isVolumeMounted: func(string) (bool, error) {
+			t.Fatal("stats and resize must query assignments by volume ID")
+			return false, nil
 		},
 	}
 
-	_, err = d.NodeGetVolumeStats(context.Background(), &csi.NodeGetVolumeStatsRequest{
-		VolumeId:   "vol_1",
-		VolumePath: target,
-	})
-	assert.Equal(t, codes.Unimplemented, status.Code(err))
+	stagingTarget := filepath.Join(t.TempDir(), "removed-staging")
+	for _, volumePath := range []string{target, stagingTarget} {
+		_, err = d.NodeGetVolumeStats(context.Background(), &csi.NodeGetVolumeStatsRequest{
+			VolumeId:   "vol_1",
+			VolumePath: volumePath,
+		})
+		assert.Equal(t, codes.Unimplemented, status.Code(err))
+
+		_, err = d.NodeExpandVolume(context.Background(), &csi.NodeExpandVolumeRequest{
+			VolumeId:   "vol_1",
+			VolumePath: volumePath,
+		})
+		assert.Equal(t, codes.Unimplemented, status.Code(err))
+	}
+
+	for _, volumeID := range []string{"unassigned", "lookup_error"} {
+		_, err = d.NodeGetVolumeStats(context.Background(), &csi.NodeGetVolumeStatsRequest{
+			VolumeId:   volumeID,
+			VolumePath: fallbackStatsTarget,
+		})
+		assert.NoError(t, err)
+	}
 
 	_, err = d.NodeExpandVolume(context.Background(), &csi.NodeExpandVolumeRequest{
-		VolumeId:   "vol_1",
-		VolumePath: target,
-	})
-	assert.Equal(t, codes.Unimplemented, status.Code(err))
-
-	_, err = d.NodeGetVolumeStats(context.Background(), &csi.NodeGetVolumeStatsRequest{
-		VolumeId:   "vol_1",
-		VolumePath: fallbackStatsTarget,
-	})
-	assert.NoError(t, err)
-
-	_, err = d.NodeExpandVolume(context.Background(), &csi.NodeExpandVolumeRequest{
-		VolumeId:   "vol_1",
+		VolumeId:   "unassigned",
 		VolumePath: fallbackResizeTarget,
 	})
 	assert.NoError(t, err)
+
+	_, err = d.NodeExpandVolume(context.Background(), &csi.NodeExpandVolumeRequest{
+		VolumeId:   "lookup_error",
+		VolumePath: fallbackResizeTarget,
+	})
+	assert.Equal(t, codes.Internal, status.Code(err))
+
+	for _, test := range []struct {
+		volumeID string
+		wantCode codes.Code
+	}{
+		{volumeID: "vol_1", wantCode: codes.Unimplemented},
+		{volumeID: "unassigned", wantCode: codes.OK},
+		{volumeID: "lookup_error", wantCode: codes.Internal},
+	} {
+		_, err = d.NodeExpandVolume(context.Background(), &csi.NodeExpandVolumeRequest{
+			VolumeId:   test.volumeID,
+			VolumePath: fallbackResizeTarget,
+			VolumeCapability: &csi.VolumeCapability{
+				AccessType: &csi.VolumeCapability_Block{Block: &csi.VolumeCapability_BlockVolume{}},
+			},
+		})
+		assert.Equal(t, test.wantCode, status.Code(err), test.volumeID)
+	}
 }
 
 // TestResolveFSType runs on every platform, including the Windows CI runner, because it

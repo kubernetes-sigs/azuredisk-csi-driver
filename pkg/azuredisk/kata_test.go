@@ -965,11 +965,11 @@ func TestKataUnpublishRetriesRemoval(t *testing.T) {
 	}
 }
 
-func TestKataNativeBlockExpandSkipsInventory(t *testing.T) {
+func TestKataNativeBlockExpandRejectsInventoryError(t *testing.T) {
 	d, _, exec := newKataTestDriver(t)
 	d.kataDirectVolume = &kataStubDirectVolume{
-		findMountInfo: func(string) (string, error) {
-			t.Fatal("native block expansion must not scan filesystem DAV metadata")
+		findMountInfo: func(volumeID string) (string, error) {
+			assert.Equal(t, "block", volumeID)
 			return "", errors.New("inventory unavailable")
 		},
 		isVolumeMounted: func(string) (bool, error) { return false, nil },
@@ -978,7 +978,8 @@ func TestKataNativeBlockExpandSkipsInventory(t *testing.T) {
 		VolumeId: "block", VolumePath: t.TempDir(),
 		VolumeCapability: &csi.VolumeCapability{AccessType: &csi.VolumeCapability_Block{Block: &csi.VolumeCapability_BlockVolume{}}},
 	})
-	require.NoError(t, err)
+	require.Equal(t, codes.Internal, status.Code(err))
+	assert.ErrorContains(t, err, "inventory unavailable")
 	assert.Zero(t, exec.CommandCalls)
 }
 
