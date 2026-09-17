@@ -92,6 +92,198 @@ func (f *kataStubDirectVolume) IsVolumeMountedByID(volumeID string) (bool, error
 	return target != "", err
 }
 
+func TestKataGetMountPod(t *testing.T) {
+	tests := []struct {
+		name             string
+		volumeContext    map[string]string
+		runtimeClassName *string
+		runtimeClass     *nodev1.RuntimeClass
+		wantPod          bool
+		wantErr          string
+	}{
+		{
+			name: "missing pod metadata",
+		},
+		{
+			name:          "empty pod metadata",
+			volumeContext: map[string]string{},
+		},
+		{
+			name: "missing pod name",
+			volumeContext: map[string]string{
+				podNamespaceField: "namespace", podUIDField: "test-pod-uid",
+			},
+		},
+		{
+			name: "missing pod namespace",
+			volumeContext: map[string]string{
+				podNameField: "pod",
+			},
+		},
+		{
+			name: "annotated runtime class",
+			volumeContext: map[string]string{
+				podNameField:      "pod",
+				podNamespaceField: "namespace", podUIDField: "test-pod-uid",
+			},
+			runtimeClassName: ptr.To("kata"),
+			runtimeClass: &nodev1.RuntimeClass{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:        "kata",
+					Annotations: map[string]string{kataRuntimeClassAnnotationKey: kataRuntimeClassAnnotationValue},
+				},
+				Handler: "kata",
+			},
+			wantPod: true,
+		},
+		{
+			name: "runtime class without direct volume annotation",
+			volumeContext: map[string]string{
+				podNameField:      "pod",
+				podNamespaceField: "namespace", podUIDField: "test-pod-uid",
+			},
+			runtimeClassName: ptr.To("kata"),
+			runtimeClass: &nodev1.RuntimeClass{
+				ObjectMeta: metav1.ObjectMeta{Name: "kata"},
+				Handler:    "kata",
+			},
+		},
+		{
+			name: "runtime class not found",
+			volumeContext: map[string]string{
+				podNameField:      "pod",
+				podNamespaceField: "namespace", podUIDField: "test-pod-uid",
+			},
+			runtimeClassName: ptr.To("missing"),
+			wantErr:          "get runtime class \"missing\"",
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			objects := []k8sruntime.Object{}
+			if test.runtimeClassName != nil {
+				objects = append(objects, &corev1.Pod{
+					ObjectMeta: metav1.ObjectMeta{Name: "pod", Namespace: "namespace", UID: "test-pod-uid"},
+					Spec:       corev1.PodSpec{RuntimeClassName: test.runtimeClassName},
+				})
+			}
+			if test.runtimeClass != nil {
+				objects = append(objects, test.runtimeClass)
+			}
+
+			client := fake.NewSimpleClientset(objects...)
+			got, err := kataGetMountPod(context.Background(), client, test.volumeContext)
+			if test.volumeContext[podNameField] == "" || test.volumeContext[podNamespaceField] == "" {
+				assert.Empty(t, client.Actions())
+			}
+			if test.wantErr != "" {
+				require.ErrorContains(t, err, test.wantErr)
+				return
+			}
+			require.NoError(t, err)
+			if test.wantPod {
+				require.NotNil(t, got)
+				assert.Equal(t, "pod", got.Name)
+			} else {
+				assert.Nil(t, got)
+			}
+		})
+	}
+}
+
+func TestGetPodFSGroup(t *testing.T) {
+	fsGroup := int64(3000)
+	oneFSGroup := int64(1)
+	onRootMismatch := corev1.FSGroupChangeOnRootMismatch
+	filesystemVolume := &csi.VolumeCapability{AccessType: &csi.VolumeCapability_Mount{
+		Mount: &csi.VolumeCapability_MountVolume{},
+	}}
+	blockVolume := &csi.VolumeCapability{AccessType: &csi.VolumeCapability_Block{
+		Block: &csi.VolumeCapability_BlockVolume{},
+	}}
+
+	tests := []struct {
+		name                    string
+		pod                     *corev1.Pod
+		volumeCapability        *csi.VolumeCapability
+		readOnly                bool
+		wantFSGroup             *int64
+		wantFSGroupChangePolicy *corev1.PodFSGroupChangePolicy
+	}{
+		{
+			name: "fsGroup without policy",
+			pod: &corev1.Pod{Spec: corev1.PodSpec{SecurityContext: &corev1.PodSecurityContext{
+				FSGroup: &fsGroup,
+			}}},
+			volumeCapability: filesystemVolume,
+			wantFSGroup:      &fsGroup,
+		},
+		{
+			name: "group one with OnRootMismatch",
+			pod: &corev1.Pod{Spec: corev1.PodSpec{SecurityContext: &corev1.PodSecurityContext{
+				FSGroup:             &oneFSGroup,
+				FSGroupChangePolicy: &onRootMismatch,
+			}}},
+			volumeCapability:        filesystemVolume,
+			wantFSGroup:             &oneFSGroup,
+			wantFSGroupChangePolicy: &onRootMismatch,
+		},
+		{
+			name:             "nil pod",
+			volumeCapability: filesystemVolume,
+		},
+		{
+			name:             "nil security context",
+			pod:              &corev1.Pod{},
+			volumeCapability: filesystemVolume,
+		},
+		{
+			name: "nil fsGroup",
+			pod: &corev1.Pod{Spec: corev1.PodSpec{
+				SecurityContext: &corev1.PodSecurityContext{},
+			}},
+			volumeCapability: filesystemVolume,
+		},
+		{
+			name: "container runAsGroup is not a volume fsGroup",
+			pod: &corev1.Pod{Spec: corev1.PodSpec{Containers: []corev1.Container{{
+				SecurityContext: &corev1.SecurityContext{RunAsGroup: &fsGroup},
+			}}}},
+			volumeCapability: filesystemVolume,
+		},
+		{
+			name: "read-only filesystem",
+			pod: &corev1.Pod{Spec: corev1.PodSpec{SecurityContext: &corev1.PodSecurityContext{
+				FSGroup: &fsGroup,
+			}}},
+			volumeCapability: filesystemVolume,
+			readOnly:         true,
+		},
+		{
+			name: "block volume",
+			pod: &corev1.Pod{Spec: corev1.PodSpec{SecurityContext: &corev1.PodSecurityContext{
+				FSGroup: &fsGroup,
+			}}},
+			volumeCapability: blockVolume,
+		},
+		{
+			name: "nil volume capability",
+			pod: &corev1.Pod{Spec: corev1.PodSpec{SecurityContext: &corev1.PodSecurityContext{
+				FSGroup: &fsGroup,
+			}}},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			fsGroup, fsGroupChangePolicy := getPodFSGroup(test.pod, test.volumeCapability, test.readOnly)
+			assert.Equal(t, test.wantFSGroup, fsGroup)
+			assert.Equal(t, test.wantFSGroupChangePolicy, fsGroupChangePolicy)
+		})
+	}
+}
+
 func TestKataIsVolumeMountedByID(t *testing.T) {
 	lookupErr := errors.New("inventory unavailable")
 	for _, tc := range []struct {
@@ -1036,11 +1228,11 @@ func TestKataPublishRetryWithSymlinkedPaths(t *testing.T) {
 	d, mounts, exec := newKataTestDriver(t)
 	req := kataTestRequest(t)
 	parent := t.TempDir()
-	real := filepath.Join(parent, "real")
+	realPath := filepath.Join(parent, "real")
 	alias := filepath.Join(parent, "alias")
-	require.NoError(t, os.MkdirAll(filepath.Join(real, "stage"), 0755))
-	require.NoError(t, os.MkdirAll(filepath.Join(real, "target"), 0755))
-	require.NoError(t, os.Symlink(real, alias))
+	require.NoError(t, os.MkdirAll(filepath.Join(realPath, "stage"), 0755))
+	require.NoError(t, os.MkdirAll(filepath.Join(realPath, "target"), 0755))
+	require.NoError(t, os.Symlink(realPath, alias))
 	req.StagingTargetPath, req.TargetPath = filepath.Join(alias, "stage"), filepath.Join(alias, "target")
 	require.NoError(t, mounts.Mount("/dev/sdd", req.StagingTargetPath, "ext4", []string{"discard"}))
 	require.NoError(t, mounts.Mount("/dev/sdd", req.TargetPath, "ext4", []string{"discard"}))

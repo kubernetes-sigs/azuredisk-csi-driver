@@ -126,7 +126,7 @@ func kataMountOptions(fsType string, flags []string, readonly bool) []string {
 
 // kataIsMountPoint checks existing mounts without creating or repairing a target.
 func (d *Driver) kataIsMountPoint(path string) (bool, error) {
-	mounted, err := d.mounter.IsMountPoint(path)
+	mounted, err := d.mounter.Interface.IsMountPoint(path)
 	if os.IsNotExist(err) {
 		return false, nil
 	}
