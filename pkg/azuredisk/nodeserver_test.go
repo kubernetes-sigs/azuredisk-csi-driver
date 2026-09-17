@@ -973,27 +973,81 @@ func TestNodeUnstageVolumeQADDetachedResponses(t *testing.T) {
 	}
 }
 
-func TestGetDiskState(t *testing.T) {
+func TestExecuteQADDiskOperationNullStatus(t *testing.T) {
 	tests := []struct {
-		name         string
-		responseBody string
-		expectedNil  bool
-		expectedCode codes.Code
+		name          string
+		operationType string
+		expectedCode  codes.Code
 	}{
 		{
-			name:         "disk status found case insensitively",
-			responseBody: `{"QAD-VOLUME":{"status":"DISK_STATUS_ATTACHED","lun":1}}`,
+			name:          "attach returns internal error",
+			operationType: attachOperation,
+			expectedCode:  codes.Internal,
 		},
 		{
-			name:         "null disk status",
-			responseBody: `{"qad-volume":null}`,
-			expectedNil:  true,
+			name:          "detach treats null as already detached",
+			operationType: detachOperation,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			cntl := gomock.NewController(t)
+			d, err := NewFakeDriver(cntl)
+			require.NoError(t, err)
+			driver := d.(*fakeDriver)
+
+			credential := driver.cloud.AuthProvider.GetAzIdentity().(*mock_azclient.MockTokenCredential)
+			credential.EXPECT().GetToken(gomock.Any(), gomock.Any()).Return(azcore.AccessToken{Token: "token"}, nil)
+			driver.httpClient = &http.Client{Transport: testRoundTripper(func(_ *http.Request) (*http.Response, error) {
+				return &http.Response{
+					StatusCode: http.StatusOK,
+					Body:       io.NopCloser(strings.NewReader(`{"qad-volume":null}`)),
+					Header:     make(http.Header),
+				}, nil
+			})}
+
+			diskStatus, err := driver.executeQADDiskOperation(context.Background(), DiskOperationRequest{DiskURI: "qad-volume"}, test.operationType)
+			require.Equal(t, test.expectedCode, status.Code(err))
+			require.Nil(t, diskStatus)
+		})
+	}
+}
+
+func TestGetDiskState(t *testing.T) {
+	tests := []struct {
+		name           string
+		responseStatus int
+		responseBody   string
+		expectedNil    bool
+		expectedCode   codes.Code
+		expectedError  string
+	}{
+		{
+			name:           "disk status found case insensitively",
+			responseStatus: http.StatusOK,
+			responseBody:   `{"QAD-VOLUME":{"status":"DISK_STATUS_ATTACHED","lun":1}}`,
 		},
 		{
-			name:         "disk status not found",
-			responseBody: `{}`,
-			expectedNil:  true,
-			expectedCode: codes.NotFound,
+			name:           "null disk status",
+			responseStatus: http.StatusOK,
+			responseBody:   `{"qad-volume":null}`,
+			expectedNil:    true,
+		},
+		{
+			name:           "disk status not found",
+			responseStatus: http.StatusOK,
+			responseBody:   `{}`,
+			expectedNil:    true,
+			expectedCode:   codes.NotFound,
+		},
+		{
+			name:           "non-success status is checked before unmarshal",
+			responseStatus: http.StatusServiceUnavailable,
+			responseBody:   `not-json`,
+			expectedNil:    true,
+			expectedCode:   codes.Unavailable,
+			expectedError:  "wireserver returned HTTP 503: not-json",
 		},
 	}
 
@@ -1001,7 +1055,7 @@ func TestGetDiskState(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			client := http.Client{Transport: testRoundTripper(func(_ *http.Request) (*http.Response, error) {
 				return &http.Response{
-					StatusCode: http.StatusOK,
+					StatusCode: test.responseStatus,
 					Body:       io.NopCloser(strings.NewReader(test.responseBody)),
 					Header:     make(http.Header),
 				}, nil
@@ -1009,6 +1063,9 @@ func TestGetDiskState(t *testing.T) {
 
 			diskStatus, err := getDiskState(context.Background(), client, "qad-volume")
 			require.Equal(t, test.expectedCode, status.Code(err))
+			if test.expectedError != "" {
+				require.ErrorContains(t, err, test.expectedError)
+			}
 			if test.expectedNil {
 				require.Nil(t, diskStatus)
 				return

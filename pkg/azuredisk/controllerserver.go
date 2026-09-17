@@ -704,6 +704,8 @@ func (d *Driver) unclaimDiskResource(ctx context.Context, diskURI, ownerResource
 		if _, err := d.pollAsyncOperation(ctx, location); err != nil {
 			return fmt.Errorf("polling unclaimResource failed: %w", err)
 		}
+	} else if resp.StatusCode == http.StatusNotFound {
+		klog.V(2).Infof("disk %s is already absent; treating unclaim as successful", diskURI)
 	} else if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("unclaimResource returned status %d: %s", resp.StatusCode, string(body))
 	}

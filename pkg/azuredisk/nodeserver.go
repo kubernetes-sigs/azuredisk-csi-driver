@@ -46,7 +46,6 @@ import (
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/apimachinery/pkg/util/wait"
 	kwait "k8s.io/apimachinery/pkg/util/wait"
 	clientset "k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/util/retry"
@@ -247,7 +246,7 @@ func (d *Driver) NodeStageVolume(ctx context.Context, req *csi.NodeStageVolumeRe
 						klog.V(4).Infof("NodeStageVolume: QAD status does not yet contain volume %s", volumeID)
 						return false, nil
 					}
-					klog.Errorf("NodeStageVolume: failed to get disk state: %v", err)
+					klog.Errorf("NodeStageVolume: failed to get disk state for volume %s: %v", volumeID, err)
 					return false, err
 				}
 				if diskState == nil {
@@ -452,7 +451,7 @@ func (d *Driver) NodeUnstageVolume(ctx context.Context, req *csi.NodeUnstageVolu
 						detached = true
 						return true, nil
 					}
-					klog.Errorf("NodeUnStageVolume: failed to get disk state: %v", err)
+					klog.Errorf("NodeUnStageVolume: failed to get disk state for volume %s: %v", volumeID, err)
 					return false, err
 				}
 				if diskState == nil {
@@ -939,7 +938,7 @@ func (d *Driver) getDevicePathWithLUN(lunStr string) (string, error) {
 	scsiHostRescan(d.ioHandler, d.mounter)
 
 	newDevicePath := ""
-	err = wait.PollImmediate(1*time.Second, 2*time.Minute, func() (bool, error) {
+	err = kwait.PollUntilContextTimeout(context.Background(), 1*time.Second, 2*time.Minute, true, func(context.Context) (bool, error) {
 		var err error
 		if newDevicePath, err = findDiskByLun(int(lun), d.ioHandler, d.mounter); err != nil {
 			return false, fmt.Errorf("azureDisk - findDiskByLun(%v) failed with error(%s)", lun, err)
@@ -952,7 +951,7 @@ func (d *Driver) getDevicePathWithLUN(lunStr string) (string, error) {
 		// wait until timeout
 		return false, nil
 	})
-	if err == nil && newDevicePath == "" {
+	if errors.Is(err, context.DeadlineExceeded) && newDevicePath == "" {
 		err = fmt.Errorf("azureDisk - findDiskByLun(%v) failed within timeout", lun)
 	}
 	return newDevicePath, err
@@ -1072,12 +1071,12 @@ func (d *Driver) executeQADDiskOperation(ctx context.Context, diskRequest DiskOp
 	}
 
 	lowercaseDiskURI := strings.ToLower(diskRequest.DiskURI)
-	diskStatus, ok := response[lowercaseDiskURI]
-	if !ok {
+	diskStatus := response[lowercaseDiskURI]
+	if diskStatus == nil {
 		if operationType == detachOperation {
 			return nil, nil
 		}
-		return nil, status.Errorf(codes.Internal, "The response from wireserver doesn't contain volume %s", diskRequest.DiskURI)
+		return nil, status.Errorf(codes.Internal, "The response from wireserver doesn't contain a valid status for volume %s", diskRequest.DiskURI)
 	}
 	if diskStatus.Error != nil {
 		grpcCode := mapDiskErrorToCode(diskStatus.Error.DiskErrorType, diskStatus.Error.SeverityHint)
@@ -1157,7 +1156,7 @@ func attachOrDetachDiskInternal(ctx context.Context, client http.Client, diskReq
 			return WireserverDiskStatusResponse{}, fmt.Errorf("failed to unmarshal wireserver response: %v", err)
 		}
 
-		// Convert keys to lowercase and check for per-disk errors
+		// Convert keys to lowercase
 		lowercaseResponse := make(WireserverDiskStatusResponse)
 		for k, v := range wireserverDiskStatusResponse {
 			lowercaseResponse[strings.ToLower(k)] = v
@@ -1333,6 +1332,10 @@ func getDiskState(ctx context.Context, client http.Client, diskURI string) (*Dis
 
 	// TODO:// Remove this post debugging
 	klog.V(2).Infof("Wireserver response for GET: %s", string(bytes))
+
+	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
+		return nil, status.Errorf(mapHTTPStatusToCode(resp.StatusCode), "wireserver returned HTTP %d: %s", resp.StatusCode, string(bytes))
+	}
 
 	var wireserverDiskStatusResponse WireserverDiskStatusResponse
 	if err := json.Unmarshal(bytes, &wireserverDiskStatusResponse); err != nil {

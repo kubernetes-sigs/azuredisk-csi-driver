@@ -264,6 +264,27 @@ func TestUnclaimDiskResource(t *testing.T) {
 		err = driver.unclaimDiskResource(context.Background(), "/subscriptions/subscription/resourceGroups/rg/providers/Microsoft.Compute/disks/disk", "owner")
 		require.ErrorContains(t, err, "unclaimResource returned status 409")
 	})
+
+	t.Run("ignores not found for an already absent disk", func(t *testing.T) {
+		cntl := gomock.NewController(t)
+		d, err := NewFakeDriver(cntl)
+		require.NoError(t, err)
+		driver := d.(*fakeDriver)
+
+		server := httptest.NewServer(http.HandlerFunc(func(responseWriter http.ResponseWriter, _ *http.Request) {
+			responseWriter.WriteHeader(http.StatusNotFound)
+			_, err := responseWriter.Write([]byte(`{"error":{"code":"NotFound","message":"Disk is not found."}}`))
+			require.NoError(t, err)
+		}))
+		defer server.Close()
+
+		driver.cloud.ARMClientConfig.ResourceManagerEndpoint = server.URL
+		credential := driver.cloud.AuthProvider.GetAzIdentity().(*mock_azclient.MockTokenCredential)
+		credential.EXPECT().GetToken(gomock.Any(), gomock.Any()).Return(azcore.AccessToken{Token: "token"}, nil)
+
+		err = driver.unclaimDiskResource(context.Background(), "/subscriptions/subscription/resourceGroups/rg/providers/Microsoft.Compute/disks/missing", "owner")
+		require.NoError(t, err)
+	})
 }
 
 func TestPollAsyncOperation(t *testing.T) {
