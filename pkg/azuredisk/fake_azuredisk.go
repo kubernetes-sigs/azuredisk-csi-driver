@@ -127,8 +127,6 @@ func NewFakeDriver(ctrl *gomock.Controller) (FakeDriver, error) {
 	driver.shouldWaitForSnapshotReady = true
 	driver.endpoint = "tcp://127.0.0.1:0"
 	driver.disableAVSetNodes = true
-	driver.maxDataDiskCount = defaultAzureVolumeLimit
-	driver.qadBatcher = newQADDiskBatcher(1000 * time.Millisecond)
 	driver.kubeClient = fake.NewClientset()
 	driver.enableMigrationMonitor = true
 
