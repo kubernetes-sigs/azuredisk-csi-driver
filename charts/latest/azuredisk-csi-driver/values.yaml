@@ -221,6 +221,7 @@ linux:
   kubelet: /var/lib/kubelet
   distro: debian # available values: debian, fedora
   enablePerfOptimization: true
+  filesystemShutdownTimeout: 5
   otelTracing:
     enabled: false
     otelServiceName: csi-azuredisk-node
