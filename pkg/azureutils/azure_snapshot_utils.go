@@ -122,14 +122,14 @@ func GetEntriesAndNextToken(req *csi.ListSnapshotsRequest, snapshots []*armcompu
 		}
 	}
 
-	nextToken := len(snapshots)
+	nextToken := ""
 	if start < len(snapshots) {
-		nextToken = start
+		nextToken = strconv.Itoa(start)
 	}
 
 	listSnapshotResp := &csi.ListSnapshotsResponse{
 		Entries:   entries,
-		NextToken: strconv.Itoa(nextToken),
+		NextToken: nextToken,
 	}
 
 	return listSnapshotResp, nil
