@@ -1099,8 +1099,13 @@ func (d *Driver) executeQADDiskOperation(ctx context.Context, diskRequest DiskOp
 		return nil, err
 	}
 
-	lowercaseDiskURI := strings.ToLower(diskRequest.DiskURI)
-	diskStatus := response[lowercaseDiskURI]
+	var diskStatus *DiskStatus
+	for diskURI, status := range response {
+		if strings.EqualFold(diskURI, diskRequest.DiskURI) {
+			diskStatus = status
+			break
+		}
+	}
 	if diskStatus == nil {
 		if operationType == detachOperation {
 			return nil, nil
@@ -1179,18 +1184,13 @@ func attachOrDetachDiskInternal(ctx context.Context, client http.Client, diskReq
 	klog.V(2).Infof("Wireserver response (HTTP %d): %s", resp.StatusCode, string(respBody))
 
 	// Case 1: Request succeeded (HTTP 2XX) - may contain per-disk errors (partial failure)
-	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
+	if resp.StatusCode >= http.StatusOK && resp.StatusCode < http.StatusMultipleChoices {
 		var wireserverDiskStatusResponse WireserverDiskStatusResponse
 		if err := json.Unmarshal(respBody, &wireserverDiskStatusResponse); err != nil {
 			return WireserverDiskStatusResponse{}, fmt.Errorf("failed to unmarshal wireserver response: %v", err)
 		}
 
-		// Convert keys to lowercase
-		lowercaseResponse := make(WireserverDiskStatusResponse)
-		for k, v := range wireserverDiskStatusResponse {
-			lowercaseResponse[strings.ToLower(k)] = v
-		}
-		return lowercaseResponse, nil
+		return wireserverDiskStatusResponse, nil
 	}
 
 	// Case 2 & 3: Request failed (HTTP non-2XX)
@@ -1325,7 +1325,7 @@ func mapHTTPStatusToCode(httpStatus int) codes.Code {
 	case http.StatusUnsupportedMediaType: // 422
 		return codes.Internal
 	case http.StatusTooManyRequests: // 429
-		return codes.Aborted
+		return codes.ResourceExhausted
 	case http.StatusBadGateway: // 502
 		return codes.Unavailable
 	case http.StatusServiceUnavailable: // 503
@@ -1358,9 +1358,6 @@ func getDiskState(ctx context.Context, client http.Client, diskURI string) (*Dis
 	if err != nil {
 		return nil, fmt.Errorf("failed to read response body: %v", err)
 	}
-
-	// TODO:// Remove this post debugging
-	klog.V(2).Infof("Wireserver response for GET: %s", string(bytes))
 
 	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
 		return nil, status.Errorf(mapHTTPStatusToCode(resp.StatusCode), "wireserver returned HTTP %d: %s", resp.StatusCode, string(bytes))
