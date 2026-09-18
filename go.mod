@@ -15,6 +15,7 @@ require (
 	github.com/go-ole/go-ole v1.3.0
 	github.com/golang/protobuf v1.5.4
 	github.com/grpc-ecosystem/go-grpc-middleware/providers/prometheus v1.1.0
+	github.com/kata-containers/kata-containers/src/runtime v0.0.0-20260720212037-ddf307a5a057
 	github.com/kubernetes-csi/csi-lib-utils v0.19.0
 	github.com/kubernetes-csi/csi-proxy/client v1.3.0
 	github.com/kubernetes-csi/external-snapshotter/client/v4 v4.2.0
@@ -115,7 +116,7 @@ require (
 	github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822 // indirect
 	github.com/mxk/go-flowrate v0.0.0-20140419014527-cca7078d478f // indirect
 	github.com/opencontainers/go-digest v1.0.0 // indirect
-	github.com/opencontainers/selinux v1.13.0 // indirect
+	github.com/opencontainers/selinux v1.13.1 // indirect
 	github.com/pkg/browser v0.0.0-20240102092130-5ac0b6a4141c // indirect
 	github.com/pkg/errors v0.9.1 // indirect
 	github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2 // indirect
@@ -164,6 +165,7 @@ require (
 )
 
 replace (
+	github.com/kata-containers/kata-containers/src/runtime => github.com/microsoft/kata-containers/src/runtime v0.0.0-20260720212037-ddf307a5a057 // tag 3.32.0.kata0
 	k8s.io/api => k8s.io/api v0.35.0
 	k8s.io/apiextensions-apiserver => k8s.io/apiextensions-apiserver v0.35.0
 	k8s.io/apimachinery => k8s.io/apimachinery v0.35.1

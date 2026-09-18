@@ -105,6 +105,7 @@ Install the driver on a Kubernetes cluster:
 - [Volume Expansion](./deploy/example/resize)
 - [Modify Volume Attributes](./deploy/example/modifyvolume)
 - [Raw Block Volume](./deploy/example/rawblock)
+- [Kata direct volume mounts (Experimental)](./docs/kata-mount.md)
 - [Windows](./deploy/example/windows)
 - [Volume Limits](./deploy/example/volumelimits)
 - [fsGroupPolicy](./deploy/example/fsgroup)

@@ -7,7 +7,7 @@ metadata:
     snapshot: "{{ .Values.snapshot.image.csiSnapshotter.tag }}"
 spec:
   attachRequired: true
-  podInfoOnMount: false
+  podInfoOnMount: {{ .Values.node.enableKataMount }}
   {{- if .Values.feature.enableFSGroupPolicy}}
   fsGroupPolicy: File
   {{- end}}
