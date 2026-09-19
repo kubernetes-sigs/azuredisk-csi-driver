@@ -213,6 +213,23 @@ func (d *Driver) NodeStageVolume(ctx context.Context, req *csi.NodeStageVolumeRe
 	}
 	defer d.volumeLocks.Release(volumeID)
 
+	// Ensure this is idempotent for Kata mounts (otherwise we might
+	// attempt to remount and reformat a disk that is owned by a guest
+	// VM, e.g. if the driver restarts).
+	// Block volumes are ignored as they don't use MountInfo.
+	// This runs before any PV lookup or QAD/LUN resolution, since a
+	// Kata-owned volume needs no further work here.
+	if d.enableKataMount && volumeCapability.GetBlock() == nil {
+		assigned, err := d.kataDirectVolume.IsVolumeMountedByID(volumeID)
+		if err != nil {
+			return nil, status.Errorf(codes.Internal, "could not check Kata assignment for %s: %v", volumeID, err)
+		}
+		if assigned {
+			isOperationSucceeded = true
+			return &csi.NodeStageVolumeResponse{}, nil
+		}
+	}
+
 	var lun string
 	// Check if this volume is using the QAD path.
 	// If yes, increment the attach-sequence and make an HTTP request to the QAD wireserver endpoint.
@@ -294,21 +311,6 @@ func (d *Driver) NodeStageVolume(ctx context.Context, req *csi.NodeStageVolumeRe
 			return nil, status.Error(codes.InvalidArgument, "lun not provided")
 		}
 		lun = val
-	}
-
-	// Ensure this is idempotent for Kata mounts (otherwise we might
-	// attempt to remount and reformat a disk that is owned by a guest
-	// VM, e.g. if the driver restarts).
-	// Block volumes are ignored as they don't use MountInfo.
-	if d.enableKataMount && volumeCapability.GetBlock() == nil {
-		assigned, err := d.kataDirectVolume.IsVolumeMountedByID(volumeID)
-		if err != nil {
-			return nil, status.Errorf(codes.Internal, "could not check Kata assignment for %s: %v", volumeID, err)
-		}
-		if assigned {
-			isOperationSucceeded = true
-			return &csi.NodeStageVolumeResponse{}, nil
-		}
 	}
 
 	source, err := d.getDevicePathWithLUN(lun)
