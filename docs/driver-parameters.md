@@ -43,7 +43,7 @@ Name | Meaning | Available Value | Mandatory | Default value
 --- | --- | --- | --- | ---
 skuName | azure disk storage account type (alias: `storageAccountType`)| `Standard_LRS`, `Premium_LRS`, `StandardSSD_LRS`, `UltraSSD_LRS`, `Premium_ZRS`, `StandardSSD_ZRS`, `PremiumV2_LRS`<br>(Note: [PremiumV2_LRS](https://learn.microsoft.com/en-us/azure/virtual-machines/disks-deploy-premium-v2) and [UltraSSD_LRS](https://learn.microsoft.com/en-us/azure/virtual-machines/disks-enable-ultra-ssd) only support `None` caching mode) | No | `StandardSSD_LRS`
 kind | managed or unmanaged(blob based) disk | `managed` (`dedicated`, `shared` are deprecated) | No | `managed`
-fsType | File System Type | `ext4`, `ext3`, `ext2`, `xfs`, `btrfs` on Linux, `ntfs` on Windows | No | `ext4` on Linux, `ntfs` on Windows
+fsType | File System Type | `ext4`, `ext3`, `ext2`, `xfs`, `btrfs` on Linux, `ntfs` on Windows<br>(an unsupported value fails volume staging on Linux; on Windows it logs a warning and falls back to `ntfs`) | No | `ext4` on Linux, `ntfs` on Windows
 cachingMode | [Azure Data Disk Host Cache Setting](https://learn.microsoft.com/en-us/azure/virtual-machines/premium-storage-performance#disk-caching) | `None`, `ReadOnly`, `ReadWrite`<br>(`ReadWrite` caching mode is deprecated, [PremiumV2_LRS](https://learn.microsoft.com/en-us/azure/virtual-machines/disks-deploy-premium-v2) and [UltraSSD_LRS](https://learn.microsoft.com/en-us/azure/virtual-machines/disks-enable-ultra-ssd) only support `None` caching mode) | No | `ReadOnly`
 location | specify Azure region in which Azure disk will be created, region name should only have lower-case letter or digit number. | `eastus2`, `westus`, etc. | No | if empty, driver will use the same region name as current k8s cluster
 resourceGroup | specify the resource group in which azure disk will be created | existing resource group name | No | if empty, driver will use the same resource group name as current k8s cluster
@@ -82,7 +82,7 @@ subscriptionID | specify Azure subscription ID in which Azure disk will be creat
 Name | Meaning | Available Value | Mandatory | Default value
 --- | --- | --- | --- | ---
 volumeHandle| Azure disk URI | `/subscriptions/{sub-id}/resourcegroups/{group-name}/providers/microsoft.compute/disks/{disk-id}` | Yes | N/A
-volumeAttributes.fsType | File System Type | `ext4`, `ext3`, `ext2`, `xfs`, `btrfs` on Linux, `ntfs` on Windows | No | `ext4` on Linux, `ntfs` on Windows
+volumeAttributes.fsType | File System Type | `ext4`, `ext3`, `ext2`, `xfs`, `btrfs` on Linux, `ntfs` on Windows<br>(an unsupported value fails volume staging on Linux; on Windows it logs a warning and falls back to `ntfs`) | No | `ext4` on Linux, `ntfs` on Windows
 volumeAttributes.partition | partition num of the existing disk (only supported on Linux) | `1`, `2`, `3` | No | empty(no partition)<br>make sure partition format is like `-part1`
 volumeAttributes.cachingMode | [disk host cache setting](https://learn.microsoft.com/en-us/azure/virtual-machines/premium-storage-performance#disk-caching)| `None`, `ReadOnly`, `ReadWrite` | No  | `ReadOnly`
 volumeAttributes.attachDiskInitialDelay | setting a large number for the initial delay in milliseconds for batch disk attach/detach could reduce the number of operations and ARM throttling |  | No | `1000`

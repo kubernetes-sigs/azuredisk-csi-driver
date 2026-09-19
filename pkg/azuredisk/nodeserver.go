@@ -194,6 +194,13 @@ func (d *Driver) NodeStageVolume(ctx context.Context, req *csi.NodeStageVolumeRe
 		return nil, status.Error(codes.InvalidArgument, err.Error())
 	}
 
+	// Resolve fsType before device discovery so a bad value fails fast, rather than after
+	// a LUN rescan that polls for two minutes.
+	fstype, mountFlags, err := resolveFSType(volumeCapability, params)
+	if err != nil {
+		return nil, status.Error(codes.InvalidArgument, err.Error())
+	}
+
 	mc := csiMetrics.NewCSIMetricContext("node_stage_volume").WithBasicVolumeInfo(d.cloud.ResourceGroup, "", d.Name)
 	isOperationSucceeded := false
 	defer func() {
@@ -314,6 +321,7 @@ func (d *Driver) NodeStageVolume(ctx context.Context, req *csi.NodeStageVolumeRe
 	// If the access type is block, do nothing for stage
 	switch req.GetVolumeCapability().GetAccessType().(type) {
 	case *csi.VolumeCapability_Block:
+		isOperationSucceeded = true
 		return &csi.NodeStageVolumeResponse{}, nil
 	}
 
@@ -323,24 +331,11 @@ func (d *Driver) NodeStageVolume(ctx context.Context, req *csi.NodeStageVolumeRe
 	}
 	if mnt {
 		klog.V(2).Infof("NodeStageVolume: already mounted on target %s", target)
+		isOperationSucceeded = true
 		return &csi.NodeStageVolumeResponse{}, nil
 	}
 
-	// Get fsType and mountOptions that the volume will be formatted and mounted with
-	fstype := getDefaultFsType()
-	options := []string{}
-	if mnt := volumeCapability.GetMount(); mnt != nil {
-		if mnt.FsType != "" {
-			fstype = mnt.FsType
-		}
-		options = append(options, collectMountOptions(fstype, mnt.MountFlags)...)
-	}
-
-	volContextFSType := azureutils.GetFStype(req.GetVolumeContext())
-	if volContextFSType != "" {
-		// respect "fstype" setting in storage class parameters
-		fstype = volContextFSType
-	}
+	options := collectMountOptions(fstype, mountFlags)
 
 	// If partition is specified, should mount it only instead of the entire disk.
 	if partition, ok := req.GetVolumeContext()[consts.VolumeAttributePartition]; ok {
@@ -558,6 +553,7 @@ func (d *Driver) NodePublishVolume(_ context.Context, req *csi.NodePublishVolume
 		}
 		if mnt {
 			klog.V(2).Infof("NodePublishVolume: already mounted on target %s", target)
+			isOperationSucceeded = true
 			return &csi.NodePublishVolumeResponse{}, nil
 		}
 	}
@@ -991,6 +987,40 @@ func (d *Driver) validateBlockDeviceSize(devicePath string, requestGiB int64) (i
 	}
 
 	return blockSizeBytes, nil
+}
+
+// resolveFSType returns the filesystem type and mount flags to stage a volume with,
+// or an empty fsType for the block access type, which has no filesystem. Values outside
+// the supported set are rejected, except on Windows where the mounters ignore fsType and
+// always format NTFS, so rejecting would break configurations that already worked.
+func resolveFSType(volumeCapability *csi.VolumeCapability, params map[string]string) (string, []string, error) {
+	// IsValidVolumeCapabilities rejects caps with block and mount both set or both nil,
+	// so a nil mount here is the block access type.
+	mnt := volumeCapability.GetMount()
+	if mnt == nil {
+		return "", nil, nil
+	}
+
+	fstype := getDefaultFsType()
+	if mnt.FsType != "" {
+		fstype = mnt.FsType
+	}
+
+	if volContextFSType := azureutils.GetFStype(params); volContextFSType != "" {
+		// respect "fstype" setting in storage class parameters
+		fstype = volContextFSType
+	}
+
+	// fstype is attacker-controllable via volume attributes and ends up in mkfs/mount, so allowlist it
+	normalized, err := azureutils.NormalizeFSType(fstype)
+	if err != nil {
+		if runtime.GOOS != "windows" {
+			return "", nil, err
+		}
+		normalized = getDefaultFsType()
+		klog.Warningf("NodeStageVolume: %v, falling back to %s", err, normalized)
+	}
+	return normalized, mnt.MountFlags, nil
 }
 
 func collectMountOptions(fsType string, mntFlags []string) []string {
