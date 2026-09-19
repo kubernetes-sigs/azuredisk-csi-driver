@@ -194,8 +194,7 @@ func (d *Driver) NodeStageVolume(ctx context.Context, req *csi.NodeStageVolumeRe
 		return nil, status.Error(codes.InvalidArgument, err.Error())
 	}
 
-	// Resolve fsType before device discovery so a bad value fails fast, rather than after
-	// a LUN rescan that polls for two minutes.
+	// Resolve fsType before device discovery so a bad value fails fast.
 	fstype, mountFlags, err := resolveFSType(volumeCapability, params)
 	if err != nil {
 		return nil, status.Error(codes.InvalidArgument, err.Error())
@@ -217,11 +216,11 @@ func (d *Driver) NodeStageVolume(ctx context.Context, req *csi.NodeStageVolumeRe
 	// If yes, increment the attach-sequence and make an HTTP request to the QAD wireserver endpoint.
 
 	pv, err := d.getPVFromDiskURI(ctx, volumeID)
-	if err != nil || pv == nil {
+	if err != nil && !errors.Is(err, errPVNotFound) {
 		return nil, status.Errorf(codes.Internal, "NodeStageVolume: failed to get PV from diskURI %s: %v", volumeID, err)
 	}
 
-	if d.isQAD(pv) {
+	if pv != nil && d.isQAD(pv) {
 		blobURL := pv.Annotations[consts.BlobURLAnnotation]
 		claimIdentifier := pv.Annotations[consts.ClaimIdentifierAnnotation]
 		attachSequenceVal, err := incrementAttachSequenceAnnotation(ctx, d.kubeClient, pv)
