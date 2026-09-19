@@ -207,6 +207,7 @@ spec:
               name: socket-dir
             - mountPath: /etc/kubernetes/
               name: azure-cred
+              readOnly: true
           resources:
             limits:
               memory: 500Mi

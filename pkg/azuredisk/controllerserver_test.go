@@ -3014,6 +3014,32 @@ func TestControllerExpandVolume(t *testing.T) {
 				}
 			},
 		},
+		{
+			// Regression guard for the nil-dereference fix in this PR: the
+			// disk client can legitimately return (nil, nil) (e.g. NotFound
+			// mapped to a nil result with a nil error). Before the fix, the
+			// controller dereferenced result.SKU before the nil check and
+			// panicked; now it must return an Internal error naming the disk.
+			name: "disk client returns (nil, nil) - no panic, Internal error",
+			testFunc: func(t *testing.T) {
+				req := &csi.ControllerExpandVolumeRequest{
+					VolumeId:      testVolumeID,
+					CapacityRange: stdCapRange,
+				}
+				ctx := context.Background()
+				cntl := gomock.NewController(t)
+				defer cntl.Finish()
+				d, _ := NewFakeDriver(cntl)
+				diskClient := mock_diskclient.NewMockInterface(cntl)
+				d.getClientFactory().(*mock_azclient.MockClientFactory).EXPECT().GetDiskClientForSub(gomock.Any()).Return(diskClient, nil).AnyTimes()
+				diskClient.EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, nil).AnyTimes()
+				expectedErr := status.Errorf(codes.Internal, "could not get size of the disk(/subscriptions/subs/resourceGroups/rg/providers/Microsoft.Compute/disks/unit-test-volume)")
+				_, err := d.ControllerExpandVolume(ctx, req)
+				if !reflect.DeepEqual(err, expectedErr) {
+					t.Errorf("actualErr: (%v), expectedErr: (%v)", err, expectedErr)
+				}
+			},
+		},
 	}
 	for _, tc := range testCases {
 		t.Run(tc.name, tc.testFunc)
@@ -5614,6 +5640,17 @@ func TestTruncateErrMsg(t *testing.T) {
 			input:    "Attach volume pvc-xxx to instance aks-node failed with PUT https://long-url/..." + strings.Repeat("x", 900) + "does not have permission to perform action 'Microsoft.Compute/diskEncryptionSets/read' on the linked scope",
 			wantLen:  maxErrMsgLength,
 			wantTail: "diskEncryptionSets/read' on the linked scope",
+		},
+		{
+			// Regression: verbose DES permission errors end with the
+			// ClientId / ObjectId of the identity that lacks the role
+			// assignment. Those IDs are the actionable part for the
+			// customer (they tell them which managed identity needs the
+			// role) and must survive truncation.
+			name:     "DES permission error preserves ClientId and ObjectId at tail",
+			input:    "Attach volume pvc-abcd-1234 to instance aks-nodepool1-12345678-vmss000000 failed with rpc error: code = Internal desc = " + strings.Repeat("filler junk from long Azure error body ", 30) + "does not have authorization to perform action 'Microsoft.Compute/diskEncryptionSets/read' over scope '/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-des/providers/Microsoft.Compute/diskEncryptionSets/my-des' or the scope is invalid. ClientId=11111111-2222-3333-4444-555555555555 ObjectId=66666666-7777-8888-9999-aaaaaaaaaaaa",
+			wantLen:  maxErrMsgLength,
+			wantTail: "ClientId=11111111-2222-3333-4444-555555555555 ObjectId=66666666-7777-8888-9999-aaaaaaaaaaaa",
 		},
 	}
 	for _, tc := range tests {

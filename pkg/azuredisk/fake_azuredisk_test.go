@@ -19,7 +19,9 @@ package azuredisk
 import (
 	"testing"
 
+	directvolume "github.com/kata-containers/kata-containers/src/runtime/pkg/direct-volume"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 )
 
@@ -29,4 +31,18 @@ func TestNewFakeDriver(t *testing.T) {
 	d, err := NewFakeDriver(cntl)
 	assert.NotNil(t, d)
 	assert.Nil(t, err)
+}
+
+func TestFakeDirectVolume(t *testing.T) {
+	dv := newFakeKataDirectVolume()
+
+	require.NoError(t, dv.AddMountInfo("target", directvolume.MountInfo{Device: "/dev/sda"}))
+	mounted, err := dv.IsVolumeMounted("target")
+	require.NoError(t, err)
+	assert.True(t, mounted)
+
+	require.NoError(t, dv.Remove("target"))
+	mounted, err = dv.IsVolumeMounted("target")
+	require.NoError(t, err)
+	assert.False(t, mounted)
 }
