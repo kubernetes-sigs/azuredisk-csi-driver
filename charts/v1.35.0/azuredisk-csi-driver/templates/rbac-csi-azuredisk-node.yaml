@@ -1,15 +1,9 @@
----
-apiVersion: v1
-kind: ServiceAccount
-metadata:
-  name: csi-azuredisk-node-sa
-  namespace: kube-system
-
+{{- if .Values.rbac.create -}}
 ---
 kind: ClusterRole
 apiVersion: rbac.authorization.k8s.io/v1
 metadata:
-  name: csi-azuredisk-node-role
+  name: csi-{{ .Values.rbac.name }}-node-role
 rules:
   - apiGroups: [""]
     resources: ["secrets"]
@@ -17,12 +11,14 @@ rules:
   - apiGroups: [""]
     resources: ["nodes"]
     verbs: ["get", "patch"]
+  {{- if .Values.node.enableKataMount }}
   - apiGroups: [""]
     resources: ["pods"]
     verbs: ["get"]
   - apiGroups: ["node.k8s.io"]
     resources: ["runtimeclasses"]
     verbs: ["get"]
+  {{- end }}
   - apiGroups: ["storage.k8s.io"]
     resources: ["csinodes"]
     verbs: ["get"]
@@ -33,12 +29,13 @@ rules:
 kind: ClusterRoleBinding
 apiVersion: rbac.authorization.k8s.io/v1
 metadata:
-  name: csi-azuredisk-node-secret-binding
+  name: csi-{{ .Values.rbac.name }}-node-secret-binding
 subjects:
   - kind: ServiceAccount
-    name: csi-azuredisk-node-sa
-    namespace: kube-system
+    name: {{ .Values.serviceAccount.node }}
+    namespace: {{ .Release.Namespace }}
 roleRef:
   kind: ClusterRole
-  name: csi-azuredisk-node-role
+  name: csi-{{ .Values.rbac.name }}-node-role
   apiGroup: rbac.authorization.k8s.io
+{{ end }}
