@@ -845,11 +845,18 @@ func (d *Driver) ControllerPublishVolume(ctx context.Context, req *csi.Controlle
 		return nil, status.Errorf(codes.InvalidArgument, "failed to determine attachment mode: %v", err)
 	}
 	if attachMode == consts.AttachModeNodeDriven {
-		if !d.nodeDrivenAttachDetachEnabled {
-			pv, pvErr := d.getPVFromDiskURI(ctx, diskURI)
-			if pvErr != nil || pv == nil {
+		pv, err := d.getPVFromDiskURI(ctx, diskURI)
+		if err != nil || pv == nil {
+			// With the gate off we can only service already-adopted QAD volumes,
+			// which requires reading the PV; treat a lookup failure as gate-required.
+			if !d.nodeDrivenAttachDetachEnabled {
 				return nil, status.Errorf(codes.FailedPrecondition, "%s=%s requires the Alpha %s feature gate", consts.AttachModeField, consts.AttachModeNodeDriven, NodeDrivenAttachDetach)
 			}
+			return nil, status.Errorf(codes.Internal, "failed to get PV from disk URI %s: %v", diskURI, err)
+		}
+		if !d.nodeDrivenAttachDetachEnabled {
+			// Gate off: only volumes already adopted into QAD (carrying the
+			// attach-sequence annotation) may still be serviced.
 			if _, exists := pv.Annotations[azureconstants.AttachSequenceAnnotation]; !exists {
 				return nil, status.Errorf(codes.FailedPrecondition, "%s=%s requires the Alpha %s feature gate", consts.AttachModeField, consts.AttachModeNodeDriven, NodeDrivenAttachDetach)
 			}
@@ -857,11 +864,6 @@ func (d *Driver) ControllerPublishVolume(ctx context.Context, req *csi.Controlle
 		klog.V(2).Infof("qad is enabled for disk %s", diskURI)
 		blobURL := volumeContext[azureconstants.BlobURLAnnotation]
 		claimIdentifier := volumeContext[azureconstants.ClaimIdentifierAnnotation]
-
-		pv, err := d.getPVFromDiskURI(ctx, diskURI)
-		if err != nil || pv == nil {
-			return nil, status.Errorf(codes.Internal, "failed to get PV from disk URI %s: %v", diskURI, err)
-		}
 
 		if err := ensureQADPVAnnotations(ctx, d.kubeClient, pv.Name, blobURL, claimIdentifier); err != nil {
 			return nil, status.Errorf(codes.Internal, "failed to update PV %s with QAD annotations: %v", pv.Name, err)
@@ -969,8 +971,16 @@ func ensureQADPVAnnotations(ctx context.Context, kubeClient clientset.Interface,
 		if err != nil {
 			return err
 		}
+		// Static QAD PVs may carry the claim metadata in annotations rather than
+		// the volume context; fall back to those so attach-sequence can be seeded.
+		if blobURL == "" {
+			blobURL = pv.Annotations[azureconstants.BlobURLAnnotation]
+		}
+		if claimIdentifier == "" {
+			claimIdentifier = pv.Annotations[azureconstants.ClaimIdentifierAnnotation]
+		}
 		if _, exists := pv.Annotations[azureconstants.AttachSequenceAnnotation]; exists {
-			if pv.Annotations[azureconstants.BlobURLAnnotation] == "" || pv.Annotations[azureconstants.ClaimIdentifierAnnotation] == "" {
+			if blobURL == "" || claimIdentifier == "" {
 				return fmt.Errorf("PV %s has attach-sequence annotation but incomplete QAD metadata", pvName)
 			}
 			return nil

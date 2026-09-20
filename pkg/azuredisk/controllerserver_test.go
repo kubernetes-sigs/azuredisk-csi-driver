@@ -2750,6 +2750,30 @@ func TestEnsureQADPVAnnotationsRejectsIncompleteMetadata(t *testing.T) {
 	}
 }
 
+func TestEnsureQADPVAnnotationsSeedsFromExistingAnnotations(t *testing.T) {
+	const (
+		pvName          = "static-qad-pv"
+		blobURL         = "https://example.blob.storage.azure.net/container/disk"
+		claimIdentifier = "claim-id"
+	)
+	// Static PV carries the claim metadata in annotations but no attach-sequence
+	// yet, and the volume context (passed args) is empty.
+	kubeClient := fake.NewClientset(&v1.PersistentVolume{
+		ObjectMeta: metav1.ObjectMeta{Name: pvName, Annotations: map[string]string{
+			consts.BlobURLAnnotation:         blobURL,
+			consts.ClaimIdentifierAnnotation: claimIdentifier,
+		}},
+	})
+
+	require.NoError(t, ensureQADPVAnnotations(context.Background(), kubeClient, pvName, "", ""))
+
+	pv, err := kubeClient.CoreV1().PersistentVolumes().Get(context.Background(), pvName, metav1.GetOptions{})
+	require.NoError(t, err)
+	assert.Equal(t, "0", pv.Annotations[consts.AttachSequenceAnnotation])
+	assert.Equal(t, blobURL, pv.Annotations[consts.BlobURLAnnotation])
+	assert.Equal(t, claimIdentifier, pv.Annotations[consts.ClaimIdentifierAnnotation])
+}
+
 func TestControllerPublishVolumeRejectsIncompleteQADMetadata(t *testing.T) {
 	tests := []struct {
 		name          string
@@ -2765,15 +2789,16 @@ func TestControllerPublishVolumeRejectsIncompleteQADMetadata(t *testing.T) {
 			expectedErr: "without blob URL and claim identifier",
 		},
 		{
+			// Neither the volume context nor the PV annotations supply the claim
+			// identifier, so the QAD metadata stays incomplete and publish is rejected.
 			name: "existing QAD PV with incomplete companion annotations",
 			annotations: map[string]string{
 				consts.AttachSequenceAnnotation: "1",
 				consts.BlobURLAnnotation:        "https://example.blob.storage.azure.net/container/disk",
 			},
 			volumeContext: map[string]string{
-				consts.AttachModeField:           consts.AttachModeNodeDriven,
-				consts.BlobURLAnnotation:         "https://example.blob.storage.azure.net/container/disk",
-				consts.ClaimIdentifierAnnotation: "claim-id",
+				consts.AttachModeField:   consts.AttachModeNodeDriven,
+				consts.BlobURLAnnotation: "https://example.blob.storage.azure.net/container/disk",
 			},
 			expectedErr: "attach-sequence annotation but incomplete QAD metadata",
 		},

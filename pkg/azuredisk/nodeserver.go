@@ -1272,6 +1272,11 @@ func incrementAttachSequenceAnnotation(ctx context.Context, kubeClient clientset
 }
 
 func (d *Driver) executeQADDiskOperation(ctx context.Context, diskRequest DiskOperationRequest, operationType string) (*DiskStatus, error) {
+	// httpClient is only initialized on the node service; guard against a nil
+	// dereference if the QAD path is reached without it.
+	if d.httpClient == nil {
+		return nil, status.Errorf(codes.Internal, "QAD HTTP client is not initialized; node-driven attach/detach is only available on the node service")
+	}
 	response, err := attachOrDetachDiskInternal(ctx, *d.httpClient, diskRequest, d.cloud.AuthProvider.GetAzIdentity(), operationType)
 	if err != nil {
 		return nil, err
