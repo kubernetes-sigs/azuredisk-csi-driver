@@ -9,8 +9,6 @@ provisioner: disk.csi.azure.com
 parameters:
   skuName: Premium_LRS
   attachMode: NodeDriven
-  networkAccessPolicy: AllowAll
-  publicNetworkAccess: Enabled
 reclaimPolicy: Delete
 volumeBindingMode: WaitForFirstConsumer
 allowVolumeExpansion: true
