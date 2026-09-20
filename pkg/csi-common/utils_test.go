@@ -20,6 +20,7 @@ import (
 	"bytes"
 	"context"
 	"flag"
+	"io"
 	"os"
 	"runtime"
 	"testing"
@@ -144,6 +145,81 @@ func TestLogGRPC(t *testing.T) {
 
 			// CLEANUP
 			buf.Reset()
+		})
+	}
+}
+
+func TestLogGRPCEmptyResponse(t *testing.T) {
+	buf := new(bytes.Buffer)
+	// klog defaults to logtostderr=true, which bypasses SetOutput. Disable it
+	// so the buffer captures the log output.
+	klog.LogToStderr(false)
+	defer klog.LogToStderr(true)
+	klog.SetOutput(buf)
+	defer klog.SetOutput(io.Discard)
+
+	// Snapshot and restore -v so this test does not leak verbosity state
+	// into other tests (e.g. TestLogGRPC relies on -v=100).
+	vFlag := flag.Lookup("v")
+	var originalV string
+	if vFlag != nil {
+		originalV = vFlag.Value.String()
+		defer func() { _ = vFlag.Value.Set(originalV) }()
+	}
+	var vLevel klog.Level
+
+	info := grpc.UnaryServerInfo{FullMethod: "/csi.v1.Node/NodePublishVolume"}
+	req := &csi.NodePublishVolumeRequest{VolumeId: "vol_1"}
+
+	emptyHandler := func(_ context.Context, _ interface{}) (interface{}, error) {
+		return &csi.NodePublishVolumeResponse{}, nil
+	}
+	nonEmptyHandler := func(_ context.Context, _ interface{}) (interface{}, error) {
+		return &csi.NodeGetInfoResponse{NodeId: "node-1"}, nil
+	}
+
+	tests := []struct {
+		name             string
+		v                string
+		handler          grpc.UnaryHandler
+		expectResponse   bool
+		expectedResponse string
+	}{
+		{
+			name:           "empty response is suppressed at V(2)",
+			v:              "2",
+			handler:        emptyHandler,
+			expectResponse: false,
+		},
+		{
+			name:             "empty response is visible at V(6)",
+			v:                "6",
+			handler:          emptyHandler,
+			expectResponse:   true,
+			expectedResponse: "GRPC response: {}",
+		},
+		{
+			name:             "non-empty response is still visible at V(2)",
+			v:                "2",
+			handler:          nonEmptyHandler,
+			expectResponse:   true,
+			expectedResponse: `GRPC response: {"node_id":"node-1"}`,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			_ = vLevel.Set(test.v)
+			buf.Reset()
+
+			_, _ = LogGRPC(context.Background(), req, &info, test.handler)
+			klog.Flush()
+
+			if test.expectResponse {
+				assert.Contains(t, buf.String(), test.expectedResponse)
+			} else {
+				assert.NotContains(t, buf.String(), "GRPC response:")
+			}
 		})
 	}
 }

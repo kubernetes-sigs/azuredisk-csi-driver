@@ -108,6 +108,7 @@ spec:
             - "--endpoint=$(CSI_ENDPOINT)"
             - "--nodeid=$(KUBE_NODE_NAME)"
             - "--enable-perf-optimization=true"
+            - "--enable-kata-mount=true"
             - "--allow-empty-cloud-config=true"
             - "--get-node-info-from-labels=false"
             - "--metrics-address=0.0.0.0:29605"
@@ -158,12 +159,15 @@ spec:
               name: plugins-dir
             - mountPath: /etc/kubernetes/
               name: azure-cred
+              readOnly: true
             - mountPath: /dev
               name: device-dir
             - mountPath: /sys/bus/scsi/devices
               name: sys-devices-dir
             - mountPath: /sys/class/
               name: sys-class
+            - mountPath: /run/kata-containers/shared/direct-volumes
+              name: kata-direct-volumes
           resources:
             limits:
               memory: 1000Mi
@@ -203,4 +207,8 @@ spec:
             path: /sys/class/
             type: Directory
           name: sys-class
+        - hostPath:
+            path: /run/kata-containers/shared/direct-volumes/
+            type: DirectoryOrCreate
+          name: kata-direct-volumes
 ---

@@ -22,6 +22,8 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"runtime"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -332,6 +334,28 @@ func GetFStype(attributes map[string]string) string {
 		}
 	}
 	return ""
+}
+
+// SupportedFSTypes returns the filesystem types this node can actually format and mount.
+// The Linux image ships e2fsprogs/xfsprogs/btrfs-progs but no NTFS formatter, and the
+// Windows mounters ignore fstype and always format NTFS, so the sets are disjoint.
+func SupportedFSTypes() []string {
+	if runtime.GOOS == "windows" {
+		return []string{"ntfs"}
+	}
+	return []string{"btrfs", "ext2", "ext3", "ext4", "xfs"}
+}
+
+// NormalizeFSType lowercases fsType and verifies it is supported on the current OS.
+// The value reaches `mkfs.<fstype>` and `mount -t <fstype>`, so restricting it also
+// prevents untrusted volume attributes from selecting an arbitrary helper binary.
+func NormalizeFSType(fsType string) (string, error) {
+	normalized := strings.ToLower(strings.TrimSpace(fsType))
+	supported := SupportedFSTypes()
+	if !slices.Contains(supported, normalized) {
+		return "", fmt.Errorf("fsType(%q) is not supported on %s, supported fsTypes are %v", normalized, runtime.GOOS, supported)
+	}
+	return normalized, nil
 }
 
 func GetMaxShares(attributes map[string]string) (int, error) {

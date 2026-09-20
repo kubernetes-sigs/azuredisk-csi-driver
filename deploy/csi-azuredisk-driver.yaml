@@ -8,5 +8,5 @@ metadata:
     snapshot: v6.2.1
 spec:
   attachRequired: true
-  podInfoOnMount: false
+  podInfoOnMount: true
   fsGroupPolicy: File
