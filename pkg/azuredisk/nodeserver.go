@@ -239,7 +239,7 @@ func (d *Driver) NodeStageVolume(ctx context.Context, req *csi.NodeStageVolumeRe
 		return nil, status.Errorf(codes.Internal, "NodeStageVolume: failed to get PV from diskURI %s: %v", volumeID, err)
 	}
 
-	if pv != nil && d.isQAD(pv) {
+	if pv != nil && d.hasQADInfo(pv) {
 		blobURL := pv.Annotations[consts.BlobURLAnnotation]
 		claimIdentifier := pv.Annotations[consts.ClaimIdentifierAnnotation]
 		attachSequenceVal, err := incrementAttachSequenceAnnotation(ctx, d.kubeClient, pv)
@@ -430,7 +430,7 @@ func (d *Driver) NodeUnstageVolume(ctx context.Context, req *csi.NodeUnstageVolu
 		return nil, status.Errorf(codes.Internal, "NodeUnstageVolume: failed to get PV from diskURI %s: %v", volumeID, err)
 	}
 
-	if d.isQAD(pv) {
+	if d.hasQADInfo(pv) {
 		blobURL := pv.Annotations[azureconstants.BlobURLAnnotation]
 		claimIdentifier := pv.Annotations[azureconstants.ClaimIdentifierAnnotation]
 		attachSequenceVal, err := incrementAttachSequenceAnnotation(ctx, d.kubeClient, pv)
@@ -1212,7 +1212,7 @@ func collectMountOptions(fsType string, mntFlags []string) []string {
 	return options
 }
 
-func (d *Driver) isQAD(pv *v1.PersistentVolume) bool {
+func (d *Driver) hasQADInfo(pv *v1.PersistentVolume) bool {
 	if pv == nil {
 		klog.V(2).Infof("PV is nil")
 		return false
@@ -1224,20 +1224,12 @@ func (d *Driver) isQAD(pv *v1.PersistentVolume) bool {
 		return false
 	}
 
-	// Check for QAD-related annotations or labels
+	// The attach-sequence annotation, seeded during controller-side adoption, is
+	// the node's signal that this PV uses the QAD attach/detach path.
 	if attachSequence, exists := pv.Annotations[azureconstants.AttachSequenceAnnotation]; exists {
 		klog.V(2).Infof("Found PV %s with attach sequence: %s", pvName, attachSequence)
 		return true
 	}
-	// Detach RPCs carry no request volume context, so fall back to the attach
-	// mode persisted in the PV's CSI volume attributes.
-	if pv.Spec.CSI != nil {
-		if mode, err := getAttachMode(pv.Spec.CSI.VolumeAttributes); err == nil && mode == azureconstants.AttachModeNodeDriven {
-			klog.V(2).Infof("Found PV %s with attach mode %s in volume attributes", pvName, mode)
-			return true
-		}
-	}
-	// Found PV but no QAD configuration
 	klog.V(2).Infof("Found PV %s but no QAD configuration", pvName)
 	return false
 }

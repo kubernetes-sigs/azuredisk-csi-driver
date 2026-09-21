@@ -704,7 +704,7 @@ func (d *Driver) ControllerModifyVolume(ctx context.Context, req *csi.Controller
 		klog.Warningf("failed to get PV from diskURI %s: %v", diskURI, err)
 	}
 
-	if pv != nil && d.isQAD(pv) {
+	if pv != nil && d.hasQADInfo(pv) {
 		return nil, status.Errorf(codes.Unimplemented, "ControllerModifyVolume is not supported for QAD-enabled volume %s", diskURI)
 	}
 
@@ -1398,7 +1398,7 @@ func (d *Driver) ControllerExpandVolume(ctx context.Context, req *csi.Controller
 	if err != nil {
 		klog.Warningf("failed to get PV from diskURI %s: %v", diskURI, err)
 	}
-	if pv != nil && d.isQAD(pv) {
+	if pv != nil && d.hasQADInfo(pv) {
 		return nil, status.Errorf(codes.Unimplemented, "ControllerExpandVolume is not supported for QAD-enabled volume %s", diskURI)
 	}
 
