@@ -19,7 +19,7 @@ require (
 	github.com/kubernetes-csi/csi-lib-utils v0.19.0
 	github.com/kubernetes-csi/csi-proxy/client v1.3.0
 	github.com/kubernetes-csi/external-snapshotter/client/v4 v4.2.0
-	github.com/onsi/ginkgo/v2 v2.32.2
+	github.com/onsi/ginkgo/v2 v2.33.0
 	github.com/onsi/gomega v1.40.0
 	github.com/prometheus/client_model v0.6.3
 	github.com/stretchr/testify v1.12.1
