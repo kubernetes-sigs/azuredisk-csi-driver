@@ -231,12 +231,14 @@ func (d *Driver) NodeStageVolume(ctx context.Context, req *csi.NodeStageVolumeRe
 	}
 
 	var lun string
-	// Check if this volume is using the QAD path.
-	// If yes, increment the attach-sequence and make an HTTP request to the QAD wireserver endpoint.
-
-	pv, err := d.getPVFromDiskURI(ctx, volumeID)
-	if err != nil && !errors.Is(err, errPVNotFound) {
-		return nil, status.Errorf(codes.Internal, "NodeStageVolume: failed to get PV from diskURI %s: %v", volumeID, err)
+	// QAD attach is only performed when the feature gate is enabled; otherwise the
+	// LUN comes from the controller-provided PublishContext and no PV lookup is done.
+	var pv *v1.PersistentVolume
+	if d.nodeDrivenAttachDetachEnabled {
+		pv, err = d.getPVFromDiskURI(ctx, volumeID)
+		if err != nil && !errors.Is(err, errPVNotFound) {
+			return nil, status.Errorf(codes.Internal, "NodeStageVolume: failed to get PV from diskURI %s: %v", volumeID, err)
+		}
 	}
 
 	if pv != nil && d.hasQADInfo(pv) {
@@ -419,6 +421,13 @@ func (d *Driver) NodeUnstageVolume(ctx context.Context, req *csi.NodeUnstageVolu
 		return nil, status.Errorf(codes.Internal, "failed to unmount staging target %q: %v", stagingTargetPath, err)
 	}
 	klog.V(2).Infof("NodeUnstageVolume: unmount %s successfully", stagingTargetPath)
+
+	// QAD detach is only performed when the feature gate is enabled; otherwise the
+	// controller performs the detach and no PV lookup is needed here.
+	if !d.nodeDrivenAttachDetachEnabled {
+		isOperationSucceeded = true
+		return &csi.NodeUnstageVolumeResponse{}, nil
+	}
 
 	pv, err := d.getPVFromDiskURI(ctx, volumeID)
 	if errors.Is(err, errPVNotFound) {
@@ -1210,28 +1219,6 @@ func collectMountOptions(fsType string, mntFlags []string) []string {
 		options = append(options, "nouuid")
 	}
 	return options
-}
-
-func (d *Driver) hasQADInfo(pv *v1.PersistentVolume) bool {
-	if pv == nil {
-		klog.V(2).Infof("PV is nil")
-		return false
-	}
-
-	pvName := pv.Name
-	if pvName == "" {
-		klog.V(2).Infof("PV name is empty")
-		return false
-	}
-
-	// The attach-sequence annotation, seeded during controller-side adoption, is
-	// the node's signal that this PV uses the QAD attach/detach path.
-	if attachSequence, exists := pv.Annotations[azureconstants.AttachSequenceAnnotation]; exists {
-		klog.V(2).Infof("Found PV %s with attach sequence: %s", pvName, attachSequence)
-		return true
-	}
-	klog.V(2).Infof("Found PV %s but no QAD configuration", pvName)
-	return false
 }
 
 func incrementAttachSequenceAnnotation(ctx context.Context, kubeClient clientset.Interface, pv *v1.PersistentVolume) (int, error) {

@@ -641,13 +641,13 @@ func (d *Driver) DeleteVolume(ctx context.Context, req *csi.DeleteVolumeRequest)
 		mc.WithAdditionalVolumeInfo(consts.VolumeID, diskURI).Observe(isOperationSucceeded)
 	}()
 
-	// If the PV is a QAD PV, unclaim the disk before deletion
-	pv, err := d.getPVFromDiskURI(ctx, diskURI)
-	if err != nil && !errors.Is(err, errPVNotFound) {
-		return nil, status.Errorf(codes.Internal, "failed to get PV from disk URI %s: %v", diskURI, err)
-	}
-	if pv != nil && pv.Annotations != nil {
-		if _, exists := pv.Annotations[azureconstants.AttachSequenceAnnotation]; exists {
+	// If the PV is a QAD PV, unclaim the disk before deletion (feature-gated).
+	if d.nodeDrivenAttachDetachEnabled {
+		pv, pvErr := d.getPVFromDiskURI(ctx, diskURI)
+		if pvErr != nil && !errors.Is(pvErr, errPVNotFound) {
+			return nil, status.Errorf(codes.Internal, "failed to get PV from disk URI %s: %v", diskURI, pvErr)
+		}
+		if d.hasQADInfo(pv) {
 			klog.V(2).Infof("PV %s has QAD enabled, unclaiming disk %s before deletion", pv.Name, diskURI)
 			ownerResource, ownerErr := d.getAKSClusterResourceID(ctx)
 			if ownerErr != nil {
@@ -659,7 +659,7 @@ func (d *Driver) DeleteVolume(ctx context.Context, req *csi.DeleteVolumeRequest)
 	}
 
 	klog.V(2).Infof("deleting azure disk(%s)", diskURI)
-	err = d.diskController.DeleteManagedDisk(ctx, diskURI)
+	err := d.diskController.DeleteManagedDisk(ctx, diskURI)
 	klog.V(2).Infof("delete azure disk(%s) returned with %v", diskURI, err)
 	if err != nil {
 		var managedErr *diskManagedError
@@ -699,13 +699,14 @@ func (d *Driver) ControllerModifyVolume(ctx context.Context, req *csi.Controller
 
 	diskURI := volumeID
 
-	pv, err := d.getPVFromDiskURI(ctx, diskURI)
-	if err != nil {
-		klog.Warningf("failed to get PV from diskURI %s: %v", diskURI, err)
-	}
-
-	if pv != nil && d.hasQADInfo(pv) {
-		return nil, status.Errorf(codes.Unimplemented, "ControllerModifyVolume is not supported for QAD-enabled volume %s", diskURI)
+	if d.nodeDrivenAttachDetachEnabled {
+		pv, pvErr := d.getPVFromDiskURI(ctx, diskURI)
+		if pvErr != nil {
+			klog.Warningf("failed to get PV from diskURI %s: %v", diskURI, pvErr)
+		}
+		if pv != nil && d.hasQADInfo(pv) {
+			return nil, status.Errorf(codes.Unimplemented, "ControllerModifyVolume is not supported for QAD-enabled volume %s", diskURI)
+		}
 	}
 
 	currentDisk, err := d.checkDiskExists(ctx, diskURI)
@@ -845,21 +846,12 @@ func (d *Driver) ControllerPublishVolume(ctx context.Context, req *csi.Controlle
 		return nil, status.Errorf(codes.InvalidArgument, "failed to determine attachment mode: %v", err)
 	}
 	if attachMode == consts.AttachModeNodeDriven {
+		if !d.nodeDrivenAttachDetachEnabled {
+			return nil, status.Errorf(codes.FailedPrecondition, "%s=%s requires the Alpha %s feature gate", consts.AttachModeField, consts.AttachModeNodeDriven, NodeDrivenAttachDetach)
+		}
 		pv, err := d.getPVFromDiskURI(ctx, diskURI)
 		if err != nil || pv == nil {
-			// With the gate off we can only service already-adopted QAD volumes,
-			// which requires reading the PV; treat a lookup failure as gate-required.
-			if !d.nodeDrivenAttachDetachEnabled {
-				return nil, status.Errorf(codes.FailedPrecondition, "%s=%s requires the Alpha %s feature gate", consts.AttachModeField, consts.AttachModeNodeDriven, NodeDrivenAttachDetach)
-			}
 			return nil, status.Errorf(codes.Internal, "failed to get PV from disk URI %s: %v", diskURI, err)
-		}
-		if !d.nodeDrivenAttachDetachEnabled {
-			// Gate off: only volumes already adopted into QAD (carrying the
-			// attach-sequence annotation) may still be serviced.
-			if _, exists := pv.Annotations[azureconstants.AttachSequenceAnnotation]; !exists {
-				return nil, status.Errorf(codes.FailedPrecondition, "%s=%s requires the Alpha %s feature gate", consts.AttachModeField, consts.AttachModeNodeDriven, NodeDrivenAttachDetach)
-			}
 		}
 		klog.V(2).Infof("qad is enabled for disk %s", diskURI)
 		blobURL := volumeContext[azureconstants.BlobURLAnnotation]
@@ -1018,16 +1010,15 @@ func (d *Driver) ControllerUnpublishVolume(ctx context.Context, req *csi.Control
 		return nil, status.Error(codes.InvalidArgument, "Volume ID not provided")
 	}
 
-	// QAD detach is owned by NodeUnstageVolume, so no controller-side detach is needed.
-	pv, err := d.getPVFromDiskURI(ctx, diskURI)
-	if errors.Is(err, errPVNotFound) {
-		klog.V(4).Infof("PV not found for disk URI %s; continuing with controller detach", diskURI)
-	} else if err != nil {
-		klog.Warningf("failed to get PV from disk URI %s; continuing with controller detach: %v", diskURI, err)
-	} else if pv == nil {
-		klog.Warningf("PV lookup returned no result for disk URI %s; continuing with controller detach", diskURI)
-	} else if pv.Annotations != nil {
-		if _, exists := pv.Annotations[azureconstants.AttachSequenceAnnotation]; exists {
+	// QAD detach is owned by NodeUnstageVolume; only consult the PV when enabled.
+	if d.nodeDrivenAttachDetachEnabled {
+		pv, pvErr := d.getPVFromDiskURI(ctx, diskURI)
+		switch {
+		case errors.Is(pvErr, errPVNotFound):
+			klog.V(4).Infof("PV not found for disk URI %s; continuing with controller detach", diskURI)
+		case pvErr != nil:
+			klog.Warningf("failed to get PV from disk URI %s; continuing with controller detach: %v", diskURI, pvErr)
+		case d.hasQADInfo(pv):
 			klog.V(2).Infof("QAD detach is handled by NodeUnstageVolume; skipping controller detach for disk %s", diskURI)
 			return &csi.ControllerUnpublishVolumeResponse{}, nil
 		}
@@ -1394,12 +1385,14 @@ func (d *Driver) ControllerExpandVolume(ctx context.Context, req *csi.Controller
 
 	diskURI := req.GetVolumeId()
 
-	pv, err := d.getPVFromDiskURI(ctx, diskURI)
-	if err != nil {
-		klog.Warningf("failed to get PV from diskURI %s: %v", diskURI, err)
-	}
-	if pv != nil && d.hasQADInfo(pv) {
-		return nil, status.Errorf(codes.Unimplemented, "ControllerExpandVolume is not supported for QAD-enabled volume %s", diskURI)
+	if d.nodeDrivenAttachDetachEnabled {
+		pv, pvErr := d.getPVFromDiskURI(ctx, diskURI)
+		if pvErr != nil {
+			klog.Warningf("failed to get PV from diskURI %s: %v", diskURI, pvErr)
+		}
+		if pv != nil && d.hasQADInfo(pv) {
+			return nil, status.Errorf(codes.Unimplemented, "ControllerExpandVolume is not supported for QAD-enabled volume %s", diskURI)
+		}
 	}
 
 	result, rerr := d.diskController.GetDiskByURI(ctx, diskURI)
