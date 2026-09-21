@@ -164,13 +164,7 @@ func (c *controllerCommon) AttachDisk(ctx context.Context, diskName, diskURI str
 		}
 
 		if disk.Properties != nil {
-			if disk.Properties.DiskSizeGB != nil && *disk.Properties.DiskSizeGB >= diskCachingLimit && cachingMode != armcompute.CachingTypesNone {
-				// Disk Caching is not supported for disks 4 TiB and larger
-				// https://docs.microsoft.com/en-us/azure/virtual-machines/premium-storage-performance#disk-caching
-				cachingMode = armcompute.CachingTypesNone
-				klog.Warningf("size of disk(%s) is %dGB which is bigger than limit(%dGB), set cacheMode as None",
-					diskURI, *disk.Properties.DiskSizeGB, diskCachingLimit)
-			}
+			cachingMode = effectiveCachingModeForDisk(cachingMode, disk.Properties.DiskSizeGB, diskURI)
 
 			if disk.Properties.Encryption != nil &&
 				disk.Properties.Encryption.DiskEncryptionSetID != nil {
@@ -328,6 +322,16 @@ func (c *controllerCommon) AttachDisk(ctx context.Context, diskName, diskURI str
 		return c.verifyAttach(ctx, diskName, diskURI, nodeName)
 	}
 	return lun, nil
+}
+
+func effectiveCachingModeForDisk(cachingMode armcompute.CachingTypes, diskSizeGB *int32, diskURI string) armcompute.CachingTypes {
+	if diskSizeGB != nil && *diskSizeGB >= diskCachingLimit && cachingMode != armcompute.CachingTypesNone {
+		// Disk caching is not supported for disks 4 TiB and larger.
+		cachingMode = armcompute.CachingTypesNone
+		klog.Warningf("size of disk(%s) is %dGB which is bigger than limit(%dGB), set cacheMode as None",
+			diskURI, *diskSizeGB, diskCachingLimit)
+	}
+	return cachingMode
 }
 
 // insertAttachDiskRequest return (attachDiskRequestQueueLength, error)

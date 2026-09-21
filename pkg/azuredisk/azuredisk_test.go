@@ -27,6 +27,7 @@ import (
 
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute/v7"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 	"golang.org/x/sync/errgroup"
 	"google.golang.org/grpc/status"
@@ -307,6 +308,92 @@ func TestRun(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.name, tc.testFunc)
 	}
+}
+
+func TestPVInformerCacheSyncTimeoutDisablesIndexer(t *testing.T) {
+	d := &Driver{
+		pvIndexer:      cache.NewIndexer(cache.MetaNamespaceKeyFunc, cache.Indexers{}),
+		pvListerSynced: func() bool { return false },
+	}
+
+	if d.waitForPVInformerCacheSync(context.Background(), time.Millisecond) {
+		t.Fatal("expected PV informer cache sync to time out")
+	}
+	assert.Nil(t, d.pvIndexer)
+}
+
+func TestInitializePVInformerRequiresNodeDrivenAttachDetach(t *testing.T) {
+	kubeClient := fake.NewClientset()
+
+	disabledDriver := &Driver{}
+	disabledDriver.initializePVInformer(kubeClient)
+	assert.Nil(t, disabledDriver.informerFactory)
+	assert.Nil(t, disabledDriver.pvIndexer)
+	assert.Nil(t, disabledDriver.pvLister)
+	assert.Nil(t, disabledDriver.pvListerSynced)
+
+	enabledDriver := &Driver{nodeDrivenAttachDetachEnabled: true}
+	enabledDriver.initializePVInformer(kubeClient)
+	assert.NotNil(t, enabledDriver.informerFactory)
+	assert.NotNil(t, enabledDriver.pvIndexer)
+	assert.NotNil(t, enabledDriver.pvLister)
+	assert.NotNil(t, enabledDriver.pvListerSynced)
+}
+
+func TestGetPVFromDiskURIWithoutKubeClient(t *testing.T) {
+	d := &Driver{}
+
+	pv, err := d.getPVFromDiskURI(context.Background(), "disk-uri")
+
+	assert.Nil(t, pv)
+	assert.ErrorIs(t, err, errPVMetadataUnavailable)
+}
+
+func TestGetPVFromDiskURIUsesIndexedCandidate(t *testing.T) {
+	const diskURI = "/subscriptions/sub/resourceGroups/rg/providers/Microsoft.Compute/disks/disk"
+	indexedPV := &corev1.PersistentVolume{
+		ObjectMeta: metav1.ObjectMeta{Name: "pv"},
+		Spec: corev1.PersistentVolumeSpec{PersistentVolumeSource: corev1.PersistentVolumeSource{
+			CSI: &corev1.CSIPersistentVolumeSource{Driver: consts.DefaultDriverName, VolumeHandle: diskURI},
+		}},
+	}
+	freshPV := indexedPV.DeepCopy()
+	freshPV.Annotations = map[string]string{consts.AttachSequenceAnnotation: "1"}
+	indexer := cache.NewIndexer(cache.MetaNamespaceKeyFunc, cache.Indexers{pvDiskURIIndex: pvDiskURIIndexFunc})
+	require.NoError(t, indexer.Add(indexedPV))
+	d := &Driver{
+		kubeClient: fake.NewClientset(freshPV),
+		pvIndexer:  indexer,
+	}
+	d.Name = consts.DefaultDriverName
+
+	pv, err := d.getPVFromDiskURI(context.Background(), diskURI)
+
+	require.NoError(t, err)
+	assert.Same(t, indexedPV, pv)
+	assert.Empty(t, pv.Annotations[consts.AttachSequenceAnnotation])
+}
+
+func TestGetPVFromDiskURIReturnsNotFoundWhenIndexMisses(t *testing.T) {
+	const diskURI = "/subscriptions/sub/resourceGroups/rg/providers/Microsoft.Compute/disks/disk"
+	pv := &corev1.PersistentVolume{
+		ObjectMeta: metav1.ObjectMeta{Name: "pv"},
+		Spec: corev1.PersistentVolumeSpec{PersistentVolumeSource: corev1.PersistentVolumeSource{
+			CSI: &corev1.CSIPersistentVolumeSource{Driver: consts.DefaultDriverName, VolumeHandle: diskURI},
+		}},
+	}
+	d := &Driver{
+		kubeClient: fake.NewClientset(pv),
+		pvIndexer: cache.NewIndexer(cache.MetaNamespaceKeyFunc, cache.Indexers{
+			pvDiskURIIndex: pvDiskURIIndexFunc,
+		}),
+	}
+	d.Name = consts.DefaultDriverName
+
+	got, err := d.getPVFromDiskURI(context.Background(), diskURI)
+
+	assert.Nil(t, got)
+	assert.ErrorIs(t, err, errPVNotFound)
 }
 
 func TestDriver_checkDiskExists(t *testing.T) {

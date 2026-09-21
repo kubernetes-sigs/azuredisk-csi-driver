@@ -1,3 +1,4 @@
+---
 # Node-driven attach/detach is an Alpha feature. The driver must be deployed with
 # --feature-gates=NodeDrivenAttachDetach=true, and the Azure platform and node
 # pools must support QAD. Do not make this the default StorageClass during preview.
