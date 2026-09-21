@@ -93,6 +93,13 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 	if err != nil {
 		return nil, status.Errorf(codes.InvalidArgument, "Failed parsing disk parameters: %v", err)
 	}
+	attachMode, err := getAttachMode(params)
+	if err != nil {
+		return nil, status.Errorf(codes.InvalidArgument, "Failed parsing disk parameters: %v", err)
+	}
+	if attachMode == consts.AttachModeNodeDriven && !d.nodeDrivenAttachDetachEnabled {
+		return nil, status.Errorf(codes.FailedPrecondition, "%s=%s requires the Alpha %s feature gate", consts.AttachModeField, consts.AttachModeNodeDriven, NodeDrivenAttachDetach)
+	}
 
 	name := req.GetName()
 	if len(name) == 0 {
@@ -406,9 +413,8 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 		return nil, status.Errorf(codes.Internal, "%v", err)
 	}
 
-	qadEnabledValue, _ := azureutils.ParseDiskParametersForKey(params, azureconstants.QADEnabledField)
-	qadEnabled := strings.EqualFold(qadEnabledValue, consts.TrueValue)
-	if qadEnabled {
+	nodeDriven := attachMode == consts.AttachModeNodeDriven
+	if nodeDriven {
 		qadOwnerResource, err := d.getAKSClusterResourceID(ctx)
 		if err != nil {
 			return nil, status.Errorf(codes.Internal, "failed to determine QAD owner resource: %v", err)
@@ -698,7 +704,7 @@ func (d *Driver) ControllerModifyVolume(ctx context.Context, req *csi.Controller
 		klog.Warningf("failed to get PV from diskURI %s: %v", diskURI, err)
 	}
 
-	if pv != nil && d.isQAD(pv) {
+	if pv != nil && d.hasQADInfo(pv) {
 		return nil, status.Errorf(codes.Unimplemented, "ControllerModifyVolume is not supported for QAD-enabled volume %s", diskURI)
 	}
 
@@ -832,22 +838,32 @@ func (d *Driver) ControllerPublishVolume(ctx context.Context, req *csi.Controlle
 		volumeContext = map[string]string{}
 	}
 
-	// TODO: Add a driver-level flag indicating whether QAD is enabled.
-	// The current implementation temporarily uses a volume context parameter,
-	// configured through the StorageClass, to determine whether QAD is enabled
-	// for a disk. This should be replaced once the appropriate UX is available.
-	// During preview, VMs flagged for QAD support will support QAD exclusively;
-	// FAD will not be supported.
-	qadEnabledValue, _ := azureutils.ParseDiskParametersForKey(volumeContext, azureconstants.QADEnabledField)
-	if strings.EqualFold(qadEnabledValue, consts.TrueValue) {
+	// The feature gate permits adoption of the Alpha architecture, while the
+	// persisted volume attachment mode selects QAD for this disk.
+	attachMode, err := getAttachMode(volumeContext)
+	if err != nil {
+		return nil, status.Errorf(codes.InvalidArgument, "failed to determine attachment mode: %v", err)
+	}
+	if attachMode == consts.AttachModeNodeDriven {
+		pv, err := d.getPVFromDiskURI(ctx, diskURI)
+		if err != nil || pv == nil {
+			// With the gate off we can only service already-adopted QAD volumes,
+			// which requires reading the PV; treat a lookup failure as gate-required.
+			if !d.nodeDrivenAttachDetachEnabled {
+				return nil, status.Errorf(codes.FailedPrecondition, "%s=%s requires the Alpha %s feature gate", consts.AttachModeField, consts.AttachModeNodeDriven, NodeDrivenAttachDetach)
+			}
+			return nil, status.Errorf(codes.Internal, "failed to get PV from disk URI %s: %v", diskURI, err)
+		}
+		if !d.nodeDrivenAttachDetachEnabled {
+			// Gate off: only volumes already adopted into QAD (carrying the
+			// attach-sequence annotation) may still be serviced.
+			if _, exists := pv.Annotations[azureconstants.AttachSequenceAnnotation]; !exists {
+				return nil, status.Errorf(codes.FailedPrecondition, "%s=%s requires the Alpha %s feature gate", consts.AttachModeField, consts.AttachModeNodeDriven, NodeDrivenAttachDetach)
+			}
+		}
 		klog.V(2).Infof("qad is enabled for disk %s", diskURI)
 		blobURL := volumeContext[azureconstants.BlobURLAnnotation]
 		claimIdentifier := volumeContext[azureconstants.ClaimIdentifierAnnotation]
-
-		pv, err := d.getPVFromDiskURI(ctx, diskURI)
-		if err != nil || pv == nil {
-			return nil, status.Errorf(codes.Internal, "failed to get PV from disk URI %s: %v", diskURI, err)
-		}
 
 		if err := ensureQADPVAnnotations(ctx, d.kubeClient, pv.Name, blobURL, claimIdentifier); err != nil {
 			return nil, status.Errorf(codes.Internal, "failed to update PV %s with QAD annotations: %v", pv.Name, err)
@@ -955,22 +971,39 @@ func ensureQADPVAnnotations(ctx context.Context, kubeClient clientset.Interface,
 		if err != nil {
 			return err
 		}
-		if _, exists := pv.Annotations[azureconstants.AttachSequenceAnnotation]; exists {
-			if pv.Annotations[azureconstants.BlobURLAnnotation] == "" || pv.Annotations[azureconstants.ClaimIdentifierAnnotation] == "" {
+		// Static QAD PVs may carry the claim metadata in annotations rather than
+		// the volume context; fall back to those for any value not supplied.
+		if blobURL == "" {
+			blobURL = pv.Annotations[azureconstants.BlobURLAnnotation]
+		}
+		if claimIdentifier == "" {
+			claimIdentifier = pv.Annotations[azureconstants.ClaimIdentifierAnnotation]
+		}
+		_, hasSequence := pv.Annotations[azureconstants.AttachSequenceAnnotation]
+		if blobURL == "" || claimIdentifier == "" {
+			if hasSequence {
 				return fmt.Errorf("PV %s has attach-sequence annotation but incomplete QAD metadata", pvName)
 			}
-			return nil
-		}
-		if blobURL == "" || claimIdentifier == "" {
 			return fmt.Errorf("cannot initialize QAD annotations on PV %s without blob URL and claim identifier", pvName)
 		}
 
-		klog.Infof("PV %s doesn't have attach-sequence annotation, adding annotation for QAD", pv.Name)
+		// Seed the sequence only on first adoption; NodeStage/NodeUnstage read the
+		// blob URL and claim identifier only from annotations, so persist them too.
+		sequence := pv.Annotations[azureconstants.AttachSequenceAnnotation]
+		if !hasSequence {
+			sequence = "0"
+			klog.Infof("PV %s doesn't have attach-sequence annotation, adding annotation for QAD", pvName)
+		}
+		if pv.Annotations[azureconstants.AttachSequenceAnnotation] == sequence &&
+			pv.Annotations[azureconstants.BlobURLAnnotation] == blobURL &&
+			pv.Annotations[azureconstants.ClaimIdentifierAnnotation] == claimIdentifier {
+			return nil
+		}
 		pv = pv.DeepCopy()
 		if pv.Annotations == nil {
 			pv.Annotations = make(map[string]string)
 		}
-		pv.Annotations[azureconstants.AttachSequenceAnnotation] = "0"
+		pv.Annotations[azureconstants.AttachSequenceAnnotation] = sequence
 		pv.Annotations[azureconstants.BlobURLAnnotation] = blobURL
 		pv.Annotations[azureconstants.ClaimIdentifierAnnotation] = claimIdentifier
 		_, err = kubeClient.CoreV1().PersistentVolumes().Update(ctx, pv, metav1.UpdateOptions{})
@@ -1365,7 +1398,7 @@ func (d *Driver) ControllerExpandVolume(ctx context.Context, req *csi.Controller
 	if err != nil {
 		klog.Warningf("failed to get PV from diskURI %s: %v", diskURI, err)
 	}
-	if pv != nil && d.isQAD(pv) {
+	if pv != nil && d.hasQADInfo(pv) {
 		return nil, status.Errorf(codes.Unimplemented, "ControllerExpandVolume is not supported for QAD-enabled volume %s", diskURI)
 	}
 

@@ -153,6 +153,9 @@ var _ = ginkgo.BeforeSuite(func(ctx ginkgo.SpecContext) {
 			Kubeconfig:              os.Getenv(kubeconfigEnvVar),
 			Endpoint:                fmt.Sprintf("unix:///tmp/csi-%s.sock", string(uuid.NewUUID())),
 			GetDiskTimeoutInSeconds: 15,
+			// Share the feature gates parsed from --feature-gates so direct
+			// CreateVolume calls with attachMode=NodeDriven are not rejected.
+			FeatureGates: driver.FeatureGates,
 		}
 		os.Setenv("AZURE_CREDENTIAL_FILE", credentials.TempAzureCredentialFilePath)
 		azurediskDriver = azuredisk.NewDriver(&driverOptions)

@@ -55,6 +55,7 @@ diskEncryptionSetID | ResourceId of the disk encryption set to use for [enabling
 diskEncryptionType | encryption type of the disk encryption set | `EncryptionAtRestWithCustomerKey`(by default), `EncryptionAtRestWithPlatformAndCustomerKeys` | No | ""
 writeAcceleratorEnabled | [Write Accelerator on Azure Disks](https://learn.microsoft.com/en-us/azure/virtual-machines/how-to-enable-write-accelerator) | `true`, `false` | No | ""
 perfProfile | [Block device performance tuning using perfProfiles](./perf-profiles.md) | `none`, `basic`, `advanced` | No | `none`
+attachMode | [Attachment architecture](./node-driven-attach-detach.md). `NodeDriven` is Alpha and requires the `NodeDrivenAttachDetach` driver feature gate and an Azure QAD-enabled cluster. | `ControllerDriven`, `NodeDriven` | No | `ControllerDriven`
 networkAccessPolicy | NetworkAccessPolicy property to prevent anybody from generating the SAS URI for a disk or a snapshot | `AllowAll`, `DenyAll`, `AllowPrivate` | No | `DenyAll`
 publicNetworkAccess | Enabling or disabling public access to the underlying data of a disk on the internet, even when the NetworkAccessPolicy is set to `AllowAll` | `Enabled`, `Disabled` | No | `Disabled`
 diskAccessID | ARM id of the [DiskAccess](https://aka.ms/disksprivatelinksdoc) resource for using private endpoints on disks | | No  | ``

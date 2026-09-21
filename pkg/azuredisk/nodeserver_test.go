@@ -147,6 +147,35 @@ func TestMain(m *testing.M) {
 
 }
 
+func TestHasQADInfo(t *testing.T) {
+	tests := []struct {
+		name string
+		pv   *v1.PersistentVolume
+		want bool
+	}{
+		{name: "nil PV", pv: nil, want: false},
+		{name: "empty name", pv: &v1.PersistentVolume{}, want: false},
+		{
+			name: "attach-sequence annotation present",
+			pv: &v1.PersistentVolume{
+				ObjectMeta: metav1.ObjectMeta{Name: "pv", Annotations: map[string]string{consts.AttachSequenceAnnotation: "0"}},
+			},
+			want: true,
+		},
+		{
+			name: "no attach-sequence annotation",
+			pv:   &v1.PersistentVolume{ObjectMeta: metav1.ObjectMeta{Name: "pv"}},
+			want: false,
+		},
+	}
+	d := &Driver{}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			assert.Equal(t, test.want, d.hasQADInfo(test.pv))
+		})
+	}
+}
+
 func TestIncrementAttachSequenceAnnotationRetriesConflict(t *testing.T) {
 	pv := &v1.PersistentVolume{
 		ObjectMeta: metav1.ObjectMeta{

@@ -41,7 +41,6 @@ import (
 	v1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/labels"
 	k8stypes "k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/informers"
@@ -181,10 +180,14 @@ type Driver struct {
 	nodeInformerFactory             metadatainformer.SharedInformerFactory
 	// HTTP client for wireserver calls
 	httpClient *http.Client
+	// nodeDrivenAttachDetachEnabled controls adoption of the Alpha node-driven attach/detach architecture.
+	nodeDrivenAttachDetachEnabled bool
 	// informer factory and PV lister for cached API access
 	informerFactory informers.SharedInformerFactory
 	pvLister        corelisters.PersistentVolumeLister
 	pvListerSynced  cache.InformerSynced
+	// pvIndexer resolves a disk URI to its PV without listing every PV
+	pvIndexer cache.Indexer
 	// owning AKS cluster ARM ID, resolved once from node resource group tags and reused thereafter
 	clusterResourceID     string
 	clusterResourceIDLock sync.Mutex
@@ -196,6 +199,9 @@ type Driver struct {
 // does not support optional driver plugin info manifest field. Refer to CSI spec for more details.
 func NewDriver(options *DriverOptions) *Driver {
 	driver := Driver{}
+	if options.FeatureGates == nil {
+		options.FeatureGates = NewDriverFeatureGate()
+	}
 	driver.Name = options.DriverName
 	driver.Version = driverVersion
 	driver.NodeID = options.NodeID
@@ -245,6 +251,10 @@ func NewDriver(options *DriverOptions) *Driver {
 		driver.formatTimeout = time.Duration(options.ConcurrentFormatTimeout) * time.Second
 	}
 	driver.enableMinimumRetryAfter = options.EnableMinimumRetryAfter
+	driver.nodeDrivenAttachDetachEnabled = options.FeatureGates.Enabled(NodeDrivenAttachDetach)
+	if driver.nodeDrivenAttachDetachEnabled {
+		klog.Warningf("Alpha feature gate %s is enabled", NodeDrivenAttachDetach)
+	}
 	driver.volumeLocks = volumehelper.NewVolumeLocks()
 	driver.ioHandler = azureutils.NewOSIOHandler()
 	driver.hostUtil = hostutil.NewHostUtil()
@@ -454,6 +464,11 @@ func NewDriver(options *DriverOptions) *Driver {
 	if kubeClient != nil {
 		driver.informerFactory = informers.NewSharedInformerFactory(kubeClient, 10*time.Minute)
 		pvInformer := driver.informerFactory.Core().V1().PersistentVolumes()
+		if err := pvInformer.Informer().AddIndexers(cache.Indexers{pvDiskURIIndex: pvDiskURIIndexFunc}); err != nil {
+			klog.Warningf("failed to add diskURI indexer to PV informer, will fall back to API list: %v", err)
+		} else {
+			driver.pvIndexer = pvInformer.Informer().GetIndexer()
+		}
 		driver.pvLister = pvInformer.Lister()
 		driver.pvListerSynced = pvInformer.Informer().HasSynced
 	}
@@ -816,26 +831,44 @@ func GetNodeInfoFromNodeLister(nodeName string, nodeLister cache.GenericLister) 
 	return zone, instanceType, nil
 }
 
+// pvDiskURIIndex is the informer index that maps a PV to its CSI disk URI
+// (volume handle) for O(1) lookups in getPVFromDiskURI.
+const pvDiskURIIndex = "diskURI"
+
+// pvDiskURIIndexFunc indexes PersistentVolumes by their lowercased CSI volume
+// handle so a disk URI resolves to its PV without listing every PV.
+func pvDiskURIIndexFunc(obj interface{}) ([]string, error) {
+	pv, ok := obj.(*v1.PersistentVolume)
+	if !ok || pv.Spec.CSI == nil || pv.Spec.CSI.VolumeHandle == "" {
+		return nil, nil
+	}
+	return []string{strings.ToLower(pv.Spec.CSI.VolumeHandle)}, nil
+}
+
 func (d *Driver) getPVFromDiskURI(ctx context.Context, diskURI string) (*v1.PersistentVolume, error) {
 	klog.Infof("Looking for PV with handle %s", diskURI)
 
-	// Use cached PV lister if available
-	if d.pvLister != nil {
-		pvs, err := d.pvLister.List(labels.Everything())
+	// Use the cached indexer for an O(1) lookup by disk URI when available.
+	if d.pvIndexer != nil {
+		objs, err := d.pvIndexer.ByIndex(pvDiskURIIndex, strings.ToLower(diskURI))
 		if err != nil {
-			return nil, fmt.Errorf("failed to list PersistentVolumes from cache: %v", err)
+			return nil, fmt.Errorf("failed to look up PersistentVolume by disk URI from cache: %v", err)
 		}
-		for _, pv := range pvs {
+		for _, obj := range objs {
+			pv, ok := obj.(*v1.PersistentVolume)
+			if !ok {
+				continue
+			}
 			if pv.Spec.CSI != nil && pv.Spec.CSI.Driver == d.Name &&
 				strings.EqualFold(pv.Spec.CSI.VolumeHandle, diskURI) {
-				klog.Infof("Found PV %s with handle %s (from cache)", pv.Name, diskURI)
+				klog.Infof("Found PV %s with handle %s (from cache index)", pv.Name, diskURI)
 				return pv, nil
 			}
 		}
 		return nil, fmt.Errorf("%w with diskURI(%s)", errPVNotFound, diskURI)
 	}
 
-	// Fallback to direct API call if lister is not initialized
+	// Fallback to direct API call if the indexer is not initialized.
 	pvList, err := d.kubeClient.CoreV1().PersistentVolumes().List(ctx, metav1.ListOptions{})
 	if err != nil {
 		return nil, fmt.Errorf("failed to list PersistentVolumes: %v", err)

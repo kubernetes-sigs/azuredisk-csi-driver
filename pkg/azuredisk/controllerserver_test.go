@@ -917,6 +917,93 @@ func TestCreateVolume(t *testing.T) {
 				}
 			},
 		},
+		{
+			name: "NodeDriven rejected with FailedPrecondition when feature gate disabled",
+			testFunc: func(t *testing.T) {
+				cntl := gomock.NewController(t)
+				defer cntl.Finish()
+				d, _ := NewFakeDriver(cntl)
+				driver := d.(*fakeDriver)
+				driver.nodeDrivenAttachDetachEnabled = false
+				req := &csi.CreateVolumeRequest{
+					Name:               testVolumeName,
+					VolumeCapabilities: stdVolumeCapabilities,
+					Parameters:         map[string]string{consts.AttachModeField: consts.AttachModeNodeDriven},
+				}
+				_, err := d.CreateVolume(context.Background(), req)
+				require.Error(t, err)
+				assert.Equal(t, codes.FailedPrecondition, status.Code(err))
+				assert.Contains(t, err.Error(), consts.AttachModeNodeDriven)
+				assert.Contains(t, err.Error(), NodeDrivenAttachDetach)
+			},
+		},
+		{
+			name: "NodeDriven proceeds and claims disk when feature gate enabled",
+			testFunc: func(t *testing.T) {
+				cntl := gomock.NewController(t)
+				defer cntl.Finish()
+				d, _ := NewFakeDriver(cntl)
+				driver := d.(*fakeDriver)
+				driver.nodeDrivenAttachDetachEnabled = true
+				driver.cloud.SubscriptionID = "subscription"
+				driver.cloud.ResourceGroup = "node-resource-group"
+
+				stdCapacityRangetest := &csi.CapacityRange{
+					RequiredBytes: volumehelper.GiBToBytes(10),
+					LimitBytes:    volumehelper.GiBToBytes(514),
+				}
+				req := &csi.CreateVolumeRequest{
+					Name:               testVolumeName,
+					VolumeCapabilities: stdVolumeCapabilities,
+					CapacityRange:      stdCapacityRangetest,
+					Parameters:         map[string]string{consts.AttachModeField: consts.AttachModeNodeDriven},
+				}
+				size := int32(volumehelper.BytesToGiB(req.CapacityRange.RequiredBytes))
+				id := fmt.Sprintf(consts.ManagedDiskPath, "subs", "rg", testVolumeName)
+				state := "Succeeded"
+				disk := &armcompute.Disk{
+					ID:   &id,
+					Name: &testVolumeName,
+					Properties: &armcompute.DiskProperties{
+						DiskSizeGB:        &size,
+						ProvisioningState: &state,
+					},
+				}
+				clientFactory := driver.clientFactory.(*mock_azclient.MockClientFactory)
+				diskClient := mock_diskclient.NewMockInterface(cntl)
+				clientFactory.EXPECT().GetDiskClientForSub(gomock.Any()).Return(diskClient, nil).AnyTimes()
+				diskClient.EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any()).Return(disk, nil).AnyTimes()
+				diskClient.EXPECT().CreateOrUpdate(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(disk, nil).AnyTimes()
+
+				// getAKSClusterResourceID resolves the QAD owner from node RG tags.
+				resourceGroupClient := mock_resourcegroupclient.NewMockInterface(cntl)
+				clientFactory.EXPECT().GetResourceGroupClient().Return(resourceGroupClient)
+				resourceGroupClient.EXPECT().Get(gomock.Any(), "node-resource-group").Return(&armresources.ResourceGroup{
+					Tags: map[string]*string{
+						aksManagedClusterNameTag:          to.Ptr("cluster"),
+						aksManagedClusterResourceGroupTag: to.Ptr("cluster-resource-group"),
+					},
+				}, nil)
+
+				// claimDiskResource POSTs to the DiskRP claimResource endpoint.
+				blobURL := "https://md-storage.blob.core.windows.net/container/disk"
+				server := httptest.NewServer(http.HandlerFunc(func(responseWriter http.ResponseWriter, _ *http.Request) {
+					responseWriter.Header().Set("Content-Type", "application/json")
+					responseWriter.WriteHeader(http.StatusOK)
+					_, _ = fmt.Fprintf(responseWriter, `{"properties":{"blobUrl":%q,"claimIdentifier":"identifier"}}`, blobURL)
+				}))
+				defer server.Close()
+				driver.cloud.ARMClientConfig.ResourceManagerEndpoint = server.URL
+				credential := driver.cloud.AuthProvider.GetAzIdentity().(*mock_azclient.MockTokenCredential)
+				credential.EXPECT().GetToken(gomock.Any(), gomock.Any()).Return(azcore.AccessToken{Token: "token"}, nil)
+
+				res, err := d.CreateVolume(context.Background(), req)
+				require.NoError(t, err)
+				require.NotNil(t, res)
+				assert.Equal(t, blobURL, res.Volume.VolumeContext[consts.BlobURLAnnotation])
+				assert.Equal(t, "identifier", res.Volume.VolumeContext[consts.ClaimIdentifierAnnotation])
+			},
+		},
 	}
 	for _, tc := range testCases {
 		t.Run(tc.name, tc.testFunc)
@@ -2750,6 +2837,54 @@ func TestEnsureQADPVAnnotationsRejectsIncompleteMetadata(t *testing.T) {
 	}
 }
 
+func TestEnsureQADPVAnnotationsFillsMissingCompanionAnnotations(t *testing.T) {
+	const (
+		pvName          = "qad-pv"
+		blobURL         = "https://example.blob.storage.azure.net/container/disk"
+		claimIdentifier = "claim-id"
+	)
+	// PV already adopted (attach-sequence set) but the companion annotations are
+	// missing; the metadata arrives via the volume context (passed args).
+	kubeClient := fake.NewClientset(&v1.PersistentVolume{
+		ObjectMeta: metav1.ObjectMeta{Name: pvName, Annotations: map[string]string{
+			consts.AttachSequenceAnnotation: "3",
+		}},
+	})
+
+	require.NoError(t, ensureQADPVAnnotations(context.Background(), kubeClient, pvName, blobURL, claimIdentifier))
+
+	pv, err := kubeClient.CoreV1().PersistentVolumes().Get(context.Background(), pvName, metav1.GetOptions{})
+	require.NoError(t, err)
+	// attach-sequence must be preserved, not reset.
+	assert.Equal(t, "3", pv.Annotations[consts.AttachSequenceAnnotation])
+	assert.Equal(t, blobURL, pv.Annotations[consts.BlobURLAnnotation])
+	assert.Equal(t, claimIdentifier, pv.Annotations[consts.ClaimIdentifierAnnotation])
+}
+
+func TestEnsureQADPVAnnotationsSeedsFromExistingAnnotations(t *testing.T) {
+	const (
+		pvName          = "static-qad-pv"
+		blobURL         = "https://example.blob.storage.azure.net/container/disk"
+		claimIdentifier = "claim-id"
+	)
+	// Static PV carries the claim metadata in annotations but no attach-sequence
+	// yet, and the volume context (passed args) is empty.
+	kubeClient := fake.NewClientset(&v1.PersistentVolume{
+		ObjectMeta: metav1.ObjectMeta{Name: pvName, Annotations: map[string]string{
+			consts.BlobURLAnnotation:         blobURL,
+			consts.ClaimIdentifierAnnotation: claimIdentifier,
+		}},
+	})
+
+	require.NoError(t, ensureQADPVAnnotations(context.Background(), kubeClient, pvName, "", ""))
+
+	pv, err := kubeClient.CoreV1().PersistentVolumes().Get(context.Background(), pvName, metav1.GetOptions{})
+	require.NoError(t, err)
+	assert.Equal(t, "0", pv.Annotations[consts.AttachSequenceAnnotation])
+	assert.Equal(t, blobURL, pv.Annotations[consts.BlobURLAnnotation])
+	assert.Equal(t, claimIdentifier, pv.Annotations[consts.ClaimIdentifierAnnotation])
+}
+
 func TestControllerPublishVolumeRejectsIncompleteQADMetadata(t *testing.T) {
 	tests := []struct {
 		name          string
@@ -2760,20 +2895,21 @@ func TestControllerPublishVolumeRejectsIncompleteQADMetadata(t *testing.T) {
 		{
 			name: "new QAD PV without claim metadata",
 			volumeContext: map[string]string{
-				consts.QADEnabledField: "true",
+				consts.AttachModeField: consts.AttachModeNodeDriven,
 			},
 			expectedErr: "without blob URL and claim identifier",
 		},
 		{
+			// Neither the volume context nor the PV annotations supply the claim
+			// identifier, so the QAD metadata stays incomplete and publish is rejected.
 			name: "existing QAD PV with incomplete companion annotations",
 			annotations: map[string]string{
 				consts.AttachSequenceAnnotation: "1",
 				consts.BlobURLAnnotation:        "https://example.blob.storage.azure.net/container/disk",
 			},
 			volumeContext: map[string]string{
-				consts.QADEnabledField:           "true",
-				consts.BlobURLAnnotation:         "https://example.blob.storage.azure.net/container/disk",
-				consts.ClaimIdentifierAnnotation: "claim-id",
+				consts.AttachModeField:   consts.AttachModeNodeDriven,
+				consts.BlobURLAnnotation: "https://example.blob.storage.azure.net/container/disk",
 			},
 			expectedErr: "attach-sequence annotation but incomplete QAD metadata",
 		},
@@ -2785,6 +2921,7 @@ func TestControllerPublishVolumeRejectsIncompleteQADMetadata(t *testing.T) {
 			d, err := NewFakeDriver(cntl)
 			require.NoError(t, err)
 			driver := d.(*fakeDriver)
+			driver.nodeDrivenAttachDetachEnabled = true
 			_, err = driver.kubeClient.CoreV1().PersistentVolumes().Create(context.Background(), &v1.PersistentVolume{
 				ObjectMeta: metav1.ObjectMeta{Name: "qad-pv", Annotations: test.annotations},
 				Spec: v1.PersistentVolumeSpec{PersistentVolumeSource: v1.PersistentVolumeSource{

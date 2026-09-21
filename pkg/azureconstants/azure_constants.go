@@ -71,7 +71,7 @@ const (
 	SubscriptionIDField               = "subscriptionid"
 	ResourceGroupField                = "resourcegroup"
 	DataAccessAuthModeField           = "dataaccessauthmode"
-	QADEnabledField                   = "qadenabled"
+	AttachModeField                   = "attachmode"
 	ResourceNotFound                  = "ResourceNotFound"
 	SkuNameField                      = "skuname"
 	SourceDiskSearchMaxDepth          = 10
@@ -116,6 +116,11 @@ const (
 	AttachSequenceAnnotation     = "azuredisk.csi.azure.com/attach-sequence"
 	BlobURLAnnotation            = "azuredisk.csi.azure.com/blob-url"
 	ClaimIdentifierAnnotation    = "azuredisk.csi.azure.com/claim-identifier"
+)
+
+const (
+	AttachModeControllerDriven = "ControllerDriven"
+	AttachModeNodeDriven       = "NodeDriven"
 )
 
 var (
