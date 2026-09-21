@@ -147,6 +147,61 @@ func TestMain(m *testing.M) {
 
 }
 
+func TestIsQAD(t *testing.T) {
+	specWithMode := func(mode string) v1.PersistentVolumeSpec {
+		attrs := map[string]string{}
+		if mode != "" {
+			attrs[consts.AttachModeField] = mode
+		}
+		return v1.PersistentVolumeSpec{
+			PersistentVolumeSource: v1.PersistentVolumeSource{
+				CSI: &v1.CSIPersistentVolumeSource{Driver: "disk.csi.azure.com", VolumeHandle: "vol", VolumeAttributes: attrs},
+			},
+		}
+	}
+	tests := []struct {
+		name string
+		pv   *v1.PersistentVolume
+		want bool
+	}{
+		{name: "nil PV", pv: nil, want: false},
+		{name: "empty name", pv: &v1.PersistentVolume{}, want: false},
+		{
+			name: "attach-sequence annotation present",
+			pv: &v1.PersistentVolume{
+				ObjectMeta: metav1.ObjectMeta{Name: "pv", Annotations: map[string]string{consts.AttachSequenceAnnotation: "0"}},
+			},
+			want: true,
+		},
+		{
+			name: "NodeDriven in volume attributes without annotation",
+			pv:   &v1.PersistentVolume{ObjectMeta: metav1.ObjectMeta{Name: "pv"}, Spec: specWithMode(consts.AttachModeNodeDriven)},
+			want: true,
+		},
+		{
+			name: "ControllerDriven in volume attributes",
+			pv:   &v1.PersistentVolume{ObjectMeta: metav1.ObjectMeta{Name: "pv"}, Spec: specWithMode(consts.AttachModeControllerDriven)},
+			want: false,
+		},
+		{
+			name: "no attach mode and no annotation",
+			pv:   &v1.PersistentVolume{ObjectMeta: metav1.ObjectMeta{Name: "pv"}, Spec: specWithMode("")},
+			want: false,
+		},
+		{
+			name: "unsupported attach mode value",
+			pv:   &v1.PersistentVolume{ObjectMeta: metav1.ObjectMeta{Name: "pv"}, Spec: specWithMode("bogus")},
+			want: false,
+		},
+	}
+	d := &Driver{}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			assert.Equal(t, test.want, d.isQAD(test.pv))
+		})
+	}
+}
+
 func TestIncrementAttachSequenceAnnotationRetriesConflict(t *testing.T) {
 	pv := &v1.PersistentVolume{
 		ObjectMeta: metav1.ObjectMeta{

@@ -1229,6 +1229,14 @@ func (d *Driver) isQAD(pv *v1.PersistentVolume) bool {
 		klog.V(2).Infof("Found PV %s with attach sequence: %s", pvName, attachSequence)
 		return true
 	}
+	// Detach RPCs carry no request volume context, so fall back to the attach
+	// mode persisted in the PV's CSI volume attributes.
+	if pv.Spec.CSI != nil {
+		if mode, err := getAttachMode(pv.Spec.CSI.VolumeAttributes); err == nil && mode == azureconstants.AttachModeNodeDriven {
+			klog.V(2).Infof("Found PV %s with attach mode %s in volume attributes", pvName, mode)
+			return true
+		}
+	}
 	// Found PV but no QAD configuration
 	klog.V(2).Infof("Found PV %s but no QAD configuration", pvName)
 	return false

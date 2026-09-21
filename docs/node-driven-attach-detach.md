@@ -88,6 +88,95 @@ delete cleanup are not stranded. Before downgrading to a driver version without
 QAD support, detach and delete or migrate all node-driven volumes according to
 the AKS preview rollback procedure.
 
+## Manually claiming a static disk
+
+For a **dynamically** provisioned volume, `CreateVolume` claims the disk
+automatically: it resolves the owning AKS cluster resource ID, calls the DiskRP
+`claimResource` API, and records the returned `blobUrl` and `claimIdentifier` in
+the volume context. `ControllerPublishVolume` then persists that metadata onto
+the PV.
+
+A **static** (pre-provisioned) disk never goes through `CreateVolume`, so this
+auto-claim never runs. To use an existing Azure managed disk with node-driven
+attach/detach, reproduce those two steps by hand: claim the disk in Azure to get
+its `blobUrl` and `claimIdentifier`, then place that metadata on the PV so the
+driver treats the volume as QAD.
+
+### 1. Claim the disk in Azure
+
+Call the DiskRP `claimResource` API on the managed disk, passing the AKS managed
+cluster ARM ID as `ownerResourceId`:
+
+```bash
+DISK_ID="/subscriptions/<sub>/resourceGroups/<disk-rg>/providers/Microsoft.Compute/disks/<disk-name>"
+# ownerResourceId = the AKS managed cluster ARM ID:
+OWNER="/subscriptions/<sub>/resourceGroups/<cluster-rg>/providers/Microsoft.ContainerService/managedClusters/<cluster-name>"
+TOKEN=$(az account get-access-token --resource https://management.azure.com --query accessToken -o tsv)
+
+curl -sS -X POST \
+  "https://management.azure.com${DISK_ID}/claimResource?api-version=2025-01-02" \
+  -H "Authorization: Bearer ${TOKEN}" \
+  -H "Content-Type: application/json" \
+  -d "{\"ownerResourceId\":\"${OWNER}\"}"
+```
+
+The call may return `202 Accepted` with a `Location` header to poll; the final
+response body contains `properties.blobUrl` and `properties.claimIdentifier`.
+Record both values.
+
+### 2. Author the static PV with the QAD metadata
+
+Two things make the driver route the disk through QAD:
+
+- `attachmode: NodeDriven` in `spec.csi.volumeAttributes`, so
+  `ControllerPublishVolume` takes the node-driven branch;
+- the claim metadata as PV annotations.
+
+```yaml
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: static-qad-pv
+  annotations:
+    azuredisk.csi.azure.com/blob-url: "<blobUrl from step 1>"
+    azuredisk.csi.azure.com/claim-identifier: "<claimIdentifier from step 1>"
+    # optional; otherwise ControllerPublishVolume seeds it to "0":
+    azuredisk.csi.azure.com/attach-sequence: "0"
+spec:
+  capacity:
+    storage: 10Gi
+  accessModes: ["ReadWriteOnce"]
+  persistentVolumeReclaimPolicy: Retain
+  csi:
+    driver: disk.csi.azure.com
+    volumeHandle: "<DISK_ID from step 1>"
+    volumeAttributes:
+      attachmode: NodeDriven
+```
+
+`volumeAttributes` are immutable, so `attachmode` must be set at PV creation
+time. The mutable QAD state (`attach-sequence`, and the claim metadata for a
+static PV) lives in annotations, which is why the claim values are supplied
+there.
+
+### What the driver does next
+
+1. `ControllerPublishVolume` sees `attachmode=NodeDriven`, looks up the PV by
+   disk URI, and calls the QAD annotation seeding logic. Because the claim data
+   is on the PV, the driver reads `blob-url`/`claim-identifier` from the
+   annotations and seeds `attach-sequence=0`. No controller-side Azure attach is
+   performed.
+2. `NodeStageVolume` recognizes the volume as QAD (the `attach-sequence`
+   annotation is present), reads `blob-url`/`claim-identifier` from the PV
+   annotations, increments `attach-sequence`, and performs the physical
+   node-driven attach through the WireServer endpoint.
+
+> [!IMPORTANT]
+> The `NodeDrivenAttachDetach` feature gate only gates newly created volumes.
+> Existing PVs, dynamic or static, that already carry the correct QAD
+> configuration (the `attach-sequence` annotation) continue to be serviced
+> through the node-driven path even when the gate is disabled.
+
 ## Limitations
 
 - Do not use this StorageClass on clusters or node pools that are not QAD-enabled.

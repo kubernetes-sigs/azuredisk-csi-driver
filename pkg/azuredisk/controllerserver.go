@@ -972,29 +972,38 @@ func ensureQADPVAnnotations(ctx context.Context, kubeClient clientset.Interface,
 			return err
 		}
 		// Static QAD PVs may carry the claim metadata in annotations rather than
-		// the volume context; fall back to those so attach-sequence can be seeded.
+		// the volume context; fall back to those for any value not supplied.
 		if blobURL == "" {
 			blobURL = pv.Annotations[azureconstants.BlobURLAnnotation]
 		}
 		if claimIdentifier == "" {
 			claimIdentifier = pv.Annotations[azureconstants.ClaimIdentifierAnnotation]
 		}
-		if _, exists := pv.Annotations[azureconstants.AttachSequenceAnnotation]; exists {
-			if blobURL == "" || claimIdentifier == "" {
+		_, hasSequence := pv.Annotations[azureconstants.AttachSequenceAnnotation]
+		if blobURL == "" || claimIdentifier == "" {
+			if hasSequence {
 				return fmt.Errorf("PV %s has attach-sequence annotation but incomplete QAD metadata", pvName)
 			}
-			return nil
-		}
-		if blobURL == "" || claimIdentifier == "" {
 			return fmt.Errorf("cannot initialize QAD annotations on PV %s without blob URL and claim identifier", pvName)
 		}
 
-		klog.Infof("PV %s doesn't have attach-sequence annotation, adding annotation for QAD", pv.Name)
+		// Seed the sequence only on first adoption; NodeStage/NodeUnstage read the
+		// blob URL and claim identifier only from annotations, so persist them too.
+		sequence := pv.Annotations[azureconstants.AttachSequenceAnnotation]
+		if !hasSequence {
+			sequence = "0"
+			klog.Infof("PV %s doesn't have attach-sequence annotation, adding annotation for QAD", pvName)
+		}
+		if pv.Annotations[azureconstants.AttachSequenceAnnotation] == sequence &&
+			pv.Annotations[azureconstants.BlobURLAnnotation] == blobURL &&
+			pv.Annotations[azureconstants.ClaimIdentifierAnnotation] == claimIdentifier {
+			return nil
+		}
 		pv = pv.DeepCopy()
 		if pv.Annotations == nil {
 			pv.Annotations = make(map[string]string)
 		}
-		pv.Annotations[azureconstants.AttachSequenceAnnotation] = "0"
+		pv.Annotations[azureconstants.AttachSequenceAnnotation] = sequence
 		pv.Annotations[azureconstants.BlobURLAnnotation] = blobURL
 		pv.Annotations[azureconstants.ClaimIdentifierAnnotation] = claimIdentifier
 		_, err = kubeClient.CoreV1().PersistentVolumes().Update(ctx, pv, metav1.UpdateOptions{})
