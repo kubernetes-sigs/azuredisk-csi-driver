@@ -342,11 +342,9 @@ var _ = ginkgo.Describe("Pre-Provisioned", func() {
 
 func makeCreateVolumeReq(volumeName string, sizeGiB int64) *csi.CreateVolumeRequest {
 	parameters := map[string]string{}
-	if driver.IsQADEnabled {
+	if driver.QADEnabled() {
 		parameters["skuName"] = "Premium_LRS"
 		parameters["attachMode"] = "NodeDriven"
-		parameters["networkAccessPolicy"] = "AllowAll"
-		parameters["publicNetworkAccess"] = "Enabled"
 	}
 
 	req := &csi.CreateVolumeRequest{

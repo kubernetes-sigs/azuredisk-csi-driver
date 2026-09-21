@@ -17,6 +17,7 @@ limitations under the License.
 package azuredisk
 
 import (
+	"flag"
 	"fmt"
 
 	"k8s.io/component-base/featuregate"
@@ -35,12 +36,19 @@ var defaultDriverFeatureGates = map[featuregate.Feature]featuregate.FeatureSpec{
 	},
 }
 
-func newDriverFeatureGate() featuregate.MutableFeatureGate {
+// NewDriverFeatureGate returns a feature gate registered with the driver's known features.
+func NewDriverFeatureGate() featuregate.MutableFeatureGate {
 	gate := featuregate.NewFeatureGate()
 	if err := gate.Add(defaultDriverFeatureGates); err != nil {
 		panic(fmt.Sprintf("failed to register Azure Disk CSI driver feature gates: %v", err))
 	}
 	return gate
+}
+
+// NewGoFlagFeatureGate adapts a driver feature gate to the standard Go flag
+// package so callers such as the e2e tests can register a --feature-gates flag.
+func NewGoFlagFeatureGate(gate featuregate.MutableFeatureGate) flag.Value {
+	return &goFlagFeatureGate{gate: gate}
 }
 
 // goFlagFeatureGate adapts component-base's feature gate to the standard Go

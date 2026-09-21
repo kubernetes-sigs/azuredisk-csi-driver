@@ -52,7 +52,7 @@ func TestGetAttachMode(t *testing.T) {
 }
 
 func TestNodeDrivenAttachDetachFeatureGate(t *testing.T) {
-	gate := newDriverFeatureGate()
+	gate := NewDriverFeatureGate()
 	assert.False(t, gate.Enabled(NodeDrivenAttachDetach))
 	require.NoError(t, gate.Set("NodeDrivenAttachDetach=true"))
 	assert.True(t, gate.Enabled(NodeDrivenAttachDetach))

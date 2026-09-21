@@ -200,7 +200,7 @@ type Driver struct {
 func NewDriver(options *DriverOptions) *Driver {
 	driver := Driver{}
 	if options.FeatureGates == nil {
-		options.FeatureGates = newDriverFeatureGate()
+		options.FeatureGates = NewDriverFeatureGate()
 	}
 	driver.Name = options.DriverName
 	driver.Version = driverVersion

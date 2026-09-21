@@ -92,7 +92,7 @@ func (o *DriverOptions) AddFlags() *flag.FlagSet {
 	}
 	fs := flag.NewFlagSet("", flag.ExitOnError)
 	if o.FeatureGates == nil {
-		o.FeatureGates = newDriverFeatureGate()
+		o.FeatureGates = NewDriverFeatureGate()
 	}
 	fs.StringVar(&o.NodeID, "nodeid", "", "node id")
 	fs.StringVar(&o.DriverName, "drivername", consts.DefaultDriverName, "name of the driver")
