@@ -461,7 +461,9 @@ func NewDriver(options *DriverOptions) *Driver {
 		csi.NodeServiceCapability_RPC_SINGLE_NODE_MULTI_WRITER,
 	})
 
-	if kubeClient != nil {
+	// The PV informer only backs QAD PV lookups, so build it only when the
+	// feature is enabled; otherwise no component needs persistentvolumes access.
+	if kubeClient != nil && driver.nodeDrivenAttachDetachEnabled {
 		driver.informerFactory = informers.NewSharedInformerFactory(kubeClient, 10*time.Minute)
 		pvInformer := driver.informerFactory.Core().V1().PersistentVolumes()
 		if err := pvInformer.Informer().AddIndexers(cache.Indexers{pvDiskURIIndex: pvDiskURIIndexFunc}); err != nil {
@@ -881,6 +883,30 @@ func (d *Driver) getPVFromDiskURI(ctx context.Context, diskURI string) (*v1.Pers
 		}
 	}
 	return nil, fmt.Errorf("%w with diskURI(%s)", errPVNotFound, diskURI)
+}
+
+// hasQADInfo reports whether the PV carries the QAD adoption marker (the
+// attach-sequence annotation) that selects the node-driven attach/detach path.
+func (d *Driver) hasQADInfo(pv *v1.PersistentVolume) bool {
+	if pv == nil {
+		klog.V(2).Infof("PV is nil")
+		return false
+	}
+
+	pvName := pv.Name
+	if pvName == "" {
+		klog.V(2).Infof("PV name is empty")
+		return false
+	}
+
+	// The attach-sequence annotation, seeded during controller-side adoption, is
+	// the signal that this PV uses the QAD attach/detach path.
+	if attachSequence, exists := pv.Annotations[consts.AttachSequenceAnnotation]; exists {
+		klog.V(2).Infof("Found PV %s with attach sequence: %s", pvName, attachSequence)
+		return true
+	}
+	klog.V(2).Infof("Found PV %s but no QAD configuration", pvName)
+	return false
 }
 
 // getNodeInfoFromLabels get zone, instanceType from node labels

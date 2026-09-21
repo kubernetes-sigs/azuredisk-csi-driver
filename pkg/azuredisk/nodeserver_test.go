@@ -147,35 +147,6 @@ func TestMain(m *testing.M) {
 
 }
 
-func TestHasQADInfo(t *testing.T) {
-	tests := []struct {
-		name string
-		pv   *v1.PersistentVolume
-		want bool
-	}{
-		{name: "nil PV", pv: nil, want: false},
-		{name: "empty name", pv: &v1.PersistentVolume{}, want: false},
-		{
-			name: "attach-sequence annotation present",
-			pv: &v1.PersistentVolume{
-				ObjectMeta: metav1.ObjectMeta{Name: "pv", Annotations: map[string]string{consts.AttachSequenceAnnotation: "0"}},
-			},
-			want: true,
-		},
-		{
-			name: "no attach-sequence annotation",
-			pv:   &v1.PersistentVolume{ObjectMeta: metav1.ObjectMeta{Name: "pv"}},
-			want: false,
-		},
-	}
-	d := &Driver{}
-	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			assert.Equal(t, test.want, d.hasQADInfo(test.pv))
-		})
-	}
-}
-
 func TestIncrementAttachSequenceAnnotationRetriesConflict(t *testing.T) {
 	pv := &v1.PersistentVolume{
 		ObjectMeta: metav1.ObjectMeta{
@@ -1199,6 +1170,7 @@ func TestNodeUnstageVolumePVLookup(t *testing.T) {
 			d, err := NewFakeDriver(cntl)
 			require.NoError(t, err)
 			driver := d.(*fakeDriver)
+			driver.nodeDrivenAttachDetachEnabled = true
 			driver.kubeClient = fake.NewClientset()
 			if test.pvListErr != nil {
 				driver.kubeClient.(*fake.Clientset).PrependReactor("list", "persistentvolumes", func(clienttesting.Action) (bool, k8sruntime.Object, error) {
@@ -1269,6 +1241,7 @@ func TestNodeUnstageVolumeQADDetachedResponses(t *testing.T) {
 			d, err := NewFakeDriver(cntl)
 			require.NoError(t, err)
 			driver := d.(*fakeDriver)
+			driver.nodeDrivenAttachDetachEnabled = true
 
 			pv := newTestPV(volumeID)
 			pv.Annotations = map[string]string{

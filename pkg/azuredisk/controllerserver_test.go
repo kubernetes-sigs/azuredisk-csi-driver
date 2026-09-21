@@ -1537,6 +1537,7 @@ func TestDeleteVolumePVLookup(t *testing.T) {
 			d, err := NewFakeDriver(cntl)
 			require.NoError(t, err)
 			driver := d.(*fakeDriver)
+			driver.nodeDrivenAttachDetachEnabled = true
 
 			if test.pvListErr != nil {
 				driver.kubeClient.(*fake.Clientset).PrependReactor("list", "persistentvolumes", func(k8stesting.Action) (bool, runtime.Object, error) {
