@@ -305,8 +305,11 @@ func NewDriver(options *DriverOptions) *Driver {
 
 	if driver.NodeID != "" {
 		// Initialize HTTP client for wireserver calls (node component only)
+		transport := http.DefaultTransport.(*http.Transport).Clone()
+		transport.Proxy = nil
 		driver.httpClient = &http.Client{
-			Timeout: 30 * time.Second,
+			Timeout:   30 * time.Second,
+			Transport: transport,
 		}
 	}
 
@@ -866,30 +869,41 @@ func pvDiskURIIndexFunc(obj interface{}) ([]string, error) {
 func (d *Driver) getPVFromDiskURI(ctx context.Context, diskURI string) (*v1.PersistentVolume, error) {
 	klog.Infof("Looking for PV with handle %s", diskURI)
 
-	// Use the cached indexer for an O(1) lookup by disk URI when available.
-	if d.pvIndexer != nil {
-		objs, err := d.pvIndexer.ByIndex(pvDiskURIIndex, strings.ToLower(diskURI))
-		if err != nil {
-			return nil, fmt.Errorf("failed to look up PersistentVolume by disk URI from cache: %v", err)
-		}
-		for _, obj := range objs {
-			pv, ok := obj.(*v1.PersistentVolume)
-			if !ok {
-				continue
-			}
-			if pv.Spec.CSI != nil && pv.Spec.CSI.Driver == d.Name &&
-				strings.EqualFold(pv.Spec.CSI.VolumeHandle, diskURI) {
-				klog.Infof("Found PV %s with handle %s (from cache index)", pv.Name, diskURI)
-				return pv, nil
-			}
-		}
-		return nil, fmt.Errorf("%w with diskURI(%s)", errPVNotFound, diskURI)
-	}
-
-	// Fall back to a direct API list if the index is unavailable.
 	if d.kubeClient == nil {
 		return nil, fmt.Errorf("%w: Kubernetes client is not initialized", errPVMetadataUnavailable)
 	}
+
+	// Use the cache only to identify a candidate PV name. QAD routing depends on
+	// current annotations, so always read the candidate from the API.
+	if d.pvIndexer != nil {
+		objs, err := d.pvIndexer.ByIndex(pvDiskURIIndex, strings.ToLower(diskURI))
+		if err != nil {
+			klog.Warningf("failed to look up PersistentVolume by disk URI from cache, falling back to API list: %v", err)
+		} else {
+			for _, obj := range objs {
+				candidate, ok := obj.(*v1.PersistentVolume)
+				if !ok || candidate.Name == "" || candidate.Spec.CSI == nil || candidate.Spec.CSI.Driver != d.Name ||
+					!strings.EqualFold(candidate.Spec.CSI.VolumeHandle, diskURI) {
+					continue
+				}
+				pv, getErr := d.kubeClient.CoreV1().PersistentVolumes().Get(ctx, candidate.Name, metav1.GetOptions{})
+				if getErr != nil {
+					if apierrors.IsNotFound(getErr) {
+						break
+					}
+					return nil, fmt.Errorf("failed to get PersistentVolume %s: %v", candidate.Name, getErr)
+				}
+				if pv.Spec.CSI != nil && pv.Spec.CSI.Driver == d.Name &&
+					strings.EqualFold(pv.Spec.CSI.VolumeHandle, diskURI) {
+					klog.Infof("Found PV %s with handle %s (refreshed from API)", pv.Name, diskURI)
+					return pv, nil
+				}
+				break
+			}
+		}
+	}
+
+	// The informer may not have observed a newly created PV yet.
 	pvList, err := d.kubeClient.CoreV1().PersistentVolumes().List(ctx, metav1.ListOptions{})
 	if err != nil {
 		return nil, fmt.Errorf("failed to list PersistentVolumes: %v", err)

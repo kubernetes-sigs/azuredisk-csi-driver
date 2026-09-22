@@ -370,11 +370,11 @@ func TestGetPVFromDiskURIUsesIndexedCandidate(t *testing.T) {
 	pv, err := d.getPVFromDiskURI(context.Background(), diskURI)
 
 	require.NoError(t, err)
-	assert.Same(t, indexedPV, pv)
-	assert.Empty(t, pv.Annotations[consts.AttachSequenceAnnotation])
+	assert.NotSame(t, indexedPV, pv)
+	assert.Equal(t, "1", pv.Annotations[consts.AttachSequenceAnnotation])
 }
 
-func TestGetPVFromDiskURIReturnsNotFoundWhenIndexMisses(t *testing.T) {
+func TestGetPVFromDiskURIFallsBackToAPIWhenIndexMisses(t *testing.T) {
 	const diskURI = "/subscriptions/sub/resourceGroups/rg/providers/Microsoft.Compute/disks/disk"
 	pv := &corev1.PersistentVolume{
 		ObjectMeta: metav1.ObjectMeta{Name: "pv"},
@@ -392,8 +392,34 @@ func TestGetPVFromDiskURIReturnsNotFoundWhenIndexMisses(t *testing.T) {
 
 	got, err := d.getPVFromDiskURI(context.Background(), diskURI)
 
-	assert.Nil(t, got)
-	assert.ErrorIs(t, err, errPVNotFound)
+	require.NoError(t, err)
+	assert.Equal(t, pv.Name, got.Name)
+}
+
+func TestGetPVFromDiskURIFallsBackWhenIndexedCandidateChanged(t *testing.T) {
+	const diskURI = "/subscriptions/sub/resourceGroups/rg/providers/Microsoft.Compute/disks/disk"
+	indexedPV := &corev1.PersistentVolume{
+		ObjectMeta: metav1.ObjectMeta{Name: "stale-pv"},
+		Spec: corev1.PersistentVolumeSpec{PersistentVolumeSource: corev1.PersistentVolumeSource{
+			CSI: &corev1.CSIPersistentVolumeSource{Driver: consts.DefaultDriverName, VolumeHandle: diskURI},
+		}},
+	}
+	liveIndexedPV := indexedPV.DeepCopy()
+	liveIndexedPV.Spec.CSI.VolumeHandle = diskURI + "-old"
+	currentPV := indexedPV.DeepCopy()
+	currentPV.Name = "current-pv"
+	indexer := cache.NewIndexer(cache.MetaNamespaceKeyFunc, cache.Indexers{pvDiskURIIndex: pvDiskURIIndexFunc})
+	require.NoError(t, indexer.Add(indexedPV))
+	d := &Driver{
+		kubeClient: fake.NewClientset(liveIndexedPV, currentPV),
+		pvIndexer:  indexer,
+	}
+	d.Name = consts.DefaultDriverName
+
+	got, err := d.getPVFromDiskURI(context.Background(), diskURI)
+
+	require.NoError(t, err)
+	assert.Equal(t, currentPV.Name, got.Name)
 }
 
 func TestDriver_checkDiskExists(t *testing.T) {
