@@ -82,11 +82,16 @@ silently fall back to controller-driven attachment.
 The attachment mode is persisted with the volume. Changing the feature-gate
 default or editing a StorageClass does not migrate an existing volume.
 
-Disabling the gate blocks adoption of new node-driven volumes. The driver still
-recognizes volumes already marked for QAD so that attach, detach, unclaim, and
-delete cleanup are not stranded. Before downgrading to a driver version without
-QAD support, detach and delete or migrate all node-driven volumes according to
-the AKS preview rollback procedure.
+The feature gate is required to service existing node-driven volumes, not only
+to provision new ones. If it is disabled, `ControllerPublishVolume` rejects a
+node-driven volume, and the node stage and unstage operations do not look up its
+QAD metadata. Deletion also skips the proactive QAD unclaim path.
+
+Keep the gate enabled on both controller and node components until every
+node-driven volume has been detached and deleted or migrated, and all required
+QAD unclaim cleanup has completed according to the AKS preview rollback
+procedure. Disable the gate only after that cleanup, and only then downgrade to
+a driver version without QAD support.
 
 ## Manually claiming a static disk
 
@@ -172,10 +177,10 @@ there.
    node-driven attach through the WireServer endpoint.
 
 > [!IMPORTANT]
-> The `NodeDrivenAttachDetach` feature gate only gates newly created volumes.
-> Existing PVs, dynamic or static, that already carry the correct QAD
-> configuration (the `attach-sequence` annotation) continue to be serviced
-> through the node-driven path even when the gate is disabled.
+> Keep the `NodeDrivenAttachDetach` feature gate enabled for the full lifetime
+> of every node-driven volume. Existing PV annotations do not bypass the gate;
+> disabling it prevents the driver from completing the QAD attach and detach
+> paths.
 
 ## Limitations
 
