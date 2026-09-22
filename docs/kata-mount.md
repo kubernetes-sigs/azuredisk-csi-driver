@@ -25,8 +25,14 @@ This passes the following option to the node driver component:
 --feature-gates=KataMount=true
 ```
 
-Then the virtio-blk integration can be enabled by setting the following
-annotation on your Kata Containers RuntimeClass:
+Before starting the node driver, annotate each node that will use direct volumes:
+
+```yaml
+azure.csi.disk/kata-mount: direct-volume
+```
+
+Finally, select direct volumes for pods by setting the following annotation on
+their Kata Containers RuntimeClass:
 
 ```yaml
 azure.csi.disk/kata-mount: direct-volume

@@ -21,6 +21,7 @@ import (
 	"encoding/base64"
 	"fmt"
 	"os"
+	"time"
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	directvolume "github.com/kata-containers/kata-containers/src/runtime/pkg/direct-volume"
@@ -39,17 +40,35 @@ const (
 	podNamespaceField = "csi.storage.k8s.io/pod.namespace"
 	podUIDField       = "csi.storage.k8s.io/pod.uid"
 
-	kataRuntimeClassAnnotationKey   = "azure.csi.disk/kata-mount"
-	kataRuntimeClassAnnotationValue = "direct-volume"
+	kataAnnotationKey   = "azure.csi.disk/kata-mount"
+	kataAnnotationValue = "direct-volume"
 
 	kataDirectVolumeType = "directvol"
 	kataVolumeRoot       = "/run/kata-containers/shared/direct-volumes"
 	kataVolumeIDKey      = "azure.csi.disk/volume-id"
 )
 
+// initKataNode snapshots node opt-in during driver startup, before serving CSI requests.
+func (d *Driver) initKataNode(ctx context.Context) error {
+	if d.NodeID == "" {
+		return nil
+	}
+	if d.kubeClient == nil {
+		return fmt.Errorf("kubeClient is nil")
+	}
+	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+	node, err := d.kubeClient.CoreV1().Nodes().Get(ctx, d.NodeID, metav1.GetOptions{})
+	if err != nil {
+		return fmt.Errorf("get node %q: %w", d.NodeID, err)
+	}
+	d.isKataNode = node.Annotations[kataAnnotationKey] == kataAnnotationValue
+	return nil
+}
+
 // kataSupported requires both driver enablement and the startup node opt-in.
 func (d *Driver) kataSupported() bool {
-	return d.enableKataMount && false
+	return d.enableKataMount && d.isKataNode
 }
 
 // kataDirectVolumer is the interface for Kata's DirectVolume API.
@@ -216,7 +235,7 @@ func kataGetMountPod(ctx context.Context, kubeClient clientset.Interface, volume
 		return nil, fmt.Errorf("get runtime class %q: %w", *pod.Spec.RuntimeClassName, err)
 	}
 
-	if runtimeClass.Annotations[kataRuntimeClassAnnotationKey] == kataRuntimeClassAnnotationValue {
+	if runtimeClass.Annotations[kataAnnotationKey] == kataAnnotationValue {
 		return pod, nil
 	}
 
