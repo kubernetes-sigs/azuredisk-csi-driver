@@ -72,7 +72,8 @@ import (
 )
 
 var (
-	errPVNotFound = errors.New("persistent volume not found")
+	errPVNotFound            = errors.New("persistent volume not found")
+	errPVMetadataUnavailable = errors.New("persistent volume metadata is unavailable")
 
 	// taintRemovalBackoff is the exponential backoff configuration for node taint removal
 	taintRemovalBackoff = wait.Backoff{
@@ -84,6 +85,7 @@ var (
 
 const (
 	volumeAttachmentListTimeoutSeconds = 2
+	informerCacheSyncTimeout           = 30 * time.Second
 )
 
 // CSIDriver defines the interface for a CSI driver.
@@ -461,19 +463,7 @@ func NewDriver(options *DriverOptions) *Driver {
 		csi.NodeServiceCapability_RPC_SINGLE_NODE_MULTI_WRITER,
 	})
 
-	// The PV informer only backs QAD PV lookups, so build it only when the
-	// feature is enabled; otherwise no component needs persistentvolumes access.
-	if kubeClient != nil && driver.nodeDrivenAttachDetachEnabled {
-		driver.informerFactory = informers.NewSharedInformerFactory(kubeClient, 10*time.Minute)
-		pvInformer := driver.informerFactory.Core().V1().PersistentVolumes()
-		if err := pvInformer.Informer().AddIndexers(cache.Indexers{pvDiskURIIndex: pvDiskURIIndexFunc}); err != nil {
-			klog.Warningf("failed to add diskURI indexer to PV informer, will fall back to API list: %v", err)
-		} else {
-			driver.pvIndexer = pvInformer.Informer().GetIndexer()
-		}
-		driver.pvLister = pvInformer.Lister()
-		driver.pvListerSynced = pvInformer.Informer().HasSynced
-	}
+	driver.initializePVInformer(kubeClient)
 
 	if kubeClient != nil && driver.removeNotReadyTaint && driver.NodeID != "" {
 		// Remove taint from node to indicate driver startup success
@@ -483,6 +473,32 @@ func NewDriver(options *DriverOptions) *Driver {
 		})
 	}
 	return &driver
+}
+
+func (d *Driver) initializePVInformer(kubeClient clientset.Interface) {
+	if kubeClient == nil || !d.nodeDrivenAttachDetachEnabled {
+		return
+	}
+
+	d.informerFactory = informers.NewSharedInformerFactory(kubeClient, 10*time.Minute)
+	pvInformer := d.informerFactory.Core().V1().PersistentVolumes()
+	if err := pvInformer.Informer().AddIndexers(cache.Indexers{pvDiskURIIndex: pvDiskURIIndexFunc}); err != nil {
+		klog.Warningf("failed to add diskURI indexer to PV informer, will fall back to API list: %v", err)
+	} else {
+		d.pvIndexer = pvInformer.Informer().GetIndexer()
+	}
+	d.pvLister = pvInformer.Lister()
+	d.pvListerSynced = pvInformer.Informer().HasSynced
+}
+
+func (d *Driver) waitForPVInformerCacheSync(ctx context.Context, timeout time.Duration) bool {
+	syncCtx, syncCancel := context.WithTimeout(ctx, timeout)
+	defer syncCancel()
+	if !cache.WaitForCacheSync(syncCtx.Done(), d.pvListerSynced) {
+		d.pvIndexer = nil
+		return false
+	}
+	return true
 }
 
 // Run driver initialization
@@ -521,7 +537,7 @@ func (d *Driver) Run(ctx context.Context) error {
 	// Start the node informer if it was set up during driver initialization
 	if d.nodeInformerFactory != nil {
 		d.nodeInformerFactory.Start(ctx.Done())
-		syncCtx, syncCancel := context.WithTimeout(ctx, 30*time.Second)
+		syncCtx, syncCancel := context.WithTimeout(ctx, informerCacheSyncTimeout)
 		defer syncCancel()
 		if !cache.WaitForCacheSync(syncCtx.Done(), d.nodeInformerSynced) {
 			klog.Warningf("metadata node informer cache has not synced yet, will continue to sync in background")
@@ -534,8 +550,8 @@ func (d *Driver) Run(ctx context.Context) error {
 	// Start informer factory if initialized
 	if d.informerFactory != nil {
 		d.informerFactory.Start(ctx.Done())
-		if !cache.WaitForCacheSync(ctx.Done(), d.pvListerSynced) {
-			klog.Errorf("failed to sync PV informer cache")
+		if !d.waitForPVInformerCacheSync(ctx, informerCacheSyncTimeout) {
+			klog.Warningf("PV informer cache has not synced, falling back to direct API access")
 		} else {
 			klog.V(2).Infof("PV informer cache synced successfully")
 		}
@@ -870,7 +886,10 @@ func (d *Driver) getPVFromDiskURI(ctx context.Context, diskURI string) (*v1.Pers
 		return nil, fmt.Errorf("%w with diskURI(%s)", errPVNotFound, diskURI)
 	}
 
-	// Fallback to direct API call if the indexer is not initialized.
+	// Fall back to a direct API list if the index is unavailable.
+	if d.kubeClient == nil {
+		return nil, fmt.Errorf("%w: Kubernetes client is not initialized", errPVMetadataUnavailable)
+	}
 	pvList, err := d.kubeClient.CoreV1().PersistentVolumes().List(ctx, metav1.ListOptions{})
 	if err != nil {
 		return nil, fmt.Errorf("failed to list PersistentVolumes: %v", err)

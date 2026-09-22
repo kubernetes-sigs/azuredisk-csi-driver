@@ -87,6 +87,7 @@ type DiskOperationRequest struct {
 	BlobURL         string
 	ClaimIdentifier string
 	AttachSequence  int
+	CachePolicy     string
 }
 
 // DiskStatus represents the status information for a single disk
@@ -230,11 +231,11 @@ func (d *Driver) NodeStageVolume(ctx context.Context, req *csi.NodeStageVolumeRe
 		}
 	}
 
-	var lun string
-	// QAD attach is only performed when the feature gate is enabled; otherwise the
-	// LUN comes from the controller-provided PublishContext and no PV lookup is done.
+	// A controller-provided LUN identifies the controller-driven path. Only consult
+	// PV metadata for a potential QAD volume when no LUN was provided.
+	lun, hasLUN := req.PublishContext[consts.LUN]
 	var pv *v1.PersistentVolume
-	if d.nodeDrivenAttachDetachEnabled {
+	if !hasLUN && d.nodeDrivenAttachDetachEnabled {
 		pv, err = d.getPVFromDiskURI(ctx, volumeID)
 		if err != nil && !errors.Is(err, errPVNotFound) {
 			return nil, status.Errorf(codes.Internal, "NodeStageVolume: failed to get PV from diskURI %s: %v", volumeID, err)
@@ -244,6 +245,10 @@ func (d *Driver) NodeStageVolume(ctx context.Context, req *csi.NodeStageVolumeRe
 	if pv != nil && d.hasQADInfo(pv) {
 		blobURL := pv.Annotations[consts.BlobURLAnnotation]
 		claimIdentifier := pv.Annotations[consts.ClaimIdentifierAnnotation]
+		cachePolicy, err := azureutils.GetCachingMode(params)
+		if err != nil {
+			return nil, status.Errorf(codes.InvalidArgument, "failed to determine cache policy: %v", err)
+		}
 		attachSequenceVal, err := incrementAttachSequenceAnnotation(ctx, d.kubeClient, pv)
 		if err != nil {
 			klog.Errorf("NodeStageVolume: failed to increment attach-sequence for volume %s: %v", volumeID, err)
@@ -257,6 +262,7 @@ func (d *Driver) NodeStageVolume(ctx context.Context, req *csi.NodeStageVolumeRe
 			BlobURL:         blobURL,
 			ClaimIdentifier: claimIdentifier,
 			AttachSequence:  attachSequenceVal,
+			CachePolicy:     string(cachePolicy),
 		}, attachOperation)
 
 		if err != nil {
@@ -294,10 +300,10 @@ func (d *Driver) NodeStageVolume(ctx context.Context, req *csi.NodeStageVolumeRe
 					return false, nil
 				}
 			}); err != nil {
+				if errors.Is(err, context.DeadlineExceeded) {
+					return nil, status.Errorf(codes.DeadlineExceeded, "NodeStageVolume: Timed out waiting for disk: %s to be attached on node: %s", volumeID, d.NodeID)
+				}
 				return nil, status.Errorf(codes.Internal, "NodeStageVolume: Error occurred while waiting for disk: %s to be attached on node: %s, error: %v", volumeID, d.NodeID, err)
-			}
-			if lun == "" {
-				return nil, status.Errorf(codes.DeadlineExceeded, "NodeStageVolume: Timed out waiting for disk: %s to be attached on node: %s", volumeID, d.NodeID)
 			}
 
 		} else if statusResp.Status == AttachmentStatusAttached {
@@ -307,12 +313,8 @@ func (d *Driver) NodeStageVolume(ctx context.Context, req *csi.NodeStageVolumeRe
 			klog.Errorf("NodeStageVolume: QAD attach failed for volume %s: status=%s, message=%q, error=%+v", volumeID, statusResp.Status, statusResp.StatusMessage, statusResp.Error)
 			return nil, status.Errorf(codes.Internal, "NodeStageVolume: QAD attach failed for volume %q with status %q", volumeID, statusResp.Status)
 		}
-	} else {
-		val, ok := req.PublishContext[consts.LUN]
-		if !ok {
-			return nil, status.Error(codes.InvalidArgument, "lun not provided")
-		}
-		lun = val
+	} else if !hasLUN {
+		return nil, status.Error(codes.InvalidArgument, "lun not provided")
 	}
 
 	source, err := d.getDevicePathWithLUN(lun)
@@ -424,24 +426,28 @@ func (d *Driver) NodeUnstageVolume(ctx context.Context, req *csi.NodeUnstageVolu
 
 	// QAD detach is only performed when the feature gate is enabled; otherwise the
 	// controller performs the detach and no PV lookup is needed here.
-	if !d.nodeDrivenAttachDetachEnabled {
-		isOperationSucceeded = true
-		return &csi.NodeUnstageVolumeResponse{}, nil
+	var pv *v1.PersistentVolume
+	if d.nodeDrivenAttachDetachEnabled {
+		var err error
+		pv, err = d.getPVFromDiskURI(ctx, volumeID)
+		if errors.Is(err, errPVMetadataUnavailable) {
+			return nil, status.Error(codes.FailedPrecondition, "Kubernetes client is required to read QAD volume metadata")
+		}
+		if errors.Is(err, errPVNotFound) {
+			return nil, status.Errorf(codes.Unavailable, "NodeUnstageVolume: PV metadata for volume %s is unavailable; cannot determine whether QAD detach is required", volumeID)
+		}
+		if err != nil {
+			return nil, status.Errorf(codes.Internal, "NodeUnstageVolume: failed to get PV from diskURI %s: %v", volumeID, err)
+		}
 	}
 
-	pv, err := d.getPVFromDiskURI(ctx, volumeID)
-	if errors.Is(err, errPVNotFound) {
-		klog.V(2).Infof("NodeUnstageVolume: PV for volume %s was not found after successful mount cleanup; completing unstage", volumeID)
-		isOperationSucceeded = true
-		return &csi.NodeUnstageVolumeResponse{}, nil
-	}
-	if err != nil || pv == nil {
-		return nil, status.Errorf(codes.Internal, "NodeUnstageVolume: failed to get PV from diskURI %s: %v", volumeID, err)
-	}
-
-	if d.hasQADInfo(pv) {
+	if pv != nil && d.hasQADInfo(pv) {
 		blobURL := pv.Annotations[azureconstants.BlobURLAnnotation]
 		claimIdentifier := pv.Annotations[azureconstants.ClaimIdentifierAnnotation]
+		cachePolicy, err := azureutils.GetCachingMode(pv.Spec.CSI.VolumeAttributes)
+		if err != nil {
+			return nil, status.Errorf(codes.Internal, "failed to determine cache policy for volume %s: %v", volumeID, err)
+		}
 		attachSequenceVal, err := incrementAttachSequenceAnnotation(ctx, d.kubeClient, pv)
 		if err != nil {
 			klog.Errorf("NodeUnStageVolume: failed to increment attach-sequence for volume %s: %v", volumeID, err)
@@ -454,6 +460,7 @@ func (d *Driver) NodeUnstageVolume(ctx context.Context, req *csi.NodeUnstageVolu
 			BlobURL:         blobURL,
 			ClaimIdentifier: claimIdentifier,
 			AttachSequence:  attachSequenceVal,
+			CachePolicy:     string(cachePolicy),
 		}, detachOperation)
 		if err != nil {
 			klog.Errorf("NodeUnStageVolume: failed to make POST call to wireserver for volume %s: %v", volumeID, err)
@@ -464,13 +471,11 @@ func (d *Driver) NodeUnstageVolume(ctx context.Context, req *csi.NodeUnstageVolu
 			klog.Infof("The volume with id %s is already detached", volumeID)
 			klog.Infof("NodeUnStageVolume: Latency observed for detach operation of disk %s is %v", volumeID, time.Since(detachTimer).Milliseconds())
 		} else if statusResp.Status == AttachmentStatusDetaching {
-			detached := false
 			if err = kwait.PollUntilContextTimeout(ctx, 500*time.Millisecond, 15*time.Second, true, func(pollCtx context.Context) (bool, error) {
 				diskState, err := getDiskState(pollCtx, *d.httpClient, volumeID)
 				if err != nil {
 					if status.Code(err) == codes.NotFound {
 						klog.Infof("NodeUnStageVolume: Latency observed for detach operation of disk %s is %v", volumeID, time.Since(detachTimer).Milliseconds())
-						detached = true
 						return true, nil
 					}
 					klog.Errorf("NodeUnStageVolume: failed to get disk state for volume %s: %v", volumeID, err)
@@ -484,7 +489,6 @@ func (d *Driver) NodeUnstageVolume(ctx context.Context, req *csi.NodeUnstageVolu
 				case AttachmentStatusDetached:
 					// The disk is detached now
 					klog.Infof("NodeUnStageVolume: Latency observed for detach operation of disk %s is %v", volumeID, time.Since(detachTimer).Milliseconds())
-					detached = true
 					return true, nil
 				case AttachmentStatusError:
 					klog.Errorf("NodeUnstageVolume: QAD detach failed for volume %s: status=%s, message=%q, error=%+v", volumeID, diskState.Status, diskState.StatusMessage, diskState.Error)
@@ -494,11 +498,10 @@ func (d *Driver) NodeUnstageVolume(ctx context.Context, req *csi.NodeUnstageVolu
 					return false, nil
 				}
 			}); err != nil {
+				if errors.Is(err, context.DeadlineExceeded) {
+					return nil, status.Errorf(codes.DeadlineExceeded, "NodeUnstageVolume: Timed out waiting for disk: %s to be detached from node: %s", volumeID, d.NodeID)
+				}
 				return nil, status.Errorf(codes.Internal, "NodeUnstageVolume: Error occurred while waiting for disk: %s to be detached from node: %s, error: %v", volumeID, d.NodeID, err)
-			}
-
-			if !detached {
-				return nil, status.Errorf(codes.DeadlineExceeded, "NodeUnstageVolume: Timed out waiting for disk: %s to be detached from node: %s", volumeID, d.NodeID)
 			}
 
 		} else {
@@ -506,6 +509,7 @@ func (d *Driver) NodeUnstageVolume(ctx context.Context, req *csi.NodeUnstageVolu
 			return nil, status.Errorf(codes.Internal, "NodeUnstageVolume: QAD detach failed for volume %q with status %q", volumeID, statusResp.Status)
 		}
 	}
+
 	isOperationSucceeded = true
 	return &csi.NodeUnstageVolumeResponse{}, nil
 }
@@ -1242,7 +1246,14 @@ func incrementAttachSequenceAnnotation(ctx context.Context, kubeClient clientset
 		}
 		currentAttachSequence := 0
 		if val, ok := pv.Annotations[azureconstants.AttachSequenceAnnotation]; ok {
-			currentAttachSequence, _ = strconv.Atoi(val)
+			parsedSequence, parseErr := strconv.Atoi(val)
+			if parseErr != nil || parsedSequence < 0 {
+				return fmt.Errorf("invalid attach-sequence annotation %q on PersistentVolume %s", val, pv.Name)
+			}
+			if parsedSequence == int(^uint(0)>>1) {
+				return fmt.Errorf("attach-sequence annotation on PersistentVolume %s cannot be incremented", pv.Name)
+			}
+			currentAttachSequence = parsedSequence
 		}
 		updatedSequence = currentAttachSequence + 1
 		pv.Annotations[azureconstants.AttachSequenceAnnotation] = strconv.Itoa(updatedSequence)
@@ -1296,6 +1307,9 @@ func attachOrDetachDiskInternal(ctx context.Context, client http.Client, diskReq
 	if diskRequest.DiskURI == "" {
 		return WireserverDiskStatusResponse{}, status.Error(codes.InvalidArgument, "disk URI must not be empty")
 	}
+	if cred == nil {
+		return WireserverDiskStatusResponse{}, status.Error(codes.FailedPrecondition, "Azure credential is required for QAD disk operations")
+	}
 
 	// Get a fresh token from the credential (SDK handles caching/refresh internally).
 	// XFE validates the token audience as "https://management.azure.com/" (with trailing
@@ -1313,7 +1327,7 @@ func attachOrDetachDiskInternal(ctx context.Context, client http.Client, diskReq
 			ClaimIdentifier: diskRequest.ClaimIdentifier,
 			AttachSequence:  diskRequest.AttachSequence,
 			Action:          operationType,
-			CachePolicy:     "None",
+			CachePolicy:     diskRequest.CachePolicy,
 		},
 	}
 
