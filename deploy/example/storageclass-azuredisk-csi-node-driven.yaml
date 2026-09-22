@@ -12,4 +12,4 @@ parameters:
   attachMode: NodeDriven
 reclaimPolicy: Delete
 volumeBindingMode: WaitForFirstConsumer
-allowVolumeExpansion: true
+allowVolumeExpansion: false

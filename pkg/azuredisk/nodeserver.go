@@ -482,8 +482,8 @@ func (d *Driver) NodeUnstageVolume(ctx context.Context, req *csi.NodeUnstageVolu
 					return false, err
 				}
 				if diskState == nil {
-					// Disk is still detaching, wait for it to be detached
-					return false, nil
+					klog.Infof("NodeUnStageVolume: Latency observed for detach operation of disk %s is %v", volumeID, time.Since(detachTimer).Milliseconds())
+					return true, nil
 				}
 				switch diskState.Status {
 				case AttachmentStatusDetached:

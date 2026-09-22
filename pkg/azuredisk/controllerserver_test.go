@@ -1095,6 +1095,53 @@ func TestCreateVolumeRetriesIncompleteQADClaimWithoutUnclaim(t *testing.T) {
 	assert.False(t, unclaimed.Load())
 }
 
+func TestCreateVolumeRetriesQADOwnerLookupFailure(t *testing.T) {
+	cntl := gomock.NewController(t)
+	d, err := NewFakeDriver(cntl)
+	require.NoError(t, err)
+	driver := d.(*fakeDriver)
+	driver.nodeDrivenAttachDetachEnabled = true
+	driver.cloud.SubscriptionID = "subscription"
+	driver.cloud.ResourceGroup = "node-resource-group"
+
+	req := &csi.CreateVolumeRequest{
+		Name:               testVolumeName,
+		VolumeCapabilities: stdVolumeCapabilities,
+		CapacityRange: &csi.CapacityRange{
+			RequiredBytes: volumehelper.GiBToBytes(10),
+			LimitBytes:    volumehelper.GiBToBytes(514),
+		},
+		Parameters: map[string]string{consts.AttachModeField: consts.AttachModeNodeDriven},
+	}
+	size := int32(volumehelper.BytesToGiB(req.CapacityRange.RequiredBytes))
+	diskURI := fmt.Sprintf(consts.ManagedDiskPath, "subs", "rg", testVolumeName)
+	state := "Succeeded"
+	disk := &armcompute.Disk{
+		ID:   &diskURI,
+		Name: &testVolumeName,
+		Properties: &armcompute.DiskProperties{
+			DiskSizeGB:        &size,
+			ProvisioningState: &state,
+		},
+	}
+
+	clientFactory := driver.clientFactory.(*mock_azclient.MockClientFactory)
+	diskClient := mock_diskclient.NewMockInterface(cntl)
+	clientFactory.EXPECT().GetDiskClientForSub(gomock.Any()).Return(diskClient, nil).AnyTimes()
+	diskClient.EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any()).Return(disk, nil).AnyTimes()
+	diskClient.EXPECT().CreateOrUpdate(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(disk, nil)
+
+	resourceGroupClient := mock_resourcegroupclient.NewMockInterface(cntl)
+	clientFactory.EXPECT().GetResourceGroupClient().Return(resourceGroupClient)
+	resourceGroupClient.EXPECT().Get(gomock.Any(), "node-resource-group").Return(nil, errors.New("resource group unavailable"))
+
+	response, err := driver.CreateVolume(context.Background(), req)
+
+	require.Nil(t, response)
+	assert.Equal(t, codes.Aborted, status.Code(err))
+	assert.ErrorContains(t, err, "failed to determine QAD owner resource")
+}
+
 func TestCreateVolume_SnapshotPremiumLRS_ToPremiumV2_EmitsMigrationEvents(t *testing.T) {
 	cntl := gomock.NewController(t)
 	defer cntl.Finish()
@@ -2254,6 +2301,80 @@ func TestControllerModifyVolume(t *testing.T) {
 		if d.GetMigrationMonitor() != nil {
 			d.GetMigrationMonitor().Stop()
 		}
+	}
+}
+
+func TestControllerVolumeMutationPVLookup(t *testing.T) {
+	tests := []struct {
+		name            string
+		pvListErr       error
+		invoke          func(FakeDriver) error
+		expectedCode    codes.Code
+		expectedMessage string
+	}{
+		{
+			name:      "modify fails closed on PV API error",
+			pvListErr: errors.New("Kubernetes API unavailable"),
+			invoke: func(driver FakeDriver) error {
+				_, err := driver.ControllerModifyVolume(context.Background(), &csi.ControllerModifyVolumeRequest{VolumeId: testVolumeID})
+				return err
+			},
+			expectedCode:    codes.Internal,
+			expectedMessage: "failed to get PV from disk URI",
+		},
+		{
+			name: "modify continues when PV is absent",
+			invoke: func(driver FakeDriver) error {
+				_, err := driver.ControllerModifyVolume(context.Background(), &csi.ControllerModifyVolumeRequest{VolumeId: "invalid"})
+				return err
+			},
+			expectedCode:    codes.NotFound,
+			expectedMessage: "Volume not found",
+		},
+		{
+			name:      "expand fails closed on PV API error",
+			pvListErr: errors.New("Kubernetes API unavailable"),
+			invoke: func(driver FakeDriver) error {
+				_, err := driver.ControllerExpandVolume(context.Background(), &csi.ControllerExpandVolumeRequest{
+					VolumeId:      testVolumeID,
+					CapacityRange: &csi.CapacityRange{RequiredBytes: volumehelper.GiBToBytes(10)},
+				})
+				return err
+			},
+			expectedCode:    codes.Internal,
+			expectedMessage: "failed to get PV from disk URI",
+		},
+		{
+			name: "expand continues when PV is absent",
+			invoke: func(driver FakeDriver) error {
+				_, err := driver.ControllerExpandVolume(context.Background(), &csi.ControllerExpandVolumeRequest{
+					VolumeId:      "invalid",
+					CapacityRange: &csi.CapacityRange{RequiredBytes: volumehelper.GiBToBytes(10)},
+				})
+				return err
+			},
+			expectedCode:    codes.Internal,
+			expectedMessage: "GetDiskByURI(invalid)",
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			cntl := gomock.NewController(t)
+			driver, err := NewFakeDriver(cntl)
+			require.NoError(t, err)
+			driver.(*fakeDriver).nodeDrivenAttachDetachEnabled = true
+			if test.pvListErr != nil {
+				driver.(*fakeDriver).kubeClient.(*fake.Clientset).PrependReactor("list", "persistentvolumes", func(k8stesting.Action) (bool, runtime.Object, error) {
+					return true, nil, test.pvListErr
+				})
+			}
+
+			err = test.invoke(driver)
+
+			assert.Equal(t, test.expectedCode, status.Code(err))
+			assert.ErrorContains(t, err, test.expectedMessage)
+		})
 	}
 }
 

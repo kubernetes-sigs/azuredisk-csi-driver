@@ -1343,6 +1343,7 @@ func TestNodeUnstageVolumeQADDetachedResponses(t *testing.T) {
 		postStatus        AttachmentStatus
 		getResponseStatus AttachmentStatus
 		emptyPostResponse bool
+		nullGetResponse   bool
 		expectedRequests  []string
 		expectedCode      codes.Code
 	}{
@@ -1361,6 +1362,12 @@ func TestNodeUnstageVolumeQADDetachedResponses(t *testing.T) {
 			postStatus:        AttachmentStatusDetaching,
 			getResponseStatus: AttachmentStatusDetached,
 			expectedRequests:  []string{http.MethodPost, http.MethodGet},
+		},
+		{
+			name:             "polling null response means detached",
+			postStatus:       AttachmentStatusDetaching,
+			nullGetResponse:  true,
+			expectedRequests: []string{http.MethodPost, http.MethodGet},
 		},
 		{
 			name:              "polling observes failed response",
@@ -1415,6 +1422,8 @@ func TestNodeUnstageVolumeQADDetachedResponses(t *testing.T) {
 				body := fmt.Sprintf(`{"%s":{"status":"%s"}}`, volumeID, responseStatus)
 				if request.Method == http.MethodPost && test.emptyPostResponse {
 					body = `{}`
+				} else if request.Method == http.MethodGet && test.nullGetResponse {
+					body = fmt.Sprintf(`{"%s":null}`, volumeID)
 				}
 				return &http.Response{
 					StatusCode: http.StatusOK,
