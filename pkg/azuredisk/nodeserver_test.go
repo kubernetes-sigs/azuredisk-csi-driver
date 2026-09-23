@@ -1343,6 +1343,7 @@ func TestNodeUnstageVolumeQADDetachedResponses(t *testing.T) {
 		postStatus        AttachmentStatus
 		getResponseStatus AttachmentStatus
 		emptyPostResponse bool
+		nullGetResponse   bool
 		expectedRequests  []string
 		expectedCode      codes.Code
 	}{
@@ -1361,6 +1362,12 @@ func TestNodeUnstageVolumeQADDetachedResponses(t *testing.T) {
 			postStatus:        AttachmentStatusDetaching,
 			getResponseStatus: AttachmentStatusDetached,
 			expectedRequests:  []string{http.MethodPost, http.MethodGet},
+		},
+		{
+			name:             "polling null response means detached",
+			postStatus:       AttachmentStatusDetaching,
+			nullGetResponse:  true,
+			expectedRequests: []string{http.MethodPost, http.MethodGet},
 		},
 		{
 			name:              "polling observes failed response",
@@ -1384,6 +1391,7 @@ func TestNodeUnstageVolumeQADDetachedResponses(t *testing.T) {
 				consts.AttachSequenceAnnotation:  "0",
 				consts.BlobURLAnnotation:         "blob-url",
 				consts.ClaimIdentifierAnnotation: "claim-id",
+				consts.QADCachePolicyAnnotation:  "None",
 			}
 			pv.Spec.CSI.VolumeAttributes = map[string]string{
 				consts.CachingModeField: "ReadOnly",
@@ -1404,9 +1412,8 @@ func TestNodeUnstageVolumeQADDetachedResponses(t *testing.T) {
 					var requestBody WireserverRequest
 					require.NoError(t, json.NewDecoder(request.Body).Decode(&requestBody))
 					require.Contains(t, requestBody.DiskOps, volumeID)
-					assert.Equal(t, "ReadOnly", requestBody.DiskOps[volumeID].CachePolicy)
+					assert.Equal(t, "None", requestBody.DiskOps[volumeID].CachePolicy)
 				}
-
 				responseStatus := test.postStatus
 				if request.Method == http.MethodGet {
 					responseStatus = test.getResponseStatus
@@ -1415,6 +1422,8 @@ func TestNodeUnstageVolumeQADDetachedResponses(t *testing.T) {
 				body := fmt.Sprintf(`{"%s":{"status":"%s"}}`, volumeID, responseStatus)
 				if request.Method == http.MethodPost && test.emptyPostResponse {
 					body = `{}`
+				} else if request.Method == http.MethodGet && test.nullGetResponse {
+					body = fmt.Sprintf(`{"%s":null}`, volumeID)
 				}
 				return &http.Response{
 					StatusCode: http.StatusOK,
@@ -1436,6 +1445,42 @@ func TestNodeUnstageVolumeQADDetachedResponses(t *testing.T) {
 			require.NoError(t, err)
 			require.Equal(t, &csi.NodeUnstageVolumeResponse{}, result)
 			assert.Equal(t, len(test.expectedRequests), requestCount)
+		})
+	}
+}
+
+func TestGetQADCachePolicy(t *testing.T) {
+	tests := []struct {
+		name       string
+		annotation string
+		expected   string
+	}{
+		{
+			name:       "effective policy annotation overrides volume attributes",
+			annotation: "None",
+			expected:   "None",
+		},
+		{
+			name:     "volume attributes support existing PVs",
+			expected: "ReadOnly",
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			pv := newTestPV("qad-volume")
+			pv.Spec.CSI.VolumeAttributes = map[string]string{
+				consts.CachingModeField: "ReadOnly",
+			}
+			if test.annotation != "" {
+				pv.Annotations = map[string]string{
+					consts.QADCachePolicyAnnotation: test.annotation,
+				}
+			}
+
+			cachePolicy, err := getQADCachePolicy(pv)
+			require.NoError(t, err)
+			assert.Equal(t, test.expected, string(cachePolicy))
 		})
 	}
 }

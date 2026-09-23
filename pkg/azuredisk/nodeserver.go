@@ -33,6 +33,7 @@ import (
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/policy"
+	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute/v7"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/optimization"
 	volumehelper "sigs.k8s.io/azuredisk-csi-driver/pkg/util"
@@ -245,7 +246,7 @@ func (d *Driver) NodeStageVolume(ctx context.Context, req *csi.NodeStageVolumeRe
 	if pv != nil && d.hasQADInfo(pv) {
 		blobURL := pv.Annotations[consts.BlobURLAnnotation]
 		claimIdentifier := pv.Annotations[consts.ClaimIdentifierAnnotation]
-		cachePolicy, err := azureutils.GetCachingMode(params)
+		cachePolicy, err := getQADCachePolicy(pv)
 		if err != nil {
 			return nil, status.Errorf(codes.InvalidArgument, "failed to determine cache policy: %v", err)
 		}
@@ -444,7 +445,7 @@ func (d *Driver) NodeUnstageVolume(ctx context.Context, req *csi.NodeUnstageVolu
 	if pv != nil && d.hasQADInfo(pv) {
 		blobURL := pv.Annotations[azureconstants.BlobURLAnnotation]
 		claimIdentifier := pv.Annotations[azureconstants.ClaimIdentifierAnnotation]
-		cachePolicy, err := azureutils.GetCachingMode(pv.Spec.CSI.VolumeAttributes)
+		cachePolicy, err := getQADCachePolicy(pv)
 		if err != nil {
 			return nil, status.Errorf(codes.Internal, "failed to determine cache policy for volume %s: %v", volumeID, err)
 		}
@@ -482,8 +483,8 @@ func (d *Driver) NodeUnstageVolume(ctx context.Context, req *csi.NodeUnstageVolu
 					return false, err
 				}
 				if diskState == nil {
-					// Disk is still detaching, wait for it to be detached
-					return false, nil
+					klog.Infof("NodeUnStageVolume: Latency observed for detach operation of disk %s is %v", volumeID, time.Since(detachTimer).Milliseconds())
+					return true, nil
 				}
 				switch diskState.Status {
 				case AttachmentStatusDetached:
@@ -1267,6 +1268,18 @@ func incrementAttachSequenceAnnotation(ctx context.Context, kubeClient clientset
 
 	klog.V(2).Infof("Successfully incremented attach sequence annotation for PV %s to %d", pv.Name, updatedSequence)
 	return updatedSequence, nil
+}
+
+func getQADCachePolicy(pv *v1.PersistentVolume) (armcompute.CachingTypes, error) {
+	if pv != nil && pv.Annotations[azureconstants.QADCachePolicyAnnotation] != "" {
+		return azureutils.GetCachingMode(map[string]string{
+			consts.CachingModeField: pv.Annotations[azureconstants.QADCachePolicyAnnotation],
+		})
+	}
+	if pv == nil || pv.Spec.CSI == nil {
+		return "", fmt.Errorf("PV has no CSI volume source")
+	}
+	return azureutils.GetCachingMode(pv.Spec.CSI.VolumeAttributes)
 }
 
 func (d *Driver) executeQADDiskOperation(ctx context.Context, diskRequest DiskOperationRequest, operationType string) (*DiskStatus, error) {

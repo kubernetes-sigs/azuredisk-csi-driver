@@ -426,7 +426,7 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 
 		qadOwnerResource, err := d.getAKSClusterResourceID(ctx)
 		if err != nil {
-			return nil, status.Errorf(codes.Internal, "failed to determine QAD owner resource: %v", err)
+			return nil, status.Errorf(codes.Aborted, "failed to determine QAD owner resource: %v", err)
 		}
 		blobURL, claimIdentifier, err := d.claimDiskResource(ctx, diskURI, qadOwnerResource)
 		if err != nil {
@@ -710,7 +710,7 @@ func (d *Driver) ControllerModifyVolume(ctx context.Context, req *csi.Controller
 
 	if d.nodeDrivenAttachDetachEnabled {
 		pv, pvErr := d.getPVFromDiskURI(ctx, diskURI)
-		if pvErr != nil {
+		if pvErr != nil && !errors.Is(pvErr, errPVNotFound) {
 			return nil, status.Errorf(codes.Internal, "failed to get PV from disk URI %s: %v", diskURI, pvErr)
 		}
 		if pv != nil && d.hasQADInfo(pv) {
@@ -865,9 +865,9 @@ func (d *Driver) ControllerPublishVolume(ctx context.Context, req *csi.Controlle
 		klog.V(2).Infof("qad is enabled for disk %s", diskURI)
 		blobURL := volumeContext[azureconstants.BlobURLAnnotation]
 		claimIdentifier := volumeContext[azureconstants.ClaimIdentifierAnnotation]
-		cachePolicy, err := azureutils.GetCachingMode(volumeContext)
+		cachePolicy, err := azureutils.GetCachingMode(pv.Spec.CSI.VolumeAttributes)
 		if err != nil {
-			return nil, status.Errorf(codes.InvalidArgument, "failed to determine QAD cache policy: %v", err)
+			return nil, status.Errorf(codes.InvalidArgument, "failed to determine PV cache policy: %v", err)
 		}
 		var diskSizeGB *int32
 		if disk != nil && disk.Properties != nil {
@@ -1015,10 +1015,10 @@ func ensureQADPVAnnotations(ctx context.Context, kubeClient clientset.Interface,
 			sequence = "0"
 			klog.Infof("PV %s doesn't have attach-sequence annotation, adding annotation for QAD", pvName)
 		}
-		cachePolicyMatches := cachePolicy == "" || (pv.Spec.CSI != nil && pv.Spec.CSI.VolumeAttributes[consts.CachingModeField] == cachePolicy)
 		if pv.Annotations[azureconstants.AttachSequenceAnnotation] == sequence &&
 			pv.Annotations[azureconstants.BlobURLAnnotation] == blobURL &&
-			pv.Annotations[azureconstants.ClaimIdentifierAnnotation] == claimIdentifier && cachePolicyMatches {
+			pv.Annotations[azureconstants.ClaimIdentifierAnnotation] == claimIdentifier &&
+			pv.Annotations[azureconstants.QADCachePolicyAnnotation] == cachePolicy {
 			return nil
 		}
 		pv = pv.DeepCopy()
@@ -1028,15 +1028,8 @@ func ensureQADPVAnnotations(ctx context.Context, kubeClient clientset.Interface,
 		pv.Annotations[azureconstants.AttachSequenceAnnotation] = sequence
 		pv.Annotations[azureconstants.BlobURLAnnotation] = blobURL
 		pv.Annotations[azureconstants.ClaimIdentifierAnnotation] = claimIdentifier
-		if cachePolicy != "" {
-			if pv.Spec.CSI == nil {
-				return fmt.Errorf("PV %s has no CSI volume source", pvName)
-			}
-			if pv.Spec.CSI.VolumeAttributes == nil {
-				pv.Spec.CSI.VolumeAttributes = make(map[string]string)
-			}
-			pv.Spec.CSI.VolumeAttributes[consts.CachingModeField] = cachePolicy
-		}
+		pv.Annotations[azureconstants.QADCachePolicyAnnotation] = cachePolicy
+
 		_, err = kubeClient.CoreV1().PersistentVolumes().Update(ctx, pv, metav1.UpdateOptions{})
 		return err
 	})
@@ -1426,8 +1419,8 @@ func (d *Driver) ControllerExpandVolume(ctx context.Context, req *csi.Controller
 
 	if d.nodeDrivenAttachDetachEnabled {
 		pv, pvErr := d.getPVFromDiskURI(ctx, diskURI)
-		if pvErr != nil {
-			klog.Warningf("failed to get PV from diskURI %s: %v", diskURI, pvErr)
+		if pvErr != nil && !errors.Is(pvErr, errPVNotFound) {
+			return nil, status.Errorf(codes.Internal, "failed to get PV from disk URI %s: %v", diskURI, pvErr)
 		}
 		if pv != nil && d.hasQADInfo(pv) {
 			return nil, status.Errorf(codes.Unimplemented, "ControllerExpandVolume is not supported for QAD-enabled volume %s", diskURI)
