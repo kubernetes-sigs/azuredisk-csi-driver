@@ -22,7 +22,7 @@ This driver allows Kubernetes to access [Azure Disk](https://azure.microsoft.com
 | Driver Version | Image                                                                | Supported K8s Version |
 |----------------|----------------------------------------------------------------------|-----------------------|
 | master branch  | `mcr.microsoft.com/k8s/csi/azuredisk-csi:latest`                    | 1.21+                 |
-| v1.35.0        | `mcr.microsoft.com/oss/v2/kubernetes-csi/azuredisk-csi:v1.35.0`     | 1.21+                 |
+| v1.36.0        | `mcr.microsoft.com/oss/v2/kubernetes-csi/azuredisk-csi:v1.36.0`     | 1.21+                 |
 | v1.34.5        | `mcr.microsoft.com/oss/v2/kubernetes-csi/azuredisk-csi:v1.34.5`     | 1.21+                 |
 | v1.33.11        | `mcr.microsoft.com/oss/v2/kubernetes-csi/azuredisk-csi:v1.33.11`     | 1.21+                 |
 
