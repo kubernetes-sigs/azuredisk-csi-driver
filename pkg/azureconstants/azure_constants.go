@@ -116,6 +116,7 @@ const (
 	AttachSequenceAnnotation     = "azuredisk.csi.azure.com/attach-sequence"
 	BlobURLAnnotation            = "azuredisk.csi.azure.com/blob-url"
 	ClaimIdentifierAnnotation    = "azuredisk.csi.azure.com/claim-identifier"
+	QADCachePolicyAnnotation     = "azuredisk.csi.azure.com/cache-policy"
 )
 
 const (

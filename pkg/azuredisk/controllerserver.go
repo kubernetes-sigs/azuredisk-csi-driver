@@ -865,9 +865,9 @@ func (d *Driver) ControllerPublishVolume(ctx context.Context, req *csi.Controlle
 		klog.V(2).Infof("qad is enabled for disk %s", diskURI)
 		blobURL := volumeContext[azureconstants.BlobURLAnnotation]
 		claimIdentifier := volumeContext[azureconstants.ClaimIdentifierAnnotation]
-		cachePolicy, err := azureutils.GetCachingMode(volumeContext)
+		cachePolicy, err := azureutils.GetCachingMode(pv.Spec.CSI.VolumeAttributes)
 		if err != nil {
-			return nil, status.Errorf(codes.InvalidArgument, "failed to determine QAD cache policy: %v", err)
+			return nil, status.Errorf(codes.InvalidArgument, "failed to determine PV cache policy: %v", err)
 		}
 		var diskSizeGB *int32
 		if disk != nil && disk.Properties != nil {
@@ -1015,10 +1015,10 @@ func ensureQADPVAnnotations(ctx context.Context, kubeClient clientset.Interface,
 			sequence = "0"
 			klog.Infof("PV %s doesn't have attach-sequence annotation, adding annotation for QAD", pvName)
 		}
-		cachePolicyMatches := cachePolicy == "" || (pv.Spec.CSI != nil && pv.Spec.CSI.VolumeAttributes[consts.CachingModeField] == cachePolicy)
 		if pv.Annotations[azureconstants.AttachSequenceAnnotation] == sequence &&
 			pv.Annotations[azureconstants.BlobURLAnnotation] == blobURL &&
-			pv.Annotations[azureconstants.ClaimIdentifierAnnotation] == claimIdentifier && cachePolicyMatches {
+			pv.Annotations[azureconstants.ClaimIdentifierAnnotation] == claimIdentifier &&
+			pv.Annotations[azureconstants.QADCachePolicyAnnotation] == cachePolicy {
 			return nil
 		}
 		pv = pv.DeepCopy()
@@ -1028,6 +1028,7 @@ func ensureQADPVAnnotations(ctx context.Context, kubeClient clientset.Interface,
 		pv.Annotations[azureconstants.AttachSequenceAnnotation] = sequence
 		pv.Annotations[azureconstants.BlobURLAnnotation] = blobURL
 		pv.Annotations[azureconstants.ClaimIdentifierAnnotation] = claimIdentifier
+		pv.Annotations[azureconstants.QADCachePolicyAnnotation] = cachePolicy
 
 		_, err = kubeClient.CoreV1().PersistentVolumes().Update(ctx, pv, metav1.UpdateOptions{})
 		return err

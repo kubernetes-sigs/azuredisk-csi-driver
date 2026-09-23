@@ -2976,7 +2976,7 @@ func TestEnsureQADPVAnnotationsRetriesConflict(t *testing.T) {
 		return false, nil, nil
 	})
 
-	require.NoError(t, ensureQADPVAnnotations(context.Background(), kubeClient, pvName, blobURL, claimIdentifier, ""))
+	require.NoError(t, ensureQADPVAnnotations(context.Background(), kubeClient, pvName, blobURL, claimIdentifier, "ReadOnly"))
 	assert.Equal(t, 2, updateAttempts)
 
 	pv, err := kubeClient.CoreV1().PersistentVolumes().Get(context.Background(), pvName, metav1.GetOptions{})
@@ -2987,7 +2987,7 @@ func TestEnsureQADPVAnnotationsRetriesConflict(t *testing.T) {
 }
 
 func TestEnsureQADPVAnnotationsRejectsEmptyPVName(t *testing.T) {
-	err := ensureQADPVAnnotations(context.Background(), nil, "", "blob-url", "claim-id", "")
+	err := ensureQADPVAnnotations(context.Background(), nil, "", "blob-url", "claim-id", "ReadOnly")
 	require.EqualError(t, err, "PV name must not be empty")
 }
 
@@ -3034,7 +3034,7 @@ func TestEnsureQADPVAnnotationsRejectsIncompleteMetadata(t *testing.T) {
 				ObjectMeta: metav1.ObjectMeta{Name: pvName, Annotations: test.annotations},
 			})
 
-			err := ensureQADPVAnnotations(context.Background(), kubeClient, pvName, test.blobURL, test.claimID, "")
+			err := ensureQADPVAnnotations(context.Background(), kubeClient, pvName, test.blobURL, test.claimID, "ReadOnly")
 			require.ErrorContains(t, err, test.expectedErr)
 
 			pv, getErr := kubeClient.CoreV1().PersistentVolumes().Get(context.Background(), pvName, metav1.GetOptions{})
@@ -3058,7 +3058,7 @@ func TestEnsureQADPVAnnotationsFillsMissingCompanionAnnotations(t *testing.T) {
 		}},
 	})
 
-	require.NoError(t, ensureQADPVAnnotations(context.Background(), kubeClient, pvName, blobURL, claimIdentifier, ""))
+	require.NoError(t, ensureQADPVAnnotations(context.Background(), kubeClient, pvName, blobURL, claimIdentifier, "ReadOnly"))
 
 	pv, err := kubeClient.CoreV1().PersistentVolumes().Get(context.Background(), pvName, metav1.GetOptions{})
 	require.NoError(t, err)
@@ -3083,7 +3083,7 @@ func TestEnsureQADPVAnnotationsSeedsFromExistingAnnotations(t *testing.T) {
 		}},
 	})
 
-	require.NoError(t, ensureQADPVAnnotations(context.Background(), kubeClient, pvName, "", "", ""))
+	require.NoError(t, ensureQADPVAnnotations(context.Background(), kubeClient, pvName, "", "", "ReadOnly"))
 
 	pv, err := kubeClient.CoreV1().PersistentVolumes().Get(context.Background(), pvName, metav1.GetOptions{})
 	require.NoError(t, err)
@@ -3092,7 +3092,7 @@ func TestEnsureQADPVAnnotationsSeedsFromExistingAnnotations(t *testing.T) {
 	assert.Equal(t, claimIdentifier, pv.Annotations[consts.ClaimIdentifierAnnotation])
 }
 
-func TestControllerPublishVolumeNormalizesQADCachePolicyForLargeStaticDisk(t *testing.T) {
+func TestControllerPublishVolumePersistsEffectiveQADCachePolicyForLargeStaticDisk(t *testing.T) {
 	cntl := gomock.NewController(t)
 	d, err := NewFakeDriver(cntl)
 	require.NoError(t, err)
@@ -3143,7 +3143,9 @@ func TestControllerPublishVolumeNormalizesQADCachePolicyForLargeStaticDisk(t *te
 
 	pv, err := driver.kubeClient.CoreV1().PersistentVolumes().Get(context.Background(), pvName, metav1.GetOptions{})
 	require.NoError(t, err)
-	assert.Equal(t, "None", pv.Spec.CSI.VolumeAttributes[consts.CachingModeField])
+	assert.Equal(t, "ReadOnly", pv.Spec.CSI.VolumeAttributes[consts.CachingModeField])
+	assert.Equal(t, "None", pv.Annotations[consts.QADCachePolicyAnnotation])
+	assert.Equal(t, "0", pv.Annotations[consts.AttachSequenceAnnotation])
 }
 
 func TestControllerPublishVolumeRejectsIncompleteQADMetadata(t *testing.T) {
