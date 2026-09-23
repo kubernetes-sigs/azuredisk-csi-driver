@@ -1,5 +1,9 @@
 # Kata Containers mounts
 
+- Feature stage: Alpha
+- Default: Disabled
+- Feature gate: `KataMount`
+
 When using the Azure Disk CSI driver with Kata Containers, by default
 the runtime shares the host-mounted filesystem with the pod VM with
 virtio-fs.
@@ -12,7 +16,13 @@ virtio-blk to be mounted inside the pod VM for improved performance.
 First enable Kata mounts with the Helm flag:
 
 ```helm
-node.enableKataMount=true
+driver.featureGates.KataMount=true
+```
+
+This passes the following option to the node driver component:
+
+```text
+--feature-gates=KataMount=true
 ```
 
 Then the virtio-blk integration can be enabled by setting the following

@@ -148,7 +148,6 @@ node:
   reservedDataDiskSlotNum: 0
   supportZone: true
   allowEmptyCloudConfig: true
-  enableKataMount: false
   getNodeIDFromIMDS: false
   removeNotReadyTaint: true
   maxUnavailable: 1
@@ -209,6 +208,7 @@ driver:
   # Azure Disk CSI driver feature gates. Alpha features are disabled by default.
   featureGates:
     NodeDrivenAttachDetach: false
+    KataMount: false
   # maximum number of attachable volumes per node,
   # maximum number is defined according to node instance type by default(-1)
   volumeAttachLimit: -1
