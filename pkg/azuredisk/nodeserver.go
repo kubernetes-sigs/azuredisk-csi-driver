@@ -983,12 +983,11 @@ func (d *Driver) NodeExpandVolume(_ context.Context, req *csi.NodeExpandVolumeRe
 		mc.WithAdditionalVolumeInfo(consts.VolumeID, volumeID).Observe(isOperationSucceeded)
 	}()
 
-	if !d.enableKataMount {
-		if acquired := d.volumeLocks.TryAcquire(volumeID); !acquired {
-			return nil, status.Errorf(codes.Aborted, volumeOperationAlreadyExistsFmt, volumeID)
-		}
-		defer d.volumeLocks.Release(volumeID)
+	// TODO: Runtime check for KataMount feature gate before acquiring volume lock
+	if acquired := d.volumeLocks.TryAcquire(volumeID); !acquired {
+		return nil, status.Errorf(codes.Aborted, volumeOperationAlreadyExistsFmt, volumeID)
 	}
+	defer d.volumeLocks.Release(volumeID)
 
 	devicePath, err := getDevicePathWithMountPath(volumePath, d.mounter)
 	if err != nil {
