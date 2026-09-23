@@ -27,10 +27,18 @@ const (
 	// NodeDrivenAttachDetach allows new volumes to opt in to the Alpha
 	// node-driven attach/detach architecture.
 	NodeDrivenAttachDetach featuregate.Feature = "NodeDrivenAttachDetach"
+
+	// KataMount allows the driver to mount volumes for Kata Containers via
+	// virtio-blk instead of the default virtio-fs passthrough.
+	KataMount featuregate.Feature = "KataMount"
 )
 
 var defaultDriverFeatureGates = map[featuregate.Feature]featuregate.FeatureSpec{
 	NodeDrivenAttachDetach: {
+		Default:    false,
+		PreRelease: featuregate.Alpha,
+	},
+	KataMount: {
 		Default:    false,
 		PreRelease: featuregate.Alpha,
 	},

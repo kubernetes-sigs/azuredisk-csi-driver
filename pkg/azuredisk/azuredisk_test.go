@@ -90,6 +90,34 @@ func TestNewDriver(t *testing.T) {
 	assert.NotNil(t, d)
 }
 
+func TestNewDriverKataMountFeatureGate(t *testing.T) {
+	t.Run("disabled by default", func(t *testing.T) {
+		d := NewDriver(&DriverOptions{
+			NodeID:                consts.DefaultDriverName,
+			DriverName:            consts.DefaultDriverName,
+			Kubeconfig:            "",
+			AllowEmptyCloudConfig: true,
+		})
+		require.NotNil(t, d)
+		assert.False(t, d.enableKataMount)
+	})
+
+	t.Run("enabled via feature gate", func(t *testing.T) {
+		featureGates := NewDriverFeatureGate()
+		require.NoError(t, featureGates.SetFromMap(map[string]bool{string(KataMount): true}))
+
+		d := NewDriver(&DriverOptions{
+			NodeID:                consts.DefaultDriverName,
+			DriverName:            consts.DefaultDriverName,
+			Kubeconfig:            "",
+			AllowEmptyCloudConfig: true,
+			FeatureGates:          featureGates,
+		})
+		require.NotNil(t, d)
+		assert.True(t, d.enableKataMount)
+	})
+}
+
 func TestCheckDiskCapacity(t *testing.T) {
 	cntl := gomock.NewController(t)
 	defer cntl.Finish()

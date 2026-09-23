@@ -221,7 +221,7 @@ func (d *Driver) NodeStageVolume(ctx context.Context, req *csi.NodeStageVolumeRe
 	// Block volumes are ignored as they don't use MountInfo.
 	// This runs before any PV lookup or QAD/LUN resolution, since a
 	// Kata-owned volume needs no further work here.
-	if d.enableKataMount && volumeCapability.GetBlock() == nil {
+	if d.kataSupported() && volumeCapability.GetBlock() == nil {
 		assigned, err := d.kataDirectVolume.IsVolumeMountedByID(volumeID)
 		if err != nil {
 			return nil, status.Errorf(codes.Internal, "could not check Kata assignment for %s: %v", volumeID, err)
@@ -555,7 +555,7 @@ func (d *Driver) NodePublishVolume(ctx context.Context, req *csi.NodePublishVolu
 
 	var kataPod *corev1.Pod
 	// Kata already supports raw block volumes through the regular device publish path.
-	if d.enableKataMount && volumeCapability.GetBlock() == nil {
+	if d.kataSupported() && volumeCapability.GetBlock() == nil {
 		// Stage and publish must not race between releasing the host mount and
 		// committing metadata, including when discovery falls back to ordinary CSI.
 		if acquired := d.volumeLocks.TryAcquire(volumeID); !acquired {
@@ -683,7 +683,7 @@ func (d *Driver) NodePublishVolume(ctx context.Context, req *csi.NodePublishVolu
 			return nil, status.Errorf(codes.Internal, "%v", err)
 		}
 	case *csi.VolumeCapability_Mount:
-		if d.enableKataMount {
+		if d.kataSupported() {
 			// It's possible that a volume went through:
 			// - Kata NodePublish
 			// - No intermediary NodeStage
@@ -732,7 +732,7 @@ func (d *Driver) NodeUnpublishVolume(_ context.Context, req *csi.NodeUnpublishVo
 		return nil, status.Error(codes.InvalidArgument, "Target path missing in request")
 	}
 
-	if d.enableKataMount {
+	if d.kataSupported() {
 		// Serialize cleanup against NodePublishVolume and NodeStageVolume when
 		// recovery RPCs overlap after a restart or timeout.
 		if acquired := d.volumeLocks.TryAcquire(volumeID); !acquired {
@@ -751,7 +751,7 @@ func (d *Driver) NodeUnpublishVolume(_ context.Context, req *csi.NodeUnpublishVo
 		return nil, status.Errorf(codes.Internal, "failed to unmount target %q: %v", targetPath, err)
 	}
 
-	if d.enableKataMount {
+	if d.kataSupported() {
 		if err := d.kataDirectVolume.Remove(targetPath); err != nil { // Remove is idempotent.
 			return nil, status.Errorf(codes.Internal, "failed to remove direct volume %q: %v", targetPath, err)
 		}
@@ -903,7 +903,7 @@ func (d *Driver) NodeGetVolumeStats(ctx context.Context, req *csi.NodeGetVolumeS
 		return nil, status.Error(codes.InvalidArgument, "NodeGetVolumeStats volume path was empty")
 	}
 
-	if d.enableKataMount {
+	if d.kataSupported() {
 		// NOTE: This cannot detect CSI block requests passed through Kata.
 		if isKataMount, err := d.kataDirectVolume.IsVolumeMountedByID(req.VolumeId); isKataMount {
 			return nil, status.Error(codes.Unimplemented, "volume stats are not supported for Kata mounts")
@@ -937,7 +937,7 @@ func (d *Driver) NodeExpandVolume(_ context.Context, req *csi.NodeExpandVolumeRe
 		return nil, status.Error(codes.InvalidArgument, "volume path must be provided")
 	}
 
-	if d.enableKataMount {
+	if d.kataSupported() {
 		if acquired := d.volumeLocks.TryAcquire(volumeID); !acquired {
 			return nil, status.Errorf(codes.Aborted, volumeOperationAlreadyExistsFmt, volumeID)
 		}
@@ -983,7 +983,7 @@ func (d *Driver) NodeExpandVolume(_ context.Context, req *csi.NodeExpandVolumeRe
 		mc.WithAdditionalVolumeInfo(consts.VolumeID, volumeID).Observe(isOperationSucceeded)
 	}()
 
-	if !d.enableKataMount {
+	if !d.kataSupported() {
 		if acquired := d.volumeLocks.TryAcquire(volumeID); !acquired {
 			return nil, status.Errorf(codes.Aborted, volumeOperationAlreadyExistsFmt, volumeID)
 		}

@@ -260,7 +260,10 @@ func NewDriver(options *DriverOptions) *Driver {
 	driver.volumeLocks = volumehelper.NewVolumeLocks()
 	driver.ioHandler = azureutils.NewOSIOHandler()
 	driver.hostUtil = hostutil.NewHostUtil()
-	driver.enableKataMount = options.EnableKataMount
+	driver.enableKataMount = options.FeatureGates.Enabled(KataMount)
+	if driver.enableKataMount {
+		klog.Warningf("Alpha feature gate %s is enabled", KataMount)
+	}
 	driver.kataDirectVolume = &kataDirectVolume{}
 	driver.enableMigrationMonitor = options.EnableMigrationMonitor
 	driver.convertRWCachingModeForIntreePV = options.ConvertRWCachingModeForIntreePV

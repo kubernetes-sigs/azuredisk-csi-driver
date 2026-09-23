@@ -41,7 +41,6 @@ type DriverOptions struct {
 	UseCSIProxyGAInterface     bool
 	EnableOtelTracing          bool
 	EnableMinimumRetryAfter    bool
-	EnableKataMount            bool
 	FeatureGates               featuregate.MutableFeatureGate
 
 	//only used in v1
@@ -106,7 +105,6 @@ func (o *DriverOptions) AddFlags() *flag.FlagSet {
 	fs.BoolVar(&o.UseCSIProxyGAInterface, "use-csiproxy-ga-interface", true, "boolean flag to enable csi-proxy GA interface on Windows")
 	fs.BoolVar(&o.EnableOtelTracing, "enable-otel-tracing", false, "If set, enable opentelemetry tracing for the driver. The tracing is disabled by default. Configure the exporter endpoint with OTEL_EXPORTER_OTLP_ENDPOINT and other env variables, see https://opentelemetry.io/docs/specs/otel/configuration/sdk-environment-variables/#general-sdk-configuration.")
 	fs.BoolVar(&o.EnableMinimumRetryAfter, "enable-minimum-retry-after", true, "boolean flag to enable minimum retry after policy in azclient")
-	fs.BoolVar(&o.EnableKataMount, "enable-kata-mount", false, "enable Kata Containers mounts with virtio-blk")
 	fs.Var(&goFlagFeatureGate{gate: o.FeatureGates}, "feature-gates", fmt.Sprintf("A set of Azure Disk CSI driver feature gates in key=value form. Known features: %s", strings.Join(o.FeatureGates.KnownFeatures(), ", ")))
 	//only used in v1
 	fs.BoolVar(&o.EnableDiskOnlineResize, "enable-disk-online-resize", true, "boolean flag to enable disk online resize")

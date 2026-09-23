@@ -373,6 +373,9 @@ func newKataTestDriver(t *testing.T) (*Driver, *mount.FakeMounter, *mounter.Fake
 	safeMounter.Interface = mounts
 	d.mounter = safeMounter
 	d.enableKataMount = true
+	if !d.kataSupported() {
+		t.Skip("Kata mount paths are disabled in this release")
+	}
 	d.kataDirectVolume = &kataTestDirectVolume{rootPath: t.TempDir()}
 	d.kubeClient = fake.NewSimpleClientset(
 		&corev1.Pod{ObjectMeta: metav1.ObjectMeta{Name: "pod", Namespace: "default", UID: "test-pod-uid"}, Spec: corev1.PodSpec{RuntimeClassName: ptr.To("kata")}},

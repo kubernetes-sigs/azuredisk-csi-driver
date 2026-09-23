@@ -11,7 +11,7 @@ rules:
   - apiGroups: [""]
     resources: ["nodes"]
     verbs: ["get", "patch"]
-  {{- if .Values.node.enableKataMount }}
+  {{- if .Values.driver.featureGates.KataMount }}
   - apiGroups: [""]
     resources: ["pods"]
     verbs: ["get"]

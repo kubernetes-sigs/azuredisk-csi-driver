@@ -108,7 +108,7 @@ spec:
             - "--endpoint=$(CSI_ENDPOINT)"
             - "--nodeid=$(KUBE_NODE_NAME)"
             - "--enable-perf-optimization=true"
-            - "--enable-kata-mount=true"
+            - "--feature-gates=KataMount=true"
             - "--allow-empty-cloud-config=true"
             - "--get-node-info-from-labels=false"
             - "--metrics-address=0.0.0.0:29605"
