@@ -430,6 +430,33 @@ func TestDeleteManagedDisk(t *testing.T) {
 	}
 }
 
+func TestDeleteManagedDiskReturnsManagedError(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	testCloud := provider.GetTestCloud(ctrl)
+	managedDiskController := &ManagedDiskController{&controllerCommon{
+		cloud:         testCloud,
+		lockMap:       newLockMap(),
+		clientFactory: testCloud.ComputeClientFactory,
+	}}
+	diskURI := fmt.Sprintf("/subscriptions/%s/resourceGroups/%s/providers/Microsoft.Compute/disks/%s",
+		testCloud.SubscriptionID, testCloud.ResourceGroup, disk1Name)
+	managedBy := "/subscriptions/subscription/resourceGroups/cluster-rg/providers/Microsoft.ContainerService/managedClusters/cluster"
+
+	mockDisksClient := mock_diskclient.NewMockInterface(ctrl)
+	managedDiskController.clientFactory.(*mock_azclient.MockClientFactory).EXPECT().GetDiskClientForSub(testCloud.SubscriptionID).Return(mockDisksClient, nil)
+	mockDisksClient.EXPECT().Get(gomock.Any(), testCloud.ResourceGroup, disk1Name).Return(&armcompute.Disk{
+		Name:      ptr.To(disk1Name),
+		ManagedBy: ptr.To(managedBy),
+	}, nil)
+
+	err := managedDiskController.DeleteManagedDisk(context.Background(), diskURI)
+	var managedErr *diskManagedError
+	assert.ErrorAs(t, err, &managedErr)
+	assert.Equal(t, diskURI, managedErr.diskURI)
+	assert.Equal(t, managedBy, managedErr.managedBy)
+	assert.EqualError(t, err, fmt.Sprintf("disk(%s) is managed by Azure resource(%s), could not be deleted", diskURI, managedBy))
+}
+
 func TestGetDisk(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()

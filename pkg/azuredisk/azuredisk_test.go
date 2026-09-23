@@ -27,6 +27,7 @@ import (
 
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute/v7"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 	"golang.org/x/sync/errgroup"
 	"google.golang.org/grpc/status"
@@ -47,6 +48,35 @@ import (
 	mockvmclient "sigs.k8s.io/cloud-provider-azure/pkg/azclient/virtualmachineclient/mock_virtualmachineclient"
 	azure "sigs.k8s.io/cloud-provider-azure/pkg/provider"
 )
+
+func TestHasQADInfo(t *testing.T) {
+	tests := []struct {
+		name string
+		pv   *corev1.PersistentVolume
+		want bool
+	}{
+		{name: "nil PV", pv: nil, want: false},
+		{name: "empty name", pv: &corev1.PersistentVolume{}, want: false},
+		{
+			name: "attach-sequence annotation present",
+			pv: &corev1.PersistentVolume{
+				ObjectMeta: metav1.ObjectMeta{Name: "pv", Annotations: map[string]string{consts.AttachSequenceAnnotation: "0"}},
+			},
+			want: true,
+		},
+		{
+			name: "no attach-sequence annotation",
+			pv:   &corev1.PersistentVolume{ObjectMeta: metav1.ObjectMeta{Name: "pv"}},
+			want: false,
+		},
+	}
+	d := &Driver{}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			assert.Equal(t, test.want, d.hasQADInfo(test.pv))
+		})
+	}
+}
 
 func TestNewDriver(t *testing.T) {
 	d := NewDriver(&DriverOptions{
@@ -280,6 +310,118 @@ func TestRun(t *testing.T) {
 	}
 }
 
+func TestPVInformerCacheSyncTimeoutDisablesIndexer(t *testing.T) {
+	d := &Driver{
+		pvIndexer:      cache.NewIndexer(cache.MetaNamespaceKeyFunc, cache.Indexers{}),
+		pvListerSynced: func() bool { return false },
+	}
+
+	if d.waitForPVInformerCacheSync(context.Background(), time.Millisecond) {
+		t.Fatal("expected PV informer cache sync to time out")
+	}
+	assert.Nil(t, d.pvIndexer)
+}
+
+func TestInitializePVInformerRequiresNodeDrivenAttachDetach(t *testing.T) {
+	kubeClient := fake.NewClientset()
+
+	disabledDriver := &Driver{}
+	disabledDriver.initializePVInformer(kubeClient)
+	assert.Nil(t, disabledDriver.informerFactory)
+	assert.Nil(t, disabledDriver.pvIndexer)
+	assert.Nil(t, disabledDriver.pvLister)
+	assert.Nil(t, disabledDriver.pvListerSynced)
+
+	enabledDriver := &Driver{nodeDrivenAttachDetachEnabled: true}
+	enabledDriver.initializePVInformer(kubeClient)
+	assert.NotNil(t, enabledDriver.informerFactory)
+	assert.NotNil(t, enabledDriver.pvIndexer)
+	assert.NotNil(t, enabledDriver.pvLister)
+	assert.NotNil(t, enabledDriver.pvListerSynced)
+}
+
+func TestGetPVFromDiskURIWithoutKubeClient(t *testing.T) {
+	d := &Driver{}
+
+	pv, err := d.getPVFromDiskURI(context.Background(), "disk-uri")
+
+	assert.Nil(t, pv)
+	assert.ErrorIs(t, err, errPVMetadataUnavailable)
+}
+
+func TestGetPVFromDiskURIUsesIndexedCandidate(t *testing.T) {
+	const diskURI = "/subscriptions/sub/resourceGroups/rg/providers/Microsoft.Compute/disks/disk"
+	indexedPV := &corev1.PersistentVolume{
+		ObjectMeta: metav1.ObjectMeta{Name: "pv"},
+		Spec: corev1.PersistentVolumeSpec{PersistentVolumeSource: corev1.PersistentVolumeSource{
+			CSI: &corev1.CSIPersistentVolumeSource{Driver: consts.DefaultDriverName, VolumeHandle: diskURI},
+		}},
+	}
+	freshPV := indexedPV.DeepCopy()
+	freshPV.Annotations = map[string]string{consts.AttachSequenceAnnotation: "1"}
+	indexer := cache.NewIndexer(cache.MetaNamespaceKeyFunc, cache.Indexers{pvDiskURIIndex: pvDiskURIIndexFunc})
+	require.NoError(t, indexer.Add(indexedPV))
+	d := &Driver{
+		kubeClient: fake.NewClientset(freshPV),
+		pvIndexer:  indexer,
+	}
+	d.Name = consts.DefaultDriverName
+
+	pv, err := d.getPVFromDiskURI(context.Background(), diskURI)
+
+	require.NoError(t, err)
+	assert.NotSame(t, indexedPV, pv)
+	assert.Equal(t, "1", pv.Annotations[consts.AttachSequenceAnnotation])
+}
+
+func TestGetPVFromDiskURIFallsBackToAPIWhenIndexMisses(t *testing.T) {
+	const diskURI = "/subscriptions/sub/resourceGroups/rg/providers/Microsoft.Compute/disks/disk"
+	pv := &corev1.PersistentVolume{
+		ObjectMeta: metav1.ObjectMeta{Name: "pv"},
+		Spec: corev1.PersistentVolumeSpec{PersistentVolumeSource: corev1.PersistentVolumeSource{
+			CSI: &corev1.CSIPersistentVolumeSource{Driver: consts.DefaultDriverName, VolumeHandle: diskURI},
+		}},
+	}
+	d := &Driver{
+		kubeClient: fake.NewClientset(pv),
+		pvIndexer: cache.NewIndexer(cache.MetaNamespaceKeyFunc, cache.Indexers{
+			pvDiskURIIndex: pvDiskURIIndexFunc,
+		}),
+	}
+	d.Name = consts.DefaultDriverName
+
+	got, err := d.getPVFromDiskURI(context.Background(), diskURI)
+
+	require.NoError(t, err)
+	assert.Equal(t, pv.Name, got.Name)
+}
+
+func TestGetPVFromDiskURIFallsBackWhenIndexedCandidateChanged(t *testing.T) {
+	const diskURI = "/subscriptions/sub/resourceGroups/rg/providers/Microsoft.Compute/disks/disk"
+	indexedPV := &corev1.PersistentVolume{
+		ObjectMeta: metav1.ObjectMeta{Name: "stale-pv"},
+		Spec: corev1.PersistentVolumeSpec{PersistentVolumeSource: corev1.PersistentVolumeSource{
+			CSI: &corev1.CSIPersistentVolumeSource{Driver: consts.DefaultDriverName, VolumeHandle: diskURI},
+		}},
+	}
+	liveIndexedPV := indexedPV.DeepCopy()
+	liveIndexedPV.Spec.CSI.VolumeHandle = diskURI + "-old"
+	currentPV := indexedPV.DeepCopy()
+	currentPV.Name = "current-pv"
+	indexer := cache.NewIndexer(cache.MetaNamespaceKeyFunc, cache.Indexers{pvDiskURIIndex: pvDiskURIIndexFunc})
+	require.NoError(t, indexer.Add(indexedPV))
+	d := &Driver{
+		kubeClient: fake.NewClientset(liveIndexedPV, currentPV),
+		pvIndexer:  indexer,
+	}
+	d.Name = consts.DefaultDriverName
+
+	got, err := d.getPVFromDiskURI(context.Background(), diskURI)
+
+	require.NoError(t, err)
+	assert.Equal(t, currentPV.Name, got.Name)
+}
+
 func TestDriver_checkDiskExists(t *testing.T) {
 	cntl := gomock.NewController(t)
 	defer cntl.Finish()
@@ -420,7 +562,7 @@ func TestGetNodeInfoFromLabels(t *testing.T) {
 		{
 			name:     "kubeClient returns node with labels",
 			nodeName: "node1",
-			kubeClient: fake.NewSimpleClientset(&corev1.Node{
+			kubeClient: fake.NewClientset(&corev1.Node{
 				ObjectMeta: metav1.ObjectMeta{
 					Name: "node1",
 					Labels: map[string]string{
@@ -436,7 +578,7 @@ func TestGetNodeInfoFromLabels(t *testing.T) {
 		{
 			name:          "kubeClient node not found",
 			nodeName:      "missing-node",
-			kubeClient:    fake.NewSimpleClientset(),
+			kubeClient:    fake.NewClientset(),
 			expectedError: fmt.Errorf("get node(missing-node) failed with nodes \"missing-node\" not found"),
 		},
 	}

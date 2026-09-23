@@ -18,17 +18,22 @@ package azuredisk
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log"
+	"net/http"
 	"os"
 	"path/filepath"
 	"reflect"
 	"runtime"
+	"strconv"
 	"strings"
 	"syscall"
 	"testing"
 
+	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute/v7"
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	directvolume "github.com/kata-containers/kata-containers/src/runtime/pkg/direct-volume"
@@ -38,9 +43,14 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	corev1 "k8s.io/api/core/v1"
+	v1 "k8s.io/api/core/v1"
 	nodev1 "k8s.io/api/node/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	k8sruntime "k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/kubernetes/fake"
+	clienttesting "k8s.io/client-go/testing"
 	"k8s.io/mount-utils"
 	testingexec "k8s.io/utils/exec/testing"
 	"k8s.io/utils/ptr"
@@ -50,12 +60,19 @@ import (
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/optimization/mockoptimization"
 	volumehelper "sigs.k8s.io/azuredisk-csi-driver/pkg/util"
 	"sigs.k8s.io/azuredisk-csi-driver/test/utils/testutil"
+	"sigs.k8s.io/cloud-provider-azure/pkg/azclient/mock_azclient"
 	mockvmclient "sigs.k8s.io/cloud-provider-azure/pkg/azclient/virtualmachineclient/mock_virtualmachineclient"
 )
 
 const (
 	virtualMachineURIFormat = "/subscriptions/%s/resourceGroups/%s/providers/Microsoft.Compute/virtualMachines/%s"
 )
+
+type testRoundTripper func(*http.Request) (*http.Response, error)
+
+func (f testRoundTripper) RoundTrip(request *http.Request) (*http.Response, error) {
+	return f(request)
+}
 
 var (
 	sourceTest string
@@ -130,6 +147,86 @@ func TestMain(m *testing.M) {
 
 	_ = m.Run()
 
+}
+
+func TestIncrementAttachSequenceAnnotationRetriesConflict(t *testing.T) {
+	pv := &v1.PersistentVolume{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:            "test-pv",
+			ResourceVersion: "1",
+			Annotations: map[string]string{
+				consts.AttachSequenceAnnotation: "4",
+			},
+		},
+	}
+	kubeClient := fake.NewClientset(pv.DeepCopy())
+	updateAttempts := 0
+	kubeClient.PrependReactor("update", "persistentvolumes", func(clienttesting.Action) (bool, k8sruntime.Object, error) {
+		updateAttempts++
+		if updateAttempts > 1 {
+			return false, nil, nil
+		}
+
+		latestPV := pv.DeepCopy()
+		latestPV.ResourceVersion = "2"
+		latestPV.Annotations[consts.AttachSequenceAnnotation] = "8"
+		resource := schema.GroupVersionResource{Version: "v1", Resource: "persistentvolumes"}
+		if err := kubeClient.Tracker().Update(resource, latestPV, ""); err != nil {
+			return true, nil, err
+		}
+		return true, nil, apierrors.NewConflict(
+			schema.GroupResource{Resource: "persistentvolumes"}, pv.Name, errors.New("concurrent update"))
+	})
+
+	updatedSequence, err := incrementAttachSequenceAnnotation(context.Background(), kubeClient, pv)
+	require.NoError(t, err)
+	assert.Equal(t, 9, updatedSequence)
+	assert.Equal(t, 2, updateAttempts)
+	assert.Equal(t, "4", pv.Annotations[consts.AttachSequenceAnnotation])
+
+	updatedPV, err := kubeClient.CoreV1().PersistentVolumes().Get(context.Background(), pv.Name, metav1.GetOptions{})
+	require.NoError(t, err)
+	assert.Equal(t, "9", updatedPV.Annotations[consts.AttachSequenceAnnotation])
+}
+
+func TestIncrementAttachSequenceAnnotationRejectsInvalidValues(t *testing.T) {
+	tests := []struct {
+		name  string
+		value string
+	}{
+		{name: "malformed", value: "invalid"},
+		{name: "negative", value: "-1"},
+		{name: "parse overflow", value: "999999999999999999999999999999"},
+		{name: "increment overflow", value: strconv.Itoa(int(^uint(0) >> 1))},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			pv := &v1.PersistentVolume{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "test-pv",
+					Annotations: map[string]string{
+						consts.AttachSequenceAnnotation: test.value,
+					},
+				},
+			}
+			kubeClient := fake.NewClientset(pv.DeepCopy())
+			updateAttempts := 0
+			kubeClient.PrependReactor("update", "persistentvolumes", func(clienttesting.Action) (bool, k8sruntime.Object, error) {
+				updateAttempts++
+				return false, nil, nil
+			})
+
+			updatedSequence, err := incrementAttachSequenceAnnotation(context.Background(), kubeClient, pv)
+			require.Error(t, err)
+			assert.Zero(t, updatedSequence)
+			assert.Zero(t, updateAttempts)
+
+			updatedPV, getErr := kubeClient.CoreV1().PersistentVolumes().Get(context.Background(), pv.Name, metav1.GetOptions{})
+			require.NoError(t, getErr)
+			assert.Equal(t, test.value, updatedPV.Annotations[consts.AttachSequenceAnnotation])
+		})
+	}
 }
 
 func TestNodeGetCapabilities(t *testing.T) {
@@ -615,10 +712,100 @@ func assertMountedXFSWithNouuid(t *testing.T, d FakeDriver) {
 	assert.Contains(t, fake.MountCalls[0].Options, "nouuid")
 }
 
+func TestNodeStageVolumeWithoutKubeClient(t *testing.T) {
+	newRequest := func() *csi.NodeStageVolumeRequest {
+		return &csi.NodeStageVolumeRequest{
+			VolumeId:          "vol_1",
+			StagingTargetPath: t.TempDir(),
+			VolumeCapability: &csi.VolumeCapability{
+				AccessMode: &csi.VolumeCapability_AccessMode{Mode: csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER},
+				AccessType: &csi.VolumeCapability_Block{Block: &csi.VolumeCapability_BlockVolume{}},
+			},
+		}
+	}
+
+	t.Run("controller-driven volume uses PublishContext fallback", func(t *testing.T) {
+		controller := gomock.NewController(t)
+		driver, _ := NewFakeDriver(controller)
+		driver.(*fakeDriver).kubeClient = nil
+
+		_, err := driver.NodeStageVolume(context.Background(), newRequest())
+
+		assert.Equal(t, codes.InvalidArgument, status.Code(err))
+		assert.Contains(t, err.Error(), "lun not provided")
+	})
+
+	t.Run("QAD volume reports metadata lookup error", func(t *testing.T) {
+		controller := gomock.NewController(t)
+		driver, _ := NewFakeDriver(controller)
+		driver.(*fakeDriver).kubeClient = nil
+		driver.(*fakeDriver).nodeDrivenAttachDetachEnabled = true
+
+		_, err := driver.NodeStageVolume(context.Background(), newRequest())
+
+		assert.Equal(t, codes.Internal, status.Code(err))
+		assert.Contains(t, err.Error(), errPVMetadataUnavailable.Error())
+	})
+
+	t.Run("controller-driven volume uses PublishContext when QAD is enabled", func(t *testing.T) {
+		controller := gomock.NewController(t)
+		driver, _ := NewFakeDriver(controller)
+		driver.(*fakeDriver).kubeClient = nil
+		driver.(*fakeDriver).nodeDrivenAttachDetachEnabled = true
+		request := newRequest()
+		request.PublishContext = map[string]string{consts.LUN: "invalid-lun"}
+
+		_, err := driver.NodeStageVolume(context.Background(), request)
+
+		assert.NotEqual(t, codes.FailedPrecondition, status.Code(err))
+	})
+}
+
+func TestNodeUnstageVolumeWithoutKubeClient(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("fake mounter cannot unmount a missing staging path on Windows")
+	}
+
+	newDriver := func(t *testing.T, qadEnabled bool) FakeDriver {
+		t.Helper()
+		controller := gomock.NewController(t)
+		driver, _ := NewFakeDriver(controller)
+		driver.(*fakeDriver).kubeClient = nil
+		driver.(*fakeDriver).nodeDrivenAttachDetachEnabled = qadEnabled
+		fakeMounter, err := mounter.NewFakeSafeMounter()
+		require.NoError(t, err)
+		driver.setMounter(fakeMounter)
+		return driver
+	}
+
+	t.Run("controller-driven volume completes cleanup", func(t *testing.T) {
+		driver := newDriver(t, false)
+
+		_, err := driver.NodeUnstageVolume(context.Background(), &csi.NodeUnstageVolumeRequest{
+			VolumeId:          "vol_1",
+			StagingTargetPath: filepath.Join(t.TempDir(), "missing-staging-path"),
+		})
+
+		assert.NoError(t, err)
+	})
+
+	t.Run("QAD volume requires Kubernetes metadata", func(t *testing.T) {
+		driver := newDriver(t, true)
+
+		_, err := driver.NodeUnstageVolume(context.Background(), &csi.NodeUnstageVolumeRequest{
+			VolumeId:          "vol_1",
+			StagingTargetPath: filepath.Join(t.TempDir(), "missing-staging-path"),
+		})
+
+		assert.Equal(t, codes.FailedPrecondition, status.Code(err))
+	})
+}
+
 func TestNodeStageVolume(t *testing.T) {
 	cntl := gomock.NewController(t)
 	defer cntl.Finish()
 	d, _ := NewFakeDriver(cntl)
+	d.(*fakeDriver).kubeClient = fake.NewClientset(newTestPV("vol_1"))
 
 	stdVolCap := &csi.VolumeCapability_Mount{
 		Mount: &csi.VolumeCapability_MountVolume{
@@ -1001,6 +1188,7 @@ func TestNodeUnstageVolume(t *testing.T) {
 	cntl := gomock.NewController(t)
 	defer cntl.Finish()
 	d, _ := NewFakeDriver(cntl)
+	d.(*fakeDriver).kubeClient = fake.NewClientset(newTestPV("vol_1"))
 	errorTarget, err := testutil.GetWorkDirPath("error_is_likely_target")
 	assert.NoError(t, err)
 	targetFile, err := testutil.GetWorkDirPath("abc.go")
@@ -1085,6 +1273,379 @@ func TestNodeUnstageVolume(t *testing.T) {
 	// Clean up
 	err = os.RemoveAll(errorTarget)
 	assert.NoError(t, err)
+}
+
+func TestNodeUnstageVolumePVLookup(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("fake mounter cannot unmount a missing staging path on Windows")
+	}
+
+	tests := []struct {
+		desc              string
+		qadEnabled        bool
+		pvListErr         error
+		expectedErrorCode codes.Code
+	}{
+		{
+			desc: "controller-driven mode succeeds when PV is missing",
+		},
+		{
+			desc:              "QAD mode retries when PV is missing",
+			qadEnabled:        true,
+			expectedErrorCode: codes.Unavailable,
+		},
+		{
+			desc:      "controller-driven mode skips PV lookup errors",
+			pvListErr: errors.New("Kubernetes API unavailable"),
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.desc, func(t *testing.T) {
+			cntl := gomock.NewController(t)
+			d, err := NewFakeDriver(cntl)
+			require.NoError(t, err)
+			driver := d.(*fakeDriver)
+			driver.kubeClient = fake.NewClientset()
+			driver.nodeDrivenAttachDetachEnabled = test.qadEnabled
+			if test.pvListErr != nil {
+				driver.kubeClient.(*fake.Clientset).PrependReactor("list", "persistentvolumes", func(clienttesting.Action) (bool, k8sruntime.Object, error) {
+					return true, nil, test.pvListErr
+				})
+			}
+			fakeMounter, err := mounter.NewFakeSafeMounter()
+			require.NoError(t, err)
+			d.setMounter(fakeMounter)
+
+			result, err := d.NodeUnstageVolume(context.Background(), &csi.NodeUnstageVolumeRequest{
+				VolumeId:          "missing-volume",
+				StagingTargetPath: filepath.Join(t.TempDir(), "missing-staging-path"),
+			})
+			if test.expectedErrorCode != codes.OK {
+				require.Equal(t, test.expectedErrorCode, status.Code(err))
+				require.Nil(t, result)
+				return
+			}
+			require.NoError(t, err)
+			require.Equal(t, &csi.NodeUnstageVolumeResponse{}, result)
+		})
+	}
+}
+
+func TestNodeUnstageVolumeQADDetachedResponses(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("QAD is not supported on Windows")
+	}
+
+	const volumeID = "qad-volume"
+	tests := []struct {
+		name              string
+		postStatus        AttachmentStatus
+		getResponseStatus AttachmentStatus
+		emptyPostResponse bool
+		nullGetResponse   bool
+		expectedRequests  []string
+		expectedCode      codes.Code
+	}{
+		{
+			name:             "immediate detached response",
+			postStatus:       AttachmentStatusDetached,
+			expectedRequests: []string{http.MethodPost},
+		},
+		{
+			name:              "missing response means detached",
+			emptyPostResponse: true,
+			expectedRequests:  []string{http.MethodPost},
+		},
+		{
+			name:              "polling observes explicit detached response",
+			postStatus:        AttachmentStatusDetaching,
+			getResponseStatus: AttachmentStatusDetached,
+			expectedRequests:  []string{http.MethodPost, http.MethodGet},
+		},
+		{
+			name:             "polling null response means detached",
+			postStatus:       AttachmentStatusDetaching,
+			nullGetResponse:  true,
+			expectedRequests: []string{http.MethodPost, http.MethodGet},
+		},
+		{
+			name:              "polling observes failed response",
+			postStatus:        AttachmentStatusDetaching,
+			getResponseStatus: AttachmentStatusError,
+			expectedRequests:  []string{http.MethodPost, http.MethodGet},
+			expectedCode:      codes.Internal,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			cntl := gomock.NewController(t)
+			d, err := NewFakeDriver(cntl)
+			require.NoError(t, err)
+			driver := d.(*fakeDriver)
+			driver.nodeDrivenAttachDetachEnabled = true
+
+			pv := newTestPV(volumeID)
+			pv.Annotations = map[string]string{
+				consts.AttachSequenceAnnotation:  "0",
+				consts.BlobURLAnnotation:         "blob-url",
+				consts.ClaimIdentifierAnnotation: "claim-id",
+				consts.QADCachePolicyAnnotation:  "None",
+			}
+			pv.Spec.CSI.VolumeAttributes = map[string]string{
+				consts.CachingModeField: "ReadOnly",
+			}
+			driver.kubeClient = fake.NewClientset(pv)
+			fakeMounter, err := mounter.NewFakeSafeMounter()
+			require.NoError(t, err)
+			driver.setMounter(fakeMounter)
+
+			credential := driver.cloud.AuthProvider.GetAzIdentity().(*mock_azclient.MockTokenCredential)
+			credential.EXPECT().GetToken(gomock.Any(), gomock.Any()).Return(azcore.AccessToken{Token: "token"}, nil)
+
+			requestCount := 0
+			driver.httpClient = &http.Client{Transport: testRoundTripper(func(request *http.Request) (*http.Response, error) {
+				require.Less(t, requestCount, len(test.expectedRequests))
+				assert.Equal(t, test.expectedRequests[requestCount], request.Method)
+				if request.Method == http.MethodPost {
+					var requestBody WireserverRequest
+					require.NoError(t, json.NewDecoder(request.Body).Decode(&requestBody))
+					require.Contains(t, requestBody.DiskOps, volumeID)
+					assert.Equal(t, "None", requestBody.DiskOps[volumeID].CachePolicy)
+				}
+				responseStatus := test.postStatus
+				if request.Method == http.MethodGet {
+					responseStatus = test.getResponseStatus
+				}
+				requestCount++
+				body := fmt.Sprintf(`{"%s":{"status":"%s"}}`, volumeID, responseStatus)
+				if request.Method == http.MethodPost && test.emptyPostResponse {
+					body = `{}`
+				} else if request.Method == http.MethodGet && test.nullGetResponse {
+					body = fmt.Sprintf(`{"%s":null}`, volumeID)
+				}
+				return &http.Response{
+					StatusCode: http.StatusOK,
+					Body:       io.NopCloser(strings.NewReader(body)),
+					Header:     make(http.Header),
+				}, nil
+			})}
+
+			result, err := driver.NodeUnstageVolume(context.Background(), &csi.NodeUnstageVolumeRequest{
+				VolumeId:          volumeID,
+				StagingTargetPath: filepath.Join(t.TempDir(), "missing-staging-path"),
+			})
+			if test.expectedCode != codes.OK {
+				require.Equal(t, test.expectedCode, status.Code(err))
+				require.Nil(t, result)
+				assert.Equal(t, len(test.expectedRequests), requestCount)
+				return
+			}
+			require.NoError(t, err)
+			require.Equal(t, &csi.NodeUnstageVolumeResponse{}, result)
+			assert.Equal(t, len(test.expectedRequests), requestCount)
+		})
+	}
+}
+
+func TestGetQADCachePolicy(t *testing.T) {
+	tests := []struct {
+		name       string
+		annotation string
+		expected   string
+	}{
+		{
+			name:       "effective policy annotation overrides volume attributes",
+			annotation: "None",
+			expected:   "None",
+		},
+		{
+			name:     "volume attributes support existing PVs",
+			expected: "ReadOnly",
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			pv := newTestPV("qad-volume")
+			pv.Spec.CSI.VolumeAttributes = map[string]string{
+				consts.CachingModeField: "ReadOnly",
+			}
+			if test.annotation != "" {
+				pv.Annotations = map[string]string{
+					consts.QADCachePolicyAnnotation: test.annotation,
+				}
+			}
+
+			cachePolicy, err := getQADCachePolicy(pv)
+			require.NoError(t, err)
+			assert.Equal(t, test.expected, string(cachePolicy))
+		})
+	}
+}
+
+func TestExecuteQADDiskOperationNullStatus(t *testing.T) {
+	tests := []struct {
+		name          string
+		operationType string
+		expectedCode  codes.Code
+	}{
+		{
+			name:          "attach returns internal error",
+			operationType: attachOperation,
+			expectedCode:  codes.Internal,
+		},
+		{
+			name:          "detach treats null as already detached",
+			operationType: detachOperation,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			cntl := gomock.NewController(t)
+			d, err := NewFakeDriver(cntl)
+			require.NoError(t, err)
+			driver := d.(*fakeDriver)
+
+			credential := driver.cloud.AuthProvider.GetAzIdentity().(*mock_azclient.MockTokenCredential)
+			credential.EXPECT().GetToken(gomock.Any(), gomock.Any()).Return(azcore.AccessToken{Token: "token"}, nil)
+			driver.httpClient = &http.Client{Transport: testRoundTripper(func(_ *http.Request) (*http.Response, error) {
+				return &http.Response{
+					StatusCode: http.StatusOK,
+					Body:       io.NopCloser(strings.NewReader(`{"qad-volume":null}`)),
+					Header:     make(http.Header),
+				}, nil
+			})}
+
+			diskStatus, err := driver.executeQADDiskOperation(context.Background(), DiskOperationRequest{DiskURI: "qad-volume"}, test.operationType)
+			require.Equal(t, test.expectedCode, status.Code(err))
+			require.Nil(t, diskStatus)
+		})
+	}
+}
+
+func TestAttachOrDetachDiskInternalWithoutCredential(t *testing.T) {
+	response, err := attachOrDetachDiskInternal(context.Background(), http.Client{}, DiskOperationRequest{
+		DiskURI: "qad-volume",
+	}, nil, attachOperation)
+
+	require.Equal(t, codes.FailedPrecondition, status.Code(err))
+	require.ErrorContains(t, err, "Azure credential is required for QAD disk operations")
+	assert.Empty(t, response)
+}
+func TestExecuteQADDiskOperationFindsResponseCaseInsensitively(t *testing.T) {
+	tests := []struct {
+		name           string
+		operationType  string
+		responseStatus AttachmentStatus
+	}{
+		{
+			name:           "attach",
+			operationType:  attachOperation,
+			responseStatus: AttachmentStatusAttached,
+		},
+		{
+			name:           "detach",
+			operationType:  detachOperation,
+			responseStatus: AttachmentStatusDetached,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			cntl := gomock.NewController(t)
+			d, err := NewFakeDriver(cntl)
+			require.NoError(t, err)
+			driver := d.(*fakeDriver)
+
+			credential := driver.cloud.AuthProvider.GetAzIdentity().(*mock_azclient.MockTokenCredential)
+			credential.EXPECT().GetToken(gomock.Any(), gomock.Any()).Return(azcore.AccessToken{Token: "token"}, nil)
+			driver.httpClient = &http.Client{Transport: testRoundTripper(func(request *http.Request) (*http.Response, error) {
+				assert.Equal(t, http.MethodPost, request.Method)
+				body := fmt.Sprintf(`{"QAD-VOLUME":{"status":"%s","lun":1}}`, test.responseStatus)
+				return &http.Response{
+					StatusCode: http.StatusOK,
+					Body:       io.NopCloser(strings.NewReader(body)),
+					Header:     make(http.Header),
+				}, nil
+			})}
+
+			diskStatus, err := driver.executeQADDiskOperation(context.Background(), DiskOperationRequest{DiskURI: "qad-volume"}, test.operationType)
+			require.NoError(t, err)
+			require.NotNil(t, diskStatus)
+			assert.Equal(t, test.responseStatus, diskStatus.Status)
+			assert.Equal(t, 1, diskStatus.LUN)
+		})
+	}
+}
+
+func TestMapHTTPStatusToCodeTooManyRequests(t *testing.T) {
+	assert.Equal(t, codes.ResourceExhausted, mapHTTPStatusToCode(http.StatusTooManyRequests))
+}
+
+func TestGetDiskState(t *testing.T) {
+	tests := []struct {
+		name           string
+		responseStatus int
+		responseBody   string
+		expectedNil    bool
+		expectedCode   codes.Code
+		expectedError  string
+	}{
+		{
+			name:           "disk status found case insensitively",
+			responseStatus: http.StatusOK,
+			responseBody:   `{"QAD-VOLUME":{"status":"DISK_STATUS_ATTACHED","lun":1}}`,
+		},
+		{
+			name:           "null disk status",
+			responseStatus: http.StatusOK,
+			responseBody:   `{"qad-volume":null}`,
+			expectedNil:    true,
+		},
+		{
+			name:           "disk status not found",
+			responseStatus: http.StatusOK,
+			responseBody:   `{}`,
+			expectedNil:    true,
+			expectedCode:   codes.NotFound,
+		},
+		{
+			name:           "non-success status is checked before unmarshal",
+			responseStatus: http.StatusServiceUnavailable,
+			responseBody:   `not-json`,
+			expectedNil:    true,
+			expectedCode:   codes.Unavailable,
+			expectedError:  "wireserver returned HTTP 503: not-json",
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			client := http.Client{Transport: testRoundTripper(func(_ *http.Request) (*http.Response, error) {
+				return &http.Response{
+					StatusCode: test.responseStatus,
+					Body:       io.NopCloser(strings.NewReader(test.responseBody)),
+					Header:     make(http.Header),
+				}, nil
+			})}
+
+			diskStatus, err := getDiskState(context.Background(), client, "qad-volume")
+			require.Equal(t, test.expectedCode, status.Code(err))
+			if test.expectedError != "" {
+				require.ErrorContains(t, err, test.expectedError)
+			}
+			if test.expectedNil {
+				require.Nil(t, diskStatus)
+				return
+			}
+			require.NotNil(t, diskStatus)
+			assert.Equal(t, AttachmentStatusAttached, diskStatus.Status)
+			assert.Equal(t, 1, diskStatus.LUN)
+		})
+	}
 }
 
 func TestNodePublishVolume(t *testing.T) {
@@ -2194,6 +2755,9 @@ func TestEnsureBlockTargetFile(t *testing.T) {
 	assert.NoError(t, err)
 	d, err := NewFakeDriver(cntl)
 	assert.NoError(t, err)
+	fakeMounter, err := mounter.NewFakeSafeMounter()
+	assert.NoError(t, err)
+	d.setMounter(fakeMounter)
 
 	tests := []struct {
 		desc        string
