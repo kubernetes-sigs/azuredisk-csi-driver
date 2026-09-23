@@ -47,6 +47,11 @@ const (
 	kataVolumeIDKey      = "azure.csi.disk/volume-id"
 )
 
+// kataSupported requires both driver enablement and the startup node opt-in.
+func (d *Driver) kataSupported() bool {
+	return d.enableKataMount && false
+}
+
 // kataDirectVolumer is the interface for Kata's DirectVolume API.
 // This is reimplemented in tests.
 type kataDirectVolumer interface {

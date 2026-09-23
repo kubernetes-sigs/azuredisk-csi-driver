@@ -539,6 +539,9 @@ func TestKataVolumeStatsAndResizeUnimplemented(t *testing.T) {
 	cntl := gomock.NewController(t)
 	d, _ := NewFakeDriver(cntl)
 	d.(*fakeDriver).enableKataMount = true
+	if !d.(*fakeDriver).kataSupported() {
+		t.Skip("Kata mount paths are disabled in this release")
+	}
 	target, err := testutil.GetWorkDirPath("direct_volume_operation_target")
 	require.NoError(t, err)
 	fallbackStatsTarget, err := testutil.GetWorkDirPath("direct_volume_stats_probe_error_target")
@@ -2077,6 +2080,9 @@ func TestNodePublishVolume(t *testing.T) {
 	}
 
 	for _, test := range tests {
+		if test.enableKataMount && !d.(*fakeDriver).kataSupported() {
+			continue // Kata mount paths are disabled in this release.
+		}
 		d.(*fakeDriver).enableKataMount = test.enableKataMount
 		d.(*fakeDriver).kubeClient.(*fake.Clientset).ClearActions()
 		addedTarget = ""
@@ -2250,6 +2256,9 @@ func TestNodePublishVolumeKataFSType(t *testing.T) {
 			d, err := NewFakeDriver(gomock.NewController(t))
 			require.NoError(t, err)
 			d.(*fakeDriver).enableKataMount = true
+			if !d.(*fakeDriver).kataSupported() {
+				t.Skip("Kata mount paths are disabled in this release")
+			}
 			fakeMounter, err := mounter.NewFakeSafeMounter()
 			require.NoError(t, err)
 			d.setMounter(fakeMounter)
@@ -2448,6 +2457,9 @@ func TestNodeUnpublishVolume(t *testing.T) {
 	}
 
 	for _, test := range tests {
+		if test.enableKataMount && !d.(*fakeDriver).kataSupported() {
+			continue // Kata mount paths are disabled in this release.
+		}
 		d.(*fakeDriver).enableKataMount = test.enableKataMount
 		removedTarget = ""
 		if test.setup != nil {
@@ -2930,6 +2942,9 @@ func TestNodePublishVolumeKataIdempotent(t *testing.T) {
 	}
 	d, _ := NewFakeDriver(cntl)
 	d.(*fakeDriver).enableKataMount = true
+	if !d.(*fakeDriver).kataSupported() {
+		t.Skip("Kata mount paths are disabled in this release")
+	}
 	fakeMounter, err := mounter.NewFakeSafeMounter()
 	assert.NoError(t, err)
 	d.setMounter(fakeMounter)
