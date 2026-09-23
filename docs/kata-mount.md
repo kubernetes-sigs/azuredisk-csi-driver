@@ -4,6 +4,10 @@
 - Default: Disabled
 - Feature gate: `KataMount`
 
+> **Note:** This feature gate can be safely enabled starting with the
+> 1.36.1 release, once reliable Kata Containers runtime detection has
+> been added. Enabling it in earlier releases is not recommended.
+
 When using the Azure Disk CSI driver with Kata Containers, by default
 the runtime shares the host-mounted filesystem with the pod VM with
 virtio-fs.
