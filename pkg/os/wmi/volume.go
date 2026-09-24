@@ -357,6 +357,11 @@ func GetPartitionSize(part *COMDispatchObject) (uint64, error) {
 	return part.GetStringPropertyAsUint64("Size")
 }
 
+// GetPartitionOffset returns the starting offset of a partition on its disk, in bytes.
+func GetPartitionOffset(part *COMDispatchObject) (uint64, error) {
+	return part.GetStringPropertyAsUint64("Offset")
+}
+
 // FilterForPartitionOnDisk creates a WMI query filter to query a disk by its number.
 func FilterForPartitionOnDisk(diskNumber uint32) Condition {
 	return WithCondition("DiskNumber", "=", diskNumber)
