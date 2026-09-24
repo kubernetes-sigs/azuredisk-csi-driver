@@ -279,10 +279,15 @@ func unallocatedBytesAfterPartition(scope *wmi.Scope, part *wmi.COMDispatchObjec
 	if err != nil {
 		return 0, err
 	}
+	return unallocatedAfter(offset, partSize, diskSize), nil
+}
+
+// unallocatedAfter returns the bytes between the end of a partition and the end of its disk.
+func unallocatedAfter(offset, partSize, diskSize uint64) uint64 {
 	if end := offset + partSize; end < diskSize {
-		return diskSize - end, nil
+		return diskSize - end
 	}
-	return 0, nil
+	return 0
 }
 
 // GetDiskNumberFromVolumeID - gets the disk number where the volume is.
