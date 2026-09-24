@@ -120,6 +120,9 @@ type ManagedDiskOptions struct {
 	Location string
 	// PerformancePlus - Set this flag to true to get a boost on the performance target of the disk deployed
 	PerformancePlus *bool
+	// CachingMode - The caching mode of the disk when attached to a VM.
+	// This is a VM-level property stored in the PV volumeAttributes, applied on next ControllerPublishVolume.
+	CachingMode armcompute.CachingTypes
 }
 
 // CreateManagedDisk: create managed disk
@@ -452,7 +455,7 @@ func (c *ManagedDiskController) ResizeDisk(ctx context.Context, diskURI string, 
 
 // ModifyDisk: modify disk
 func (c *ManagedDiskController) ModifyDisk(ctx context.Context, options *ManagedDiskOptions) error {
-	klog.V(4).Infof("azureDisk - modifying managed disk URI:%s, StorageAccountType:%s, DiskIOPSReadWrite:%s, DiskMBpsReadWrite:%s", options.SourceResourceID, options.StorageAccountType, options.DiskIOPSReadWrite, options.DiskMBpsReadWrite)
+	klog.V(4).Infof("azureDisk - modifying managed disk URI:%s, StorageAccountType:%s, DiskIOPSReadWrite:%s, DiskMBpsReadWrite:%s, CachingMode:%s", options.SourceResourceID, options.StorageAccountType, options.DiskIOPSReadWrite, options.DiskMBpsReadWrite, options.CachingMode)
 
 	subsID, rg, diskName, err := azureutils.GetInfoFromURI(options.SourceResourceID)
 	if err != nil {
@@ -517,8 +520,12 @@ func (c *ManagedDiskController) ModifyDisk(ctx context.Context, options *Managed
 		if _, err := diskClient.Patch(ctx, rg, diskName, model); err != nil {
 			return err
 		}
-	} else {
+	} else if options.CachingMode == "" {
 		klog.V(4).Infof("azureDisk - no modification needed for disk(%s)", diskName)
+	}
+
+	if options.CachingMode != "" {
+		klog.V(2).Infof("azureDisk - cachingMode(%s) updated for disk(%s), will take effect on next attach", options.CachingMode, diskName)
 	}
 	return nil
 }
