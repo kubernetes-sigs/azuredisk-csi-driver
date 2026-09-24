@@ -1651,6 +1651,141 @@ func TestGetDiskState(t *testing.T) {
 	}
 }
 
+func TestResolveQADLUN(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("QAD is not supported on Windows")
+	}
+	const volumeID = "qad-volume"
+
+	newQADPV := func() *v1.PersistentVolume {
+		pv := newTestPV(volumeID)
+		pv.Annotations = map[string]string{consts.AttachSequenceAnnotation: "0"}
+		return pv
+	}
+
+	tests := []struct {
+		name         string
+		qadEnabled   bool
+		pv           *v1.PersistentVolume
+		diskBody     string
+		expectedLUN  string
+		expectedQAD  bool
+		expectedCode codes.Code
+	}{
+		{
+			name:        "QAD disabled short-circuits without a lookup",
+			qadEnabled:  false,
+			pv:          newQADPV(),
+			expectedQAD: false,
+		},
+		{
+			name:        "non-QAD PV is treated as controller-driven",
+			qadEnabled:  true,
+			pv:          newTestPV(volumeID),
+			expectedQAD: false,
+		},
+		{
+			name:        "QAD volume returns the current wireserver LUN",
+			qadEnabled:  true,
+			pv:          newQADPV(),
+			diskBody:    fmt.Sprintf(`{"%s":{"status":"%s","lun":3}}`, volumeID, AttachmentStatusAttached),
+			expectedLUN: "3",
+			expectedQAD: true,
+		},
+		{
+			name:         "QAD volume not yet attached is retryable",
+			qadEnabled:   true,
+			pv:           newQADPV(),
+			diskBody:     fmt.Sprintf(`{"%s":null}`, volumeID),
+			expectedQAD:  true,
+			expectedCode: codes.Unavailable,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			cntl := gomock.NewController(t)
+			d, err := NewFakeDriver(cntl)
+			require.NoError(t, err)
+			driver := d.(*fakeDriver)
+			driver.nodeDrivenAttachDetachEnabled = test.qadEnabled
+			driver.kubeClient = fake.NewClientset(test.pv)
+			driver.httpClient = &http.Client{Transport: testRoundTripper(func(_ *http.Request) (*http.Response, error) {
+				return &http.Response{
+					StatusCode: http.StatusOK,
+					Body:       io.NopCloser(strings.NewReader(test.diskBody)),
+					Header:     make(http.Header),
+				}, nil
+			})}
+
+			lun, isQAD, err := driver.resolveQADLUN(context.Background(), volumeID)
+			require.Equal(t, test.expectedCode, status.Code(err))
+			assert.Equal(t, test.expectedQAD, isQAD)
+			assert.Equal(t, test.expectedLUN, lun)
+		})
+	}
+}
+
+// TestNodeStageVolumeQADAttachOnly verifies NodeStage records only the QAD attach
+// and defers device discovery and mounting to NodePublish.
+func TestNodeStageVolumeQADAttachOnly(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("QAD is not supported on Windows")
+	}
+	const volumeID = "qad-volume"
+
+	cntl := gomock.NewController(t)
+	d, err := NewFakeDriver(cntl)
+	require.NoError(t, err)
+	driver := d.(*fakeDriver)
+	driver.nodeDrivenAttachDetachEnabled = true
+
+	pv := newTestPV(volumeID)
+	pv.Annotations = map[string]string{
+		consts.AttachSequenceAnnotation:  "0",
+		consts.BlobURLAnnotation:         "blob-url",
+		consts.ClaimIdentifierAnnotation: "claim-id",
+		consts.QADCachePolicyAnnotation:  "None",
+	}
+	pv.Spec.CSI.VolumeAttributes = map[string]string{consts.CachingModeField: "None"}
+	driver.kubeClient = fake.NewClientset(pv)
+
+	fakeMounter, err := mounter.NewFakeSafeMounter()
+	require.NoError(t, err)
+	driver.setMounter(fakeMounter)
+
+	credential := driver.cloud.AuthProvider.GetAzIdentity().(*mock_azclient.MockTokenCredential)
+	credential.EXPECT().GetToken(gomock.Any(), gomock.Any()).Return(azcore.AccessToken{Token: "token"}, nil)
+
+	postCalled := false
+	driver.httpClient = &http.Client{Transport: testRoundTripper(func(request *http.Request) (*http.Response, error) {
+		require.Equal(t, http.MethodPost, request.Method)
+		postCalled = true
+		body := fmt.Sprintf(`{"%s":{"status":"%s","lun":1}}`, volumeID, AttachmentStatusAttached)
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Body:       io.NopCloser(strings.NewReader(body)),
+			Header:     make(http.Header),
+		}, nil
+	})}
+
+	resp, err := driver.NodeStageVolume(context.Background(), &csi.NodeStageVolumeRequest{
+		VolumeId:          volumeID,
+		StagingTargetPath: t.TempDir(),
+		VolumeCapability: &csi.VolumeCapability{
+			AccessMode: &csi.VolumeCapability_AccessMode{Mode: csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER},
+			AccessType: &csi.VolumeCapability_Mount{Mount: &csi.VolumeCapability_MountVolume{FsType: defaultLinuxFsType}},
+		},
+	})
+
+	require.NoError(t, err)
+	require.Equal(t, &csi.NodeStageVolumeResponse{}, resp)
+	assert.True(t, postCalled, "attach POST should be made")
+	fake, ok := driver.getMounter().Interface.(*mounter.FakeSafeMounter)
+	require.True(t, ok)
+	assert.Empty(t, fake.MountCalls, "NodeStage must not mount for QAD; mounting happens in NodePublish")
+}
+
 func TestNodePublishVolume(t *testing.T) {
 	cntl := gomock.NewController(t)
 	defer cntl.Finish()
