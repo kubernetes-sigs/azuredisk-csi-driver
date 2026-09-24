@@ -271,8 +271,15 @@ func (d *Driver) NodeStageVolume(ctx context.Context, req *csi.NodeStageVolumeRe
 			return nil, err
 		}
 
-		if statusResp.Status == AttachmentStatusAttaching {
-			// Wait for the disk to be attached
+		// NodeStage records only the QAD attach. The LUN, device enumeration,
+		// format and mount are performed by NodePublish, which rediscovers the
+		// LUN from wireserver. This keeps the attach state authoritative even
+		// when the LUN is not yet visible on the node.
+		switch statusResp.Status {
+		case AttachmentStatusAttached:
+			klog.Infof("NodeStageVolume: Latency observed for attach operation of disk %s is %v", volumeID, time.Since(attachTimer).Milliseconds())
+		case AttachmentStatusAttaching:
+			// Wait for the host to confirm the attach; the LUN is not required here.
 			if err = kwait.PollUntilContextTimeout(ctx, 250*time.Millisecond, 15*time.Second, true, func(pollCtx context.Context) (bool, error) {
 				diskState, err := getDiskState(pollCtx, *d.httpClient, volumeID)
 				if err != nil {
@@ -289,15 +296,12 @@ func (d *Driver) NodeStageVolume(ctx context.Context, req *csi.NodeStageVolumeRe
 				}
 				switch diskState.Status {
 				case AttachmentStatusAttached:
-					// Disk is attached, get the lun number
 					klog.Infof("NodeStageVolume: Latency observed for attach operation of disk %s is %v", volumeID, time.Since(attachTimer).Milliseconds())
-					lun = strconv.Itoa(diskState.LUN)
 					return true, nil
 				case AttachmentStatusError:
 					klog.Errorf("NodeStageVolume: QAD attach failed for volume %s: status=%s, message=%q, error=%+v", volumeID, diskState.Status, diskState.StatusMessage, diskState.Error)
 					return false, status.Errorf(codes.Internal, "NodeStageVolume: QAD attach failed for volume %q with status %q", volumeID, diskState.Status)
 				default:
-					// Wait for the disk to be attached
 					return false, nil
 				}
 			}); err != nil {
@@ -306,14 +310,14 @@ func (d *Driver) NodeStageVolume(ctx context.Context, req *csi.NodeStageVolumeRe
 				}
 				return nil, status.Errorf(codes.Internal, "NodeStageVolume: Error occurred while waiting for disk: %s to be attached on node: %s, error: %v", volumeID, d.NodeID, err)
 			}
-
-		} else if statusResp.Status == AttachmentStatusAttached {
-			klog.Infof("NodeStageVolume: Latency observed for attach operation of disk %s is %v", volumeID, time.Since(attachTimer).Milliseconds())
-			lun = strconv.Itoa(statusResp.LUN)
-		} else {
+		default:
 			klog.Errorf("NodeStageVolume: QAD attach failed for volume %s: status=%s, message=%q, error=%+v", volumeID, statusResp.Status, statusResp.StatusMessage, statusResp.Error)
 			return nil, status.Errorf(codes.Internal, "NodeStageVolume: QAD attach failed for volume %q with status %q", volumeID, statusResp.Status)
 		}
+
+		// QAD attach is authoritative; defer device/mount to NodePublish.
+		isOperationSucceeded = true
+		return &csi.NodeStageVolumeResponse{}, nil
 	} else if !hasLUN {
 		return nil, status.Error(codes.InvalidArgument, "lun not provided")
 	}
@@ -667,22 +671,50 @@ func (d *Driver) NodePublishVolume(ctx context.Context, req *csi.NodePublishVolu
 		mountOptions = append(mountOptions, "ro")
 	}
 
+	// For QAD volumes NodeStage performs only the attach; rediscover the current
+	// LUN from wireserver and perform the device staging here. Non-QAD volumes
+	// return isQAD=false and are handled exactly as before.
+	qadLUN, isQAD, err := d.resolveQADLUN(ctx, volumeID)
+	if err != nil {
+		return nil, err
+	}
+
 	switch req.GetVolumeCapability().GetAccessType().(type) {
 	case *csi.VolumeCapability_Block:
-		lun, ok := req.PublishContext[consts.LUN]
-		if !ok {
-			return nil, status.Error(codes.InvalidArgument, "lun not provided")
+		lun := ""
+		if isQAD {
+			lun = qadLUN
+		} else {
+			var ok bool
+			lun, ok = req.PublishContext[consts.LUN]
+			if !ok {
+				return nil, status.Error(codes.InvalidArgument, "lun not provided")
+			}
 		}
 		var err error
 		source, err = d.getDevicePathWithLUN(lun)
 		if err != nil {
 			return nil, status.Errorf(codes.Internal, "failed to find device path with lun %s. %v", lun, err)
 		}
+		if isQAD {
+			if err := d.applyPerfOptimization(source, params); err != nil {
+				return nil, err
+			}
+		}
 		klog.V(2).Infof("NodePublishVolume [block]: found device path %s with lun %s", source, lun)
 		if err = d.ensureBlockTargetFile(target); err != nil {
 			return nil, status.Errorf(codes.Internal, "%v", err)
 		}
 	case *csi.VolumeCapability_Mount:
+		if isQAD {
+			fstype, mountFlags, err := resolveFSType(volumeCapability, params)
+			if err != nil {
+				return nil, status.Error(codes.InvalidArgument, err.Error())
+			}
+			if err := d.stageQADFilesystem(qadLUN, source, fstype, mountFlags, params, volumeID); err != nil {
+				return nil, err
+			}
+		}
 		if d.kataSupported() {
 			// It's possible that a volume went through:
 			// - Kata NodePublish
@@ -1280,6 +1312,107 @@ func getQADCachePolicy(pv *v1.PersistentVolume) (armcompute.CachingTypes, error)
 		return "", fmt.Errorf("PV has no CSI volume source")
 	}
 	return azureutils.GetCachingMode(pv.Spec.CSI.VolumeAttributes)
+}
+
+// resolveQADLUN reports whether volumeID is a QAD volume and, if so, the current
+// LUN reported by wireserver on this node. NodeStage performs only the attach for
+// QAD volumes, so NodePublish rediscovers the LUN here rather than relying on
+// PublishContext or a persisted value (the LUN can differ each time the volume
+// moves). It returns isQAD=false for non-QAD volumes so the controller-driven
+// path is unaffected.
+func (d *Driver) resolveQADLUN(ctx context.Context, volumeID string) (lun string, isQAD bool, err error) {
+	if !d.nodeDrivenAttachDetachEnabled {
+		return "", false, nil
+	}
+	pv, err := d.getPVFromDiskURI(ctx, volumeID)
+	if errors.Is(err, errPVNotFound) {
+		return "", false, nil
+	}
+	if err != nil {
+		return "", false, status.Errorf(codes.Internal, "NodePublishVolume: failed to get PV from diskURI %s: %v", volumeID, err)
+	}
+	if pv == nil || !d.hasQADInfo(pv) {
+		return "", false, nil
+	}
+	diskState, err := getDiskState(ctx, *d.httpClient, volumeID)
+	if err != nil {
+		return "", true, status.Errorf(codes.Unavailable, "NodePublishVolume: QAD state for volume %s is unavailable: %v", volumeID, err)
+	}
+	if diskState == nil || diskState.Status != AttachmentStatusAttached {
+		return "", true, status.Errorf(codes.Unavailable, "NodePublishVolume: QAD volume %s is not yet attached", volumeID)
+	}
+	return strconv.Itoa(diskState.LUN), true, nil
+}
+
+// applyPerfOptimization tweaks device settings for performance. It mirrors the
+// inline optimization NodeStage performs for controller-driven volumes and is
+// used by the QAD publish paths, where the device is only known at publish time.
+func (d *Driver) applyPerfOptimization(device string, volumeContext map[string]string) error {
+	if !d.getPerfOptimizationEnabled() {
+		return nil
+	}
+	profile, accountType, diskSizeGibStr, diskIopsStr, diskBwMbpsStr, deviceSettings, err := optimization.GetDiskPerfAttributes(volumeContext)
+	if err != nil {
+		return status.Errorf(codes.Internal, "failed to get perf attributes for %s. Error: %v", device, err)
+	}
+	if d.getDeviceHelper().DiskSupportsPerfOptimization(profile, accountType) {
+		if err := d.getDeviceHelper().OptimizeDiskPerformance(d.getNodeInfo(), device, profile, accountType,
+			diskSizeGibStr, diskIopsStr, diskBwMbpsStr, deviceSettings); err != nil {
+			return status.Errorf(codes.Internal, "failed to optimize device performance for target(%s) error(%s)", device, err)
+		}
+	}
+	return nil
+}
+
+// stageQADFilesystem discovers the device for lun, optimizes it, and formats and
+// mounts it at the staging path. For QAD volumes this mount work happens in
+// NodePublish because the LUN is only known then; it mirrors the filesystem
+// staging NodeStage performs for controller-driven volumes.
+func (d *Driver) stageQADFilesystem(lun, stagingTarget, fstype string, mountFlags []string, volumeContext map[string]string, volumeID string) error {
+	device, err := d.getDevicePathWithLUN(lun)
+	if err != nil {
+		return status.Errorf(codes.Unavailable, "NodePublishVolume: device for lun %s on volume %s not yet visible: %v", lun, volumeID, err)
+	}
+
+	if err := d.applyPerfOptimization(device, volumeContext); err != nil {
+		return err
+	}
+
+	mnt, err := d.ensureMountPoint(stagingTarget)
+	if err != nil {
+		return status.Errorf(codes.Internal, "could not mount target %q: %v", stagingTarget, err)
+	}
+	if mnt {
+		klog.V(2).Infof("NodePublishVolume: QAD device already mounted at staging %s", stagingTarget)
+		return nil
+	}
+
+	options := collectMountOptions(fstype, mountFlags)
+	if partition, ok := volumeContext[consts.VolumeAttributePartition]; ok {
+		device = device + "-part" + partition
+	}
+
+	klog.V(2).Infof("NodePublishVolume: formatting %s and mounting at %s with mount options(%s)", device, stagingTarget, options)
+	if err := d.formatAndMount(device, stagingTarget, fstype, options); err != nil {
+		return status.Errorf(codes.Internal, "could not format %s(lun: %s), and mount it at %s, failed with %v", device, lun, stagingTarget, err)
+	}
+
+	var needResize bool
+	if required, ok := volumeContext[consts.ResizeRequired]; ok && strings.EqualFold(required, consts.TrueValue) {
+		needResize = true
+	}
+	if !needResize {
+		if needResize, err = needResizeVolume(device, stagingTarget, d.mounter); err != nil {
+			klog.Errorf("NodePublishVolume: could not determine if volume %s needs to be resized: %v", volumeID, err)
+		}
+	}
+	if needResize {
+		klog.V(2).Infof("NodePublishVolume: fs resize initiating on target(%s) volumeid(%s)", stagingTarget, volumeID)
+		if err := resizeVolume(device, stagingTarget, d.mounter); err != nil {
+			return status.Errorf(codes.Internal, "NodePublishVolume: could not resize volume %s (%s): %v", device, stagingTarget, err)
+		}
+	}
+	return nil
 }
 
 func (d *Driver) executeQADDiskOperation(ctx context.Context, diskRequest DiskOperationRequest, operationType string) (*DiskStatus, error) {
