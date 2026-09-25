@@ -17,6 +17,7 @@ limitations under the License.
 package driver
 
 import (
+	"flag"
 	"fmt"
 	"os"
 	"strings"
@@ -28,12 +29,28 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/klog/v2"
 	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
+	"sigs.k8s.io/azuredisk-csi-driver/pkg/azuredisk"
 )
 
 const (
 	AzureDriverNameVar = "AZURE_STORAGE_DRIVER"
 	TopologyKey        = "topology.disk.csi.azure.com/zone"
 )
+
+// FeatureGates carries the Azure Disk CSI driver feature gates for the e2e run,
+// populated from the --feature-gates flag and shared with the in-process driver.
+var FeatureGates = azuredisk.NewDriverFeatureGate()
+
+func init() {
+	flag.Var(azuredisk.NewGoFlagFeatureGate(FeatureGates), "feature-gates",
+		fmt.Sprintf("A set of key=value pairs that describe Azure Disk CSI driver feature gates. Known features: %s", strings.Join(FeatureGates.KnownFeatures(), ", ")))
+}
+
+// QADEnabled reports whether the node-driven attach/detach (QAD) feature gate is
+// enabled for this e2e run.
+func QADEnabled() bool {
+	return FeatureGates.Enabled(azuredisk.NodeDrivenAttachDetach)
+}
 
 // Implement DynamicPVTestDriver interface
 type azureDiskDriver struct {
@@ -73,6 +90,19 @@ func (d *azureDiskDriver) GetDynamicProvisionStorageClass(parameters map[string]
 					},
 				},
 			},
+		}
+	}
+
+	// Apply QAD default parameters if not already set by the test
+	if QADEnabled() {
+		qadDefaults := map[string]string{
+			"skuName":    "Premium_LRS",
+			"attachMode": "NodeDriven",
+		}
+		for k, v := range qadDefaults {
+			if _, ok := parameters[k]; !ok {
+				parameters[k] = v
+			}
 		}
 	}
 
@@ -128,6 +158,12 @@ func (d *azureDiskDriver) GetPersistentVolume(volumeID, fsType, size string, vol
 }
 
 func GetParameters() map[string]string {
+	if QADEnabled() {
+		return map[string]string{
+			"skuName":    "Premium_LRS",
+			"attachMode": "NodeDriven",
+		}
+	}
 	return map[string]string{
 		"skuName": "StandardSSD_LRS",
 	}

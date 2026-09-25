@@ -22,9 +22,9 @@ This driver allows Kubernetes to access [Azure Disk](https://azure.microsoft.com
 | Driver Version | Image                                                                | Supported K8s Version |
 |----------------|----------------------------------------------------------------------|-----------------------|
 | master branch  | `mcr.microsoft.com/k8s/csi/azuredisk-csi:latest`                    | 1.21+                 |
+| v1.36.0        | `mcr.microsoft.com/oss/v2/kubernetes-csi/azuredisk-csi:v1.36.0`     | 1.21+                 |
 | v1.34.5        | `mcr.microsoft.com/oss/v2/kubernetes-csi/azuredisk-csi:v1.34.5`     | 1.21+                 |
 | v1.33.11        | `mcr.microsoft.com/oss/v2/kubernetes-csi/azuredisk-csi:v1.33.11`     | 1.21+                 |
-| v1.32.12       | `mcr.microsoft.com/oss/v2/kubernetes-csi/azuredisk-csi:v1.32.12`    | 1.21+                 |
 
 ## Driver Parameters
 
@@ -105,6 +105,7 @@ Install the driver on a Kubernetes cluster:
 - [Volume Expansion](./deploy/example/resize)
 - [Modify Volume Attributes](./deploy/example/modifyvolume)
 - [Raw Block Volume](./deploy/example/rawblock)
+- [Kata direct volume mounts (Experimental)](./docs/kata-mount.md)
 - [Windows](./deploy/example/windows)
 - [Volume Limits](./deploy/example/volumelimits)
 - [fsGroupPolicy](./deploy/example/fsgroup)

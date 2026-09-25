@@ -44,15 +44,13 @@ func TestFormatAndMountFormatsUnformattedDisk(t *testing.T) {
 		// wipefs finds no filesystem signature, confirming the disk is unformatted.
 		wipefsAction(t, "/dev/sdz", nil, ""),
 		mkfsAction(t),
-		// fsck runs once more with "-a" to repair any issues before mounting.
-		fsckAction(t, []string{"-a", "/dev/sdz"}, nil, ""),
 	}
 
 	if err := formatAndMount("/dev/sdz", "/mnt/test", "ext4", nil, fakeSafeMounter, nil, 0); err != nil {
 		t.Fatalf("formatAndMount returned error: %v", err)
 	}
 
-	if got, want := fakeExec.CommandCalls, 5; got != want {
+	if got, want := fakeExec.CommandCalls, 4; got != want {
 		t.Fatalf("unexpected command count: got %d, want %d", got, want)
 	}
 }
@@ -102,8 +100,6 @@ func TestFormatAndMountDoesNotReformatWhenAlreadyFormatted(t *testing.T) {
 		wipefsAction(t, "/dev/sdz", nil, ""),
 		// First call: mkfs succeeds.
 		mkfsAction(t),
-		// First call: fsck runs with "-a" to repair any issues before mounting.
-		fsckAction(t, []string{"-a", "/dev/sdz"}, nil, ""),
 		// Second call: disk is already ext4, so it should skip the detection fsck/mkfs path.
 		blkidAction(t, "/dev/sdz", nil, "TYPE=ext4\n"),
 		// Second call: fsck runs with "-a" to repair any issues before mounting.
@@ -118,7 +114,7 @@ func TestFormatAndMountDoesNotReformatWhenAlreadyFormatted(t *testing.T) {
 		t.Fatalf("second formatAndMount returned error: %v", err)
 	}
 
-	if got, want := fakeExec.CommandCalls, 7; got != want {
+	if got, want := fakeExec.CommandCalls, 6; got != want {
 		t.Fatalf("unexpected command count: got %d, want %d", got, want)
 	}
 }
