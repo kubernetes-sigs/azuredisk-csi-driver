@@ -18,16 +18,21 @@ package azuredisk
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"reflect"
 	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
 
+	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/to"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute/v7"
+	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/resources/armresources"
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -40,7 +45,10 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/kubernetes/fake"
+	k8stesting "k8s.io/client-go/testing"
 	"k8s.io/client-go/tools/record"
 	"k8s.io/klog/v2"
 	"k8s.io/utils/ptr"
@@ -53,6 +61,7 @@ import (
 	"sigs.k8s.io/cloud-provider-azure/pkg/azclient/diskclient/mock_diskclient"
 	"sigs.k8s.io/cloud-provider-azure/pkg/azclient/mock_azclient"
 	"sigs.k8s.io/cloud-provider-azure/pkg/azclient/policy/retryrepectthrottled"
+	"sigs.k8s.io/cloud-provider-azure/pkg/azclient/resourcegroupclient/mock_resourcegroupclient"
 	"sigs.k8s.io/cloud-provider-azure/pkg/azclient/snapshotclient/mock_snapshotclient"
 	mockvmclient "sigs.k8s.io/cloud-provider-azure/pkg/azclient/virtualmachineclient/mock_virtualmachineclient"
 	azure "sigs.k8s.io/cloud-provider-azure/pkg/provider"
@@ -71,6 +80,265 @@ func checkTestError(t *testing.T, expectedErrCode codes.Code, err error) {
 	if s.Code() != expectedErrCode {
 		t.Errorf("expected error code: %v, actual: %v, err: %v", expectedErrCode, s.Code(), err)
 	}
+}
+
+func TestGetAKSClusterResourceID(t *testing.T) {
+	t.Run("builds resource ID from AKS tags", func(t *testing.T) {
+		cntl := gomock.NewController(t)
+		d, err := NewFakeDriver(cntl)
+		require.NoError(t, err)
+		driver := d.(*fakeDriver)
+		driver.cloud.SubscriptionID = "subscription"
+		driver.cloud.ResourceGroup = "node-resource-group"
+
+		resourceGroupClient := mock_resourcegroupclient.NewMockInterface(cntl)
+		driver.clientFactory.(*mock_azclient.MockClientFactory).EXPECT().GetResourceGroupClient().Return(resourceGroupClient)
+		resourceGroupClient.EXPECT().Get(gomock.Any(), "node-resource-group").Return(&armresources.ResourceGroup{
+			Tags: map[string]*string{
+				aksManagedClusterNameTag:          to.Ptr("cluster"),
+				aksManagedClusterResourceGroupTag: to.Ptr("cluster-resource-group"),
+			},
+		}, nil)
+
+		resourceID, err := driver.getAKSClusterResourceID(context.Background())
+		require.NoError(t, err)
+		assert.Equal(t, "/subscriptions/subscription/resourceGroups/cluster-resource-group/providers/Microsoft.ContainerService/managedClusters/cluster", resourceID)
+	})
+
+	t.Run("caches resolved resource ID", func(t *testing.T) {
+		cntl := gomock.NewController(t)
+		d, err := NewFakeDriver(cntl)
+		require.NoError(t, err)
+		driver := d.(*fakeDriver)
+		driver.cloud.SubscriptionID = "subscription"
+		driver.cloud.ResourceGroup = "node-resource-group"
+
+		resourceGroupClient := mock_resourcegroupclient.NewMockInterface(cntl)
+		// GetResourceGroupClient/Get must be invoked exactly once across both calls.
+		driver.clientFactory.(*mock_azclient.MockClientFactory).EXPECT().GetResourceGroupClient().Return(resourceGroupClient).Times(1)
+		resourceGroupClient.EXPECT().Get(gomock.Any(), "node-resource-group").Return(&armresources.ResourceGroup{
+			Tags: map[string]*string{
+				aksManagedClusterNameTag:          to.Ptr("cluster"),
+				aksManagedClusterResourceGroupTag: to.Ptr("cluster-resource-group"),
+			},
+		}, nil).Times(1)
+
+		first, err := driver.getAKSClusterResourceID(context.Background())
+		require.NoError(t, err)
+		second, err := driver.getAKSClusterResourceID(context.Background())
+		require.NoError(t, err)
+		assert.Equal(t, first, second)
+	})
+
+	t.Run("falls back to subscription when AKS tags are missing", func(t *testing.T) {
+		cntl := gomock.NewController(t)
+		d, err := NewFakeDriver(cntl)
+		require.NoError(t, err)
+		driver := d.(*fakeDriver)
+		driver.cloud.SubscriptionID = "subscription"
+		driver.cloud.ResourceGroup = "node-resource-group"
+
+		resourceGroupClient := mock_resourcegroupclient.NewMockInterface(cntl)
+		driver.clientFactory.(*mock_azclient.MockClientFactory).EXPECT().GetResourceGroupClient().Return(resourceGroupClient)
+		resourceGroupClient.EXPECT().Get(gomock.Any(), "node-resource-group").Return(&armresources.ResourceGroup{}, nil)
+
+		resourceID, err := driver.getAKSClusterResourceID(context.Background())
+		require.NoError(t, err)
+		assert.Equal(t, "/subscriptions/subscription", resourceID)
+	})
+}
+
+func TestClaimDiskResource(t *testing.T) {
+	t.Run("returns blob URL", func(t *testing.T) {
+		cntl := gomock.NewController(t)
+		d, err := NewFakeDriver(cntl)
+		require.NoError(t, err)
+		driver := d.(*fakeDriver)
+
+		ownerResourceID := "/subscriptions/subscription/resourceGroups/cluster-rg/providers/Microsoft.ContainerService/managedClusters/cluster"
+		diskURI := "/subscriptions/subscription/resourceGroups/rg/providers/Microsoft.Compute/disks/disk"
+		blobURL := "https://md-storage.blob.core.windows.net/container/disk"
+		server := httptest.NewServer(http.HandlerFunc(func(responseWriter http.ResponseWriter, request *http.Request) {
+			assert.Equal(t, http.MethodPost, request.Method)
+			assert.Equal(t, diskURI+"/claimResource", request.URL.Path)
+			assert.Equal(t, claimResourceAPIVersion, request.URL.Query().Get("api-version"))
+			assert.Equal(t, "Bearer token", request.Header.Get("Authorization"))
+
+			var body struct {
+				OwnerResourceID string `json:"ownerResourceId"`
+			}
+			require.NoError(t, json.NewDecoder(request.Body).Decode(&body))
+			assert.Equal(t, ownerResourceID, body.OwnerResourceID)
+			responseWriter.Header().Set("Content-Type", "application/json")
+			responseWriter.WriteHeader(http.StatusOK)
+			_, err := fmt.Fprintf(responseWriter, `{"properties":{"blobUrl":%q,"claimIdentifier":"identifier"}}`, blobURL)
+			require.NoError(t, err)
+		}))
+		defer server.Close()
+
+		driver.cloud.ARMClientConfig.ResourceManagerEndpoint = server.URL
+		credential := driver.cloud.AuthProvider.GetAzIdentity().(*mock_azclient.MockTokenCredential)
+		credential.EXPECT().GetToken(gomock.Any(), gomock.Any()).Return(azcore.AccessToken{Token: "token"}, nil)
+
+		actualBlobURL, claimIdentifier, err := driver.claimDiskResource(context.Background(), diskURI, ownerResourceID)
+		require.NoError(t, err)
+		assert.Equal(t, blobURL, actualBlobURL)
+		assert.Equal(t, "identifier", claimIdentifier)
+	})
+
+	t.Run("returns empty blob URL when absent", func(t *testing.T) {
+		cntl := gomock.NewController(t)
+		d, err := NewFakeDriver(cntl)
+		require.NoError(t, err)
+		driver := d.(*fakeDriver)
+
+		server := httptest.NewServer(http.HandlerFunc(func(responseWriter http.ResponseWriter, _ *http.Request) {
+			responseWriter.WriteHeader(http.StatusOK)
+			_, err := responseWriter.Write([]byte(`{"properties":{"diskState":"Claimed"}}`))
+			require.NoError(t, err)
+		}))
+		defer server.Close()
+
+		driver.cloud.ARMClientConfig.ResourceManagerEndpoint = server.URL
+		credential := driver.cloud.AuthProvider.GetAzIdentity().(*mock_azclient.MockTokenCredential)
+		credential.EXPECT().GetToken(gomock.Any(), gomock.Any()).Return(azcore.AccessToken{Token: "token"}, nil)
+
+		blobURL, claimIdentifier, err := driver.claimDiskResource(context.Background(), "/subscriptions/subscription/resourceGroups/rg/providers/Microsoft.Compute/disks/disk", "owner")
+		require.NoError(t, err)
+		assert.Empty(t, blobURL)
+		assert.Empty(t, claimIdentifier)
+	})
+}
+
+func TestUnclaimDiskResource(t *testing.T) {
+	t.Run("sends unclaim request", func(t *testing.T) {
+		cntl := gomock.NewController(t)
+		d, err := NewFakeDriver(cntl)
+		require.NoError(t, err)
+		driver := d.(*fakeDriver)
+
+		ownerResourceID := "/subscriptions/subscription/resourceGroups/cluster-rg/providers/Microsoft.ContainerService/managedClusters/cluster"
+		diskURI := "/subscriptions/subscription/resourceGroups/rg/providers/Microsoft.Compute/disks/disk"
+		server := httptest.NewServer(http.HandlerFunc(func(responseWriter http.ResponseWriter, request *http.Request) {
+			assert.Equal(t, http.MethodPost, request.Method)
+			assert.Equal(t, diskURI+"/unclaimResource", request.URL.Path)
+			assert.Equal(t, claimResourceAPIVersion, request.URL.Query().Get("api-version"))
+			assert.Equal(t, "Bearer token", request.Header.Get("Authorization"))
+
+			var body struct {
+				OwnerResourceID string `json:"ownerResourceId"`
+			}
+			require.NoError(t, json.NewDecoder(request.Body).Decode(&body))
+			assert.Equal(t, ownerResourceID, body.OwnerResourceID)
+			responseWriter.Header().Set("Content-Type", "application/json")
+			responseWriter.WriteHeader(http.StatusOK)
+			_, err := responseWriter.Write([]byte(`{"managedBy":null,"properties":{"diskState":"Unattached"}}`))
+			require.NoError(t, err)
+		}))
+		defer server.Close()
+
+		driver.cloud.ARMClientConfig.ResourceManagerEndpoint = server.URL
+		credential := driver.cloud.AuthProvider.GetAzIdentity().(*mock_azclient.MockTokenCredential)
+		credential.EXPECT().GetToken(gomock.Any(), gomock.Any()).Return(azcore.AccessToken{Token: "token"}, nil)
+
+		require.NoError(t, driver.unclaimDiskResource(context.Background(), diskURI, ownerResourceID))
+	})
+
+	t.Run("returns error on failure status", func(t *testing.T) {
+		cntl := gomock.NewController(t)
+		d, err := NewFakeDriver(cntl)
+		require.NoError(t, err)
+		driver := d.(*fakeDriver)
+
+		server := httptest.NewServer(http.HandlerFunc(func(responseWriter http.ResponseWriter, _ *http.Request) {
+			responseWriter.WriteHeader(http.StatusConflict)
+			_, err := responseWriter.Write([]byte(`{"error":"conflict"}`))
+			require.NoError(t, err)
+		}))
+		defer server.Close()
+
+		driver.cloud.ARMClientConfig.ResourceManagerEndpoint = server.URL
+		credential := driver.cloud.AuthProvider.GetAzIdentity().(*mock_azclient.MockTokenCredential)
+		credential.EXPECT().GetToken(gomock.Any(), gomock.Any()).Return(azcore.AccessToken{Token: "token"}, nil)
+
+		err = driver.unclaimDiskResource(context.Background(), "/subscriptions/subscription/resourceGroups/rg/providers/Microsoft.Compute/disks/disk", "owner")
+		require.ErrorContains(t, err, "unclaimResource returned status 409")
+	})
+
+	t.Run("ignores not found for an already absent disk", func(t *testing.T) {
+		cntl := gomock.NewController(t)
+		d, err := NewFakeDriver(cntl)
+		require.NoError(t, err)
+		driver := d.(*fakeDriver)
+
+		server := httptest.NewServer(http.HandlerFunc(func(responseWriter http.ResponseWriter, _ *http.Request) {
+			responseWriter.WriteHeader(http.StatusNotFound)
+			_, err := responseWriter.Write([]byte(`{"error":{"code":"NotFound","message":"Disk is not found."}}`))
+			require.NoError(t, err)
+		}))
+		defer server.Close()
+
+		driver.cloud.ARMClientConfig.ResourceManagerEndpoint = server.URL
+		credential := driver.cloud.AuthProvider.GetAzIdentity().(*mock_azclient.MockTokenCredential)
+		credential.EXPECT().GetToken(gomock.Any(), gomock.Any()).Return(azcore.AccessToken{Token: "token"}, nil)
+
+		err = driver.unclaimDiskResource(context.Background(), "/subscriptions/subscription/resourceGroups/rg/providers/Microsoft.Compute/disks/missing", "owner")
+		require.NoError(t, err)
+	})
+}
+
+func TestPollAsyncOperation(t *testing.T) {
+	t.Run("keeps polling on empty 202 then returns 200 body", func(t *testing.T) {
+		cntl := gomock.NewController(t)
+		d, err := NewFakeDriver(cntl)
+		require.NoError(t, err)
+		driver := d.(*fakeDriver)
+		driver.pollInterval = time.Millisecond
+
+		var calls int32
+		server := httptest.NewServer(http.HandlerFunc(func(responseWriter http.ResponseWriter, _ *http.Request) {
+			// First poll: operation still running, 202 with an empty body.
+			if atomic.AddInt32(&calls, 1) == 1 {
+				responseWriter.WriteHeader(http.StatusAccepted)
+				return
+			}
+			responseWriter.Header().Set("Content-Type", "application/json")
+			responseWriter.WriteHeader(http.StatusOK)
+			_, err := responseWriter.Write([]byte(`{"properties":{"blobUrl":"https://md-storage.blob.core.windows.net/container/disk"}}`))
+			require.NoError(t, err)
+		}))
+		defer server.Close()
+
+		credential := driver.cloud.AuthProvider.GetAzIdentity().(*mock_azclient.MockTokenCredential)
+		credential.EXPECT().GetToken(gomock.Any(), gomock.Any()).Return(azcore.AccessToken{Token: "token"}, nil).AnyTimes()
+
+		body, err := driver.pollAsyncOperation(context.Background(), server.URL)
+		require.NoError(t, err)
+		assert.Contains(t, string(body), "blobUrl")
+		assert.GreaterOrEqual(t, atomic.LoadInt32(&calls), int32(2))
+	})
+
+	t.Run("fails on terminal status", func(t *testing.T) {
+		cntl := gomock.NewController(t)
+		d, err := NewFakeDriver(cntl)
+		require.NoError(t, err)
+		driver := d.(*fakeDriver)
+		driver.pollInterval = time.Millisecond
+
+		server := httptest.NewServer(http.HandlerFunc(func(responseWriter http.ResponseWriter, _ *http.Request) {
+			responseWriter.Header().Set("Content-Type", "application/json")
+			responseWriter.WriteHeader(http.StatusOK)
+			_, err := responseWriter.Write([]byte(`{"status":"Failed"}`))
+			require.NoError(t, err)
+		}))
+		defer server.Close()
+
+		credential := driver.cloud.AuthProvider.GetAzIdentity().(*mock_azclient.MockTokenCredential)
+		credential.EXPECT().GetToken(gomock.Any(), gomock.Any()).Return(azcore.AccessToken{Token: "token"}, nil).AnyTimes()
+
+		_, err = driver.pollAsyncOperation(context.Background(), server.URL)
+		require.ErrorContains(t, err, "async operation Failed")
+	})
 }
 
 func TestCreateVolume(t *testing.T) {
@@ -649,10 +917,229 @@ func TestCreateVolume(t *testing.T) {
 				}
 			},
 		},
+		{
+			name: "NodeDriven rejected with FailedPrecondition when feature gate disabled",
+			testFunc: func(t *testing.T) {
+				cntl := gomock.NewController(t)
+				defer cntl.Finish()
+				d, _ := NewFakeDriver(cntl)
+				driver := d.(*fakeDriver)
+				driver.nodeDrivenAttachDetachEnabled = false
+				req := &csi.CreateVolumeRequest{
+					Name:               testVolumeName,
+					VolumeCapabilities: stdVolumeCapabilities,
+					Parameters:         map[string]string{consts.AttachModeField: consts.AttachModeNodeDriven},
+				}
+				_, err := d.CreateVolume(context.Background(), req)
+				require.Error(t, err)
+				assert.Equal(t, codes.FailedPrecondition, status.Code(err))
+				assert.Contains(t, err.Error(), consts.AttachModeNodeDriven)
+				assert.Contains(t, err.Error(), NodeDrivenAttachDetach)
+			},
+		},
+		{
+			name: "NodeDriven proceeds and claims disk when feature gate enabled",
+			testFunc: func(t *testing.T) {
+				cntl := gomock.NewController(t)
+				defer cntl.Finish()
+				d, _ := NewFakeDriver(cntl)
+				driver := d.(*fakeDriver)
+				driver.nodeDrivenAttachDetachEnabled = true
+				driver.cloud.SubscriptionID = "subscription"
+				driver.cloud.ResourceGroup = "node-resource-group"
+
+				stdCapacityRangetest := &csi.CapacityRange{
+					RequiredBytes: volumehelper.GiBToBytes(diskCachingLimit),
+					LimitBytes:    volumehelper.GiBToBytes(diskCachingLimit),
+				}
+				req := &csi.CreateVolumeRequest{
+					Name:               testVolumeName,
+					VolumeCapabilities: stdVolumeCapabilities,
+					CapacityRange:      stdCapacityRangetest,
+					Parameters:         map[string]string{consts.AttachModeField: consts.AttachModeNodeDriven},
+				}
+				size := int32(volumehelper.BytesToGiB(req.CapacityRange.RequiredBytes))
+				id := fmt.Sprintf(consts.ManagedDiskPath, "subs", "rg", testVolumeName)
+				state := "Succeeded"
+				disk := &armcompute.Disk{
+					ID:   &id,
+					Name: &testVolumeName,
+					Properties: &armcompute.DiskProperties{
+						DiskSizeGB:        &size,
+						ProvisioningState: &state,
+					},
+				}
+				clientFactory := driver.clientFactory.(*mock_azclient.MockClientFactory)
+				diskClient := mock_diskclient.NewMockInterface(cntl)
+				clientFactory.EXPECT().GetDiskClientForSub(gomock.Any()).Return(diskClient, nil).AnyTimes()
+				diskClient.EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any()).Return(disk, nil).AnyTimes()
+				diskClient.EXPECT().CreateOrUpdate(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(disk, nil).AnyTimes()
+
+				// getAKSClusterResourceID resolves the QAD owner from node RG tags.
+				resourceGroupClient := mock_resourcegroupclient.NewMockInterface(cntl)
+				clientFactory.EXPECT().GetResourceGroupClient().Return(resourceGroupClient)
+				resourceGroupClient.EXPECT().Get(gomock.Any(), "node-resource-group").Return(&armresources.ResourceGroup{
+					Tags: map[string]*string{
+						aksManagedClusterNameTag:          to.Ptr("cluster"),
+						aksManagedClusterResourceGroupTag: to.Ptr("cluster-resource-group"),
+					},
+				}, nil)
+
+				// claimDiskResource POSTs to the DiskRP claimResource endpoint.
+				blobURL := "https://md-storage.blob.core.windows.net/container/disk"
+				server := httptest.NewServer(http.HandlerFunc(func(responseWriter http.ResponseWriter, _ *http.Request) {
+					responseWriter.Header().Set("Content-Type", "application/json")
+					responseWriter.WriteHeader(http.StatusOK)
+					_, _ = fmt.Fprintf(responseWriter, `{"properties":{"blobUrl":%q,"claimIdentifier":"identifier"}}`, blobURL)
+				}))
+				defer server.Close()
+				driver.cloud.ARMClientConfig.ResourceManagerEndpoint = server.URL
+				credential := driver.cloud.AuthProvider.GetAzIdentity().(*mock_azclient.MockTokenCredential)
+				credential.EXPECT().GetToken(gomock.Any(), gomock.Any()).Return(azcore.AccessToken{Token: "token"}, nil)
+
+				res, err := d.CreateVolume(context.Background(), req)
+				require.NoError(t, err)
+				require.NotNil(t, res)
+				assert.Equal(t, blobURL, res.Volume.VolumeContext[consts.BlobURLAnnotation])
+				assert.Equal(t, "identifier", res.Volume.VolumeContext[consts.ClaimIdentifierAnnotation])
+				assert.Equal(t, "None", res.Volume.VolumeContext[consts.CachingModeField])
+			},
+		},
 	}
 	for _, tc := range testCases {
 		t.Run(tc.name, tc.testFunc)
 	}
+}
+
+func TestCreateVolumeRetriesIncompleteQADClaimWithoutUnclaim(t *testing.T) {
+	cntl := gomock.NewController(t)
+	d, err := NewFakeDriver(cntl)
+	require.NoError(t, err)
+	driver := d.(*fakeDriver)
+	driver.nodeDrivenAttachDetachEnabled = true
+	driver.cloud.SubscriptionID = "subscription"
+	driver.cloud.ResourceGroup = "node-resource-group"
+
+	req := &csi.CreateVolumeRequest{
+		Name:               testVolumeName,
+		VolumeCapabilities: stdVolumeCapabilities,
+		CapacityRange: &csi.CapacityRange{
+			RequiredBytes: volumehelper.GiBToBytes(10),
+			LimitBytes:    volumehelper.GiBToBytes(514),
+		},
+		Parameters: map[string]string{consts.AttachModeField: consts.AttachModeNodeDriven},
+	}
+	size := int32(volumehelper.BytesToGiB(req.CapacityRange.RequiredBytes))
+	diskURI := fmt.Sprintf(consts.ManagedDiskPath, "subs", "rg", testVolumeName)
+	state := "Succeeded"
+	disk := &armcompute.Disk{
+		ID:   &diskURI,
+		Name: &testVolumeName,
+		Properties: &armcompute.DiskProperties{
+			DiskSizeGB:        &size,
+			ProvisioningState: &state,
+		},
+	}
+
+	clientFactory := driver.clientFactory.(*mock_azclient.MockClientFactory)
+	diskClient := mock_diskclient.NewMockInterface(cntl)
+	clientFactory.EXPECT().GetDiskClientForSub(gomock.Any()).Return(diskClient, nil).AnyTimes()
+	diskClient.EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any()).Return(disk, nil).AnyTimes()
+	diskClient.EXPECT().CreateOrUpdate(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(disk, nil).AnyTimes()
+
+	resourceGroupClient := mock_resourcegroupclient.NewMockInterface(cntl)
+	clientFactory.EXPECT().GetResourceGroupClient().Return(resourceGroupClient)
+	resourceGroupClient.EXPECT().Get(gomock.Any(), "node-resource-group").Return(&armresources.ResourceGroup{
+		Tags: map[string]*string{
+			aksManagedClusterNameTag:          to.Ptr("cluster"),
+			aksManagedClusterResourceGroupTag: to.Ptr("cluster-resource-group"),
+		},
+	}, nil)
+
+	var claimRequests atomic.Int32
+	var unclaimed atomic.Bool
+	server := httptest.NewServer(http.HandlerFunc(func(responseWriter http.ResponseWriter, request *http.Request) {
+		switch {
+		case strings.HasSuffix(request.URL.Path, "/claimResource"):
+			responseWriter.WriteHeader(http.StatusOK)
+			if claimRequests.Add(1) == 1 {
+				_, _ = responseWriter.Write([]byte(`{"properties":{"claimIdentifier":"identifier"}}`))
+				return
+			}
+			_, _ = responseWriter.Write([]byte(`{"properties":{"blobUrl":"https://md-storage.blob.core.windows.net/container/disk","claimIdentifier":"identifier"}}`))
+		case strings.HasSuffix(request.URL.Path, "/unclaimResource"):
+			unclaimed.Store(true)
+			responseWriter.WriteHeader(http.StatusOK)
+		default:
+			http.NotFound(responseWriter, request)
+		}
+	}))
+	defer server.Close()
+	driver.cloud.ARMClientConfig.ResourceManagerEndpoint = server.URL
+	credential := driver.cloud.AuthProvider.GetAzIdentity().(*mock_azclient.MockTokenCredential)
+	credential.EXPECT().GetToken(gomock.Any(), gomock.Any()).Return(azcore.AccessToken{Token: "token"}, nil).Times(2)
+
+	response, err := driver.CreateVolume(context.Background(), req)
+
+	require.Nil(t, response)
+	require.Equal(t, codes.Aborted, status.Code(err))
+	assert.ErrorContains(t, err, "QAD blob URL missing")
+	assert.False(t, unclaimed.Load(), "an ambiguous claim must remain intact for retry")
+
+	response, err = driver.CreateVolume(context.Background(), req)
+	require.NoError(t, err)
+	require.NotNil(t, response)
+	assert.Equal(t, "https://md-storage.blob.core.windows.net/container/disk", response.Volume.VolumeContext[consts.BlobURLAnnotation])
+	assert.Equal(t, "identifier", response.Volume.VolumeContext[consts.ClaimIdentifierAnnotation])
+	assert.Equal(t, int32(2), claimRequests.Load())
+	assert.False(t, unclaimed.Load())
+}
+
+func TestCreateVolumeRetriesQADOwnerLookupFailure(t *testing.T) {
+	cntl := gomock.NewController(t)
+	d, err := NewFakeDriver(cntl)
+	require.NoError(t, err)
+	driver := d.(*fakeDriver)
+	driver.nodeDrivenAttachDetachEnabled = true
+	driver.cloud.SubscriptionID = "subscription"
+	driver.cloud.ResourceGroup = "node-resource-group"
+
+	req := &csi.CreateVolumeRequest{
+		Name:               testVolumeName,
+		VolumeCapabilities: stdVolumeCapabilities,
+		CapacityRange: &csi.CapacityRange{
+			RequiredBytes: volumehelper.GiBToBytes(10),
+			LimitBytes:    volumehelper.GiBToBytes(514),
+		},
+		Parameters: map[string]string{consts.AttachModeField: consts.AttachModeNodeDriven},
+	}
+	size := int32(volumehelper.BytesToGiB(req.CapacityRange.RequiredBytes))
+	diskURI := fmt.Sprintf(consts.ManagedDiskPath, "subs", "rg", testVolumeName)
+	state := "Succeeded"
+	disk := &armcompute.Disk{
+		ID:   &diskURI,
+		Name: &testVolumeName,
+		Properties: &armcompute.DiskProperties{
+			DiskSizeGB:        &size,
+			ProvisioningState: &state,
+		},
+	}
+
+	clientFactory := driver.clientFactory.(*mock_azclient.MockClientFactory)
+	diskClient := mock_diskclient.NewMockInterface(cntl)
+	clientFactory.EXPECT().GetDiskClientForSub(gomock.Any()).Return(diskClient, nil).AnyTimes()
+	diskClient.EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any()).Return(disk, nil).AnyTimes()
+	diskClient.EXPECT().CreateOrUpdate(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(disk, nil)
+
+	resourceGroupClient := mock_resourcegroupclient.NewMockInterface(cntl)
+	clientFactory.EXPECT().GetResourceGroupClient().Return(resourceGroupClient)
+	resourceGroupClient.EXPECT().Get(gomock.Any(), "node-resource-group").Return(nil, errors.New("resource group unavailable"))
+
+	response, err := driver.CreateVolume(context.Background(), req)
+
+	require.Nil(t, response)
+	assert.Equal(t, codes.Aborted, status.Code(err))
+	assert.ErrorContains(t, err, "failed to determine QAD owner resource")
 }
 
 func TestCreateVolume_SnapshotPremiumLRS_ToPremiumV2_EmitsMigrationEvents(t *testing.T) {
@@ -1092,6 +1579,19 @@ func TestDeleteVolume(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Error getting driver: %v", err)
 	}
+	driver := d.(*fakeDriver)
+	_, err = driver.kubeClient.CoreV1().PersistentVolumes().Create(context.Background(), &v1.PersistentVolume{
+		ObjectMeta: metav1.ObjectMeta{Name: "standard-pv"},
+		Spec: v1.PersistentVolumeSpec{
+			PersistentVolumeSource: v1.PersistentVolumeSource{
+				CSI: &v1.CSIPersistentVolumeSource{
+					Driver:       driver.Name,
+					VolumeHandle: testVolumeID,
+				},
+			},
+		},
+	}, metav1.CreateOptions{})
+	require.NoError(t, err)
 
 	tests := []struct {
 		desc            string
@@ -1143,6 +1643,93 @@ func TestDeleteVolume(t *testing.T) {
 			t.Errorf("input request: %v, DeleteVolume result: %v, expected: %v", test.req, result, test.expectedResp)
 		}
 	}
+}
+
+func TestDeleteVolumePVLookup(t *testing.T) {
+	tests := []struct {
+		desc              string
+		pvListErr         error
+		expectDelete      bool
+		expectedErrorCode codes.Code
+	}{
+		{
+			desc:         "deletes disk when PV is missing",
+			expectDelete: true,
+		},
+		{
+			desc:              "fails closed when PV list fails",
+			pvListErr:         errors.New("Kubernetes API unavailable"),
+			expectedErrorCode: codes.Internal,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.desc, func(t *testing.T) {
+			cntl := gomock.NewController(t)
+			d, err := NewFakeDriver(cntl)
+			require.NoError(t, err)
+			driver := d.(*fakeDriver)
+			driver.nodeDrivenAttachDetachEnabled = true
+
+			if test.pvListErr != nil {
+				driver.kubeClient.(*fake.Clientset).PrependReactor("list", "persistentvolumes", func(k8stesting.Action) (bool, runtime.Object, error) {
+					return true, nil, test.pvListErr
+				})
+			}
+
+			diskClient := mock_diskclient.NewMockInterface(cntl)
+			d.getClientFactory().(*mock_azclient.MockClientFactory).EXPECT().GetDiskClientForSub(gomock.Any()).Return(diskClient, nil).AnyTimes()
+			if test.expectDelete {
+				diskClient.EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any()).Return(&armcompute.Disk{}, nil)
+				diskClient.EXPECT().Delete(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+			}
+
+			result, err := d.DeleteVolume(context.Background(), &csi.DeleteVolumeRequest{VolumeId: testVolumeID})
+			if test.expectedErrorCode != codes.OK {
+				require.Equal(t, test.expectedErrorCode, status.Code(err))
+				require.Nil(t, result)
+				return
+			}
+			require.NoError(t, err)
+			require.Equal(t, &csi.DeleteVolumeResponse{}, result)
+		})
+	}
+}
+
+func TestDeleteVolumeUnclaimsAKSManagedDiskAfterDeleteFailure(t *testing.T) {
+	cntl := gomock.NewController(t)
+	d, err := NewFakeDriver(cntl)
+	require.NoError(t, err)
+	driver := d.(*fakeDriver)
+
+	ownerResourceID := "/subscriptions/subscription/resourceGroups/cluster-rg/providers/Microsoft.ContainerService/managedClusters/cluster"
+	driver.clusterResourceID = ownerResourceID
+	server := httptest.NewServer(http.HandlerFunc(func(responseWriter http.ResponseWriter, request *http.Request) {
+		assert.Equal(t, http.MethodPost, request.Method)
+		assert.Equal(t, testVolumeID+"/unclaimResource", request.URL.Path)
+
+		var body struct {
+			OwnerResourceID string `json:"ownerResourceId"`
+		}
+		require.NoError(t, json.NewDecoder(request.Body).Decode(&body))
+		assert.Equal(t, ownerResourceID, body.OwnerResourceID)
+		responseWriter.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+	driver.cloud.ARMClientConfig.ResourceManagerEndpoint = server.URL
+
+	credential := driver.cloud.AuthProvider.GetAzIdentity().(*mock_azclient.MockTokenCredential)
+	credential.EXPECT().GetToken(gomock.Any(), gomock.Any()).Return(azcore.AccessToken{Token: "token"}, nil)
+
+	diskClient := mock_diskclient.NewMockInterface(cntl)
+	driver.clientFactory.(*mock_azclient.MockClientFactory).EXPECT().GetDiskClientForSub(gomock.Any()).Return(diskClient, nil).AnyTimes()
+	diskClient.EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any()).Return(&armcompute.Disk{
+		ManagedBy: to.Ptr(strings.ToUpper(ownerResourceID)),
+	}, nil).Times(1)
+
+	result, err := d.DeleteVolume(context.Background(), &csi.DeleteVolumeRequest{VolumeId: testVolumeID})
+	require.ErrorContains(t, err, "is managed by Azure resource")
+	require.Equal(t, &csi.DeleteVolumeResponse{}, result)
 }
 
 func TestControllerGetVolume(t *testing.T) {
@@ -1351,6 +1938,17 @@ func TestControllerModifyVolume(t *testing.T) {
 		cntl := gomock.NewController(t)
 		defer cntl.Finish()
 		d := getFakeDriverWithKubeClient(cntl)
+		d.(*fakeDriver).kubeClient = fake.NewClientset(&v1.PersistentVolume{
+			ObjectMeta: metav1.ObjectMeta{Name: testVolumeName},
+			Spec: v1.PersistentVolumeSpec{
+				PersistentVolumeSource: v1.PersistentVolumeSource{
+					CSI: &v1.CSIPersistentVolumeSource{
+						Driver:       fakeDriverName,
+						VolumeHandle: test.req.VolumeId,
+					},
+				},
+			},
+		})
 
 		// Initialize migration monitor with the fake driver's kube client
 		mockEventRecorder := record.NewFakeRecorder(100)
@@ -1706,6 +2304,80 @@ func TestControllerModifyVolume(t *testing.T) {
 	}
 }
 
+func TestControllerVolumeMutationPVLookup(t *testing.T) {
+	tests := []struct {
+		name            string
+		pvListErr       error
+		invoke          func(FakeDriver) error
+		expectedCode    codes.Code
+		expectedMessage string
+	}{
+		{
+			name:      "modify fails closed on PV API error",
+			pvListErr: errors.New("Kubernetes API unavailable"),
+			invoke: func(driver FakeDriver) error {
+				_, err := driver.ControllerModifyVolume(context.Background(), &csi.ControllerModifyVolumeRequest{VolumeId: testVolumeID})
+				return err
+			},
+			expectedCode:    codes.Internal,
+			expectedMessage: "failed to get PV from disk URI",
+		},
+		{
+			name: "modify continues when PV is absent",
+			invoke: func(driver FakeDriver) error {
+				_, err := driver.ControllerModifyVolume(context.Background(), &csi.ControllerModifyVolumeRequest{VolumeId: "invalid"})
+				return err
+			},
+			expectedCode:    codes.NotFound,
+			expectedMessage: "Volume not found",
+		},
+		{
+			name:      "expand fails closed on PV API error",
+			pvListErr: errors.New("Kubernetes API unavailable"),
+			invoke: func(driver FakeDriver) error {
+				_, err := driver.ControllerExpandVolume(context.Background(), &csi.ControllerExpandVolumeRequest{
+					VolumeId:      testVolumeID,
+					CapacityRange: &csi.CapacityRange{RequiredBytes: volumehelper.GiBToBytes(10)},
+				})
+				return err
+			},
+			expectedCode:    codes.Internal,
+			expectedMessage: "failed to get PV from disk URI",
+		},
+		{
+			name: "expand continues when PV is absent",
+			invoke: func(driver FakeDriver) error {
+				_, err := driver.ControllerExpandVolume(context.Background(), &csi.ControllerExpandVolumeRequest{
+					VolumeId:      "invalid",
+					CapacityRange: &csi.CapacityRange{RequiredBytes: volumehelper.GiBToBytes(10)},
+				})
+				return err
+			},
+			expectedCode:    codes.Internal,
+			expectedMessage: "GetDiskByURI(invalid)",
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			cntl := gomock.NewController(t)
+			driver, err := NewFakeDriver(cntl)
+			require.NoError(t, err)
+			driver.(*fakeDriver).nodeDrivenAttachDetachEnabled = true
+			if test.pvListErr != nil {
+				driver.(*fakeDriver).kubeClient.(*fake.Clientset).PrependReactor("list", "persistentvolumes", func(k8stesting.Action) (bool, runtime.Object, error) {
+					return true, nil, test.pvListErr
+				})
+			}
+
+			err = test.invoke(driver)
+
+			assert.Equal(t, test.expectedCode, status.Code(err))
+			assert.ErrorContains(t, err, test.expectedMessage)
+		})
+	}
+}
+
 func TestControllerModifyVolume_MigrationLifecycleAndTimeout(t *testing.T) {
 	// Save originals
 	origInterval := migrationCheckInterval
@@ -1767,6 +2439,7 @@ func TestControllerModifyVolume_MigrationLifecycleAndTimeout(t *testing.T) {
 				},
 			},
 		}
+		d.(*fakeDriver).kubeClient = fake.NewClientset(pv)
 		pvc := &v1.PersistentVolumeClaim{
 			ObjectMeta: metav1.ObjectMeta{Name: pvcID, Namespace: "default"},
 			Spec: v1.PersistentVolumeClaimSpec{
@@ -2283,6 +2956,268 @@ func TestControllerPublishVolume(t *testing.T) {
 	}
 }
 
+func TestEnsureQADPVAnnotationsRetriesConflict(t *testing.T) {
+	const (
+		pvName          = "qad-pv"
+		blobURL         = "https://example.blob.storage.azure.net/container/disk"
+		claimIdentifier = "claim-id"
+	)
+	kubeClient := fake.NewClientset(&v1.PersistentVolume{
+		ObjectMeta: metav1.ObjectMeta{Name: pvName},
+	})
+
+	updateAttempts := 0
+	kubeClient.Fake.PrependReactor("update", "persistentvolumes", func(action k8stesting.Action) (bool, runtime.Object, error) {
+		updateAttempts++
+		if updateAttempts == 1 {
+			return true, nil, apierrors.NewConflict(
+				schema.GroupResource{Resource: "persistentvolumes"}, pvName, errors.New("concurrent update"))
+		}
+		return false, nil, nil
+	})
+
+	require.NoError(t, ensureQADPVAnnotations(context.Background(), kubeClient, pvName, blobURL, claimIdentifier, "ReadOnly"))
+	assert.Equal(t, 2, updateAttempts)
+
+	pv, err := kubeClient.CoreV1().PersistentVolumes().Get(context.Background(), pvName, metav1.GetOptions{})
+	require.NoError(t, err)
+	assert.Equal(t, "0", pv.Annotations[consts.AttachSequenceAnnotation])
+	assert.Equal(t, blobURL, pv.Annotations[consts.BlobURLAnnotation])
+	assert.Equal(t, claimIdentifier, pv.Annotations[consts.ClaimIdentifierAnnotation])
+}
+
+func TestEnsureQADPVAnnotationsRejectsEmptyPVName(t *testing.T) {
+	err := ensureQADPVAnnotations(context.Background(), nil, "", "blob-url", "claim-id", "ReadOnly")
+	require.EqualError(t, err, "PV name must not be empty")
+}
+
+func TestEnsureQADPVAnnotationsRejectsIncompleteMetadata(t *testing.T) {
+	tests := []struct {
+		name        string
+		annotations map[string]string
+		blobURL     string
+		claimID     string
+		expectedErr string
+	}{
+		{
+			name:        "new QAD PV without blob URL",
+			claimID:     "claim-id",
+			expectedErr: "without blob URL and claim identifier",
+		},
+		{
+			name:        "new QAD PV without claim identifier",
+			blobURL:     "https://example.blob.storage.azure.net/container/disk",
+			expectedErr: "without blob URL and claim identifier",
+		},
+		{
+			name: "existing QAD PV without blob URL",
+			annotations: map[string]string{
+				consts.AttachSequenceAnnotation:  "1",
+				consts.ClaimIdentifierAnnotation: "claim-id",
+			},
+			expectedErr: "attach-sequence annotation but incomplete QAD metadata",
+		},
+		{
+			name: "existing QAD PV without claim identifier",
+			annotations: map[string]string{
+				consts.AttachSequenceAnnotation: "1",
+				consts.BlobURLAnnotation:        "https://example.blob.storage.azure.net/container/disk",
+			},
+			expectedErr: "attach-sequence annotation but incomplete QAD metadata",
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			const pvName = "qad-pv"
+			kubeClient := fake.NewClientset(&v1.PersistentVolume{
+				ObjectMeta: metav1.ObjectMeta{Name: pvName, Annotations: test.annotations},
+			})
+
+			err := ensureQADPVAnnotations(context.Background(), kubeClient, pvName, test.blobURL, test.claimID, "ReadOnly")
+			require.ErrorContains(t, err, test.expectedErr)
+
+			pv, getErr := kubeClient.CoreV1().PersistentVolumes().Get(context.Background(), pvName, metav1.GetOptions{})
+			require.NoError(t, getErr)
+			assert.Equal(t, test.annotations, pv.Annotations)
+		})
+	}
+}
+
+func TestEnsureQADPVAnnotationsFillsMissingCompanionAnnotations(t *testing.T) {
+	const (
+		pvName          = "qad-pv"
+		blobURL         = "https://example.blob.storage.azure.net/container/disk"
+		claimIdentifier = "claim-id"
+	)
+	// PV already adopted (attach-sequence set) but the companion annotations are
+	// missing; the metadata arrives via the volume context (passed args).
+	kubeClient := fake.NewClientset(&v1.PersistentVolume{
+		ObjectMeta: metav1.ObjectMeta{Name: pvName, Annotations: map[string]string{
+			consts.AttachSequenceAnnotation: "3",
+		}},
+	})
+
+	require.NoError(t, ensureQADPVAnnotations(context.Background(), kubeClient, pvName, blobURL, claimIdentifier, "ReadOnly"))
+
+	pv, err := kubeClient.CoreV1().PersistentVolumes().Get(context.Background(), pvName, metav1.GetOptions{})
+	require.NoError(t, err)
+	// attach-sequence must be preserved, not reset.
+	assert.Equal(t, "3", pv.Annotations[consts.AttachSequenceAnnotation])
+	assert.Equal(t, blobURL, pv.Annotations[consts.BlobURLAnnotation])
+	assert.Equal(t, claimIdentifier, pv.Annotations[consts.ClaimIdentifierAnnotation])
+}
+
+func TestEnsureQADPVAnnotationsSeedsFromExistingAnnotations(t *testing.T) {
+	const (
+		pvName          = "static-qad-pv"
+		blobURL         = "https://example.blob.storage.azure.net/container/disk"
+		claimIdentifier = "claim-id"
+	)
+	// Static PV carries the claim metadata in annotations but no attach-sequence
+	// yet, and the volume context (passed args) is empty.
+	kubeClient := fake.NewClientset(&v1.PersistentVolume{
+		ObjectMeta: metav1.ObjectMeta{Name: pvName, Annotations: map[string]string{
+			consts.BlobURLAnnotation:         blobURL,
+			consts.ClaimIdentifierAnnotation: claimIdentifier,
+		}},
+	})
+
+	require.NoError(t, ensureQADPVAnnotations(context.Background(), kubeClient, pvName, "", "", "ReadOnly"))
+
+	pv, err := kubeClient.CoreV1().PersistentVolumes().Get(context.Background(), pvName, metav1.GetOptions{})
+	require.NoError(t, err)
+	assert.Equal(t, "0", pv.Annotations[consts.AttachSequenceAnnotation])
+	assert.Equal(t, blobURL, pv.Annotations[consts.BlobURLAnnotation])
+	assert.Equal(t, claimIdentifier, pv.Annotations[consts.ClaimIdentifierAnnotation])
+}
+
+func TestControllerPublishVolumePersistsEffectiveQADCachePolicyForLargeStaticDisk(t *testing.T) {
+	cntl := gomock.NewController(t)
+	d, err := NewFakeDriver(cntl)
+	require.NoError(t, err)
+	driver := d.(*fakeDriver)
+	driver.nodeDrivenAttachDetachEnabled = true
+
+	const pvName = "static-qad-pv"
+	volumeContext := map[string]string{
+		consts.AttachModeField:           consts.AttachModeNodeDriven,
+		consts.CachingModeField:          "ReadOnly",
+		consts.BlobURLAnnotation:         "https://example.blob.storage.azure.net/container/disk",
+		consts.ClaimIdentifierAnnotation: "claim-id",
+	}
+	_, err = driver.kubeClient.CoreV1().PersistentVolumes().Create(context.Background(), &v1.PersistentVolume{
+		ObjectMeta: metav1.ObjectMeta{Name: pvName},
+		Spec: v1.PersistentVolumeSpec{PersistentVolumeSource: v1.PersistentVolumeSource{
+			CSI: &v1.CSIPersistentVolumeSource{
+				Driver:       driver.Name,
+				VolumeHandle: testVolumeID,
+				VolumeAttributes: map[string]string{
+					consts.AttachModeField:           consts.AttachModeNodeDriven,
+					consts.CachingModeField:          "ReadOnly",
+					consts.BlobURLAnnotation:         "https://example.blob.storage.azure.net/container/disk",
+					consts.ClaimIdentifierAnnotation: "claim-id",
+				},
+			},
+		}},
+	}, metav1.CreateOptions{})
+	require.NoError(t, err)
+
+	diskClient := mock_diskclient.NewMockInterface(cntl)
+	driver.clientFactory.(*mock_azclient.MockClientFactory).EXPECT().GetDiskClientForSub(gomock.Any()).Return(diskClient, nil)
+	diskClient.EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any()).Return(&armcompute.Disk{
+		ID: to.Ptr(testVolumeID),
+		Properties: &armcompute.DiskProperties{
+			DiskSizeGB: to.Ptr(int32(diskCachingLimit)),
+		},
+	}, nil)
+
+	result, err := d.ControllerPublishVolume(context.Background(), &csi.ControllerPublishVolumeRequest{
+		VolumeId:         testVolumeID,
+		NodeId:           "unit-test-node",
+		VolumeCapability: stdVolumeCapabilities[0],
+		VolumeContext:    volumeContext,
+	})
+	require.NoError(t, err)
+	require.Equal(t, &csi.ControllerPublishVolumeResponse{}, result)
+
+	pv, err := driver.kubeClient.CoreV1().PersistentVolumes().Get(context.Background(), pvName, metav1.GetOptions{})
+	require.NoError(t, err)
+	assert.Equal(t, "ReadOnly", pv.Spec.CSI.VolumeAttributes[consts.CachingModeField])
+	assert.Equal(t, "None", pv.Annotations[consts.QADCachePolicyAnnotation])
+	assert.Equal(t, "0", pv.Annotations[consts.AttachSequenceAnnotation])
+}
+
+func TestControllerPublishVolumeRejectsIncompleteQADMetadata(t *testing.T) {
+	tests := []struct {
+		name          string
+		annotations   map[string]string
+		volumeContext map[string]string
+		expectedErr   string
+	}{
+		{
+			name: "new QAD PV without claim metadata",
+			volumeContext: map[string]string{
+				consts.AttachModeField: consts.AttachModeNodeDriven,
+			},
+			expectedErr: "without blob URL and claim identifier",
+		},
+		{
+			// Neither the volume context nor the PV annotations supply the claim
+			// identifier, so the QAD metadata stays incomplete and publish is rejected.
+			name: "existing QAD PV with incomplete companion annotations",
+			annotations: map[string]string{
+				consts.AttachSequenceAnnotation: "1",
+				consts.BlobURLAnnotation:        "https://example.blob.storage.azure.net/container/disk",
+			},
+			volumeContext: map[string]string{
+				consts.AttachModeField:   consts.AttachModeNodeDriven,
+				consts.BlobURLAnnotation: "https://example.blob.storage.azure.net/container/disk",
+			},
+			expectedErr: "attach-sequence annotation but incomplete QAD metadata",
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			cntl := gomock.NewController(t)
+			d, err := NewFakeDriver(cntl)
+			require.NoError(t, err)
+			driver := d.(*fakeDriver)
+			driver.nodeDrivenAttachDetachEnabled = true
+			_, err = driver.kubeClient.CoreV1().PersistentVolumes().Create(context.Background(), &v1.PersistentVolume{
+				ObjectMeta: metav1.ObjectMeta{Name: "qad-pv", Annotations: test.annotations},
+				Spec: v1.PersistentVolumeSpec{PersistentVolumeSource: v1.PersistentVolumeSource{
+					CSI: &v1.CSIPersistentVolumeSource{Driver: driver.Name, VolumeHandle: testVolumeID},
+				}},
+			}, metav1.CreateOptions{})
+			require.NoError(t, err)
+
+			diskClient := mock_diskclient.NewMockInterface(cntl)
+			driver.clientFactory.(*mock_azclient.MockClientFactory).EXPECT().GetDiskClientForSub(gomock.Any()).Return(diskClient, nil)
+			diskClient.EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any()).Return(&armcompute.Disk{
+				ID: to.Ptr(testVolumeID),
+				Properties: &armcompute.DiskProperties{
+					DiskSizeGB: to.Ptr(int32(10)),
+				},
+			}, nil)
+
+			result, err := d.ControllerPublishVolume(context.Background(), &csi.ControllerPublishVolumeRequest{
+				VolumeId: testVolumeID,
+				NodeId:   "unit-test-node",
+				VolumeCapability: &csi.VolumeCapability{
+					AccessType: &csi.VolumeCapability_Mount{Mount: &csi.VolumeCapability_MountVolume{}},
+					AccessMode: &csi.VolumeCapability_AccessMode{Mode: csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER},
+				},
+				VolumeContext: test.volumeContext,
+			})
+			require.Nil(t, result)
+			require.Equal(t, codes.Internal, status.Code(err))
+			require.ErrorContains(t, err, test.expectedErr)
+		})
+	}
+}
+
 func TestControllerUnpublishVolume(t *testing.T) {
 	cntl := gomock.NewController(t)
 	defer cntl.Finish()
@@ -2326,6 +3261,38 @@ func TestControllerUnpublishVolume(t *testing.T) {
 			t.Errorf("desc: %s\n actualErr: (%v), expectedErr: (%v)", test.desc, err, test.expectedErr)
 		}
 	}
+}
+
+func TestControllerUnpublishVolumeQADRequiresNodeID(t *testing.T) {
+	cntl := gomock.NewController(t)
+	d, err := NewFakeDriver(cntl)
+	require.NoError(t, err)
+	driver := d.(*fakeDriver)
+	driver.nodeDrivenAttachDetachEnabled = true
+	driver.kubeClient = fake.NewClientset(&v1.PersistentVolume{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "qad-pv",
+			Annotations: map[string]string{
+				consts.AttachSequenceAnnotation: "1",
+			},
+		},
+		Spec: v1.PersistentVolumeSpec{
+			PersistentVolumeSource: v1.PersistentVolumeSource{
+				CSI: &v1.CSIPersistentVolumeSource{
+					Driver:       driver.Name,
+					VolumeHandle: testVolumeID,
+				},
+			},
+		},
+	})
+
+	resp, err := d.ControllerUnpublishVolume(context.Background(), &csi.ControllerUnpublishVolumeRequest{
+		VolumeId: testVolumeID,
+	})
+
+	require.Nil(t, resp)
+	require.Equal(t, codes.InvalidArgument, status.Code(err))
+	require.ErrorContains(t, err, "Node ID not provided")
 }
 
 func TestControllerGetCapabilities(t *testing.T) {
@@ -2424,6 +3391,7 @@ func TestControllerExpandVolume(t *testing.T) {
 				cntl := gomock.NewController(t)
 				defer cntl.Finish()
 				d, _ := NewFakeDriver(cntl)
+				d.(*fakeDriver).kubeClient = fake.NewClientset(newTestPV(req.VolumeId))
 
 				expectedErr := status.Error(codes.Internal, "GetDiskByURI(httptest) failed with error(invalid URI: httptest)")
 				_, err := d.ControllerExpandVolume(ctx, req)
@@ -2444,6 +3412,7 @@ func TestControllerExpandVolume(t *testing.T) {
 				cntl := gomock.NewController(t)
 				defer cntl.Finish()
 				d, _ := NewFakeDriver(cntl)
+				d.(*fakeDriver).kubeClient = fake.NewClientset(newTestPV(req.VolumeId))
 
 				expectedErr := status.Errorf(codes.Internal, "GetDiskByURI(vol_1) failed with error(invalid URI: vol_1)")
 				_, err := d.ControllerExpandVolume(ctx, req)
@@ -2469,11 +3438,38 @@ func TestControllerExpandVolume(t *testing.T) {
 				cntl := gomock.NewController(t)
 				defer cntl.Finish()
 				d, _ := NewFakeDriver(cntl)
+				d.(*fakeDriver).kubeClient = fake.NewClientset(newTestPV(req.VolumeId))
 				ctrl := gomock.NewController(t)
 				defer ctrl.Finish()
 				diskClient := mock_diskclient.NewMockInterface(cntl)
 				d.getClientFactory().(*mock_azclient.MockClientFactory).EXPECT().GetDiskClientForSub(gomock.Any()).Return(diskClient, nil).AnyTimes()
 				diskClient.EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any()).Return(disk, nil).AnyTimes()
+				expectedErr := status.Errorf(codes.Internal, "could not get size of the disk(/subscriptions/subs/resourceGroups/rg/providers/Microsoft.Compute/disks/unit-test-volume)")
+				_, err := d.ControllerExpandVolume(ctx, req)
+				if !reflect.DeepEqual(err, expectedErr) {
+					t.Errorf("actualErr: (%v), expectedErr: (%v)", err, expectedErr)
+				}
+			},
+		},
+		{
+			// Regression guard for the nil-dereference fix in this PR: the
+			// disk client can legitimately return (nil, nil) (e.g. NotFound
+			// mapped to a nil result with a nil error). Before the fix, the
+			// controller dereferenced result.SKU before the nil check and
+			// panicked; now it must return an Internal error naming the disk.
+			name: "disk client returns (nil, nil) - no panic, Internal error",
+			testFunc: func(t *testing.T) {
+				req := &csi.ControllerExpandVolumeRequest{
+					VolumeId:      testVolumeID,
+					CapacityRange: stdCapRange,
+				}
+				ctx := context.Background()
+				cntl := gomock.NewController(t)
+				defer cntl.Finish()
+				d, _ := NewFakeDriver(cntl)
+				diskClient := mock_diskclient.NewMockInterface(cntl)
+				d.getClientFactory().(*mock_azclient.MockClientFactory).EXPECT().GetDiskClientForSub(gomock.Any()).Return(diskClient, nil).AnyTimes()
+				diskClient.EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, nil).AnyTimes()
 				expectedErr := status.Errorf(codes.Internal, "could not get size of the disk(/subscriptions/subs/resourceGroups/rg/providers/Microsoft.Compute/disks/unit-test-volume)")
 				_, err := d.ControllerExpandVolume(ctx, req)
 				if !reflect.DeepEqual(err, expectedErr) {
@@ -4891,13 +5887,27 @@ func getFakeDriverWithKubeClient(ctrl *gomock.Controller) FakeDriver {
 	return d
 }
 
+func newTestPV(volumeHandle string) *v1.PersistentVolume {
+	return &v1.PersistentVolume{
+		ObjectMeta: metav1.ObjectMeta{Name: "test-pv"},
+		Spec: v1.PersistentVolumeSpec{
+			PersistentVolumeSource: v1.PersistentVolumeSource{
+				CSI: &v1.CSIPersistentVolumeSource{
+					Driver:       fakeDriverName,
+					VolumeHandle: volumeHandle,
+				},
+			},
+		},
+	}
+}
+
 func TestHasVolumeAttachmentForDiskOnNode(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
 	d, _ := NewFakeDriver(ctrl)
 	driver := d.(*fakeDriver)
-	client := fake.NewSimpleClientset()
+	client := fake.NewClientset()
 	driver.getCloud().KubeClient = client
 
 	nodeName := "node-1"
@@ -5067,6 +6077,17 @@ func TestTruncateErrMsg(t *testing.T) {
 			input:    "Attach volume pvc-xxx to instance aks-node failed with PUT https://long-url/..." + strings.Repeat("x", 900) + "does not have permission to perform action 'Microsoft.Compute/diskEncryptionSets/read' on the linked scope",
 			wantLen:  maxErrMsgLength,
 			wantTail: "diskEncryptionSets/read' on the linked scope",
+		},
+		{
+			// Regression: verbose DES permission errors end with the
+			// ClientId / ObjectId of the identity that lacks the role
+			// assignment. Those IDs are the actionable part for the
+			// customer (they tell them which managed identity needs the
+			// role) and must survive truncation.
+			name:     "DES permission error preserves ClientId and ObjectId at tail",
+			input:    "Attach volume pvc-abcd-1234 to instance aks-nodepool1-12345678-vmss000000 failed with rpc error: code = Internal desc = " + strings.Repeat("filler junk from long Azure error body ", 30) + "does not have authorization to perform action 'Microsoft.Compute/diskEncryptionSets/read' over scope '/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-des/providers/Microsoft.Compute/diskEncryptionSets/my-des' or the scope is invalid. ClientId=11111111-2222-3333-4444-555555555555 ObjectId=66666666-7777-8888-9999-aaaaaaaaaaaa",
+			wantLen:  maxErrMsgLength,
+			wantTail: "ClientId=11111111-2222-3333-4444-555555555555 ObjectId=66666666-7777-8888-9999-aaaaaaaaaaaa",
 		},
 	}
 	for _, tc := range tests {

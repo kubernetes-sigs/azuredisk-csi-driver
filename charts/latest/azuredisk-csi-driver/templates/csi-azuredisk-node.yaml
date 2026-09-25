@@ -143,6 +143,7 @@ spec:
             - "--nodeid=$(KUBE_NODE_NAME)"
             - "--enable-perf-optimization={{ .Values.linux.enablePerfOptimization }}"
             - "--drivername={{ .Values.driver.name }}"
+            - "--feature-gates=NodeDrivenAttachDetach={{ .Values.driver.featureGates.NodeDrivenAttachDetach }},KataMount={{ .Values.driver.featureGates.KataMount }}"
             - "--volume-attach-limit={{ .Values.driver.volumeAttachLimit }}"
             - "--reserved-data-disk-slot-num={{ .Values.node.reservedDataDiskSlotNum }}"
             - "--cloud-config-secret-name={{ .Values.node.cloudConfigSecretName }}"
@@ -236,12 +237,17 @@ spec:
               name: plugins-dir
             - mountPath: /etc/kubernetes/
               name: azure-cred
+              readOnly: true
             - mountPath: /dev
               name: device-dir
             - mountPath: /sys/bus/scsi/devices
               name: sys-devices-dir
             - mountPath: /sys/class/
               name: sys-class
+            {{- if .Values.driver.featureGates.KataMount }}
+            - mountPath: /run/kata-containers/shared/direct-volumes
+              name: kata-direct-volumes
+            {{- end }}
             {{- if or (eq .Values.cloud "AzureStackCloud") (eq .Values.linux.distro "fedora") }}
             - name: ssl
               mountPath: /etc/ssl/certs
@@ -298,6 +304,12 @@ spec:
             path: /sys/class/
             type: Directory
           name: sys-class
+        {{- if .Values.driver.featureGates.KataMount }}
+        - hostPath:
+            path: /run/kata-containers/shared/direct-volumes/
+            type: DirectoryOrCreate
+          name: kata-direct-volumes
+        {{- end }}
         {{- if or (eq .Values.cloud "AzureStackCloud") (eq .Values.linux.distro "fedora") }}
         - name: ssl
           hostPath:

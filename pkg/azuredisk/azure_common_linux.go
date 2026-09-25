@@ -150,6 +150,7 @@ func formatAndMount(source, target, fstype string, options []string, m *mount.Sa
 		return fmt.Errorf("failed to get disk format for %s with error(%v)", source, err)
 	}
 
+	newlyFormatted := false
 	if diskFSFormat == "" {
 		// As part of auto-recovery from mount failures, we run fsck on the disk. If the disk was pulled
 		// out or a power loss occurred during a previous fsck run, the primary superblocks may have been
@@ -192,6 +193,7 @@ func formatAndMount(source, target, fstype string, options []string, m *mount.Sa
 			}
 			// Format was successful
 			diskFSFormat = fstype
+			newlyFormatted = true
 		} else {
 			// Re-read the filesystem signature to determine the existing format.
 			reReadFormat, err := m.GetDiskFormat(source)
@@ -210,8 +212,8 @@ func formatAndMount(source, target, fstype string, options []string, m *mount.Sa
 		return fmt.Errorf("configured to mount disk %s as %s but current format is %s, things might break", source, fstype, diskFSFormat)
 	}
 
-	// Running fsck on the disk to detect and repair any filesystem issues before mounting
-	if !readOnly {
+	// Run fsck on the disk to fix repairable issues, only do this for already formatted volumes requested as read-write.
+	if !newlyFormatted && !readOnly {
 		_, err := detectAndRepairFilesystem(source, []string{"-a"}, m)
 		if err != nil {
 			klog.Errorf("formatAndMount - failed to run fsck on disk %s with error: %v", source, err)

@@ -235,6 +235,7 @@ spec:
             - "--disable-avset-nodes={{ .Values.controller.disableAvailabilitySetNodes }}"
             - "--vm-type={{ .Values.controller.vmType }}"
             - "--drivername={{ .Values.driver.name }}"
+            - "--feature-gates=NodeDrivenAttachDetach={{ .Values.driver.featureGates.NodeDrivenAttachDetach }}"
             - "--cloud-config-secret-name={{ .Values.controller.cloudConfigSecretName }}"
             - "--cloud-config-secret-namespace={{ .Values.controller.cloudConfigSecretNamespace }}"
             - "--custom-user-agent={{ .Values.driver.customUserAgent }}"
@@ -314,6 +315,7 @@ spec:
               name: socket-dir
             - mountPath: /etc/kubernetes/
               name: azure-cred
+              readOnly: true
             {{- if or (eq .Values.cloud "AzureStackCloud") (eq .Values.linux.distro "fedora") }}
             - name: ssl
               mountPath: /etc/ssl/certs

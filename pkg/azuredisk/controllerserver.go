@@ -18,12 +18,17 @@ package azuredisk
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
+	"net/http"
 	"sort"
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/Azure/azure-sdk-for-go/sdk/azcore/policy"
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/to"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute/v7"
 	"github.com/container-storage-interface/spec/lib/go/csi"
@@ -36,12 +41,15 @@ import (
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
+	clientset "k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/util/retry"
 	cloudprovider "k8s.io/cloud-provider"
 	volerr "k8s.io/cloud-provider/volume/errors"
 	"k8s.io/klog/v2"
 	"k8s.io/utils/ptr"
 
 	storagev1 "k8s.io/api/storage/v1"
+	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
 	csiMetrics "sigs.k8s.io/azuredisk-csi-driver/pkg/metrics"
@@ -52,28 +60,15 @@ import (
 )
 
 const (
-	waitForSnapshotReadyInterval     = 5 * time.Second
-	waitForSnapshotReadyTimeout      = 10 * time.Minute
-	maxErrMsgLength                  = 990
-	checkDiskLunThrottleLatency      = 10 * time.Second
-	maxSnapshotSizeDifferenceAllowed = 50 // in GiB
+	waitForSnapshotReadyInterval      = 5 * time.Second
+	waitForSnapshotReadyTimeout       = 10 * time.Minute
+	maxErrMsgLength                   = 990
+	checkDiskLunThrottleLatency       = 10 * time.Second
+	maxSnapshotSizeDifferenceAllowed  = 50 // in GiB
+	claimResourceAPIVersion           = "2025-01-02"
+	aksManagedClusterNameTag          = "aks-managed-cluster-name"
+	aksManagedClusterResourceGroupTag = "aks-managed-cluster-rg"
 )
-
-// truncateErrMsg truncates long error messages while preserving both the
-// beginning (context) and end (critical details like permission errors).
-// This ensures that important information at the tail of verbose Azure
-// error messages (e.g., missing permissions) remains visible in kube-events
-// which are limited to 1024 bytes.
-func truncateErrMsg(errMsg string) string {
-	if len(errMsg) <= maxErrMsgLength {
-		return errMsg
-	}
-	// Keep head (~40%) for context and tail (~60%) for critical error details.
-	const ellipsis = " ... "
-	headLen := (maxErrMsgLength - len(ellipsis)) * 2 / 5
-	tailLen := maxErrMsgLength - headLen - len(ellipsis)
-	return errMsg[:headLen] + ellipsis + errMsg[len(errMsg)-tailLen:]
-}
 
 // listVolumeStatus explains the return status of `listVolumesByResourceGroup`
 type listVolumeStatus struct {
@@ -81,95 +76,6 @@ type listVolumeStatus struct {
 	isCompleteRun bool // isCompleteRun is flagged true if the function iterated through all azure disks
 	entries       []*csi.ListVolumesResponse_Entry
 	err           error
-}
-
-// startSKUMigrationMonitor starts (idempotently) an asynchronous monitor that tracks
-// migration of a managed disk from one SKU to another (currently only when moving
-// to PremiumV2).
-//
-// Parameters:
-//
-//	ctx                - request context
-//	isProvisioningFlow - true when invoked from CreateVolume (PV may not exist yet);
-//	                     false when invoked from ModifyVolume (PV should already exist).
-//	fromSKUStr         - original disk SKU name (string form, may differ in casing)
-//	toSKU              - target armcompute.DiskStorageAccountTypes (must be PremiumV2LRS to proceed)
-//	diskURI            - full Azure disk resource ID
-//	pvName             - Kubernetes PV name if known (CreateVolume path supplies req.Name;
-//	                     ModifyVolume path does not, so we derive it from diskURI)
-//	sizeBytes          - disk size (used to derive migration timeout)
-//
-// Workflow / decision points:
-// 1. Guard clauses:
-//   - If no migration monitor is configured OR fromSKUStr empty: do nothing.
-//   - If target SKU is not PremiumV2 OR already matches fromSKU: no migration needed.
-//
-// 2. PV name resolution:
-//   - If pvName is empty (ModifyVolume path) attempt to parse diskURI and use its last
-//     token (disk name) as the PV name.
-//   - If the cluster used static provisioning with a PV name different from the Azure
-//     disk name, this heuristic cannot map the disk to the PV; monitoring is skipped.
-//
-// 3. StartMonitoring call:
-//   - Calls migrationMonitor.StartMigrationMonitoring(ctx, isProvisioningFlow, ...).
-//   - isProvisioningFlow influences initial behavior inside the monitor:
-//   - Provisioning (true): PV may not yet exist. The monitor records a task with
-//     empty PVC metadata, attempts an initial label add (may fail if PV absent),
-//     and defers PV / PVC discovery, labeling, and start event emission to the
-//     periodic polling loop (monitorMigrationProgress).
-//   - Modify (false): PV should exist. The monitor immediately fetches the PV,
-//     derives PVC name/namespace, adds/ensures the migration label, and emits
-//     the "Started" event (unless label already existed; then it logs a resume).
-//
-// 4. Label management:
-//   - addMigrationLabelIfNotExists is executed once at start; if it fails (e.g. PV
-//     not yet created) task.PVLabeled remains false. The polling loop will retry
-//     labeling until successful.
-//
-// 5. Asynchronous monitoring:
-//   - A goroutine watches progress (polling Azure), emitting events for start (if
-//     deferred), incremental progress, completion, failure or timeout.
-//
-// 6. Error handling:
-//   - Non‑fatal issues (parse failure, start error) are logged and abort initiation
-//     for that disk; they do not propagate back to the CSI operation.
-//
-// Concurrency notes:
-//   - This function itself is lightweight and only delegates; StartMigrationMonitoring
-//     handles internal synchronization of task state.
-//   - Idempotency: if monitoring is already active for diskURI, underlying monitor
-//     short‑circuits.
-//
-// Returns: nothing; logs warnings on recoverable issues.
-//
-// NOTE: If future migrations support additional target SKUs, relax the toSKU check.
-func (d *Driver) startSKUMigrationMonitor(
-	ctx context.Context,
-	isProvisioningFlow bool,
-	fromSKUStr string,
-	toSKU armcompute.DiskStorageAccountTypes,
-	diskURI, pvName string,
-	sizeBytes int64,
-) {
-	if d.migrationMonitor == nil || fromSKUStr == "" {
-		return
-	}
-
-	if toSKU != armcompute.DiskStorageAccountTypesPremiumV2LRS || fromSKUStr == string(toSKU) {
-		return
-	}
-	if pvName == "" {
-		var parseErr error
-		_, _, pvName, parseErr = azureutils.GetInfoFromURI(diskURI)
-		if parseErr != nil {
-			klog.Warningf("Skipping monitor, failed to extract pv name from URI %s: %v", diskURI, parseErr)
-			return
-		}
-	}
-	if err := d.migrationMonitor.StartMigrationMonitoring(
-		ctx, isProvisioningFlow, diskURI, pvName, fromSKUStr, toSKU, sizeBytes); err != nil {
-		klog.Warningf("failed to start SKU migration monitoring for %s: %v", diskURI, err)
-	}
 }
 
 // CreateVolume provisions an azure disk
@@ -189,6 +95,14 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 	if err != nil {
 		return nil, status.Errorf(codes.InvalidArgument, "Failed parsing disk parameters: %v", err)
 	}
+	attachMode, err := getAttachMode(params)
+	if err != nil {
+		return nil, status.Errorf(codes.InvalidArgument, "Failed parsing disk parameters: %v", err)
+	}
+	if attachMode == consts.AttachModeNodeDriven && !d.nodeDrivenAttachDetachEnabled {
+		return nil, status.Errorf(codes.FailedPrecondition, "%s=%s requires the Alpha %s feature gate", consts.AttachModeField, consts.AttachModeNodeDriven, NodeDrivenAttachDetach)
+	}
+
 	name := req.GetName()
 	if len(name) == 0 {
 		return nil, status.Error(codes.InvalidArgument, "CreateVolume Name must be provided")
@@ -440,6 +354,7 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 	}
 
 	diskParams.VolumeContext[consts.RequestedSizeGib] = strconv.Itoa(requestGiB)
+	provisionedSizeGiB := requestGiB
 
 	if !requestSizeToBeSupplied && sourceType == consts.SourceSnapshot {
 		requestGiB = 0
@@ -505,6 +420,34 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 		return nil, status.Errorf(codes.Internal, "%v", err)
 	}
 
+	nodeDriven := attachMode == consts.AttachModeNodeDriven
+	if nodeDriven {
+		cachePolicy, err := azureutils.GetCachingMode(diskParams.VolumeContext)
+		if err != nil {
+			return nil, status.Errorf(codes.InvalidArgument, "failed to determine QAD cache policy: %v", err)
+		}
+		provisionedSizeGB := int32(provisionedSizeGiB)
+		cachePolicy = effectiveCachingModeForDisk(cachePolicy, &provisionedSizeGB, diskURI)
+		diskParams.VolumeContext[consts.CachingModeField] = string(cachePolicy)
+
+		qadOwnerResource, err := d.getAKSClusterResourceID(ctx)
+		if err != nil {
+			return nil, status.Errorf(codes.Aborted, "failed to determine QAD owner resource: %v", err)
+		}
+		blobURL, claimIdentifier, err := d.claimDiskResource(ctx, diskURI, qadOwnerResource)
+		if err != nil {
+			setupErr := fmt.Errorf("failed to claim QAD disk %s: %v", diskURI, err)
+			return nil, status.Error(codes.Aborted, setupErr.Error())
+		}
+		if blobURL == "" {
+			return nil, status.Errorf(codes.Aborted, "QAD blob URL missing for disk %s", diskURI)
+		}
+		diskParams.VolumeContext[azureconstants.BlobURLAnnotation] = blobURL
+		if claimIdentifier == "" {
+			return nil, status.Errorf(codes.Aborted, "QAD claim identifier missing for disk %s", diskURI)
+		}
+		diskParams.VolumeContext[azureconstants.ClaimIdentifierAnnotation] = claimIdentifier
+	}
 	// Start migration monitoring if enabled
 	d.startSKUMigrationMonitor(ctx, true, sourceSKU, skuName, diskURI, req.Name, volSizeBytes)
 
@@ -520,6 +463,169 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 			AccessibleTopology: accessibleTopology,
 		},
 	}, nil
+}
+
+func (d *Driver) getAKSClusterResourceID(ctx context.Context) (string, error) {
+	// The cluster ARM ID is static for the driver's lifetime; resolve it once and reuse.
+	d.clusterResourceIDLock.Lock()
+	defer d.clusterResourceIDLock.Unlock()
+	if d.clusterResourceID != "" {
+		return d.clusterResourceID, nil
+	}
+
+	nodeResourceGroup := d.cloud.ResourceGroup
+	resourceGroup, err := d.clientFactory.GetResourceGroupClient().Get(ctx, nodeResourceGroup)
+	if err != nil {
+		return "", fmt.Errorf("failed to get node resource group %q: %w", nodeResourceGroup, err)
+	}
+
+	var clusterName, clusterResourceGroup string
+	for key, value := range resourceGroup.Tags {
+		if value == nil {
+			continue
+		}
+		switch {
+		case strings.EqualFold(key, aksManagedClusterNameTag):
+			clusterName = *value
+		case strings.EqualFold(key, aksManagedClusterResourceGroupTag):
+			clusterResourceGroup = *value
+		}
+	}
+	if clusterName == "" || clusterResourceGroup == "" {
+		d.clusterResourceID = fmt.Sprintf("/subscriptions/%s", d.cloud.SubscriptionID)
+		klog.Warningf("node resource group %q does not contain the required AKS cluster tags; using subscription-scoped QAD owner resource %q", nodeResourceGroup, d.clusterResourceID)
+		return d.clusterResourceID, nil
+	}
+
+	d.clusterResourceID = fmt.Sprintf("/subscriptions/%s/resourceGroups/%s/providers/Microsoft.ContainerService/managedClusters/%s", d.cloud.SubscriptionID, clusterResourceGroup, clusterName)
+	return d.clusterResourceID, nil
+}
+
+// claimDiskResource claims a managed disk and returns its QAD blob URL and identifier.
+func (d *Driver) claimDiskResource(ctx context.Context, diskURI, ownerResourceID string) (string, string, error) {
+	cred := d.cloud.AuthProvider.GetAzIdentity()
+	if cred == nil {
+		return "", "", fmt.Errorf("no Azure credential available")
+	}
+	tokenResp, err := cred.GetToken(ctx, policy.TokenRequestOptions{
+		Scopes: []string{"https://management.azure.com/.default"},
+	})
+	if err != nil {
+		return "", "", fmt.Errorf("failed to get access token: %w", err)
+	}
+
+	requestBody, err := json.Marshal(struct {
+		OwnerResourceID string `json:"ownerResourceId"`
+	}{OwnerResourceID: ownerResourceID})
+	if err != nil {
+		return "", "", fmt.Errorf("failed to marshal claim request: %w", err)
+	}
+	managementEndpoint := d.cloud.ARMClientConfig.ResourceManagerEndpoint
+	if managementEndpoint == "" {
+		managementEndpoint = "https://management.azure.com"
+	}
+	claimURL := fmt.Sprintf("%s%s/claimResource?api-version=%s", strings.TrimSuffix(managementEndpoint, "/"), diskURI, claimResourceAPIVersion)
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, claimURL, strings.NewReader(string(requestBody)))
+	if err != nil {
+		return "", "", fmt.Errorf("failed to create claimResource request: %w", err)
+	}
+	httpReq.Header.Set("Authorization", "Bearer "+tokenResp.Token)
+	httpReq.Header.Set("Content-Type", "application/json")
+
+	resp, err := http.DefaultClient.Do(httpReq)
+	if err != nil {
+		return "", "", fmt.Errorf("claimResource request failed: %w", err)
+	}
+	defer resp.Body.Close()
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return "", "", fmt.Errorf("failed to read claimResource response: %w", err)
+	}
+
+	if resp.StatusCode == http.StatusAccepted {
+		location := resp.Header.Get("Location")
+		if location == "" {
+			return "", "", fmt.Errorf("claimResource returned 202 but no Location header")
+		}
+		body, err = d.pollAsyncOperation(ctx, location)
+		if err != nil {
+			return "", "", fmt.Errorf("polling claimResource failed: %w", err)
+		}
+	} else if resp.StatusCode != http.StatusOK {
+		return "", "", fmt.Errorf("claimResource returned status %d: %s", resp.StatusCode, string(body))
+	}
+
+	var result struct {
+		Properties *struct {
+			BlobURL         string `json:"blobUrl"`
+			ClaimIdentifier string `json:"claimIdentifier"`
+		} `json:"properties"`
+	}
+	if err := json.Unmarshal(body, &result); err != nil {
+		return "", "", fmt.Errorf("failed to parse claimResource response: %w", err)
+	}
+
+	if result.Properties == nil {
+		return "", "", fmt.Errorf("claimResource response missing properties")
+	}
+	return result.Properties.BlobURL, result.Properties.ClaimIdentifier, nil
+}
+
+// unclaimDiskResource releases a QAD-claimed managed disk via the DiskRP UnclaimResource API.
+func (d *Driver) unclaimDiskResource(ctx context.Context, diskURI, ownerResourceID string) error {
+	cred := d.cloud.AuthProvider.GetAzIdentity()
+	if cred == nil {
+		return fmt.Errorf("no Azure credential available")
+	}
+	tokenResp, err := cred.GetToken(ctx, policy.TokenRequestOptions{
+		Scopes: []string{"https://management.azure.com/.default"},
+	})
+	if err != nil {
+		return fmt.Errorf("failed to get access token: %w", err)
+	}
+
+	requestBody, err := json.Marshal(struct {
+		OwnerResourceID string `json:"ownerResourceId"`
+	}{OwnerResourceID: ownerResourceID})
+	if err != nil {
+		return fmt.Errorf("failed to marshal unclaim request: %w", err)
+	}
+	managementEndpoint := d.cloud.ARMClientConfig.ResourceManagerEndpoint
+	if managementEndpoint == "" {
+		managementEndpoint = "https://management.azure.com"
+	}
+	unclaimURL := fmt.Sprintf("%s%s/unclaimResource?api-version=%s", strings.TrimSuffix(managementEndpoint, "/"), diskURI, claimResourceAPIVersion)
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, unclaimURL, strings.NewReader(string(requestBody)))
+	if err != nil {
+		return fmt.Errorf("failed to create unclaimResource request: %w", err)
+	}
+	httpReq.Header.Set("Authorization", "Bearer "+tokenResp.Token)
+	httpReq.Header.Set("Content-Type", "application/json")
+
+	resp, err := http.DefaultClient.Do(httpReq)
+	if err != nil {
+		return fmt.Errorf("unclaimResource request failed: %w", err)
+	}
+	defer resp.Body.Close()
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return fmt.Errorf("failed to read unclaimResource response: %w", err)
+	}
+
+	if resp.StatusCode == http.StatusAccepted {
+		location := resp.Header.Get("Location")
+		if location == "" {
+			return fmt.Errorf("unclaimResource returned 202 but no Location header")
+		}
+		if _, err := d.pollAsyncOperation(ctx, location); err != nil {
+			return fmt.Errorf("polling unclaimResource failed: %w", err)
+		}
+	} else if resp.StatusCode == http.StatusNotFound {
+		klog.V(2).Infof("disk %s is already absent; treating unclaim as successful", diskURI)
+	} else if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("unclaimResource returned status %d: %s", resp.StatusCode, string(body))
+	}
+	return nil
 }
 
 // DeleteVolume delete an azure disk
@@ -555,9 +661,41 @@ func (d *Driver) DeleteVolume(ctx context.Context, req *csi.DeleteVolumeRequest)
 		ctx = withDiskCorrelation(ctx, diskName)
 	}
 
+	// If the PV is a QAD PV, unclaim the disk before deletion (feature-gated).
+	if d.nodeDrivenAttachDetachEnabled {
+		pv, pvErr := d.getPVFromDiskURI(ctx, diskURI)
+		if pvErr != nil && !errors.Is(pvErr, errPVNotFound) {
+			return nil, status.Errorf(codes.Internal, "failed to get PV from disk URI %s: %v", diskURI, pvErr)
+		}
+		if d.hasQADInfo(pv) {
+			klog.V(2).Infof("PV %s has QAD enabled, unclaiming disk %s before deletion", pv.Name, diskURI)
+			ownerResource, ownerErr := d.getAKSClusterResourceID(ctx)
+			if ownerErr != nil {
+				return nil, status.Errorf(codes.Internal, "failed to determine QAD owner resource for disk %s: %v", diskURI, ownerErr)
+			} else if unclaimErr := d.unclaimDiskResource(ctx, diskURI, ownerResource); unclaimErr != nil {
+				return nil, status.Errorf(codes.Internal, "failed to unclaim QAD disk %s: %v", diskURI, unclaimErr)
+			}
+		}
+	}
+
 	klog.V(2).Infof("deleting azure disk(%s)", diskURI)
 	err := d.diskController.DeleteManagedDisk(ctx, diskURI)
 	klog.V(2).Infof("delete azure disk(%s) returned with %v", diskURI, err)
+	if err != nil {
+		var managedErr *diskManagedError
+		if errors.As(err, &managedErr) {
+			ownerResource, err := d.getAKSClusterResourceID(ctx)
+			if err != nil {
+				klog.Warningf("failed to determine QAD owner resource for disk %s after delete failure: %v", diskURI, err)
+			} else if strings.EqualFold(managedErr.managedBy, ownerResource) {
+				if err := d.unclaimDiskResource(ctx, diskURI, ownerResource); err != nil {
+					klog.Warningf("failed to unclaim QAD disk %s after delete failure: %v", diskURI, err)
+				} else {
+					klog.V(2).Infof("unclaimed QAD disk %s after delete failure; returning the delete error to trigger a retry", diskURI)
+				}
+			}
+		}
+	}
 
 	isOperationSucceeded = (err == nil)
 	return &csi.DeleteVolumeResponse{}, err
@@ -580,6 +718,17 @@ func (d *Driver) ControllerModifyVolume(ctx context.Context, req *csi.Controller
 	}
 
 	diskURI := volumeID
+
+	if d.nodeDrivenAttachDetachEnabled {
+		pv, pvErr := d.getPVFromDiskURI(ctx, diskURI)
+		if pvErr != nil && !errors.Is(pvErr, errPVNotFound) {
+			return nil, status.Errorf(codes.Internal, "failed to get PV from disk URI %s: %v", diskURI, pvErr)
+		}
+		if pv != nil && d.hasQADInfo(pv) {
+			return nil, status.Errorf(codes.Unimplemented, "ControllerModifyVolume is not supported for QAD-enabled volume %s", diskURI)
+		}
+	}
+
 	currentDisk, err := d.checkDiskExists(ctx, diskURI)
 	if err != nil {
 		return nil, status.Error(codes.NotFound, fmt.Sprintf("Volume not found, failed with error: %v", err))
@@ -718,6 +867,56 @@ func (d *Driver) ControllerPublishVolume(ctx context.Context, req *csi.Controlle
 		mc.WithAdditionalVolumeInfo(consts.VolumeID, diskURI, consts.Node, string(nodeName)).Observe(isOperationSucceeded)
 	}()
 
+	volumeContext := req.GetVolumeContext()
+	if volumeContext == nil {
+		volumeContext = map[string]string{}
+	}
+
+	// The feature gate permits adoption of the Alpha architecture, while the
+	// persisted volume attachment mode selects QAD for this disk.
+	attachMode, err := getAttachMode(volumeContext)
+	if err != nil {
+		return nil, status.Errorf(codes.InvalidArgument, "failed to determine attachment mode: %v", err)
+	}
+	if attachMode == consts.AttachModeNodeDriven {
+		if !d.nodeDrivenAttachDetachEnabled {
+			return nil, status.Errorf(codes.FailedPrecondition, "%s=%s requires the Alpha %s feature gate", consts.AttachModeField, consts.AttachModeNodeDriven, NodeDrivenAttachDetach)
+		}
+		pv, err := d.getPVFromDiskURI(ctx, diskURI)
+		if err != nil || pv == nil {
+			return nil, status.Errorf(codes.Internal, "failed to get PV from disk URI %s: %v", diskURI, err)
+		}
+		klog.V(2).Infof("qad is enabled for disk %s", diskURI)
+		blobURL := volumeContext[azureconstants.BlobURLAnnotation]
+		claimIdentifier := volumeContext[azureconstants.ClaimIdentifierAnnotation]
+		cachePolicy, err := azureutils.GetCachingMode(pv.Spec.CSI.VolumeAttributes)
+		if err != nil {
+			return nil, status.Errorf(codes.InvalidArgument, "failed to determine PV cache policy: %v", err)
+		}
+		var diskSizeGB *int32
+		if disk != nil && disk.Properties != nil {
+			diskSizeGB = disk.Properties.DiskSizeGB
+		}
+		if diskSizeGB == nil && volumeContext[consts.RequestedSizeGib] != "" {
+			requestedSizeGB, parseErr := strconv.ParseInt(volumeContext[consts.RequestedSizeGib], 10, 32)
+			if parseErr != nil || requestedSizeGB <= 0 {
+				return nil, status.Errorf(codes.InvalidArgument, "invalid QAD requested disk size %q", volumeContext[consts.RequestedSizeGib])
+			}
+			size := int32(requestedSizeGB)
+			diskSizeGB = &size
+		}
+		if cachePolicy != armcompute.CachingTypesNone && diskSizeGB == nil {
+			return nil, status.Errorf(codes.Unavailable, "cannot determine disk size for QAD cache policy on volume %s", diskURI)
+		}
+		cachePolicy = effectiveCachingModeForDisk(cachePolicy, diskSizeGB, diskURI)
+
+		if err := ensureQADPVAnnotations(ctx, d.kubeClient, pv.Name, blobURL, claimIdentifier, string(cachePolicy)); err != nil {
+			return nil, status.Errorf(codes.Internal, "failed to update PV %s with QAD metadata: %v", pv.Name, err)
+		}
+		isOperationSucceeded = true
+		return &csi.ControllerPublishVolumeResponse{}, nil
+	}
+
 	lun, vmState, err := d.diskController.GetDiskLun(ctx, diskName, diskURI, nodeName)
 	if err == cloudprovider.InstanceNotFound {
 		return nil, status.Error(codes.NotFound, fmt.Sprintf("failed to get azure instance id for node %q (%v)", nodeName, err))
@@ -729,11 +928,6 @@ func (d *Driver) ControllerPublishVolume(ctx context.Context, req *csi.Controlle
 	}
 
 	klog.V(2).Infof("GetDiskLun returned: %v. Initiating attaching volume %s to node %s (vmState %s).", err, diskURI, nodeName, vmStateStr)
-
-	volumeContext := req.GetVolumeContext()
-	if volumeContext == nil {
-		volumeContext = map[string]string{}
-	}
 
 	if err == nil {
 		if vmState != nil && strings.ToLower(*vmState) == "failed" {
@@ -817,16 +1011,81 @@ func (d *Driver) ControllerPublishVolume(ctx context.Context, req *csi.Controlle
 	return &csi.ControllerPublishVolumeResponse{PublishContext: publishContext}, nil
 }
 
+func ensureQADPVAnnotations(ctx context.Context, kubeClient clientset.Interface, pvName, blobURL, claimIdentifier, cachePolicy string) error {
+	if pvName == "" {
+		return fmt.Errorf("PV name must not be empty")
+	}
+	return retry.RetryOnConflict(retry.DefaultRetry, func() error {
+		pv, err := kubeClient.CoreV1().PersistentVolumes().Get(ctx, pvName, metav1.GetOptions{})
+		if err != nil {
+			return err
+		}
+		// Static QAD PVs may carry the claim metadata in annotations rather than
+		// the volume context; fall back to those for any value not supplied.
+		if blobURL == "" {
+			blobURL = pv.Annotations[azureconstants.BlobURLAnnotation]
+		}
+		if claimIdentifier == "" {
+			claimIdentifier = pv.Annotations[azureconstants.ClaimIdentifierAnnotation]
+		}
+		_, hasSequence := pv.Annotations[azureconstants.AttachSequenceAnnotation]
+		if blobURL == "" || claimIdentifier == "" {
+			if hasSequence {
+				return fmt.Errorf("PV %s has attach-sequence annotation but incomplete QAD metadata", pvName)
+			}
+			return fmt.Errorf("cannot initialize QAD annotations on PV %s without blob URL and claim identifier", pvName)
+		}
+
+		// Seed the sequence only on first adoption; NodeStage/NodeUnstage read the
+		// blob URL and claim identifier only from annotations, so persist them too.
+		sequence := pv.Annotations[azureconstants.AttachSequenceAnnotation]
+		if !hasSequence {
+			sequence = "0"
+			klog.Infof("PV %s doesn't have attach-sequence annotation, adding annotation for QAD", pvName)
+		}
+		if pv.Annotations[azureconstants.AttachSequenceAnnotation] == sequence &&
+			pv.Annotations[azureconstants.BlobURLAnnotation] == blobURL &&
+			pv.Annotations[azureconstants.ClaimIdentifierAnnotation] == claimIdentifier &&
+			pv.Annotations[azureconstants.QADCachePolicyAnnotation] == cachePolicy {
+			return nil
+		}
+		pv = pv.DeepCopy()
+		if pv.Annotations == nil {
+			pv.Annotations = make(map[string]string)
+		}
+		pv.Annotations[azureconstants.AttachSequenceAnnotation] = sequence
+		pv.Annotations[azureconstants.BlobURLAnnotation] = blobURL
+		pv.Annotations[azureconstants.ClaimIdentifierAnnotation] = claimIdentifier
+		pv.Annotations[azureconstants.QADCachePolicyAnnotation] = cachePolicy
+
+		_, err = kubeClient.CoreV1().PersistentVolumes().Update(ctx, pv, metav1.UpdateOptions{})
+		return err
+	})
+}
+
 // ControllerUnpublishVolume detach an azure disk from a required node
 func (d *Driver) ControllerUnpublishVolume(ctx context.Context, req *csi.ControllerUnpublishVolumeRequest) (*csi.ControllerUnpublishVolumeResponse, error) {
 	diskURI := req.GetVolumeId()
 	if len(diskURI) == 0 {
 		return nil, status.Error(codes.InvalidArgument, "Volume ID not provided")
 	}
-
 	nodeID := req.GetNodeId()
 	if len(nodeID) == 0 {
 		return nil, status.Error(codes.InvalidArgument, "Node ID not provided")
+	}
+
+	// QAD detach is owned by NodeUnstageVolume; only consult the PV when enabled.
+	if d.nodeDrivenAttachDetachEnabled {
+		pv, pvErr := d.getPVFromDiskURI(ctx, diskURI)
+		switch {
+		case errors.Is(pvErr, errPVNotFound):
+			klog.V(4).Infof("PV not found for disk URI %s; continuing with controller detach", diskURI)
+		case pvErr != nil:
+			return nil, status.Errorf(codes.Internal, "failed to get PV from disk URI %s: %v", diskURI, pvErr)
+		case d.hasQADInfo(pv):
+			klog.V(2).Infof("QAD detach is handled by NodeUnstageVolume; skipping controller detach for disk %s", diskURI)
+			return &csi.ControllerUnpublishVolumeResponse{}, nil
+		}
 	}
 	nodeName := types.NodeName(nodeID)
 
@@ -1198,9 +1457,23 @@ func (d *Driver) ControllerExpandVolume(ctx context.Context, req *csi.Controller
 	if _, _, diskName, err := azureutils.GetInfoFromURI(diskURI); err == nil {
 		ctx = withDiskCorrelation(ctx, diskName)
 	}
+
+	if d.nodeDrivenAttachDetachEnabled {
+		pv, pvErr := d.getPVFromDiskURI(ctx, diskURI)
+		if pvErr != nil && !errors.Is(pvErr, errPVNotFound) {
+			return nil, status.Errorf(codes.Internal, "failed to get PV from disk URI %s: %v", diskURI, pvErr)
+		}
+		if pv != nil && d.hasQADInfo(pv) {
+			return nil, status.Errorf(codes.Unimplemented, "ControllerExpandVolume is not supported for QAD-enabled volume %s", diskURI)
+		}
+	}
+
 	result, rerr := d.diskController.GetDiskByURI(ctx, diskURI)
 	if rerr != nil {
 		return nil, status.Errorf(codes.Internal, "GetDiskByURI(%s) failed with error(%v)", diskURI, rerr)
+	}
+	if result == nil || result.Properties == nil || result.Properties.DiskSizeGB == nil {
+		return nil, status.Errorf(codes.Internal, "could not get size of the disk(%s)", diskURI)
 	}
 
 	var diskSku string
@@ -1208,9 +1481,6 @@ func (d *Driver) ControllerExpandVolume(ctx context.Context, req *csi.Controller
 		diskSku = string(*result.SKU.Name)
 	}
 
-	if result == nil || result.Properties == nil || result.Properties.DiskSizeGB == nil {
-		return nil, status.Errorf(codes.Internal, "could not get size of the disk(%s)", diskURI)
-	}
 	oldSize := *resource.NewQuantity(int64(*result.Properties.DiskSizeGB), resource.BinarySI)
 
 	mc := csiMetrics.NewCSIMetricContext("controller_expand_volume").WithBasicVolumeInfo(d.cloud.ResourceGroup, d.cloud.SubscriptionID, d.Name)
@@ -1651,6 +1921,95 @@ func (d *Driver) getSnapshot(ctx context.Context, sourceID string) (*armcompute.
 	return snapshotRetrieved, nil
 }
 
+// startSKUMigrationMonitor starts (idempotently) an asynchronous monitor that tracks
+// migration of a managed disk from one SKU to another (currently only when moving
+// to PremiumV2).
+//
+// Parameters:
+//
+//	ctx                - request context
+//	isProvisioningFlow - true when invoked from CreateVolume (PV may not exist yet);
+//	                     false when invoked from ModifyVolume (PV should already exist).
+//	fromSKUStr         - original disk SKU name (string form, may differ in casing)
+//	toSKU              - target armcompute.DiskStorageAccountTypes (must be PremiumV2LRS to proceed)
+//	diskURI            - full Azure disk resource ID
+//	pvName             - Kubernetes PV name if known (CreateVolume path supplies req.Name;
+//	                     ModifyVolume path does not, so we derive it from diskURI)
+//	sizeBytes          - disk size (used to derive migration timeout)
+//
+// Workflow / decision points:
+// 1. Guard clauses:
+//   - If no migration monitor is configured OR fromSKUStr empty: do nothing.
+//   - If target SKU is not PremiumV2 OR already matches fromSKU: no migration needed.
+//
+// 2. PV name resolution:
+//   - If pvName is empty (ModifyVolume path) attempt to parse diskURI and use its last
+//     token (disk name) as the PV name.
+//   - If the cluster used static provisioning with a PV name different from the Azure
+//     disk name, this heuristic cannot map the disk to the PV; monitoring is skipped.
+//
+// 3. StartMonitoring call:
+//   - Calls migrationMonitor.StartMigrationMonitoring(ctx, isProvisioningFlow, ...).
+//   - isProvisioningFlow influences initial behavior inside the monitor:
+//   - Provisioning (true): PV may not yet exist. The monitor records a task with
+//     empty PVC metadata, attempts an initial label add (may fail if PV absent),
+//     and defers PV / PVC discovery, labeling, and start event emission to the
+//     periodic polling loop (monitorMigrationProgress).
+//   - Modify (false): PV should exist. The monitor immediately fetches the PV,
+//     derives PVC name/namespace, adds/ensures the migration label, and emits
+//     the "Started" event (unless label already existed; then it logs a resume).
+//
+// 4. Label management:
+//   - addMigrationLabelIfNotExists is executed once at start; if it fails (e.g. PV
+//     not yet created) task.PVLabeled remains false. The polling loop will retry
+//     labeling until successful.
+//
+// 5. Asynchronous monitoring:
+//   - A goroutine watches progress (polling Azure), emitting events for start (if
+//     deferred), incremental progress, completion, failure or timeout.
+//
+// 6. Error handling:
+//   - Non‑fatal issues (parse failure, start error) are logged and abort initiation
+//     for that disk; they do not propagate back to the CSI operation.
+//
+// Concurrency notes:
+//   - This function itself is lightweight and only delegates; StartMigrationMonitoring
+//     handles internal synchronization of task state.
+//   - Idempotency: if monitoring is already active for diskURI, underlying monitor
+//     short‑circuits.
+//
+// Returns: nothing; logs warnings on recoverable issues.
+//
+// NOTE: If future migrations support additional target SKUs, relax the toSKU check.
+func (d *Driver) startSKUMigrationMonitor(
+	ctx context.Context,
+	isProvisioningFlow bool,
+	fromSKUStr string,
+	toSKU armcompute.DiskStorageAccountTypes,
+	diskURI, pvName string,
+	sizeBytes int64,
+) {
+	if d.migrationMonitor == nil || fromSKUStr == "" {
+		return
+	}
+
+	if toSKU != armcompute.DiskStorageAccountTypesPremiumV2LRS || fromSKUStr == string(toSKU) {
+		return
+	}
+	if pvName == "" {
+		var parseErr error
+		_, _, pvName, parseErr = azureutils.GetInfoFromURI(diskURI)
+		if parseErr != nil {
+			klog.Warningf("Skipping monitor, failed to extract pv name from URI %s: %v", diskURI, parseErr)
+			return
+		}
+	}
+	if err := d.migrationMonitor.StartMigrationMonitoring(
+		ctx, isProvisioningFlow, diskURI, pvName, fromSKUStr, toSKU, sizeBytes); err != nil {
+		klog.Warningf("failed to start SKU migration monitoring for %s: %v", diskURI, err)
+	}
+}
+
 // getSnapshotSKU retrieves the SKU of the snapshot and returns the SKU or if any error occurs
 func getSnapshotSKUFromSnapshot(computeSnapshot *armcompute.Snapshot) (string, error) {
 	if computeSnapshot == nil {
@@ -1684,4 +2043,106 @@ func inlineVolumeSpecMatchesDisk(driverName, diskURI string, va *storagev1.Volum
 		return true
 	}
 	return false
+}
+
+// pollAsyncOperation polls an Azure async operation URL until it completes or the context is cancelled.
+func (d *Driver) pollAsyncOperation(ctx context.Context, asyncURL string) ([]byte, error) {
+	interval := d.pollInterval
+	if interval <= 0 {
+		interval = 5 * time.Second
+	}
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-ticker.C:
+			cred := d.cloud.AuthProvider.GetAzIdentity()
+			if cred == nil {
+				return nil, fmt.Errorf("no Azure credential available")
+			}
+			tokenResp, err := cred.GetToken(ctx, policy.TokenRequestOptions{
+				Scopes: []string{"https://management.azure.com/.default"},
+			})
+			if err != nil {
+				return nil, fmt.Errorf("failed to get access token for polling: %w", err)
+			}
+
+			pollReq, err := http.NewRequestWithContext(ctx, http.MethodGet, asyncURL, nil)
+			if err != nil {
+				return nil, fmt.Errorf("failed to create poll request: %w", err)
+			}
+			pollReq.Header.Set("Authorization", "Bearer "+tokenResp.Token)
+
+			pollResp, err := http.DefaultClient.Do(pollReq)
+			if err != nil {
+				return nil, fmt.Errorf("poll request failed: %w", err)
+			}
+
+			body, err := io.ReadAll(pollResp.Body)
+			pollResp.Body.Close()
+			if err != nil {
+				return nil, fmt.Errorf("failed to read poll response: %w", err)
+			}
+
+			if pollResp.StatusCode != http.StatusOK && pollResp.StatusCode != http.StatusAccepted {
+				return nil, fmt.Errorf("poll returned status %d: %s", pollResp.StatusCode, string(body))
+			}
+
+			// A 202 Location poll is commonly returned with an empty body while the
+			// operation is still running; an empty body is not valid JSON, so keep
+			// polling instead of failing to parse it.
+			if strings.TrimSpace(string(body)) == "" {
+				if pollResp.StatusCode == http.StatusOK {
+					return body, nil
+				}
+				continue
+			}
+
+			var pollResult struct {
+				Status string `json:"status"`
+			}
+			if err := json.Unmarshal(body, &pollResult); err != nil {
+				return nil, fmt.Errorf("failed to parse poll response: %w", err)
+			}
+			if pollResp.StatusCode == http.StatusOK && pollResult.Status == "" {
+				return body, nil
+			}
+
+			klog.V(2).Infof("async operation status: %s", pollResult.Status)
+			switch strings.ToLower(pollResult.Status) {
+			case "succeeded":
+				return body, nil
+			case "failed", "canceled", "cancelled":
+				return nil, fmt.Errorf("async operation %s: %s", pollResult.Status, string(body))
+			}
+			// still "InProgress" — continue polling
+		}
+	}
+}
+
+// truncateErrMsg truncates long error messages while preserving both the
+// beginning (context) and end (critical details like permission errors).
+// This ensures that important information at the tail of verbose Azure
+// error messages (e.g., missing role assignments and the ClientId /
+// ObjectId of the identity that needs the permission) remains visible in
+// kube-events which are limited to 1024 bytes.
+//
+// Head/tail split favors the tail because the head is mostly boilerplate
+// ("Attach volume <pvc> to instance <node> failed with rpc error: ...")
+// that the user typically already has from surrounding context, while
+// the tail is where the actionable Azure error details land: the missing
+// action (e.g. "Microsoft.Compute/diskEncryptionSets/read"), the target
+// scope, and the ClientId/ObjectId of the identity that lacks permission.
+func truncateErrMsg(errMsg string) string {
+	if len(errMsg) <= maxErrMsgLength {
+		return errMsg
+	}
+	// Keep head (~20%) for context and tail (~80%) for critical error details.
+	const ellipsis = " ... "
+	headLen := (maxErrMsgLength - len(ellipsis)) / 5
+	tailLen := maxErrMsgLength - headLen - len(ellipsis)
+	return errMsg[:headLen] + ellipsis + errMsg[len(errMsg)-tailLen:]
 }
