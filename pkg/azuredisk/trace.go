@@ -28,6 +28,8 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/baggage"
 	otelcodes "go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/exporters/otlp/otlptrace"
+	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
 	"go.opentelemetry.io/otel/sdk/resource"
 	"go.opentelemetry.io/otel/sdk/trace"
 	oteltrace "go.opentelemetry.io/otel/trace"
@@ -44,6 +46,14 @@ const (
 	// written. Operators who want span lines at a different level than the
 	// default can set it (e.g. "4") without changing the driver's global -v.
 	spanVerbosityEnv = "OTEL_KLOG_SPAN_VERBOSITY"
+
+	// tracesExporterEnv selects which span exporters are enabled.
+	tracesExporterEnv = "OTEL_TRACES_EXPORTER"
+
+	// The OTLP SDK honors these variables; their presence controls whether the
+	// optional OTLP exporter is attached.
+	otlpEndpointEnv       = "OTEL_EXPORTER_OTLP_ENDPOINT"
+	otlpTracesEndpointEnv = "OTEL_EXPORTER_OTLP_TRACES_ENDPOINT"
 
 	// defaultKlogSpanVerbosity is the default klog verbosity at which spans are
 	// logged. It is deliberately low (V(2)) so that enabling tracing produces
@@ -118,12 +128,10 @@ func startSpan(ctx context.Context, name string, attrs ...attribute.KeyValue) (c
 }
 
 // withDiskCorrelation stamps diskName as the canonical correlation key for the
-// whole request. It (1) labels the current root span, (2) stores the value in
-// OTel baggage so startSpan copies it onto every child sub-span, and (3)
-// attaches a contextual klog logger so ordinary klog lines carry disk.name too,
-// enabling logs-only correlation across an operation and the disk lifecycle. It
-// returns the enriched context; callers must use the returned context for
-// downstream work. An empty diskName returns ctx unchanged.
+// whole request. It labels the current root span and stores the value in OTel
+// baggage so startSpan copies it onto every child sub-span. It returns the
+// enriched context; callers must use the returned context for downstream work.
+// An empty diskName returns ctx unchanged.
 func withDiskCorrelation(ctx context.Context, diskName string) context.Context {
 	if diskName == "" {
 		return ctx
@@ -136,8 +144,6 @@ func withDiskCorrelation(ctx context.Context, diskName string) context.Context {
 			ctx = baggage.ContextWithBaggage(ctx, bag)
 		}
 	}
-	// Stamp ordinary klog lines with the same key.
-	ctx = klog.NewContext(ctx, klog.FromContext(ctx).WithValues(attrDiskName, diskName))
 	return ctx
 }
 
@@ -251,9 +257,10 @@ func spanKeysAndValues(span trace.ReadOnlySpan) []interface{} {
 
 // InitOtelTracing initializes and registers a global OpenTelemetry
 // TracerProvider for the driver. Spans are exported to the container logs via
-// klog, so no external collector is required. The returned TracerProvider must
-// be shut down on exit to flush any buffered spans. It is only called when
-// tracing is enabled, so there is zero cost when tracing is disabled.
+// klog and, when an OTLP endpoint is configured, over OTLP/gRPC. The returned
+// TracerProvider must be shut down on exit to flush any buffered spans. It is
+// only called when tracing is enabled, so there is zero cost when tracing is
+// disabled.
 func InitOtelTracing() (*trace.TracerProvider, error) {
 	ctx := context.Background()
 
@@ -281,12 +288,23 @@ func InitOtelTracing() (*trace.TracerProvider, error) {
 
 	opts := []trace.TracerProviderOption{
 		trace.WithResource(res),
-		// Sample based on the parent's decision, falling back to always
-		// sampling for root spans, so an entire trace is kept or dropped
-		// together.
-		trace.WithSampler(trace.ParentBased(trace.AlwaysSample())),
-		// Always write spans to the container logs.
-		trace.WithBatcher(&klogSpanExporter{}),
+	}
+
+	enableKlog, enableOTLP := parseTracesExporters(os.Getenv(tracesExporterEnv))
+	if enableKlog {
+		opts = append(opts, trace.WithBatcher(&klogSpanExporter{}))
+	}
+	if enableOTLP {
+		if hasOTLPEndpoint() {
+			exporter, exporterErr := otlptrace.New(ctx, otlptracegrpc.NewClient())
+			if exporterErr != nil {
+				klog.ErrorS(exporterErr, "otel tracing: failed to create OTLP exporter; continuing without it")
+			} else {
+				opts = append(opts, trace.WithBatcher(exporter))
+			}
+		} else {
+			klog.V(2).Infof("otel tracing: OTLP exporter requested but neither %s nor %s is set; skipping OTLP", otlpEndpointEnv, otlpTracesEndpointEnv)
+		}
 	}
 
 	traceProvider := trace.NewTracerProvider(opts...)
@@ -295,4 +313,26 @@ func InitOtelTracing() (*trace.TracerProvider, error) {
 	otel.SetTracerProvider(traceProvider)
 
 	return traceProvider, nil
+}
+
+func parseTracesExporters(value string) (klogEnabled, otlpEnabled bool) {
+	if strings.TrimSpace(value) == "" {
+		return true, true
+	}
+	for _, exporter := range strings.Split(value, ",") {
+		switch strings.ToLower(strings.TrimSpace(exporter)) {
+		case "klog":
+			klogEnabled = true
+		case "otlp":
+			otlpEnabled = true
+		case "none":
+			return false, false
+		}
+	}
+	return
+}
+
+func hasOTLPEndpoint() bool {
+	return strings.TrimSpace(os.Getenv(otlpEndpointEnv)) != "" ||
+		strings.TrimSpace(os.Getenv(otlpTracesEndpointEnv)) != ""
 }

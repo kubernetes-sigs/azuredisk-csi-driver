@@ -240,3 +240,67 @@ func TestDiskCorrelationPropagatesToChildSpans(t *testing.T) {
 		t.Errorf("expected child span CreateManagedDisk to inherit disk.name=pvc-abc123 via baggage, got:\n%s", out)
 	}
 }
+
+func TestParseTracesExporters(t *testing.T) {
+	tests := []struct {
+		name     string
+		value    string
+		wantKlog bool
+		wantOTLP bool
+	}{
+		{name: "default", wantKlog: true, wantOTLP: true},
+		{name: "klog", value: "klog", wantKlog: true},
+		{name: "otlp", value: "otlp", wantOTLP: true},
+		{name: "both", value: " KLOG, OTLP ", wantKlog: true, wantOTLP: true},
+		{name: "none", value: "none"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			gotKlog, gotOTLP := parseTracesExporters(test.value)
+			if gotKlog != test.wantKlog || gotOTLP != test.wantOTLP {
+				t.Fatalf("parseTracesExporters(%q) = (%v, %v), want (%v, %v)", test.value, gotKlog, gotOTLP, test.wantKlog, test.wantOTLP)
+			}
+		})
+	}
+}
+
+func TestHasOTLPEndpoint(t *testing.T) {
+	t.Setenv(otlpEndpointEnv, "")
+	t.Setenv(otlpTracesEndpointEnv, "")
+	if hasOTLPEndpoint() {
+		t.Fatal("hasOTLPEndpoint() = true without an endpoint")
+	}
+
+	t.Setenv(otlpEndpointEnv, "http://collector:4317")
+	if !hasOTLPEndpoint() {
+		t.Fatalf("hasOTLPEndpoint() = false with %s set", otlpEndpointEnv)
+	}
+
+	t.Setenv(otlpEndpointEnv, "")
+	t.Setenv(otlpTracesEndpointEnv, "http://collector:4317")
+	if !hasOTLPEndpoint() {
+		t.Fatalf("hasOTLPEndpoint() = false with %s set", otlpTracesEndpointEnv)
+	}
+}
+
+func TestInitOtelTracingHonorsSamplerEnvironment(t *testing.T) {
+	t.Setenv("OTEL_TRACES_SAMPLER", "always_off")
+	t.Setenv(tracesExporterEnv, "none")
+
+	previous := otel.GetTracerProvider()
+	defer otel.SetTracerProvider(previous)
+
+	provider, err := InitOtelTracing()
+	if err != nil {
+		t.Fatalf("InitOtelTracing failed: %v", err)
+	}
+	defer func() {
+		_ = provider.Shutdown(context.Background())
+	}()
+
+	_, span := startSpan(context.Background(), "unsampled")
+	defer span.End()
+	if span.IsRecording() {
+		t.Fatal("span is recording with OTEL_TRACES_SAMPLER=always_off")
+	}
+}

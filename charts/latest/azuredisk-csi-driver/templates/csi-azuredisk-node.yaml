@@ -213,8 +213,10 @@ spec:
             {{- if .Values.linux.otelTracing.enabled }}
             - name: OTEL_SERVICE_NAME
               value: {{ .Values.linux.otelTracing.otelServiceName }}
+            {{- if .Values.linux.otelTracing.otelExporterEndpoint }}
             - name: OTEL_EXPORTER_OTLP_ENDPOINT
               value: {{ .Values.linux.otelTracing.otelExporterEndpoint }}
+            {{- end }}
             {{- end }}
           imagePullPolicy: {{ .Values.image.azuredisk.pullPolicy }}
           securityContext:
