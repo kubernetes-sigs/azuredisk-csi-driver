@@ -48,22 +48,33 @@ func newTracingRateLimiter(inner flowcontrol.RateLimiter) *tracingRateLimiter {
 	return &tracingRateLimiter{RateLimiter: inner}
 }
 
-// WrapConfigRateLimiterWithTracing replaces config.RateLimiter with a tracing
-// wrapper so that Kubernetes API requests blocked by client-side QPS/Burst
-// exhaustion surface as span events. It replicates client-go's default token
-// bucket (QPS 5, Burst 10) when the caller did not set explicit limits. It is a
-// no-op for a nil config.
+// WrapConfigRateLimiterWithTracing wraps config.RateLimiter so that Kubernetes
+// API requests blocked by client-side QPS/Burst exhaustion surface as span
+// events. It preserves custom and disabled limiters and is idempotent.
 func WrapConfigRateLimiterWithTracing(config *rest.Config) {
 	if config == nil {
 		return
 	}
+	if _, ok := config.RateLimiter.(*tracingRateLimiter); ok {
+		return
+	}
+	if config.RateLimiter != nil {
+		config.RateLimiter = newTracingRateLimiter(config.RateLimiter)
+		return
+	}
+	if config.QPS < 0 {
+		return
+	}
 	effectiveQPS := config.QPS
-	if effectiveQPS <= 0 {
+	if effectiveQPS == 0 {
 		effectiveQPS = rest.DefaultQPS
 	}
 	effectiveBurst := config.Burst
-	if effectiveBurst <= 0 {
+	if effectiveBurst == 0 {
 		effectiveBurst = rest.DefaultBurst
+	}
+	if effectiveBurst < 0 {
+		return
 	}
 	config.RateLimiter = newTracingRateLimiter(flowcontrol.NewTokenBucketRateLimiter(effectiveQPS, effectiveBurst))
 }

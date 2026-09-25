@@ -266,10 +266,6 @@ func GetKubeConfig(kubeconfig string, qps float64, burst int) (*rest.Config, err
 		config.Burst = burst
 	}
 
-	// Wrap the client-side rate limiter so that requests blocked by QPS/Burst
-	// exhaustion surface as span events.
-	WrapConfigRateLimiterWithTracing(config)
-
 	return config, nil
 }
 
