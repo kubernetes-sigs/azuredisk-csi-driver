@@ -44,7 +44,7 @@ const (
 	fsckErrorsCorrected = 1
 	// 'fsck' found errors but exited without correcting them
 	fsckErrorsUncorrected = 4
-	// 'fsck' found operational error, e.g fresh block device
+	// 'fsck' found operational error, e.g fresh block device, device in-use
 	fsckOperationalError = 8
 )
 
@@ -426,8 +426,9 @@ func rescanAllVolumes(io azureutils.IOHandler) error {
 }
 
 // detectFilesystemExistence checks whether the given device already contains a filesystem signature.
-// 2. Detects filesystem signature using wipefs --no-act --noheadings --output TYPE <device>.
+// It falls back to wipefs when fsck reports that the superblock is unreadable or invalid.
 func detectFilesystemExistence(source string, mounter *mount.SafeFormatAndMount) (bool, error) {
+	klog.Infof("Checking filesystem existence on device %s through 'fsck -n'", source)
 	isFSExist, err := detectAndRepairFilesystem(source, []string{"-n"}, mounter)
 	if err != nil {
 		if strings.Contains(strings.ToLower(err.Error()), "superblock could not be read or does not describe a valid ext2/ext3/ext4") {
@@ -441,6 +442,7 @@ func detectFilesystemExistence(source string, mounter *mount.SafeFormatAndMount)
 		return true, nil
 	}
 
+	klog.Infof("Checking filesystem existence on device %s through 'wipefs'", source)
 	args := []string{"--no-act", "--output", "TYPE", "--noheadings", source}
 	fsType, err := mounter.Exec.Command("wipefs", args...).CombinedOutput()
 	if err != nil {
@@ -457,10 +459,11 @@ func detectFilesystemExistence(source string, mounter *mount.SafeFormatAndMount)
 // a filesystem and to repair any recoverable inconsistencies in place based on provided options.
 //
 // It returns:
-//   - (true, nil): a filesystem is present (clean or recoverable errors corrected).
-//   - (false, nil): no filesystem signature (fresh/unformatted device).
-//   - (false, error): fsck could not be executed or returned an operational/ambiguous failure.
-//   - (true, error): fsck found errors it could not correct.
+//   - (true, nil): fsck succeeded, corrected recoverable errors, or returned an error other than an
+//     unreadable or invalid superblock. Such errors are logged and treated as filesystem-present.
+//   - (false, nil): fsck returned an exit status greater than fsckErrorsUncorrected and its error
+//     reports an unreadable or invalid superblock.
+//   - (true, error): fsck found errors it could not correct (exit status fsckErrorsUncorrected).
 //
 // fsckOptions control fsck's behavior, e.g. "-n" for a read-only detection check or "-y"/"-E ..."
 // to attempt repairs.
@@ -472,26 +475,25 @@ func detectAndRepairFilesystem(source string, fsckOptions []string, mounter *mou
 		ee, isExitError := err.(utilexec.ExitError)
 		switch {
 		case err == utilexec.ErrExecutableNotFound:
-			klog.Errorf("'fsck' not found on system; cannot verify filesystem signature on %s, returning error.", source)
-			return false, fmt.Errorf("'fsck' not found to detect filesystem on device %s with options %v: %v", source, fsckOptions, err)
-		case isExitError && ee.ExitStatus() == fsckOperationalError:
-			klog.Warningf("Unable to run fsck on device %s with options %v, fsck output: %s", source, fsckOptions, string(out))
-			return false, fmt.Errorf("Unable to run fsck on device %s with options %v, fsck error: %v output: %s", source, fsckOptions, err, string(out))
+			klog.Warningf("'fsck' not found on system; continuing without fsck on %s", source)
 		case isExitError && ee.ExitStatus() == fsckErrorsCorrected:
 			klog.Warningf("Device %s has errors which were corrected by fsck: %s", source, string(out))
 		case isExitError && ee.ExitStatus() == fsckErrorsUncorrected:
 			// Filesystem exists but fsck found errors that it could not correct
-			klog.Errorf("Device %s has errors which fsck could not correct with options %v: %s", source, fsckOptions, string(out))
-			return true, fmt.Errorf("'fsck' found errors on device %s with options %v but could not correct them (exit status %d)", source, fsckOptions, ee.ExitStatus())
+			klog.Errorf("Device %s has errors which fsck could not correct with options %v: %s error: %v", source, fsckOptions, string(out), err)
+			return true, fmt.Errorf("'fsck' found errors on device %s with options %v but could not correct them: %s (exit status %d)", source, fsckOptions, string(out), ee.ExitStatus())
 		case isExitError && ee.ExitStatus() > fsckErrorsUncorrected:
-			klog.Errorf("`fsck` error %s", string(out))
-			return false, fmt.Errorf("'fsck' failed on device %s with options %v: %v", source, fsckOptions, err)
+			if strings.Contains(strings.ToLower(string(out)), "superblock could not be read or does not describe a valid ext2/ext3/ext4") {
+				klog.Infof("Device %s may be fresh block device with no filesystem signature, fsck output: %s exit error: %s", source, string(out), err.Error())
+				return false, nil
+			}
+			klog.Warningf("`fsck` failed on device %s with options %v output %s error %v", source, fsckOptions, string(out), err)
 		default:
 			klog.Warningf("fsck on device %s failed with error %v, output: %v", source, err, string(out))
 		}
 	}
 	// In case if device is formatted with other filesystem, fsck will return 0
-	klog.Infof("fsck on device %s completed successfully with output: %s", source, string(out))
+	klog.Infof("fsck on device %s completed with output: %s", source, string(out))
 	return true, nil
 }
 
