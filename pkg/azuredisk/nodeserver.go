@@ -323,6 +323,11 @@ func (d *Driver) NodeStageVolume(ctx context.Context, req *csi.NodeStageVolumeRe
 		return nil, status.Errorf(codes.Internal, "failed to find disk on lun %s. %v", lun, err)
 	}
 
+	// For NVMe, reject a recycled namespace still serving a prior disk's cached identity; no-op for SCSI.
+	if err = verifyNVMeNamespaceIdentity(source, lun, d.ioHandler); err != nil {
+		return nil, status.Errorf(codes.Internal, "NodeStageVolume: %v", err)
+	}
+
 	// If perf optimizations are enabled
 	// tweak device settings to enhance performance
 	if d.getPerfOptimizationEnabled() {
@@ -420,7 +425,8 @@ func (d *Driver) NodeUnstageVolume(ctx context.Context, req *csi.NodeUnstageVolu
 	defer d.volumeLocks.Release(volumeID)
 
 	klog.V(2).Infof("NodeUnstageVolume: unmounting %s", stagingTargetPath)
-	if err := CleanupMountPoint(stagingTargetPath, d.mounter, true /*extensiveMountPointCheck*/); err != nil {
+	// Unmount and invalidate the backing device so a fast LUN/namespace reuse can't serve stale content.
+	if err := unmountAndInvalidateDevice(stagingTargetPath, d.ioHandler, d.mounter); err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to unmount staging target %q: %v", stagingTargetPath, err)
 	}
 	klog.V(2).Infof("NodeUnstageVolume: unmount %s successfully", stagingTargetPath)
