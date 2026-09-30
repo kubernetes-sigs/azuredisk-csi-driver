@@ -24,9 +24,11 @@ import (
 	"testing"
 	"time"
 
+	"k8s.io/component-base/metrics/legacyregistry"
 	"k8s.io/utils/exec"
 	testingexec "k8s.io/utils/exec/testing"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
+	csiMetrics "sigs.k8s.io/azuredisk-csi-driver/pkg/metrics"
 	testmounter "sigs.k8s.io/azuredisk-csi-driver/pkg/mounter"
 )
 
@@ -125,10 +127,13 @@ func TestFormatAndMountDoesNotReformatWhenAlreadyFormatted(t *testing.T) {
 func TestDetectAndRepairFilesystem(t *testing.T) {
 	tests := []struct {
 		name        string
+		fsckOptions []string
 		fsckErr     error
 		fsckOutput  string
 		wantFsExist bool
 		wantErr     bool
+		wantSuccess string
+		wantOutcome string
 	}{
 		{
 			// fsck exits 0 on a healthy ext4/xfs filesystem (xfs check is effectively a no-op).
@@ -136,17 +141,30 @@ func TestDetectAndRepairFilesystem(t *testing.T) {
 			fsckErr:     nil,
 			wantFsExist: true,
 			wantErr:     false,
+			wantSuccess: "true",
+			wantOutcome: "clean",
 		},
 		{
-			// fsck exits 8 (operational error) on a fresh block device: its output reports that the
-			// superblock could not be read. detectAndRepairFilesystem always surfaces an operational
-			// error; interpreting that output as "no filesystem signature" is the caller's job (see
-			// TestDetectFilesystemExistence).
+			// During read-only detection, an unreadable superblock identifies a fresh device.
 			name:        "operational error on a fresh block device",
+			fsckOptions: []string{"-n"},
 			fsckErr:     testingexec.FakeExitError{Status: fsckOperationalError},
 			fsckOutput:  "fsck.ext4: Superblock could not be read or does not describe a valid ext2/ext3/ext4 filesystem",
 			wantFsExist: false,
 			wantErr:     true,
+			wantSuccess: "true",
+			wantOutcome: "fresh_device",
+		},
+		{
+			// During repair, the same output aborts the mount and must be reported as a failure.
+			name:        "unreadable superblock during repair",
+			fsckOptions: []string{"-a"},
+			fsckErr:     testingexec.FakeExitError{Status: fsckOperationalError},
+			fsckOutput:  "fsck.ext4: Superblock could not be read or does not describe a valid ext2/ext3/ext4 filesystem",
+			wantFsExist: false,
+			wantErr:     true,
+			wantSuccess: "false",
+			wantOutcome: "operational_error",
 		},
 		{
 			// fsck exits 8 (operational error) without the "no filesystem" signature: we cannot rule
@@ -156,24 +174,32 @@ func TestDetectAndRepairFilesystem(t *testing.T) {
 			fsckOutput:  "fsck.ext4: unable to set superblock flags",
 			wantFsExist: false,
 			wantErr:     true,
+			wantSuccess: "false",
+			wantOutcome: "operational_error",
 		},
 		{
 			name:        "errors corrected by fsck (exit 1)",
 			fsckErr:     testingexec.FakeExitError{Status: fsckErrorsCorrected},
 			wantFsExist: true,
 			wantErr:     false,
+			wantSuccess: "true",
+			wantOutcome: "errors_corrected",
 		},
 		{
 			name:        "errors left uncorrected by fsck (exit 4)",
 			fsckErr:     testingexec.FakeExitError{Status: fsckErrorsUncorrected},
 			wantFsExist: true,
 			wantErr:     true,
+			wantSuccess: "false",
+			wantOutcome: "errors_uncorrected",
 		},
 		{
 			name:        "fsck exit status greater than uncorrected (exit 16)",
 			fsckErr:     testingexec.FakeExitError{Status: 16},
 			wantFsExist: false,
 			wantErr:     true,
+			wantSuccess: "false",
+			wantOutcome: "fatal_error",
 		},
 		{
 			// When fsck is unavailable we cannot detect a filesystem, so surface an error rather
@@ -182,11 +208,18 @@ func TestDetectAndRepairFilesystem(t *testing.T) {
 			fsckErr:     exec.ErrExecutableNotFound,
 			wantFsExist: false,
 			wantErr:     true,
+			wantSuccess: "false",
+			wantOutcome: "not_found",
 		},
 	}
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
+			fsckOptions := tc.fsckOptions
+			if fsckOptions == nil {
+				fsckOptions = []string{"-y"}
+			}
+
 			fakeSafeMounter, err := testmounter.NewFakeSafeMounter()
 			if err != nil {
 				t.Fatalf("NewFakeSafeMounter failed: %v", err)
@@ -194,15 +227,26 @@ func TestDetectAndRepairFilesystem(t *testing.T) {
 
 			fakeExec := fakeSafeMounter.Exec.(*testmounter.FakeSafeMounter)
 			fakeExec.CommandScript = []testingexec.FakeCommandAction{
-				fsckAction(t, []string{"-y", "/dev/sdz"}, tc.fsckErr, tc.fsckOutput),
+				fsckAction(t, append(append([]string(nil), fsckOptions...), "/dev/sdz"), tc.fsckErr, tc.fsckOutput),
 			}
 
-			isFilesystemExist, err := detectAndRepairFilesystem("/dev/sdz", []string{"-y"}, fakeSafeMounter)
+			wantOperation := "fsck_repair"
+			if reflect.DeepEqual(fsckOptions, []string{"-n"}) {
+				wantOperation = "fsck_read_only_check"
+			}
+			countBefore := getFormatAndMountOperationCount(t, wantOperation, tc.wantSuccess, "ext4", tc.wantOutcome)
+
+			isFilesystemExist, err := detectAndRepairFilesystem("/dev/sdz", "ext4", fsckOptions, fakeSafeMounter)
 			if (err != nil) != tc.wantErr {
 				t.Fatalf("detectAndRepairFilesystem error = %v, wantErr %v", err, tc.wantErr)
 			}
 			if isFilesystemExist != tc.wantFsExist {
 				t.Fatalf("isFilesystemExist = %v, want %v", isFilesystemExist, tc.wantFsExist)
+			}
+
+			countAfter := getFormatAndMountOperationCount(t, wantOperation, tc.wantSuccess, "ext4", tc.wantOutcome)
+			if got := countAfter - countBefore; got != 1 {
+				t.Errorf("format_and_mount_operations_total increment = %v, want 1", got)
 			}
 		})
 	}
@@ -291,7 +335,16 @@ func TestDetectFilesystemExistence(t *testing.T) {
 			}
 			fakeExec.CommandScript = script
 
-			isFilesystemExist, err := detectFilesystemExistence("/dev/sdz", fakeSafeMounter)
+			wantWipefsSuccess := "true"
+			if tc.wipefsErr != nil {
+				wantWipefsSuccess = "false"
+			}
+			wipefsCountBefore := 0.0
+			if tc.expectWipefs {
+				wipefsCountBefore = getFormatAndMountOperationCount(t, "wipefs_check", wantWipefsSuccess, "ext4", "")
+			}
+
+			isFilesystemExist, err := detectFilesystemExistence("/dev/sdz", "ext4", fakeSafeMounter)
 			if (err != nil) != tc.wantErr {
 				t.Fatalf("detectFilesystemExistence error = %v, wantErr %v", err, tc.wantErr)
 			}
@@ -305,6 +358,13 @@ func TestDetectFilesystemExistence(t *testing.T) {
 			}
 			if got := fakeExec.CommandCalls; got != wantCalls {
 				t.Fatalf("unexpected command count: got %d, want %d", got, wantCalls)
+			}
+
+			if tc.expectWipefs {
+				wipefsCountAfter := getFormatAndMountOperationCount(t, "wipefs_check", wantWipefsSuccess, "ext4", "")
+				if got := wipefsCountAfter - wipefsCountBefore; got != 1 {
+					t.Errorf("wipefs_check counter increment = %v, want 1", got)
+				}
 			}
 		})
 	}
@@ -416,6 +476,35 @@ func mkfsAction(t *testing.T) testingexec.FakeCommandAction {
 		}}
 		return testingexec.InitFakeCmd(fakeCmd, cmd, args...)
 	}
+}
+
+func getFormatAndMountOperationCount(t *testing.T, operation, success, fsType, fsckOutcome string) float64 {
+	t.Helper()
+
+	families, err := legacyregistry.DefaultGatherer.Gather()
+	if err != nil {
+		t.Fatalf("failed to gather metrics: %v", err)
+	}
+
+	for _, family := range families {
+		if family.GetName() != "azuredisk_csi_driver_format_and_mount_operations_total" {
+			continue
+		}
+		for _, metric := range family.GetMetric() {
+			labels := map[string]string{}
+			for _, label := range metric.GetLabel() {
+				labels[label.GetName()] = label.GetValue()
+			}
+			if labels["operation"] == operation &&
+				labels["success"] == success &&
+				labels[csiMetrics.FsType] == fsType &&
+				labels[csiMetrics.FsckOutcome] == fsckOutcome {
+				return metric.GetCounter().GetValue()
+			}
+		}
+	}
+
+	return 0
 }
 
 func TestRescanAllVolumes(t *testing.T) {
