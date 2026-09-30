@@ -420,7 +420,8 @@ func (d *Driver) NodeUnstageVolume(ctx context.Context, req *csi.NodeUnstageVolu
 	defer d.volumeLocks.Release(volumeID)
 
 	klog.V(2).Infof("NodeUnstageVolume: unmounting %s", stagingTargetPath)
-	if err := CleanupMountPoint(stagingTargetPath, d.mounter, true /*extensiveMountPointCheck*/); err != nil {
+	// Unmount and invalidate the backing device so a fast LUN/namespace reuse can't serve stale content.
+	if err := unmountAndInvalidateDevice(stagingTargetPath, d.ioHandler, d.mounter); err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to unmount staging target %q: %v", stagingTargetPath, err)
 	}
 	klog.V(2).Infof("NodeUnstageVolume: unmount %s successfully", stagingTargetPath)
