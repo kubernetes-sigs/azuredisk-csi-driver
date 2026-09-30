@@ -136,11 +136,12 @@ func TestFormatAndMountDoesNotReformatWhenAlreadyFormatted(t *testing.T) {
 // requiring root privileges or real loopback/block devices.
 func TestDetectAndRepairFilesystem(t *testing.T) {
 	tests := []struct {
-		name        string
-		fsckErr     error
-		fsckOutput  string
-		wantFsExist bool
-		wantErr     bool
+		name                    string
+		fsckErr                 error
+		fsckOutput              string
+		shouldIgnoreOperational bool
+		wantFsExist             bool
+		wantErr                 bool
 	}{
 		{
 			// fsck exits 0 on a healthy ext4/xfs filesystem (xfs check is effectively a no-op).
@@ -150,20 +151,23 @@ func TestDetectAndRepairFilesystem(t *testing.T) {
 			wantErr:     false,
 		},
 		{
-			// An operational error that reports an unreadable superblock identifies a fresh device.
+			// Operational errors are surfaced when the caller needs to distinguish an inconclusive
+			// fsck result from a confirmed filesystem.
 			name:        "operational error on a fresh block device",
 			fsckErr:     fsckExitError{status: fsckOperationalError, message: unreadableSuperblockError},
 			fsckOutput:  unreadableSuperblockError,
 			wantFsExist: false,
-			wantErr:     false,
+			wantErr:     true,
 		},
 		{
-			// Other operational errors are logged and treated as filesystem-present.
-			name:        "operational error with a filesystem present",
-			fsckErr:     testingexec.FakeExitError{Status: fsckOperationalError},
-			fsckOutput:  "fsck.ext4: unable to set superblock flags",
-			wantFsExist: true,
-			wantErr:     false,
+			// Repair callers may ignore operational errors and continue treating the filesystem as
+			// present.
+			name:                    "ignored operational error",
+			fsckErr:                 testingexec.FakeExitError{Status: fsckOperationalError},
+			fsckOutput:              "fsck.ext4: unable to set superblock flags",
+			shouldIgnoreOperational: true,
+			wantFsExist:             true,
+			wantErr:                 false,
 		},
 		{
 			name:        "errors corrected by fsck (exit 1)",
@@ -204,7 +208,7 @@ func TestDetectAndRepairFilesystem(t *testing.T) {
 				fsckAction(t, []string{"-y", "/dev/sdz"}, tc.fsckErr, tc.fsckOutput),
 			}
 
-			isFilesystemExist, err := detectAndRepairFilesystem("/dev/sdz", []string{"-y"}, fakeSafeMounter)
+			isFilesystemExist, err := detectAndRepairFilesystem("/dev/sdz", []string{"-y"}, fakeSafeMounter, tc.shouldIgnoreOperational)
 			if (err != nil) != tc.wantErr {
 				t.Fatalf("detectAndRepairFilesystem error = %v, wantErr %v", err, tc.wantErr)
 			}
@@ -259,12 +263,13 @@ func TestDetectFilesystemExistence(t *testing.T) {
 			wantErr:      false,
 		},
 		{
-			// Other operational errors are treated as evidence that a filesystem exists.
+			// Operational errors without the unreadable-superblock signature are surfaced because
+			// filesystem detection is inconclusive.
 			name:        "operational error unrelated to superblock",
 			fsckErr:     testingexec.FakeExitError{Status: fsckOperationalError},
 			fsckOutput:  "fsck.ext4: unable to set superblock flags",
-			wantFsExist: true,
-			wantErr:     false,
+			wantFsExist: false,
+			wantErr:     true,
 		},
 		{
 			// fsck reports a fresh device but wipefs itself fails: surface the wipefs error.
