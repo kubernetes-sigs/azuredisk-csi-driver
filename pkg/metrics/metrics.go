@@ -30,6 +30,8 @@ const (
 
 	// Label keys for metrics
 	StorageAccountType = "storage_account_type"
+	FsckOutcome        = "fsck_outcome"
+	FsType             = "fs_type"
 )
 
 var (
@@ -55,7 +57,7 @@ var (
 		[]string{"operation", "success", StorageAccountType},
 	)
 
-	operationTotal = metrics.NewCounterVec(
+	operationsTotal = metrics.NewCounterVec(
 		&metrics.CounterOpts{
 			Subsystem:      subSystem,
 			Name:           "operations_total",
@@ -64,12 +66,23 @@ var (
 		},
 		[]string{"operation", "success"},
 	)
+
+	formatAndMountOperationsTotal = metrics.NewCounterVec(
+		&metrics.CounterOpts{
+			Subsystem:      subSystem,
+			Name:           "format_and_mount_operations_total",
+			Help:           "Total number of Linux format and mount operations",
+			StabilityLevel: metrics.ALPHA,
+		},
+		[]string{"operation", "success", FsType, FsckOutcome},
+	)
 )
 
 func init() {
 	legacyregistry.MustRegister(operationDuration)
 	legacyregistry.MustRegister(operationDurationWithLabels)
-	legacyregistry.MustRegister(operationTotal)
+	legacyregistry.MustRegister(operationsTotal)
+	legacyregistry.MustRegister(formatAndMountOperationsTotal)
 }
 
 // CSIMetricContext represents the context for CSI operation metrics
@@ -143,12 +156,11 @@ func (mc *CSIMetricContext) Observe(success bool) {
 
 	// Always record basic metrics
 	operationDuration.WithLabelValues(mc.operation, successStr).Observe(duration)
-	operationTotal.WithLabelValues(mc.operation, successStr).Inc()
+	operationsTotal.WithLabelValues(mc.operation, successStr).Inc()
 
 	// Record detailed metrics if labels are present
 	if len(mc.labels) > 0 {
 		storageAccountType := mc.labels[StorageAccountType]
-
 		operationDurationWithLabels.WithLabelValues(
 			mc.operation,
 			successStr,
@@ -177,4 +189,26 @@ func (mc *CSIMetricContext) ObserveWithLabels(success bool, labelPairs ...string
 		mc.WithLabel(labelPairs[i], labelPairs[i+1])
 	}
 	mc.Observe(success)
+}
+
+// ObserveFormatAndMountWithLabels records a Linux format and mount operation in the
+// dedicated format and mount metrics without emitting a CSI operation metric.
+func (mc *CSIMetricContext) ObserveFormatAndMountWithLabels(success bool, labelPairs ...string) {
+	if len(labelPairs)%2 == 0 {
+		for i := 0; i < len(labelPairs); i += 2 {
+			mc.WithLabel(labelPairs[i], labelPairs[i+1])
+		}
+	}
+
+	successStr := "false"
+	if success {
+		successStr = "true"
+	}
+
+	formatAndMountOperationsTotal.WithLabelValues(
+		mc.operation,
+		successStr,
+		mc.labels[FsType],
+		mc.labels[FsckOutcome],
+	).Inc()
 }

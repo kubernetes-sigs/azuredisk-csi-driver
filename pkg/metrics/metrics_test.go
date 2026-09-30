@@ -66,7 +66,7 @@ func TestCSIMetricContext_WithLabel(t *testing.T) {
 func TestCSIMetricContext_Observe(t *testing.T) {
 	// Reset metrics before test
 	operationDuration.Reset()
-	operationTotal.Reset()
+	operationsTotal.Reset()
 
 	mc := NewCSIMetricContext("node_stage_volume")
 
@@ -107,7 +107,7 @@ func TestCSIMetricContext_Observe(t *testing.T) {
 
 func TestCSIMetricContext_ObserveWithFailure(t *testing.T) {
 	// Reset metrics before test
-	operationTotal.Reset()
+	operationsTotal.Reset()
 
 	mc := NewCSIMetricContext("node_publish_volume")
 
@@ -152,7 +152,7 @@ func TestCSIMetricContext_ObserveWithFailure(t *testing.T) {
 func TestCSIMetricContext_ObserveWithLabels(t *testing.T) {
 	// Reset metrics before test
 	operationDuration.Reset()
-	operationTotal.Reset()
+	operationsTotal.Reset()
 	operationDurationWithLabels.Reset()
 
 	mc := NewCSIMetricContext("controller_create_volume")
@@ -206,7 +206,7 @@ func TestCSIMetricContext_ObserveWithLabels(t *testing.T) {
 
 func TestCSIMetricContext_ObserveWithInvalidLabels(t *testing.T) {
 	// Reset metrics before test
-	operationTotal.Reset()
+	operationsTotal.Reset()
 	operationDurationWithLabels.Reset()
 
 	mc := NewCSIMetricContext("test_operation")
@@ -257,6 +257,59 @@ func TestCSIMetricContext_TimingAccuracy(t *testing.T) {
 	// But not too much more (allowing for some variance)
 	if duration > 100*time.Millisecond {
 		t.Errorf("expected duration to be less than 100ms, got %v", duration)
+	}
+}
+
+func TestCSIMetricContext_ObserveFormatAndMountWithLabels(t *testing.T) {
+	operationDuration.Reset()
+	operationDurationWithLabels.Reset()
+	operationsTotal.Reset()
+	formatAndMountOperationsTotal.Reset()
+
+	NewCSIMetricContext("fsck_repair").ObserveFormatAndMountWithLabels(
+		false,
+		FsType, "ext4",
+		FsckOutcome, "errors_uncorrected",
+	)
+
+	families, err := legacyregistry.DefaultGatherer.Gather()
+	if err != nil {
+		t.Fatalf("failed to gather metrics: %v", err)
+	}
+
+	foundCounter := false
+	for _, family := range families {
+		switch family.GetName() {
+		case "azuredisk_csi_driver_operations_total",
+			"azuredisk_csi_driver_operation_duration_seconds",
+			"azuredisk_csi_driver_operation_duration_seconds_labeled":
+			if len(family.GetMetric()) != 0 {
+				t.Errorf("format and mount observation unexpectedly recorded CSI operation metric %q", family.GetName())
+			}
+		}
+
+		if family.GetName() != "azuredisk_csi_driver_format_and_mount_operations_total" {
+			continue
+		}
+
+		for _, metric := range family.GetMetric() {
+			labels := map[string]string{}
+			for _, label := range metric.GetLabel() {
+				labels[label.GetName()] = label.GetValue()
+			}
+			if labels["operation"] != "fsck_repair" ||
+				labels["success"] != "false" ||
+				labels[FsType] != "ext4" ||
+				labels[FsckOutcome] != "errors_uncorrected" {
+				continue
+			}
+
+			foundCounter = metric.GetCounter().GetValue() == 1
+		}
+	}
+
+	if !foundCounter {
+		t.Error("expected format and mount operation counter")
 	}
 }
 
@@ -382,7 +435,7 @@ func TestCSIMetricContext_EmptyLabels(t *testing.T) {
 
 func BenchmarkCSIMetricContext_Observe(b *testing.B) {
 	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		mc := NewCSIMetricContext("benchmark_test")
 		mc.Observe(true)
 	}
@@ -390,7 +443,7 @@ func BenchmarkCSIMetricContext_Observe(b *testing.B) {
 
 func BenchmarkCSIMetricContext_ObserveWithLabels(b *testing.B) {
 	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		mc := NewCSIMetricContext("benchmark_test")
 		mc.ObserveWithLabels(true,
 			StorageAccountType, "Premium_LRS")
@@ -400,16 +453,16 @@ func BenchmarkCSIMetricContext_ObserveWithLabels(b *testing.B) {
 // Benchmark just the metrics recording portion (no duration calculation)
 func BenchmarkMetricsRecordingOnly(b *testing.B) {
 	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		// Directly record metrics without duration calculation
 		operationDuration.WithLabelValues("benchmark_test", "true").Observe(0.001) // Fixed small duration
-		operationTotal.WithLabelValues("benchmark_test", "true").Inc()
+		operationsTotal.WithLabelValues("benchmark_test", "true").Inc()
 	}
 }
 
 func BenchmarkCSIMetricContext_NewAndObserve(b *testing.B) {
 	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		mc := NewCSIMetricContext("benchmark_test")
 		mc.Observe(true)
 	}
