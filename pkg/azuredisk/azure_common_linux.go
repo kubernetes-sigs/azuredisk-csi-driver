@@ -26,11 +26,14 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"strconv"
 	"strings"
 	"time"
+	"unsafe"
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
+	"github.com/google/uuid"
 	"golang.org/x/sys/unix"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -43,6 +46,7 @@ import (
 
 const (
 	sysClassBlockPath = "/sys/class/block/"
+	sysClassNVMePath  = "/sys/class/nvme/"
 	// 'fsck' found errors and corrected them
 	fsckErrorsCorrected = 1
 	// 'fsck' found errors but exited without correcting them
@@ -51,11 +55,29 @@ const (
 	fsckOperationalError = 8
 	// FS_IOC_SHUTDOWN = _IOR('X', 125, __u32), amd64/arm64 encoding
 	fsIocShutdown = 0x8004587D
+	// NVME_IOCTL_ADMIN_CMD = _IOWR('N', 0x41, 72-byte nvme_passthru_cmd)
+	nvmeIoctlAdminCmd = 0xC0484E41
+	// Identify opcode for NVMe passthru
+	nvmeAdminIdentify = 0x06
+	// NVMe Identify Namespace CNS selector
+	nvmeIdentifyNamespace = 0x00
+	// NVMe Identify Namespace Descriptor List CNS selector
+	nvmeIdentifyNamespaceDescs = 0x03
+	// The offset of the NGUID in the NVMe Identify Namespace response of type struct nvme_id_ns
+	nvmeIdentifyNamespaceNGUIDOffset = 104
+	// NVMe Identify Namespace Descriptor types
+	nvmeNamespaceDescNGUID = 0x02
+	nvmeNamespaceDescUUID  = 0x03
+	// NVMe status code bit set when an operation should not be retried
+	nvmeStatusCodeDoNotRetry = 0x4000
 )
 
 // wholeDiskNameRegexp captures the whole-disk prefix of a SCSI (sd*) or NVMe (nvme*) device name,
 // dropping any partition suffix (sdc1 -> sdc, nvme0n1p1 -> nvme0n1); empty for anything else.
 var wholeDiskNameRegexp = regexp.MustCompile(`^sd[a-z]+|^nvme[0-9]+n[0-9]+`)
+
+// nvmeControllerRegexp captures the controller of an NVMe namespace device (nvme0n1 -> nvme0).
+var nvmeControllerRegexp = regexp.MustCompile(`^nvme[0-9]+`)
 
 // exclude those used by azure as resource and OS root in /dev/disk/azure, /dev/disk/azure/scsi0
 // "/dev/disk/azure/scsi0" dir is populated in Standard_DC4s/DC2s on Ubuntu 18.04
@@ -578,6 +600,124 @@ func (d *Driver) GetVolumeStats(_ context.Context, m *mount.SafeFormatAndMount, 
 	}, nil
 }
 
+// verifyNVMeNamespaceIdentity guards against a reused NVMe namespace serving stale content: it compares
+// the live controller UUID/NGUID via NVMe passthru with the kernel's cached sysfs value, and on
+// mismatch rescans and fails so k8s retries with a re-enumerated device. No-op for non-NVMe disks.
+func verifyNVMeNamespaceIdentity(source, lun string, io azureutils.IOHandler) error {
+	devicePath, err := filepath.EvalSymlinks(source)
+	if err != nil {
+		devicePath = source
+	}
+	blockName := filepath.Base(devicePath)
+	controller := nvmeControllerRegexp.FindString(blockName)
+	if controller == "" {
+		return nil // not an NVMe namespace
+	}
+	cachedID := getCachedNVMeID(io, blockName)
+	lunInt, err := azureutils.GetDiskLUN(lun)
+	if err != nil {
+		return fmt.Errorf("verifyNVMeNamespaceIdentity - failed to parse lun %q for %s: %v", lun, blockName, err)
+	}
+	nsid := uint32(lunInt) + 2 // Azure NVMe data disks use NSID = LUN + 2 (see https://github.com/Azure/azure-vm-utils/blob/v0.7.0/doc/disk-identification.md?plain=1#L90)
+	liveID, err := getLiveNVMeID(controller, nsid)
+	if err != nil {
+		return fmt.Errorf("verifyNVMeNamespaceIdentity - failed to read live identity for %s: %v", blockName, err)
+	}
+	if cachedID == liveID {
+		return nil // kernel's cached identity is current
+	}
+
+	klog.Errorf("verifyNVMeNamespaceIdentity - namespace identity mismatch on %s (kernel %s, controller %s); rescanning %s", blockName, cachedID, liveID, controller)
+	if err := io.WriteFile(filepath.Join(sysClassNVMePath, controller, "rescan_controller"), []byte("1"), 0200); err != nil {
+		klog.Errorf("verifyNVMeNamespaceIdentity - rescan of %s failed: %v", controller, err)
+	}
+	return fmt.Errorf("NVMe namespace %s on %s is stale; rescan issued, retry staging", blockName, controller)
+}
+
+// getCachedNVMeID returns the kernel's cached namespace identifier (NGUID preferred, else UUID) from
+// sysfs, or uuid.Nil if none.
+func getCachedNVMeID(io azureutils.IOHandler, blockName string) uuid.UUID {
+	for _, attr := range []string{"nguid", "uuid"} {
+		data, err := io.ReadFile(filepath.Join(sysClassBlockPath, blockName, attr))
+		if err != nil {
+			continue
+		}
+		if id, err := uuid.Parse(strings.TrimSpace(string(data))); err == nil && id != uuid.Nil {
+			return id
+		}
+	}
+	return uuid.Nil
+}
+
+// getLiveNVMeID returns the namespace's NGUID (preferred) or UUID via an Identify admin passthru to
+// the controller, reflecting the live identity rather than the kernel's cache; uuid.Nil if absent.
+// A package var so tests can stub the live read.
+var getLiveNVMeID = func(controller string, nsid uint32) (uuid.UUID, error) {
+	fd, err := unix.Open(filepath.Join("/dev", controller), unix.O_RDONLY|unix.O_CLOEXEC, 0)
+	if err != nil {
+		return uuid.Nil, fmt.Errorf("failed to open /dev/%s: %v", controller, err)
+	}
+	defer unix.Close(fd)
+
+	buf := make([]byte, 4096)
+	cmd := nvmePassthruCmd{
+		opcode:  nvmeAdminIdentify,
+		nsid:    nsid,
+		addr:    uint64(uintptr(unsafe.Pointer(&buf[0]))),
+		dataLen: uint32(len(buf)),
+		cdw10:   nvmeIdentifyNamespaceDescs,
+	}
+	status, _, errno := unix.Syscall(unix.SYS_IOCTL, uintptr(fd), uintptr(nvmeIoctlAdminCmd), uintptr(unsafe.Pointer(&cmd)))
+	runtime.KeepAlive(buf)
+	if errno != 0 || status != 0 {
+		if errno == 0 && status&nvmeStatusCodeDoNotRetry != 0 {
+			klog.Warningf("nvme identify namespace descriptors ioctl on /dev/%s nsid %d failed with non-retriable status %v", controller, nsid, status)
+		} else {
+			return uuid.Nil, fmt.Errorf("nvme identify namespace descriptors ioctl on /dev/%s nsid %d failed with errno %v and status %v", controller, nsid, errno, status)
+		}
+	}
+
+	var uid uuid.UUID
+
+	if status == 0 {
+		for buf := buf; len(buf) >= 4; {
+			nidt, nidl := buf[0], int(buf[1])
+			if nidl == 0 || 4+nidl > len(buf) {
+				break
+			}
+			if nidt == nvmeNamespaceDescNGUID || nidt == nvmeNamespaceDescUUID {
+				id, err := uuid.FromBytes(buf[4 : 4+nidl])
+				if err == nil && id != uuid.Nil {
+					uid = id
+					if nidt == nvmeNamespaceDescNGUID {
+						return uid, nil // NGUID preferred over UUID
+					}
+				}
+			}
+			buf = buf[4+nidl:]
+		}
+	}
+
+	cmd.cdw10 = nvmeIdentifyNamespace
+	status, _, errno = unix.Syscall(unix.SYS_IOCTL, uintptr(fd), uintptr(nvmeIoctlAdminCmd), uintptr(unsafe.Pointer(&cmd)))
+	runtime.KeepAlive(buf)
+	if errno != 0 || status != 0 {
+		if errno == 0 && status&nvmeStatusCodeDoNotRetry != 0 {
+			klog.Errorf("nvme identify namespace ioctl on /dev/%s nsid %d failed with non-retriable status %v", controller, nsid, status)
+		} else {
+			return uuid.Nil, fmt.Errorf("nvme identify namespace ioctl on /dev/%s nsid %d failed with errno %v and status %v", controller, nsid, errno, status)
+		}
+	}
+	if status == 0 {
+		id, err := uuid.FromBytes(buf[nvmeIdentifyNamespaceNGUIDOffset : nvmeIdentifyNamespaceNGUIDOffset+16])
+		if err == nil && id != uuid.Nil {
+			uid = id
+		}
+	}
+
+	return uid, nil
+}
+
 // unmountAndInvalidateDevice shuts down the fs, unmounts the staging path and invalidates the backing device's caches
 // so any pending changes are flushed, mitigating cache inconsistencies especially with SCSI devices.
 // The fs shutdown and device cache invalidation are best-effort; only an unmount error is returned.
@@ -618,7 +758,7 @@ func unmountAndInvalidateDevice(stagingTargetPath string, io azureutils.IOHandle
 	}
 
 	// Delete SCSI devices so the next NodeStageVolume sees a fresh one. NVMe has no per-disk
-	// equivalent and will be handled by an identity check in NodeStageVolume instead (ToDo).
+	// equivalent and is handled by the identity check in NodeStageVolume instead.
 	if strings.HasPrefix(wholeDiskName, "sd") {
 		deletePath := filepath.Join(sysClassBlockPath, wholeDiskName, "device", "delete")
 		if err := io.WriteFile(deletePath, []byte("1"), 0200); err != nil {
@@ -675,4 +815,26 @@ func shutdownFilesystem(stagingTargetPath string) error {
 		return fmt.Errorf("failed to shut down filesystem at %s: %w", stagingTargetPath, err)
 	}
 	return nil
+}
+
+// nvmePassthruCmd mirrors the NVME_IOCTL_ADMIN_CMD argument of type struct nvme_passthru_cmd.
+type nvmePassthruCmd struct {
+	opcode      uint8
+	flags       uint8
+	rsvd1       uint16
+	nsid        uint32
+	cdw2        uint32
+	cdw3        uint32
+	metadata    uint64
+	addr        uint64
+	metadataLen uint32
+	dataLen     uint32
+	cdw10       uint32
+	cdw11       uint32
+	cdw12       uint32
+	cdw13       uint32
+	cdw14       uint32
+	cdw15       uint32
+	timeoutMs   uint32
+	result      uint32
 }

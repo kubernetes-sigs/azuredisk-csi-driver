@@ -27,6 +27,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
 	"k8s.io/utils/exec"
 	testingexec "k8s.io/utils/exec/testing"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
@@ -428,6 +429,50 @@ func TestRescanAllVolumes(t *testing.T) {
 	}
 }
 
+// fakeNVMeIOHandler is a configurable azureutils.IOHandler for the device-freshness tests: ReadFile
+// is served from files, and WriteFile calls are recorded in written.
+type fakeNVMeIOHandler struct {
+	files   map[string]string
+	written map[string][]byte
+}
+
+func (h *fakeNVMeIOHandler) ReadFile(name string) ([]byte, error) {
+	if data, ok := h.files[name]; ok {
+		return []byte(data), nil
+	}
+	return nil, os.ErrNotExist
+}
+
+func (h *fakeNVMeIOHandler) WriteFile(name string, data []byte, _ os.FileMode) error {
+	if h.written == nil {
+		h.written = map[string][]byte{}
+	}
+	h.written[name] = data
+	return nil
+}
+
+func (h *fakeNVMeIOHandler) ReadDir(string) ([]os.DirEntry, error) { return nil, nil }
+func (h *fakeNVMeIOHandler) Readlink(string) (string, error)       { return "", nil }
+
+func TestNVMeControllerRegexp(t *testing.T) {
+	tests := []struct {
+		device string
+		want   string
+	}{
+		{"nvme0n1", "nvme0"},
+		{"nvme12n3", "nvme12"},
+		{"nvme0n1p1", "nvme0"},
+		{"sdc", ""},
+		{"sdc1", ""},
+		{"", ""},
+	}
+	for _, tc := range tests {
+		if got := nvmeControllerRegexp.FindString(tc.device); got != tc.want {
+			t.Errorf("nvmeControllerRegexp.FindString(%q) = %q, want %q", tc.device, got, tc.want)
+		}
+	}
+}
+
 func TestWholeDiskNameRegexp(t *testing.T) {
 	tests := []struct {
 		device string
@@ -447,6 +492,108 @@ func TestWholeDiskNameRegexp(t *testing.T) {
 		if got := wholeDiskNameRegexp.FindString(tc.device); got != tc.want {
 			t.Errorf("wholeDiskNameRegexp.FindString(%q) = %q, want %q", tc.device, got, tc.want)
 		}
+	}
+}
+
+func TestGetCachedNVMeID(t *testing.T) {
+	const blockName = "nvme0n1"
+	nguidPath := filepath.Join(sysClassBlockPath, blockName, "nguid")
+	uuidPath := filepath.Join(sysClassBlockPath, blockName, "uuid")
+	nguid := "eec2b1a5-9f0e-4d3c-8b2a-112233445566"
+	diskUUID := "11112222-3333-4444-5555-666677778888"
+
+	tests := []struct {
+		name  string
+		files map[string]string
+		want  uuid.UUID
+	}{
+		{
+			name:  "nguid is preferred over uuid",
+			files: map[string]string{nguidPath: nguid + "\n", uuidPath: diskUUID + "\n"},
+			want:  uuid.MustParse(nguid),
+		},
+		{
+			name:  "falls back to uuid when nguid is absent",
+			files: map[string]string{uuidPath: diskUUID + "\n"},
+			want:  uuid.MustParse(diskUUID),
+		},
+		{
+			name:  "falls back to uuid when nguid is all-zero",
+			files: map[string]string{nguidPath: uuid.Nil.String(), uuidPath: diskUUID},
+			want:  uuid.MustParse(diskUUID),
+		},
+		{
+			name:  "skips an unparsable nguid",
+			files: map[string]string{nguidPath: "not-a-uuid", uuidPath: diskUUID},
+			want:  uuid.MustParse(diskUUID),
+		},
+		{
+			name:  "returns Nil when neither is present",
+			files: map[string]string{},
+			want:  uuid.Nil,
+		},
+		{
+			name:  "returns Nil when both are all-zero",
+			files: map[string]string{nguidPath: uuid.Nil.String(), uuidPath: uuid.Nil.String()},
+			want:  uuid.Nil,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := getCachedNVMeID(&fakeNVMeIOHandler{files: tc.files}, blockName); got != tc.want {
+				t.Fatalf("getCachedNVMeID = %v, want %v", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestVerifyNVMeNamespaceIdentity(t *testing.T) {
+	const (
+		blockName  = "nvme0n1"
+		controller = "nvme0"
+		cachedID   = "11112222-3333-4444-5555-666677778888"
+		otherID    = "99998888-7777-6666-5555-444433332211"
+	)
+	nvmeSource := "/dev/" + blockName
+	cached := map[string]string{filepath.Join(sysClassBlockPath, blockName, "nguid"): cachedID}
+	rescanPath := filepath.Join(sysClassNVMePath, controller, "rescan_controller")
+
+	tests := []struct {
+		name       string
+		source     string
+		lun        string
+		files      map[string]string
+		live       uuid.UUID
+		liveErr    error
+		wantErr    bool
+		wantRescan bool
+	}{
+		{name: "non-NVMe device is skipped", source: "/dev/sdc", lun: "0"},
+		{name: "both ids absent is a no-op", source: nvmeSource, lun: "0"},
+		{name: "unparsable lun fails", source: nvmeSource, lun: "not-a-lun", files: cached, wantErr: true},
+		{name: "live read error fails closed", source: nvmeSource, lun: "0", files: cached, liveErr: errors.New("ioctl failed"), wantErr: true},
+		{name: "match is a no-op", source: nvmeSource, lun: "0", files: cached, live: uuid.MustParse(cachedID)},
+		{name: "mismatch rescans and fails", source: nvmeSource, lun: "0", files: cached, live: uuid.MustParse(otherID), wantErr: true, wantRescan: true},
+		{name: "cached present but live absent is a mismatch", source: nvmeSource, lun: "0", files: cached, live: uuid.Nil, wantErr: true, wantRescan: true},
+		{name: "cached absent but live present is a mismatch", source: nvmeSource, lun: "0", live: uuid.MustParse(otherID), wantErr: true, wantRescan: true},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			defer func(orig func(string, uint32) (uuid.UUID, error)) { getLiveNVMeID = orig }(getLiveNVMeID)
+			getLiveNVMeID = func(string, uint32) (uuid.UUID, error) { return tc.live, tc.liveErr }
+
+			io := &fakeNVMeIOHandler{files: tc.files}
+			err := verifyNVMeNamespaceIdentity(tc.source, tc.lun, io)
+
+			if (err != nil) != tc.wantErr {
+				t.Fatalf("verifyNVMeNamespaceIdentity error = %v, wantErr %v", err, tc.wantErr)
+			}
+			if _, rescanned := io.written[rescanPath]; rescanned != tc.wantRescan {
+				t.Fatalf("rescan issued = %v, want %v (writes: %v)", rescanned, tc.wantRescan, io.written)
+			}
+		})
 	}
 }
 
