@@ -583,6 +583,7 @@ func (d *Driver) NodePublishVolume(ctx context.Context, req *csi.NodePublishVolu
 		if kataPod, err = kataGetMountPod(ctx, d.kubeClient, params); err != nil {
 			klog.Warningf("NodePublishVolume: failed to probe pod for Kata mount for %s, falling back to regular mount: %v", target, err)
 			// Don't return, fall back to regular handling.
+			// TODO: Return an error when Kata V2 is GA?
 		}
 	}
 

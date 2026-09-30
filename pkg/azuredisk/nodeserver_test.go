@@ -539,9 +539,7 @@ func TestKataVolumeStatsAndResizeUnimplemented(t *testing.T) {
 	cntl := gomock.NewController(t)
 	d, _ := NewFakeDriver(cntl)
 	d.(*fakeDriver).enableKataMount = true
-	if !d.(*fakeDriver).kataSupported() {
-		t.Skip("Kata mount paths are disabled in this release")
-	}
+	d.(*fakeDriver).isKataNode = true
 	target, err := testutil.GetWorkDirPath("direct_volume_operation_target")
 	require.NoError(t, err)
 	fallbackStatsTarget, err := testutil.GetWorkDirPath("direct_volume_stats_probe_error_target")
@@ -2061,7 +2059,7 @@ func TestNodePublishVolume(t *testing.T) {
 		&nodev1.RuntimeClass{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:        kataRuntimeClassName,
-				Annotations: map[string]string{kataRuntimeClassAnnotationKey: kataRuntimeClassAnnotationValue},
+				Annotations: map[string]string{kataAnnotationKey: kataAnnotationValue},
 			},
 			Handler: "kata",
 		},
@@ -2080,10 +2078,8 @@ func TestNodePublishVolume(t *testing.T) {
 	}
 
 	for _, test := range tests {
-		if test.enableKataMount && !d.(*fakeDriver).kataSupported() {
-			continue // Kata mount paths are disabled in this release.
-		}
 		d.(*fakeDriver).enableKataMount = test.enableKataMount
+		d.(*fakeDriver).isKataNode = true
 		d.(*fakeDriver).kubeClient.(*fake.Clientset).ClearActions()
 		addedTarget = ""
 		addedMountInfo = directvolume.MountInfo{}
@@ -2256,9 +2252,7 @@ func TestNodePublishVolumeKataFSType(t *testing.T) {
 			d, err := NewFakeDriver(gomock.NewController(t))
 			require.NoError(t, err)
 			d.(*fakeDriver).enableKataMount = true
-			if !d.(*fakeDriver).kataSupported() {
-				t.Skip("Kata mount paths are disabled in this release")
-			}
+			d.(*fakeDriver).isKataNode = true
 			fakeMounter, err := mounter.NewFakeSafeMounter()
 			require.NoError(t, err)
 			d.setMounter(fakeMounter)
@@ -2271,7 +2265,7 @@ func TestNodePublishVolumeKataFSType(t *testing.T) {
 				&nodev1.RuntimeClass{
 					ObjectMeta: metav1.ObjectMeta{
 						Name:        runtimeClassName,
-						Annotations: map[string]string{kataRuntimeClassAnnotationKey: kataRuntimeClassAnnotationValue},
+						Annotations: map[string]string{kataAnnotationKey: kataAnnotationValue},
 					},
 					Handler: "kata",
 				},
@@ -2457,10 +2451,8 @@ func TestNodeUnpublishVolume(t *testing.T) {
 	}
 
 	for _, test := range tests {
-		if test.enableKataMount && !d.(*fakeDriver).kataSupported() {
-			continue // Kata mount paths are disabled in this release.
-		}
 		d.(*fakeDriver).enableKataMount = test.enableKataMount
+		d.(*fakeDriver).isKataNode = true
 		removedTarget = ""
 		if test.setup != nil {
 			test.setup()
@@ -2942,9 +2934,7 @@ func TestNodePublishVolumeKataIdempotent(t *testing.T) {
 	}
 	d, _ := NewFakeDriver(cntl)
 	d.(*fakeDriver).enableKataMount = true
-	if !d.(*fakeDriver).kataSupported() {
-		t.Skip("Kata mount paths are disabled in this release")
-	}
+	d.(*fakeDriver).isKataNode = true
 	fakeMounter, err := mounter.NewFakeSafeMounter()
 	assert.NoError(t, err)
 	d.setMounter(fakeMounter)
@@ -2957,7 +2947,7 @@ func TestNodePublishVolumeKataIdempotent(t *testing.T) {
 		&nodev1.RuntimeClass{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:        runtimeClassName,
-				Annotations: map[string]string{kataRuntimeClassAnnotationKey: kataRuntimeClassAnnotationValue},
+				Annotations: map[string]string{kataAnnotationKey: kataAnnotationValue},
 			},
 			Handler: "kata",
 		},

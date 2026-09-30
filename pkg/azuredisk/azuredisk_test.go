@@ -107,7 +107,7 @@ func TestNewDriverKataMountFeatureGate(t *testing.T) {
 		require.NoError(t, featureGates.SetFromMap(map[string]bool{string(KataMount): true}))
 
 		d := NewDriver(&DriverOptions{
-			NodeID:                consts.DefaultDriverName,
+			NodeID:                "",
 			DriverName:            consts.DefaultDriverName,
 			Kubeconfig:            "",
 			AllowEmptyCloudConfig: true,
@@ -115,6 +115,8 @@ func TestNewDriverKataMountFeatureGate(t *testing.T) {
 		})
 		require.NotNil(t, d)
 		assert.True(t, d.enableKataMount)
+		assert.False(t, d.isKataNode)
+		assert.False(t, d.kataSupported())
 	})
 }
 
