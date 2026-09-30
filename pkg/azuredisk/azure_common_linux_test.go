@@ -230,6 +230,12 @@ func TestDetectAndRepairFilesystem(t *testing.T) {
 				fsckAction(t, append(append([]string(nil), fsckOptions...), "/dev/sdz"), tc.fsckErr, tc.fsckOutput),
 			}
 
+			wantOperation := "fsck_repair"
+			if reflect.DeepEqual(fsckOptions, []string{"-n"}) {
+				wantOperation = "fsck_read_only_check"
+			}
+			countBefore := getFormatAndMountOperationCount(t, wantOperation, tc.wantSuccess, "ext4", tc.wantOutcome)
+
 			isFilesystemExist, err := detectAndRepairFilesystem("/dev/sdz", "ext4", fsckOptions, fakeSafeMounter)
 			if (err != nil) != tc.wantErr {
 				t.Fatalf("detectAndRepairFilesystem error = %v, wantErr %v", err, tc.wantErr)
@@ -238,40 +244,9 @@ func TestDetectAndRepairFilesystem(t *testing.T) {
 				t.Fatalf("isFilesystemExist = %v, want %v", isFilesystemExist, tc.wantFsExist)
 			}
 
-			families, err := legacyregistry.DefaultGatherer.Gather()
-			if err != nil {
-				t.Fatalf("failed to gather metrics: %v", err)
-			}
-
-			wantOperation := "fsck_repair"
-			if reflect.DeepEqual(fsckOptions, []string{"-n"}) {
-				wantOperation = "fsck_read_only_check"
-			}
-
-			foundCounter := false
-			for _, family := range families {
-				for _, metric := range family.GetMetric() {
-					labels := map[string]string{}
-					for _, label := range metric.GetLabel() {
-						labels[label.GetName()] = label.GetValue()
-					}
-					if labels["operation"] != wantOperation ||
-						labels["success"] != tc.wantSuccess ||
-						labels[csiMetrics.FsckOutcome] != tc.wantOutcome ||
-						labels[csiMetrics.FsType] != "ext4" {
-						continue
-					}
-
-					if family.GetName() == "azuredisk_csi_driver_format_and_mount_operations_total" {
-						foundCounter = true
-						if metric.GetCounter().GetValue() < 1 {
-							t.Errorf("format_and_mount_operations_total = %v, want at least 1", metric.GetCounter().GetValue())
-						}
-					}
-				}
-			}
-			if !foundCounter {
-				t.Error("format_and_mount_operations_total metric not found")
+			countAfter := getFormatAndMountOperationCount(t, wantOperation, tc.wantSuccess, "ext4", tc.wantOutcome)
+			if got := countAfter - countBefore; got != 1 {
+				t.Errorf("format_and_mount_operations_total increment = %v, want 1", got)
 			}
 		})
 	}
@@ -360,6 +335,15 @@ func TestDetectFilesystemExistence(t *testing.T) {
 			}
 			fakeExec.CommandScript = script
 
+			wantWipefsSuccess := "true"
+			if tc.wipefsErr != nil {
+				wantWipefsSuccess = "false"
+			}
+			wipefsCountBefore := 0.0
+			if tc.expectWipefs {
+				wipefsCountBefore = getFormatAndMountOperationCount(t, "wipefs_check", wantWipefsSuccess, "ext4", "")
+			}
+
 			isFilesystemExist, err := detectFilesystemExistence("/dev/sdz", "ext4", fakeSafeMounter)
 			if (err != nil) != tc.wantErr {
 				t.Fatalf("detectFilesystemExistence error = %v, wantErr %v", err, tc.wantErr)
@@ -377,37 +361,9 @@ func TestDetectFilesystemExistence(t *testing.T) {
 			}
 
 			if tc.expectWipefs {
-				families, err := legacyregistry.DefaultGatherer.Gather()
-				if err != nil {
-					t.Fatalf("failed to gather metrics: %v", err)
-				}
-
-				wantSuccess := "true"
-				if tc.wipefsErr != nil {
-					wantSuccess = "false"
-				}
-
-				foundCounter := false
-				for _, family := range families {
-					if family.GetName() != "azuredisk_csi_driver_format_and_mount_operations_total" {
-						continue
-					}
-					for _, metric := range family.GetMetric() {
-						labels := map[string]string{}
-						for _, label := range metric.GetLabel() {
-							labels[label.GetName()] = label.GetValue()
-						}
-						if labels["operation"] == "wipefs_check" &&
-							labels["success"] == wantSuccess &&
-							labels[csiMetrics.FsType] == "ext4" &&
-							labels[csiMetrics.FsckOutcome] == "" &&
-							metric.GetCounter().GetValue() >= 1 {
-							foundCounter = true
-						}
-					}
-				}
-				if !foundCounter {
-					t.Error("wipefs_check metric not found")
+				wipefsCountAfter := getFormatAndMountOperationCount(t, "wipefs_check", wantWipefsSuccess, "ext4", "")
+				if got := wipefsCountAfter - wipefsCountBefore; got != 1 {
+					t.Errorf("wipefs_check counter increment = %v, want 1", got)
 				}
 			}
 		})
@@ -520,6 +476,35 @@ func mkfsAction(t *testing.T) testingexec.FakeCommandAction {
 		}}
 		return testingexec.InitFakeCmd(fakeCmd, cmd, args...)
 	}
+}
+
+func getFormatAndMountOperationCount(t *testing.T, operation, success, fsType, fsckOutcome string) float64 {
+	t.Helper()
+
+	families, err := legacyregistry.DefaultGatherer.Gather()
+	if err != nil {
+		t.Fatalf("failed to gather metrics: %v", err)
+	}
+
+	for _, family := range families {
+		if family.GetName() != "azuredisk_csi_driver_format_and_mount_operations_total" {
+			continue
+		}
+		for _, metric := range family.GetMetric() {
+			labels := map[string]string{}
+			for _, label := range metric.GetLabel() {
+				labels[label.GetName()] = label.GetValue()
+			}
+			if labels["operation"] == operation &&
+				labels["success"] == success &&
+				labels[csiMetrics.FsType] == fsType &&
+				labels[csiMetrics.FsckOutcome] == fsckOutcome {
+				return metric.GetCounter().GetValue()
+			}
+		}
+	}
+
+	return 0
 }
 
 func TestRescanAllVolumes(t *testing.T) {
