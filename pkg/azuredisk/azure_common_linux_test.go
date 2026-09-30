@@ -20,6 +20,9 @@ limitations under the License.
 package azuredisk
 
 import (
+	"errors"
+	"os"
+	"path/filepath"
 	"reflect"
 	"testing"
 	"time"
@@ -423,4 +426,50 @@ func TestRescanAllVolumes(t *testing.T) {
 	if err != nil {
 		t.Errorf("rescanAllVolumes failed with error: %v", err)
 	}
+}
+
+func TestWholeDiskNameRegexp(t *testing.T) {
+	tests := []struct {
+		device string
+		want   string
+	}{
+		{"sdc", "sdc"},
+		{"sdc1", "sdc"},
+		{"sdaa", "sdaa"},
+		{"sdaa12", "sdaa"},
+		{"nvme0n1", "nvme0n1"},
+		{"nvme0n1p1", "nvme0n1"},
+		{"nvme12n3", "nvme12n3"},
+		{"dm-0", ""},
+		{"", ""},
+	}
+	for _, tc := range tests {
+		if got := wholeDiskNameRegexp.FindString(tc.device); got != tc.want {
+			t.Errorf("wholeDiskNameRegexp.FindString(%q) = %q, want %q", tc.device, got, tc.want)
+		}
+	}
+}
+
+func TestShutdownFilesystemGuard(t *testing.T) {
+	t.Run("non-mountpoint reports os.ErrNotExist", func(t *testing.T) {
+		if err := shutdownFilesystem(t.TempDir()); !errors.Is(err, os.ErrNotExist) {
+			t.Fatalf("shutdownFilesystem on a non-mountpoint = %v, want an error wrapping os.ErrNotExist", err)
+		}
+	})
+
+	t.Run("nonexistent path reports os.ErrNotExist", func(t *testing.T) {
+		if err := shutdownFilesystem(filepath.Join(t.TempDir(), "does-not-exist")); !errors.Is(err, os.ErrNotExist) {
+			t.Fatalf("shutdownFilesystem on a nonexistent path = %v, want an error wrapping os.ErrNotExist", err)
+		}
+	})
+
+	t.Run("non-directory errors without os.ErrNotExist", func(t *testing.T) {
+		file := filepath.Join(t.TempDir(), "file")
+		if err := os.WriteFile(file, []byte("x"), 0o600); err != nil {
+			t.Fatalf("failed to create temp file: %v", err)
+		}
+		if err := shutdownFilesystem(file); err == nil || errors.Is(err, os.ErrNotExist) {
+			t.Fatalf("shutdownFilesystem on a non-directory = %v, want a non-nil error that is not os.ErrNotExist", err)
+		}
+	})
 }
