@@ -131,17 +131,17 @@ func TestFormatAndMountDoesNotReformatWhenAlreadyFormatted(t *testing.T) {
 	}
 }
 
-// TestDetectAndRepairFilesystem verifies detectAndRepairFilesystem's handling of the various fsck
+// TestDetectOrRepairFilesystem verifies detectOrRepairFilesystem's handling of the various fsck
 // exit codes using a fake mounter, which lets us deterministically simulate each outcome without
 // requiring root privileges or real loopback/block devices.
-func TestDetectAndRepairFilesystem(t *testing.T) {
+func TestDetectOrRepairFilesystem(t *testing.T) {
 	tests := []struct {
-		name                    string
-		fsckErr                 error
-		fsckOutput              string
-		shouldIgnoreOperational bool
-		wantFsExist             bool
-		wantErr                 bool
+		name        string
+		fsckOptions []string
+		fsckErr     error
+		fsckOutput  string
+		wantFsExist bool
+		wantErr     bool
 	}{
 		{
 			// fsck exits 0 on a healthy ext4/xfs filesystem (xfs check is effectively a no-op).
@@ -151,32 +151,35 @@ func TestDetectAndRepairFilesystem(t *testing.T) {
 			wantErr:     false,
 		},
 		{
-			// Operational errors are surfaced when the caller needs to distinguish an inconclusive
-			// fsck result from a confirmed filesystem.
+			// fsck exits 8 (operational error) on a fresh block device: its output reports that the
+			// superblock could not be read. detectOrRepairFilesystem always surfaces an operational
+			// error; interpreting that output as "no filesystem signature" is the caller's job (see
+			// TestDetectFilesystemExistence).
 			name:        "operational error on a fresh block device",
-			fsckErr:     fsckExitError{status: fsckOperationalError, message: unreadableSuperblockError},
-			fsckOutput:  unreadableSuperblockError,
+			fsckErr:     testingexec.FakeExitError{Status: fsckOperationalError},
+			fsckOutput:  "fsck.ext4: Superblock could not be read or does not describe a valid ext2/ext3/ext4 filesystem",
 			wantFsExist: false,
 			wantErr:     true,
 		},
 		{
-			// Repair callers may ignore operational errors and continue treating the filesystem as
-			// present.
-			name:                    "ignored operational error",
-			fsckErr:                 testingexec.FakeExitError{Status: fsckOperationalError},
-			fsckOutput:              "fsck.ext4: unable to set superblock flags",
-			shouldIgnoreOperational: true,
-			wantFsExist:             true,
-			wantErr:                 false,
+			// fsck exits 8 (operational error) without the "no filesystem" signature: we cannot rule
+			// out a filesystem, so surface the error instead of assuming a fresh device.
+			name:        "operational error with a filesystem present",
+			fsckErr:     testingexec.FakeExitError{Status: fsckOperationalError},
+			fsckOutput:  "fsck.ext4: unable to set superblock flags",
+			wantFsExist: false,
+			wantErr:     true,
 		},
 		{
 			name:        "errors corrected by fsck (exit 1)",
+			fsckOptions: []string{"-a"},
 			fsckErr:     testingexec.FakeExitError{Status: fsckErrorsCorrected},
 			wantFsExist: true,
 			wantErr:     false,
 		},
 		{
 			name:        "errors left uncorrected by fsck (exit 4)",
+			fsckOptions: []string{"-a"},
 			fsckErr:     testingexec.FakeExitError{Status: fsckErrorsUncorrected},
 			wantFsExist: true,
 			wantErr:     true,
@@ -184,15 +187,102 @@ func TestDetectAndRepairFilesystem(t *testing.T) {
 		{
 			name:        "fsck exit status greater than uncorrected (exit 16)",
 			fsckErr:     testingexec.FakeExitError{Status: 16},
-			wantFsExist: true,
-			wantErr:     false,
+			wantFsExist: false,
+			wantErr:     true,
 		},
 		{
-			// A missing fsck executable is logged and treated as filesystem-present.
+			// When fsck is unavailable we cannot detect a filesystem, so surface an error rather
+			// than making an assumption about the device's contents.
 			name:        "fsck binary not found",
 			fsckErr:     exec.ErrExecutableNotFound,
-			wantFsExist: true,
-			wantErr:     false,
+			wantFsExist: false,
+			wantErr:     true,
+		},
+		{
+			name:        "repair mode surfaces operational error",
+			fsckOptions: []string{"-a"},
+			fsckErr:     testingexec.FakeExitError{Status: fsckOperationalError},
+			fsckOutput:  "fsck.ext4: unable to continue",
+			wantFsExist: false,
+			wantErr:     true,
+		},
+		{
+			name:        "repair mode surfaces exit status greater than uncorrected",
+			fsckOptions: []string{"-a"},
+			fsckErr:     testingexec.FakeExitError{Status: 16},
+			fsckOutput:  "fsck.ext4: usage error",
+			wantFsExist: false,
+			wantErr:     true,
+		},
+		{
+			name:        "repair mode surfaces missing fsck binary",
+			fsckOptions: []string{"-a"},
+			fsckErr:     exec.ErrExecutableNotFound,
+			wantFsExist: false,
+			wantErr:     true,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			fakeSafeMounter, err := testmounter.NewFakeSafeMounter()
+			if err != nil {
+				t.Fatalf("NewFakeSafeMounter failed: %v", err)
+			}
+
+			fsckOptions := tc.fsckOptions
+			if len(fsckOptions) == 0 {
+				fsckOptions = []string{"-n"}
+			}
+			fakeExec := fakeSafeMounter.Exec.(*testmounter.FakeSafeMounter)
+			fakeExec.CommandScript = []testingexec.FakeCommandAction{
+				fsckAction(t, append(append([]string(nil), fsckOptions...), "/dev/sdz"), tc.fsckErr, tc.fsckOutput),
+			}
+
+			isFilesystemExist, err := detectOrRepairFilesystem("/dev/sdz", fsckOptions, fakeSafeMounter)
+			if (err != nil) != tc.wantErr {
+				t.Fatalf("detectOrRepairFilesystem error = %v, wantErr %v", err, tc.wantErr)
+			}
+			if isFilesystemExist != tc.wantFsExist {
+				t.Fatalf("isFilesystemExist = %v, want %v", isFilesystemExist, tc.wantFsExist)
+			}
+		})
+	}
+}
+
+func TestRepairFilesystem(t *testing.T) {
+	tests := []struct {
+		name       string
+		fsckErr    error
+		fsckOutput string
+		wantErr    bool
+	}{
+		{
+			name: "healthy filesystem",
+		},
+		{
+			name:    "errors corrected by fsck",
+			fsckErr: testingexec.FakeExitError{Status: fsckErrorsCorrected},
+		},
+		{
+			name:       "errors left uncorrected by fsck",
+			fsckErr:    testingexec.FakeExitError{Status: fsckErrorsUncorrected},
+			fsckOutput: "filesystem errors remain",
+			wantErr:    true,
+		},
+		{
+			name:       "operational error is ignored",
+			fsckErr:    testingexec.FakeExitError{Status: fsckOperationalError},
+			fsckOutput: "fsck.ext4: unable to continue",
+		},
+		{
+			name:       "exit status greater than uncorrected is ignored",
+			fsckErr:    testingexec.FakeExitError{Status: 16},
+			fsckOutput: "fsck.ext4: usage error",
+		},
+		{
+			name:    "missing fsck binary is ignored",
+			fsckErr: exec.ErrExecutableNotFound,
 		},
 	}
 
@@ -205,15 +295,12 @@ func TestDetectAndRepairFilesystem(t *testing.T) {
 
 			fakeExec := fakeSafeMounter.Exec.(*testmounter.FakeSafeMounter)
 			fakeExec.CommandScript = []testingexec.FakeCommandAction{
-				fsckAction(t, []string{"-y", "/dev/sdz"}, tc.fsckErr, tc.fsckOutput),
+				fsckAction(t, []string{"-a", "/dev/sdz"}, tc.fsckErr, tc.fsckOutput),
 			}
 
-			isFilesystemExist, err := detectAndRepairFilesystem("/dev/sdz", []string{"-y"}, fakeSafeMounter, tc.shouldIgnoreOperational)
+			err = repairFilesystem("/dev/sdz", []string{"-a"}, fakeSafeMounter)
 			if (err != nil) != tc.wantErr {
-				t.Fatalf("detectAndRepairFilesystem error = %v, wantErr %v", err, tc.wantErr)
-			}
-			if isFilesystemExist != tc.wantFsExist {
-				t.Fatalf("isFilesystemExist = %v, want %v", isFilesystemExist, tc.wantFsExist)
+				t.Fatalf("repairFilesystem error = %v, wantErr %v", err, tc.wantErr)
 			}
 		})
 	}
