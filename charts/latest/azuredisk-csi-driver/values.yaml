@@ -80,7 +80,8 @@ controller:
   otelTracing:
     enabled: false
     otelServiceName: csi-azuredisk-controller
-    otelExporterEndpoint: "http://localhost:4317"
+    # Optional OTLP/gRPC collector endpoint. Leave empty for klog-only tracing.
+    otelExporterEndpoint: ""
   tolerations:
     - key: "node-role.kubernetes.io/master"
       operator: "Exists"
@@ -228,7 +229,8 @@ linux:
   otelTracing:
     enabled: false
     otelServiceName: csi-azuredisk-node
-    otelExporterEndpoint: "http://localhost:4317"
+    # Optional OTLP/gRPC collector endpoint. Leave empty for klog-only tracing.
+    otelExporterEndpoint: ""
   tolerations:
     - operator: "Exists"
   hostNetwork: true # this setting could be disabled if perfProfile is `none`
@@ -279,7 +281,8 @@ windows:
   otelTracing:
     enabled: false
     otelServiceName: csi-azuredisk-node-win
-    otelExporterEndpoint: "http://localhost:4317"
+    # Optional OTLP/gRPC collector endpoint. Leave empty for klog-only tracing.
+    otelExporterEndpoint: ""
   tolerations:
     - key: "node.kubernetes.io/os"
       operator: "Exists"

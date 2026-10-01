@@ -178,8 +178,10 @@ spec:
             {{- if .Values.windows.otelTracing.enabled }}
             - name: OTEL_SERVICE_NAME
               value: {{ .Values.windows.otelTracing.otelServiceName }}
+            {{- if .Values.windows.otelTracing.otelExporterEndpoint }}
             - name: OTEL_EXPORTER_OTLP_ENDPOINT
               value: {{ .Values.windows.otelTracing.otelExporterEndpoint }}
+            {{- end }}
             {{- end }}
           imagePullPolicy: {{ .Values.image.azuredisk.pullPolicy }}
           volumeMounts:
