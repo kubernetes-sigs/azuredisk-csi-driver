@@ -159,6 +159,7 @@ type Driver struct {
 	neverStopTaintRemoval              bool
 	kubeClient                         clientset.Interface
 	enableKataMount                    bool
+	isKataNode                         bool
 	kataDirectVolume                   kataDirectVolumer
 	// a timed cache storing volume stats <volumeID, volumeStats>
 	volStatsCache           azcache.Resource
@@ -313,6 +314,12 @@ func NewDriver(options *DriverOptions) *Driver {
 		driver.httpClient = &http.Client{
 			Timeout:   30 * time.Second,
 			Transport: transport,
+		}
+	}
+
+	if driver.enableKataMount {
+		if err := driver.initKataNode(context.Background()); err != nil {
+			klog.Fatalf("failed to initialize Kata node configuration: %v", err)
 		}
 	}
 

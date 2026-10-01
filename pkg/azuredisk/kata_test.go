@@ -92,6 +92,81 @@ func (f *kataStubDirectVolume) IsVolumeMountedByID(volumeID string) (bool, error
 	return target != "", err
 }
 
+func TestInitKataNode(t *testing.T) {
+	for _, test := range []struct {
+		name        string
+		annotations map[string]string
+		disabled    bool
+		controller  bool
+		noClient    bool
+		missingNode bool
+		apiError    bool
+		wantKata    bool
+		wantErr     bool
+	}{
+		{name: "annotated", annotations: map[string]string{"azure.csi.disk/kata-mount": "direct-volume"}, wantKata: true},
+		{name: "no annotation"},
+		{name: "different value", annotations: map[string]string{kataAnnotationKey: "other"}},
+		{name: "different key", annotations: map[string]string{"azure.csi.disk": kataAnnotationValue}},
+		{name: "initialization independent of flag", disabled: true, annotations: map[string]string{kataAnnotationKey: kataAnnotationValue}, wantKata: true},
+		{name: "controller", controller: true, noClient: true},
+		{name: "missing client", noClient: true, wantErr: true},
+		{name: "missing node", missingNode: true, wantErr: true},
+		{name: "API error", apiError: true, wantErr: true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			node := &corev1.Node{ObjectMeta: metav1.ObjectMeta{Name: "node", Annotations: test.annotations}}
+			client := fake.NewSimpleClientset()
+			if !test.missingNode {
+				require.NoError(t, client.Tracker().Add(node))
+			}
+			if test.apiError {
+				client.PrependReactor("get", "nodes", func(k8stesting.Action) (bool, k8sruntime.Object, error) {
+					return true, nil, errors.New("API unavailable")
+				})
+			}
+			d := &Driver{enableKataMount: !test.disabled, kubeClient: client}
+			d.NodeID = "node"
+			if test.controller {
+				d.NodeID = ""
+			}
+			if test.noClient {
+				d.kubeClient = nil
+			}
+			err := d.initKataNode(context.Background())
+			if test.wantErr {
+				require.Error(t, err)
+			} else {
+				require.NoError(t, err)
+			}
+			assert.Equal(t, test.wantKata, d.isKataNode)
+			if test.controller || test.noClient {
+				assert.Empty(t, client.Actions())
+			} else {
+				require.Len(t, client.Actions(), 1)
+				assert.Equal(t, "node", client.Actions()[0].(k8stesting.GetAction).GetName())
+			}
+			client.ClearActions()
+			client.PrependReactor("*", "*", func(k8stesting.Action) (bool, k8sruntime.Object, error) {
+				t.Fatal("the combined gate must not query Kubernetes")
+				return true, nil, errors.New("unexpected API call")
+			})
+			assert.Equal(t, test.wantKata && !test.disabled, d.kataSupported())
+			assert.Equal(t, test.wantKata && !test.disabled, d.kataSupported())
+			assert.Empty(t, client.Actions())
+		})
+	}
+}
+
+func TestKataSupported(t *testing.T) {
+	for _, enabled := range []bool{false, true} {
+		for _, kataNode := range []bool{false, true} {
+			d := &Driver{enableKataMount: enabled, isKataNode: kataNode}
+			assert.Equal(t, enabled && kataNode, d.kataSupported())
+		}
+	}
+}
+
 func TestKataGetMountPod(t *testing.T) {
 	tests := []struct {
 		name             string
@@ -130,7 +205,7 @@ func TestKataGetMountPod(t *testing.T) {
 			runtimeClass: &nodev1.RuntimeClass{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:        "kata",
-					Annotations: map[string]string{kataRuntimeClassAnnotationKey: kataRuntimeClassAnnotationValue},
+					Annotations: map[string]string{kataAnnotationKey: kataAnnotationValue},
 				},
 				Handler: "kata",
 			},
@@ -373,13 +448,11 @@ func newKataTestDriver(t *testing.T) (*Driver, *mount.FakeMounter, *mounter.Fake
 	safeMounter.Interface = mounts
 	d.mounter = safeMounter
 	d.enableKataMount = true
-	if !d.kataSupported() {
-		t.Skip("Kata mount paths are disabled in this release")
-	}
+	d.isKataNode = true
 	d.kataDirectVolume = &kataTestDirectVolume{rootPath: t.TempDir()}
 	d.kubeClient = fake.NewSimpleClientset(
 		&corev1.Pod{ObjectMeta: metav1.ObjectMeta{Name: "pod", Namespace: "default", UID: "test-pod-uid"}, Spec: corev1.PodSpec{RuntimeClassName: ptr.To("kata")}},
-		&nodev1.RuntimeClass{ObjectMeta: metav1.ObjectMeta{Name: "kata", Annotations: map[string]string{kataRuntimeClassAnnotationKey: kataRuntimeClassAnnotationValue}}, Handler: "kata"},
+		&nodev1.RuntimeClass{ObjectMeta: metav1.ObjectMeta{Name: "kata", Annotations: map[string]string{kataAnnotationKey: kataAnnotationValue}}, Handler: "kata"},
 	)
 	return d, mounts, exec
 }
@@ -841,7 +914,7 @@ func TestKataStageAssignmentSafety(t *testing.T) {
 }
 
 func TestKataStageGuardScope(t *testing.T) {
-	for _, scenario := range []string{"enabled filesystem", "disabled filesystem", "native block"} {
+	for _, scenario := range []string{"enabled filesystem", "disabled filesystem", "non-Kata node", "native block"} {
 		t.Run(scenario, func(t *testing.T) {
 			d, mounts, exec := newKataTestDriver(t)
 			req := kataTestStageRequest(kataTestRequest(t))
@@ -853,6 +926,8 @@ func TestKataStageGuardScope(t *testing.T) {
 			}}
 			if scenario == "disabled filesystem" {
 				d.enableKataMount = false
+			} else if scenario == "non-Kata node" {
+				d.isKataNode = false
 			}
 			if scenario == "native block" {
 				req.VolumeCapability.AccessType = &csi.VolumeCapability_Block{Block: &csi.VolumeCapability_BlockVolume{}}
@@ -870,6 +945,50 @@ func TestKataStageGuardScope(t *testing.T) {
 			assert.Zero(t, exec.CommandCalls)
 		})
 	}
+}
+
+func TestKataNonKataNodeSkipsIntegration(t *testing.T) {
+	d, mounts, exec := newKataTestDriver(t)
+	d.isKataNode = false
+	d.kataDirectVolume = nil
+	d.kubeClient.(*fake.Clientset).PrependReactor("*", "*", func(k8stesting.Action) (bool, k8sruntime.Object, error) {
+		t.Fatal("non-Kata nodes must not query Pod or RuntimeClass metadata")
+		return true, nil, errors.New("unexpected API call")
+	})
+	req := kataTestRequest(t)
+	require.NoError(t, mounts.Mount("/dev/sdd", req.StagingTargetPath, "ext4", nil))
+	mounts.ResetLog()
+	require.True(t, d.volumeLocks.TryAcquire(req.VolumeId))
+	t.Cleanup(func() { d.volumeLocks.Release(req.VolumeId) })
+
+	_, err := d.NodePublishVolume(context.Background(), req)
+	require.NoError(t, err)
+	require.Len(t, mounts.GetLog(), 1)
+	assert.Equal(t, req.TargetPath, mounts.GetLog()[0].Target)
+	_, err = d.NodeGetVolumeStats(context.Background(), &csi.NodeGetVolumeStatsRequest{
+		VolumeId: req.VolumeId, VolumePath: req.TargetPath,
+	})
+	require.NoError(t, err)
+
+	blockPath := filepath.Join(t.TempDir(), "block")
+	d.hostUtil.(*azureutils.FakeHostUtil).SetPathIsDeviceResult(blockPath, true, nil)
+	_, err = d.NodeExpandVolume(context.Background(), &csi.NodeExpandVolumeRequest{
+		VolumeId: req.VolumeId, VolumePath: blockPath,
+		VolumeCapability: &csi.VolumeCapability{AccessType: &csi.VolumeCapability_Block{Block: &csi.VolumeCapability_BlockVolume{}}},
+	})
+	require.NoError(t, err)
+	d.hostUtil.(*azureutils.FakeHostUtil).SetPathIsDeviceResult(req.StagingTargetPath, false, nil)
+	_, err = d.NodeExpandVolume(context.Background(), &csi.NodeExpandVolumeRequest{
+		VolumeId: req.VolumeId, VolumePath: req.StagingTargetPath, VolumeCapability: req.VolumeCapability,
+	})
+	assert.Equal(t, codes.Aborted, status.Code(err), "ordinary filesystem expansion must still acquire the volume lock")
+
+	_, err = d.NodeUnpublishVolume(context.Background(), &csi.NodeUnpublishVolumeRequest{
+		VolumeId: req.VolumeId, TargetPath: req.TargetPath,
+	})
+	require.NoError(t, err)
+	assert.NoDirExists(t, req.TargetPath)
+	assert.Zero(t, exec.CommandCalls)
 }
 
 func TestKataHandoffSerializesLifecycle(t *testing.T) {
@@ -1466,7 +1585,7 @@ func TestKataRestoreRefusesActiveOrUnknownDAV(t *testing.T) {
 }
 
 func TestKataRestoreScope(t *testing.T) {
-	for _, scenario := range []string{"already staged", "feature off", "native block"} {
+	for _, scenario := range []string{"already staged", "feature off", "non-Kata node", "native block"} {
 		t.Run(scenario, func(t *testing.T) {
 			d, mounts, exec := newKataTestDriver(t)
 			req := kataTestRequest(t)
@@ -1475,6 +1594,9 @@ func TestKataRestoreScope(t *testing.T) {
 				require.NoError(t, mounts.Mount("/dev/sdd", req.StagingTargetPath, "ext4", []string{"discard"}))
 			} else if scenario == "feature off" {
 				d.enableKataMount = false
+			} else if scenario == "non-Kata node" {
+				d.isKataNode = false
+				d.kataDirectVolume = nil
 			} else {
 				req.VolumeCapability.AccessType = &csi.VolumeCapability_Block{Block: &csi.VolumeCapability_BlockVolume{}}
 			}
