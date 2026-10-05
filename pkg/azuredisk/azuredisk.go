@@ -195,7 +195,8 @@ type Driver struct {
 	clusterResourceID     string
 	clusterResourceIDLock sync.Mutex
 	// interval between Azure async operation polls; defaults to 5s when unset
-	pollInterval time.Duration
+	pollInterval              time.Duration
+	filesystemShutdownTimeout time.Duration
 }
 
 // NewDriver Creates a NewCSIDriver object. Assumes vendor version is equal to driver version &
@@ -253,6 +254,7 @@ func NewDriver(options *DriverOptions) *Driver {
 		driver.formatSem = make(chan any, int(options.MaxConcurrentFormat))
 		driver.formatTimeout = time.Duration(options.ConcurrentFormatTimeout) * time.Second
 	}
+	driver.filesystemShutdownTimeout = time.Duration(options.FilesystemShutdownTimeout) * time.Second
 	driver.enableMinimumRetryAfter = options.EnableMinimumRetryAfter
 	driver.nodeDrivenAttachDetachEnabled = options.FeatureGates.Enabled(NodeDrivenAttachDetach)
 	if driver.nodeDrivenAttachDetachEnabled {
