@@ -56,11 +56,11 @@ const (
 	volumeSize16TB = 16 * 1024 * 1024 * 1024 * 1024 // 16TB
 	volumeSize64TB = 64 * 1024 * 1024 * 1024 * 1024 // 64TB
 
-	// Timeout durations based on volume size
-	migrationTimeoutBelowTwoTB       = 10 * time.Hour // Below 2TB
-	migrationTimeoutBelowFourTB      = 12 * time.Hour // 2TB to 4TB
-	migrationTimeoutBelowSixteenTB   = 16 * time.Hour // 4TB to 16TB
-	migrationTimeoutBelowSixtyFourTB = 19 * time.Hour // 16TB to 64TB
+	// Timeout durations based on volume size (worst-case size in band / assumed speed, rounded up to nearest hour)
+	migrationTimeoutBelowTwoTB       = 13 * time.Hour // Below 2TB (2TiB @ 50MB/s)
+	migrationTimeoutBelowFourTB      = 17 * time.Hour // 2TB to 4TB (4TiB @ 75MB/s)
+	migrationTimeoutBelowSixteenTB   = 25 * time.Hour // 4TB to 16TB (16TiB @ 200MB/s)
+	migrationTimeoutBelowSixtyFourTB = 66 * time.Hour // 16TB to 64TB (64TiB @ 300MB/s)
 )
 
 var (
@@ -85,7 +85,7 @@ var (
 	}
 
 	// Maximum migration timeout
-	maxMigrationTimeout = 24 * time.Hour // Maximum allowed timeout for any migration
+	maxMigrationTimeout = 72 * time.Hour // Maximum allowed timeout for any migration
 )
 
 // getMigrationTimeout returns the appropriate timeout based on volume size
