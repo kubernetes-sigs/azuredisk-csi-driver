@@ -1423,6 +1423,18 @@ func TestGetMigrationTimeout(t *testing.T) {
 			expectedTimeout: migrationTimeoutBelowSixteenTB,
 		},
 		{
+			name: "volume size exactly equal to the last (largest) slab",
+			customTimeouts: map[int64]time.Duration{
+				volumeSize2TB:  migrationTimeoutBelowTwoTB,
+				volumeSize4TB:  migrationTimeoutBelowFourTB,
+				volumeSize16TB: migrationTimeoutBelowSixteenTB,
+				volumeSize64TB: migrationTimeoutBelowSixtyFourTB,
+			},
+			customSlabArray: []int64{volumeSize2TB, volumeSize4TB, volumeSize16TB, volumeSize64TB},
+			volumeSize:      volumeSize64TB, // exactly 64TiB
+			expectedTimeout: migrationTimeoutBelowSixtyFourTB,
+		},
+		{
 			name:            "empty timeout configuration",
 			customTimeouts:  map[int64]time.Duration{},
 			customSlabArray: []int64{},
@@ -1583,8 +1595,8 @@ func TestInitializeTimeoutsWithRandomOrderAndGetMigrationTimeout(t *testing.T) {
 					description:     "volume exactly at 2Ti boundary",
 				},
 				{
-					volumeSize:      4 * 1024 * 1024 * 1024 * 1024,  // Exactly 4Ti
-					expectedTimeout: migrationTimeoutBelowSixteenTB, // Should use default large timeout
+					volumeSize:      4 * 1024 * 1024 * 1024 * 1024, // Exactly 4Ti
+					expectedTimeout: 8 * time.Hour,                 // 4Ti is the largest slab, so its own timeout applies
 					description:     "volume exactly at 4Ti boundary",
 				},
 			},
@@ -1712,7 +1724,7 @@ func TestGetMigrationTimeoutLogic(t *testing.T) {
 			{1500, 2 * time.Hour, "volume between first and second slab"},          // 1500 < 2000 -> use 2000's timeout
 			{2000, 3 * time.Hour, "volume exactly at second slab"},                 // 2000 < 3000 -> use 3000's timeout
 			{2500, 3 * time.Hour, "volume between second and third slab"},          // 2500 < 3000 -> use 3000's timeout
-			{3000, migrationTimeoutBelowSixteenTB, "volume exactly at third slab"}, // 3000 >= 3000 -> use large timeout
+			{3000, 3 * time.Hour, "volume exactly at third (last) slab"},           // 3000 == last slab -> use its own timeout
 			{4000, migrationTimeoutBelowSixteenTB, "volume larger than all slabs"}, // 4000 > all -> use large timeout
 		}
 

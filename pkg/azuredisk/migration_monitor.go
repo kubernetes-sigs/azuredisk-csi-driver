@@ -90,8 +90,12 @@ var (
 
 // getMigrationTimeout returns the appropriate timeout based on volume size
 func getMigrationTimeout(volumeSize int64) time.Duration {
-	for _, slab := range sortedMigrationSlabArray {
-		if volumeSize < slab {
+	for i, slab := range sortedMigrationSlabArray {
+		// The last slab is treated as an inclusive upper bound so that a volume
+		// size exactly matching the largest configured slab (e.g. 64TiB) still
+		// receives that slab's timeout instead of falling through to the default.
+		isLastSlab := i == len(sortedMigrationSlabArray)-1
+		if volumeSize < slab || (isLastSlab && volumeSize == slab) {
 			if timeout, exists := migrationTimeouts[slab]; exists {
 				return timeout
 			}
