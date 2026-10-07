@@ -1367,6 +1367,11 @@ func TestControllerModifyVolume(t *testing.T) {
 			},
 			Properties: &armcompute.DiskProperties{
 				DiskSizeGB: to.Ptr(int32(diskSizeInGb)),
+				// A real in-progress migration reports a real (non-nil) CompletionPercent,
+				// starting at 0%; a nil CompletionPercent means there's no pending copy
+				// (i.e. complete), so setting this to 0 here keeps a just-started
+				// migration genuinely active for the assertions below.
+				CompletionPercent: to.Ptr(float32(0)),
 			},
 		}
 
@@ -1634,7 +1639,13 @@ func TestControllerModifyVolume(t *testing.T) {
 						SKU: &armcompute.DiskSKU{
 							Name: disk.SKU.Name,
 						},
-						Properties: &armcompute.DiskProperties{},
+						// Report a real, non-nil, in-progress CompletionPercent (0%) by
+						// default so the recovered migration stays genuinely active for
+						// this test's assertions below. A nil CompletionPercent is now
+						// always treated as "no pending copy" (complete).
+						Properties: &armcompute.DiskProperties{
+							CompletionPercent: to.Ptr(float32(0)),
+						},
 					}
 					if diskCompleted.Load() {
 						diskCopy.Properties.CompletionPercent = to.Ptr(float32(100))
