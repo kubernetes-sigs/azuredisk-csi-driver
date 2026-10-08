@@ -538,18 +538,18 @@ func detectOrRepairFilesystem(source, fsType string, fsckOptions []string, mount
 			outcome, success = "not_found", false
 			klog.Errorf("'fsck' not found on system; cannot verify filesystem signature on %s, returning error.", source)
 			return false, fmt.Errorf("'fsck' not found to detect filesystem on device %s with options %v: %v", source, fsckOptions, err)
-		case isExitError && ee.ExitStatus() == fsckOperationalError:
+		case isExitError && ee.ExitStatus() >= 0 && ee.ExitStatus()&fsckOperationalError != 0:
 			outcome, success = "operational_error", false
 			klog.Errorf("Unable to run fsck on device %s with options %v, fsck output: %s", source, fsckOptions, string(out))
 			return false, fmt.Errorf("Unable to run fsck on device %s with options %v, fsck error: %v output: %s", source, fsckOptions, err, string(out))
-		case isExitError && ee.ExitStatus() == fsckErrorsCorrected:
-			outcome, success = "errors_corrected", true
-			klog.Warningf("Device %s has errors which were corrected by fsck: %s", source, string(out))
-		case isExitError && ee.ExitStatus() == fsckErrorsUncorrected:
+		case isExitError && ee.ExitStatus() >= 0 && ee.ExitStatus()&fsckErrorsUncorrected != 0:
 			// Filesystem exists but fsck found errors that it could not correct
 			outcome, success = "errors_uncorrected", false
 			klog.Errorf("Device %s has errors which fsck could not correct with options %v: %s", source, fsckOptions, string(out))
 			return true, fmt.Errorf("'fsck' found errors on device %s with options %v but could not correct them output: %s (exit status %d)", source, fsckOptions, string(out), ee.ExitStatus())
+		case isExitError && ee.ExitStatus() >= 0 && ee.ExitStatus()&fsckErrorsCorrected != 0:
+			outcome, success = "errors_corrected", true
+			klog.Warningf("Device %s has errors which were corrected by fsck: %s", source, string(out))
 		case isExitError && ee.ExitStatus() > fsckErrorsUncorrected:
 			outcome, success = "fatal_error", false
 			klog.Errorf("`fsck` error %s", string(out))
@@ -557,6 +557,7 @@ func detectOrRepairFilesystem(source, fsType string, fsckOptions []string, mount
 		default:
 			success = true
 			if isExitError {
+				success = ee.ExitStatus() >= 0
 				outcome = fmt.Sprintf("unknown_exit_%d", ee.ExitStatus())
 				klog.Warningf("fsck on device %s failed with unknown exit status %d, output: %v", source, ee.ExitStatus(), string(out))
 			} else {
