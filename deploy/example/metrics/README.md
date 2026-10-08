@@ -35,6 +35,10 @@ These metrics are native to the Azure Disk CSI Driver and provide detailed opera
 
 All format and mount operations expose the requested filesystem type through the `fs_type` label. The `fsck_read_only_check` and `fsck_repair` operations additionally expose `fsck_outcome`, with possible values `clean`, `errors_corrected`, `errors_uncorrected`, `operational_error`, `not_found`, `fatal_error`, `unknown`, and `unknown_exit_<status>`. Labels that do not apply to an operation have an empty value.
 
+Because `fsck` exit statuses are bitmasks, one status can report multiple conditions. Metrics classify combined statuses with this precedence: `operational_error`, `errors_uncorrected`, then `errors_corrected`. For example, status 5 (`1|4`) is `errors_uncorrected`, while status 9 (`1|8`) is `operational_error`.
+
+A negative exit status indicates that `fsck` was terminated by a signal rather than completing. These executions retain the `unknown_exit_<status>` outcome but report `success="false"`; unknown nonnegative exit statuses report `success="true"` to preserve the best-effort behavior.
+
 ### CSI Operation Latency Metrics (via cloud-provider-azure)
 
 | Name | `request` | `source` | Description |
