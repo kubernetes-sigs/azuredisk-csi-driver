@@ -44,7 +44,7 @@ const (
 	fsckErrorsCorrected = 1
 	// 'fsck' found errors but exited without correcting them
 	fsckErrorsUncorrected = 4
-	// 'fsck' found operational error, e.g fresh block device
+	// 'fsck' found operational error, e.g fresh block device, device in-use
 	fsckOperationalError = 8
 )
 
@@ -214,7 +214,7 @@ func formatAndMount(source, target, fstype string, options []string, m *mount.Sa
 
 	// Run fsck on the disk to fix repairable issues, only do this for already formatted volumes requested as read-write.
 	if !newlyFormatted && !readOnly {
-		_, err := detectAndRepairFilesystem(source, []string{"-a"}, m)
+		err := repairFilesystem(source, []string{"-a"}, m)
 		if err != nil {
 			klog.Errorf("formatAndMount - failed to run fsck on disk %s with error: %v", source, err)
 			return fmt.Errorf("failed to run fsck on disk %s with error: %v", source, err)
@@ -426,9 +426,10 @@ func rescanAllVolumes(io azureutils.IOHandler) error {
 }
 
 // detectFilesystemExistence checks whether the given device already contains a filesystem signature.
-// 2. Detects filesystem signature using wipefs --no-act --noheadings --output TYPE <device>.
+// It falls back to wipefs when fsck reports that the superblock is unreadable or invalid.
 func detectFilesystemExistence(source string, mounter *mount.SafeFormatAndMount) (bool, error) {
-	isFSExist, err := detectAndRepairFilesystem(source, []string{"-n"}, mounter)
+	klog.Infof("Checking filesystem existence on device %s through 'fsck -n'", source)
+	isFSExist, err := detectOrRepairFilesystem(source, []string{"-n"}, mounter)
 	if err != nil {
 		if strings.Contains(strings.ToLower(err.Error()), "superblock could not be read or does not describe a valid ext2/ext3/ext4") {
 			klog.Infof("Device %s may be fresh block device with no filesystem signature, fsck output: %s", source, err.Error())
@@ -441,6 +442,7 @@ func detectFilesystemExistence(source string, mounter *mount.SafeFormatAndMount)
 		return true, nil
 	}
 
+	klog.Infof("Checking filesystem existence on device %s through 'wipefs'", source)
 	args := []string{"--no-act", "--output", "TYPE", "--noheadings", source}
 	fsType, err := mounter.Exec.Command("wipefs", args...).CombinedOutput()
 	if err != nil {
@@ -451,6 +453,22 @@ func detectFilesystemExistence(source string, mounter *mount.SafeFormatAndMount)
 		return true, nil
 	}
 	return false, nil
+}
+
+func repairFilesystem(source string, options []string, mounter *mount.SafeFormatAndMount) error {
+	filesystemExists, err := detectOrRepairFilesystem(source, options, mounter)
+	if err == nil {
+		return nil
+	}
+
+	if filesystemExists {
+		// The filesystem exists, but fsck could not correct its errors.
+		return err
+	}
+
+	// Match mount-utils best-effort repair behavior.
+	klog.Warningf("Unable to run fsck on disk %s; continuing with mount: %v", source, err)
+	return nil
 }
 
 // detectAndRepairFilesystem runs fsck on the given device to determine whether it already contains
@@ -464,7 +482,7 @@ func detectFilesystemExistence(source string, mounter *mount.SafeFormatAndMount)
 //
 // fsckOptions control fsck's behavior, e.g. "-n" for a read-only detection check or "-y"/"-E ..."
 // to attempt repairs.
-func detectAndRepairFilesystem(source string, fsckOptions []string, mounter *mount.SafeFormatAndMount) (bool, error) {
+func detectOrRepairFilesystem(source string, fsckOptions []string, mounter *mount.SafeFormatAndMount) (bool, error) {
 	klog.V(2).Infof("Checking for issues with fsck on disk: %s with options %v", source, fsckOptions)
 	args := append(append([]string(nil), fsckOptions...), source)
 	out, err := mounter.Exec.Command("fsck", args...).CombinedOutput()
@@ -475,14 +493,14 @@ func detectAndRepairFilesystem(source string, fsckOptions []string, mounter *mou
 			klog.Errorf("'fsck' not found on system; cannot verify filesystem signature on %s, returning error.", source)
 			return false, fmt.Errorf("'fsck' not found to detect filesystem on device %s with options %v: %v", source, fsckOptions, err)
 		case isExitError && ee.ExitStatus() == fsckOperationalError:
-			klog.Warningf("Unable to run fsck on device %s with options %v, fsck output: %s", source, fsckOptions, string(out))
+			klog.Errorf("Unable to run fsck on device %s with options %v, fsck output: %s", source, fsckOptions, string(out))
 			return false, fmt.Errorf("Unable to run fsck on device %s with options %v, fsck error: %v output: %s", source, fsckOptions, err, string(out))
 		case isExitError && ee.ExitStatus() == fsckErrorsCorrected:
 			klog.Warningf("Device %s has errors which were corrected by fsck: %s", source, string(out))
 		case isExitError && ee.ExitStatus() == fsckErrorsUncorrected:
 			// Filesystem exists but fsck found errors that it could not correct
 			klog.Errorf("Device %s has errors which fsck could not correct with options %v: %s", source, fsckOptions, string(out))
-			return true, fmt.Errorf("'fsck' found errors on device %s with options %v but could not correct them (exit status %d)", source, fsckOptions, ee.ExitStatus())
+			return true, fmt.Errorf("'fsck' found errors on device %s with options %v but could not correct them output: %s (exit status %d)", source, fsckOptions, string(out), ee.ExitStatus())
 		case isExitError && ee.ExitStatus() > fsckErrorsUncorrected:
 			klog.Errorf("`fsck` error %s", string(out))
 			return false, fmt.Errorf("'fsck' failed on device %s with options %v: %v", source, fsckOptions, err)
@@ -490,8 +508,7 @@ func detectAndRepairFilesystem(source string, fsckOptions []string, mounter *mou
 			klog.Warningf("fsck on device %s failed with error %v, output: %v", source, err, string(out))
 		}
 	}
-	// In case if device is formatted with other filesystem, fsck will return 0
-	klog.Infof("fsck on device %s completed successfully with output: %s", source, string(out))
+	klog.Infof("fsck on device %s completed with output: %s", source, string(out))
 	return true, nil
 }
 
