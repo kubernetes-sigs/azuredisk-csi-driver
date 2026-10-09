@@ -140,7 +140,13 @@ func TestStartMigrationMonitoring(t *testing.T) {
 				SKU: &armcompute.DiskSKU{
 					Name: to.Ptr(armcompute.DiskStorageAccountTypesPremiumLRS),
 				},
-				Properties: &armcompute.DiskProperties{},
+				// Non-nil, in-progress percentage keeps the task active for the
+				// duration of this test: a nil CompletionPercent now completes on
+				// the very first async poll, which would race with the
+				// "still active"/single-Update assertions below.
+				Properties: &armcompute.DiskProperties{
+					CompletionPercent: to.Ptr(float32(50)),
+				},
 			}
 
 			// Set up mock expectations
@@ -313,6 +319,10 @@ func TestIsMigrationActive(t *testing.T) {
 		Properties: &armcompute.DiskProperties{
 			DiskSizeGB:        &diskSizeGB,
 			ProvisioningState: &state,
+			// Non-nil, in-progress percentage keeps the task active long enough
+			// for the "should be active" assertions below; nil now completes on
+			// the first async poll.
+			CompletionPercent: to.Ptr(float32(50)),
 		},
 	}
 
@@ -550,13 +560,19 @@ func TestMigrationStop(t *testing.T) {
 		{ObjectMeta: metav1.ObjectMeta{Name: "pvc-3", Namespace: "default"}, Spec: v1.PersistentVolumeClaimSpec{VolumeName: "pv-3"}},
 	}
 
-	// Create a disk
+	// Create a disk with a real, in-progress CompletionPercent so the migrations
+	// stay active until explicitly stopped below. A nil CompletionPercent is now
+	// always treated as "no pending copy" (complete), which would make these
+	// migrations finish on their own almost immediately and defeat the purpose
+	// of this test (stopping actively-running migrations).
 	disk := &armcompute.Disk{
 		ID: to.Ptr("/subscriptions/test/resourceGroups/rg/providers/Microsoft.Compute/disks/test-disk"),
 		SKU: &armcompute.DiskSKU{
 			Name: to.Ptr(armcompute.DiskStorageAccountTypesPremiumLRS),
 		},
-		Properties: &armcompute.DiskProperties{},
+		Properties: &armcompute.DiskProperties{
+			CompletionPercent: to.Ptr(float32(45)),
+		},
 	}
 
 	// Setup disk client mocks
@@ -754,13 +770,19 @@ func TestRecoverMigrationMonitorsFromLabels(t *testing.T) {
 			ctrl := gomock.NewController(t)
 			defer ctrl.Finish()
 
-			// Create a disk
+			// Create a disk with a real, in-progress CompletionPercent so the recovered
+			// migration stays active for this test's assertions. A nil CompletionPercent
+			// is now always treated as "no pending copy" (complete), so it would cause
+			// the recovered task to finish and remove itself before the assertions below
+			// run.
 			disk := &armcompute.Disk{
 				ID: to.Ptr("/subscriptions/test/resourceGroups/rg/providers/Microsoft.Compute/disks/test-disk"),
 				SKU: &armcompute.DiskSKU{
 					Name: to.Ptr(armcompute.DiskStorageAccountTypesPremiumLRS),
 				},
-				Properties: &armcompute.DiskProperties{},
+				Properties: &armcompute.DiskProperties{
+					CompletionPercent: to.Ptr(float32(45)),
+				},
 			}
 
 			// Setup mocks
@@ -789,6 +811,9 @@ func TestRecoverMigrationMonitorsFromLabels(t *testing.T) {
 			mockKubeClient.EXPECT().CoreV1().Return(mockCoreV1).AnyTimes()
 			mockCoreV1.EXPECT().PersistentVolumes().Return(mockPVInterface).AnyTimes()
 			mockCoreV1.EXPECT().PersistentVolumeClaims("").Return(mockPVCInterface).AnyTimes()
+			// The recovered task now stays active (non-nil CompletionPercent), so progress
+			// reporting looks up its PVC by the ClaimRef's actual namespace too.
+			mockCoreV1.EXPECT().PersistentVolumeClaims("default").Return(mockPVCInterface).AnyTimes()
 			mockPVInterface.EXPECT().List(gomock.Any(), gomock.Any()).Return(pvList, nil)
 
 			// Mock expectations for starting migration (adds labels)
@@ -1009,13 +1034,19 @@ func TestMigrationMonitorControllerRestart_EndToEnd(t *testing.T) {
 			},
 		}
 
-		// Create a disk
+		// Create a disk with a real, in-progress CompletionPercent so the recovered
+		// migration stays active for this test's assertions. A nil CompletionPercent
+		// is now always treated as "no pending copy" (complete), so it would cause
+		// the recovered task to finish and remove itself before the assertions below
+		// run.
 		disk := &armcompute.Disk{
 			ID: to.Ptr("/subscriptions/test/resourceGroups/rg/providers/Microsoft.Compute/disks/test-disk"),
 			SKU: &armcompute.DiskSKU{
 				Name: to.Ptr(armcompute.DiskStorageAccountTypesPremiumLRS),
 			},
-			Properties: &armcompute.DiskProperties{},
+			Properties: &armcompute.DiskProperties{
+				CompletionPercent: to.Ptr(float32(45)),
+			},
 		}
 
 		// Mock expectations for starting migration (adds labels)
@@ -3076,4 +3107,96 @@ func TestRecoverMigrationMonitorsFromLabels_VolumeAttributeFiltering(t *testing.
 	}
 
 	monitor.Stop()
+}
+
+// TestCheckMigrationProgress_NilCompletionPercentHandling exercises checkMigrationProgress
+// directly against the various combinations of CompletionPercent and SKU that Azure can
+// return, verifying the nil-handling fix always treats a nil CompletionPercent as
+// "complete" - matching the Azure portal's semantics that nil means there is no pending
+// background copy, regardless of whether progress was previously observed for the task
+// or whether the disk's SKU already matches the migration target - and never infers
+// completion from SKU alone when a real percentage is present.
+func TestCheckMigrationProgress_NilCompletionPercentHandling(t *testing.T) {
+	diskID := "/subscriptions/sub/resourceGroups/rg/providers/Microsoft.Compute/disks/disk-nilcheck"
+	toSKU := armcompute.DiskStorageAccountTypesPremiumV2LRS
+	fromSKUName := armcompute.DiskStorageAccountTypesPremiumLRS
+
+	newTask := func() *MigrationTask {
+		return &MigrationTask{
+			DiskURI:    diskID,
+			PVName:     "pv-nilcheck",
+			ToSKU:      toSKU,
+			StartTime:  time.Now(),
+			Context:    context.Background(),
+			CancelFunc: func() {},
+		}
+	}
+
+	tests := []struct {
+		name              string
+		completionPercent *float32
+		diskSKU           *armcompute.DiskStorageAccountTypes
+		wantCompleted     bool
+	}{
+		{
+			name:              "non-nil CompletionPercent below 100 is not complete",
+			completionPercent: ptr.To(float32(45)),
+			diskSKU:           &fromSKUName,
+			wantCompleted:     false,
+		},
+		{
+			name:              "nil CompletionPercent with SKU already matching target is complete",
+			completionPercent: nil,
+			diskSKU:           &toSKU,
+			wantCompleted:     true,
+		},
+		{
+			// Even with no progress ever observed and the SKU not yet migrated, a nil
+			// CompletionPercent still means there is no pending copy (e.g. an
+			// unhydrated source disk with nothing to copy), so this is complete too.
+			name:              "nil CompletionPercent never seen before and SKU not yet migrated is still complete",
+			completionPercent: nil,
+			diskSKU:           &fromSKUName,
+			wantCompleted:     true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			defer ctrl.Finish()
+
+			d := getFakeDriverWithKubeClientForMigration(ctrl)
+			mockKube := d.getCloud().KubeClient.(*mockkubeclient.MockInterface)
+			coreMock := mockcorev1.NewMockInterface(ctrl)
+			pvcMock := mockpersistentvolumeclaim.NewMockPersistentVolumeClaimInterface(ctrl)
+			mockKube.EXPECT().CoreV1().Return(coreMock).AnyTimes()
+			coreMock.EXPECT().PersistentVolumeClaims(gomock.Any()).Return(pvcMock).AnyTimes()
+			pvcMock.EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any()).
+				Return(nil, apierrors.NewNotFound(corev1.Resource("persistentvolumeclaims"), "pvc-nilcheck")).AnyTimes()
+
+			diskClient := mock_diskclient.NewMockInterface(ctrl)
+			d.getClientFactory().(*mock_azclient.MockClientFactory).
+				EXPECT().GetDiskClientForSub(gomock.Any()).
+				Return(diskClient, nil).AnyTimes()
+
+			diskClient.EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any()).Return(
+				&armcompute.Disk{
+					ID:   ptr.To(diskID),
+					Name: ptr.To("disk-nilcheck"),
+					SKU:  &armcompute.DiskSKU{Name: tt.diskSKU},
+					Properties: &armcompute.DiskProperties{
+						CompletionPercent: tt.completionPercent,
+					},
+				}, nil,
+			).AnyTimes()
+
+			monitor := NewMigrationProgressMonitor(d.getCloud().KubeClient, record.NewFakeRecorder(10), d.GetDiskController())
+			task := newTask()
+
+			completed, err := monitor.checkMigrationProgress(task)
+			assert.NoError(t, err)
+			assert.Equal(t, tt.wantCompleted, completed)
+		})
+	}
 }
