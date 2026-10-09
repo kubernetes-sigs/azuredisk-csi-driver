@@ -13,10 +13,31 @@ These metrics are native to the Azure Disk CSI Driver and provide detailed opera
 | `azuredisk_csi_driver_operations_total` | Counter | `operation`, `success` | Total number of CSI operations |
 | `azuredisk_csi_driver_operation_duration_seconds` | Histogram | `operation`, `success` | Duration of CSI operations in seconds |
 | `azuredisk_csi_driver_operation_duration_seconds_labeled` | Histogram | `operation`, `success`, `storage_account_type` | Duration of CSI operations with additional disk-specific labels |
+| `azuredisk_csi_driver_format_and_mount_operations_total` | Counter | `operation`, `success`, `fs_type`, `fsck_outcome` | Total number of Linux format and mount operations |
 
 **Operation values:**
 - Controller: `controller_create_volume`, `controller_delete_volume`, `controller_modify_volume`, `controller_publish_volume`, `controller_unpublish_volume`, `controller_expand_volume`, `controller_create_snapshot`, `controller_delete_snapshot`
 - Node: `node_stage_volume`, `node_unstage_volume`, `node_publish_volume`, `node_unpublish_volume`, `node_expand_volume`
+
+**Linux format and mount operation values:**
+
+| Operation | When it is emitted | `success` value |
+|-----------|--------------------|-----------------|
+| `blkid_no_filesystem_signature` | `blkid` returned no filesystem signature, so fallback detection begins | `true` |
+| `fsck_read_only_check` | The read-only `fsck -n` filesystem check completes | Result classified by `fsck_outcome` |
+| `wipefs_check` | The fallback `wipefs --no-act` filesystem signature check completes | Whether `wipefs` succeeded |
+| `no_filesystem_signature_confirmed` | `blkid`, `fsck -n`, and `wipefs` found no filesystem signature, so formatting is permitted | `true` |
+| `mkfs` | The `mkfs` invocation completes | Whether `mkfs` succeeded |
+| `filesystem_detected_after_blkid_miss` | `blkid` returned empty, but fallback detection found a filesystem | `true` |
+| `filesystem_type_mismatch` | The detected filesystem type differs from the requested `fs_type` | `false` |
+| `fsck_repair` | The pre-mount `fsck -a` repair completes | Result classified by `fsck_outcome` |
+| `mount` | The final mount attempt completes, including the `directmount` path | Whether the mount succeeded |
+
+All format and mount operations expose the requested filesystem type through the `fs_type` label. The `fsck_read_only_check` and `fsck_repair` operations additionally expose `fsck_outcome`, with possible values `clean`, `errors_corrected`, `errors_uncorrected`, `operational_error`, `not_found`, `fatal_error`, `unknown`, and `unknown_exit_<status>`. Labels that do not apply to an operation have an empty value.
+
+Because `fsck` exit statuses are bitmasks, one status can report multiple conditions. Metrics classify combined statuses with this precedence: `operational_error`, `errors_uncorrected`, then `errors_corrected`. For example, status 5 (`1|4`) is `errors_uncorrected`, while status 9 (`1|8`) is `operational_error`.
+
+A negative exit status indicates that `fsck` was terminated by a signal rather than completing. These executions retain the `unknown_exit_<status>` outcome but report `success="false"`; unknown nonnegative exit statuses report `success="true"` to preserve the best-effort behavior.
 
 ### CSI Operation Latency Metrics (via cloud-provider-azure)
 
