@@ -21,14 +21,17 @@ package azuredisk
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
+	"golang.org/x/sys/unix"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"k8s.io/klog/v2"
@@ -46,6 +49,18 @@ const (
 	fsckErrorsUncorrected = 4
 	// 'fsck' found operational error, e.g fresh block device, device in-use
 	fsckOperationalError = 8
+	// FS_IOC_SHUTDOWN = _IOR('X', 125, __u32)
+	fsIocShutdown = 0x8004587D
+)
+
+var (
+	getDeviceNameFromMount = mount.GetDeviceNameFromMount
+	cleanupMountPoint      = mount.CleanupMountPoint
+	ioctlSetInt            = unix.IoctlSetInt
+	ioctlSetPointerInt     = unix.IoctlSetPointerInt
+	// wholeDiskNameRegexp captures the whole-disk prefix of a SCSI (sd*) or NVMe (nvme*) device name,
+	// dropping any partition suffix (sdc1 -> sdc, nvme0n1p1 -> nvme0n1); empty for anything else.
+	wholeDiskNameRegexp = regexp.MustCompile(`^sd[a-z]+|^nvme[0-9]+n[0-9]+`)
 )
 
 // exclude those used by azure as resource and OS root in /dev/disk/azure, /dev/disk/azure/scsi0
@@ -357,7 +372,7 @@ func preparePublishPath(_ string, _ *mount.SafeFormatAndMount) error {
 }
 
 func CleanupMountPoint(path string, m *mount.SafeFormatAndMount, extensiveCheck bool) error {
-	return mount.CleanupMountPoint(path, m, extensiveCheck)
+	return cleanupMountPoint(path, m, extensiveCheck)
 }
 
 func getDevicePathWithMountPath(mountPath string, m *mount.SafeFormatAndMount) (string, error) {
@@ -584,4 +599,103 @@ func (d *Driver) GetVolumeStats(_ context.Context, m *mount.SafeFormatAndMount, 
 			Used:      inodesUsed,
 		},
 	}, nil
+}
+
+// unmountAndInvalidateDevice shuts down the fs, unmounts the staging path and invalidates the backing device's caches
+// so any pending changes are flushed, mitigating cache inconsistencies especially with SCSI devices.
+// The fs shutdown and device cache invalidation are best-effort; only an unmount error is returned.
+func unmountAndInvalidateDevice(stagingTargetPath string, io azureutils.IOHandler, m *mount.SafeFormatAndMount) error {
+	// Resolve the underlying block device while still mounted.
+	devicePath, _, err := getDeviceNameFromMount(m, stagingTargetPath)
+	if err != nil {
+		devicePath = ""
+	} else if devicePath != "" {
+		if resolved, err := filepath.EvalSymlinks(devicePath); err == nil {
+			devicePath = resolved
+		}
+	}
+	// Shut down the fs before unmounting so a private clone can't keep it alive and re-dirty the cache.
+	if err := shutdownFilesystem(stagingTargetPath); err != nil && !errors.Is(err, os.ErrNotExist) {
+		klog.Errorf("shutdownFilesystem - %v", err)
+	}
+
+	// Unmount the driver's global mount.
+	if err := cleanupMountPoint(stagingTargetPath, m, true /*extensiveMountPointCheck*/); err != nil {
+		return err
+	}
+
+	// Flush and invalidate the block-device caches so its synchronized for all fs types
+	// and so a racing NodeStageVolume has a smaller chance of reading stale content.
+	if devicePath == "" {
+		return nil
+	}
+	wholeDiskName := wholeDiskNameRegexp.FindString(filepath.Base(devicePath))
+	flushTargets := []string{devicePath}
+	if wholeDiskName != "" && "/dev/"+wholeDiskName != devicePath {
+		flushTargets = append(flushTargets, "/dev/"+wholeDiskName)
+	}
+	for _, target := range flushTargets {
+		if err := flushAndInvalidateBlockDevice(target); err != nil {
+			klog.Errorf("flushAndInvalidateBlockDevice - %v", err)
+		}
+	}
+
+	// Delete SCSI devices so the next NodeStageVolume sees a fresh one. NVMe has no per-disk
+	// equivalent and will be handled by an identity check in NodeStageVolume instead (ToDo).
+	if strings.HasPrefix(wholeDiskName, "sd") {
+		deletePath := filepath.Join(sysClassBlockPath, wholeDiskName, "device", "delete")
+		if err := io.WriteFile(deletePath, []byte("1"), 0200); err != nil {
+			klog.Errorf("unmountAndInvalidateDevice - failed to delete SCSI disk %s: %v", wholeDiskName, err)
+		}
+	}
+
+	return nil
+}
+
+// flushAndInvalidateBlockDevice flushes and drops the raw block-device page cache so
+// its synchronized for all fs types and so there's a smaller chance of the next NodeStageVolume reading stale cached content.
+var flushAndInvalidateBlockDevice = func(devicePath string) error {
+	fd, err := unix.Open(devicePath, unix.O_RDONLY|unix.O_CLOEXEC, 0)
+	if err != nil {
+		return fmt.Errorf("failed to open device %s: %w", devicePath, err)
+	}
+	defer unix.Close(fd)
+	if err := ioctlSetInt(fd, unix.BLKFLSBUF, 0); err != nil {
+		return fmt.Errorf("failed to flush buffers on device %s: %w", devicePath, err)
+	}
+	return nil
+}
+
+// shutdownFilesystem forces an orderly (flush-first) shutdown of the mount at stagingTargetPath via
+// FS_IOC_SHUTDOWN. It confirms through the open fd that the path is a real mount boundary (its fs
+// differs from its parent's) first, so a racing unmount can't shut down the node-root fs instead.
+// ext2/3/4 and xfs support the ioctl; others return ENOTTY/EINVAL and are a no-op.
+var shutdownFilesystem = func(stagingTargetPath string) error {
+	// O_DIRECTORY|O_NOFOLLOW also reject a file/symlink swapped in for the staging directory.
+	fd, err := unix.Open(stagingTargetPath, unix.O_RDONLY|unix.O_DIRECTORY|unix.O_NOFOLLOW|unix.O_CLOEXEC, 0)
+	if err != nil {
+		return fmt.Errorf("failed to open mount %s: %w", stagingTargetPath, err)
+	}
+	defer unix.Close(fd)
+
+	// Require a mount boundary. Both stats go through the fd (parent via ".."), so nothing is
+	// re-resolved from a path and the check cannot race an unmount.
+	var self, parent unix.Stat_t
+	if err := unix.Fstat(fd, &self); err != nil {
+		return fmt.Errorf("failed to stat %s: %w", stagingTargetPath, err)
+	}
+	if err := unix.Fstatat(fd, "..", &parent, 0); err != nil {
+		return fmt.Errorf("failed to stat parent of %s: %w", stagingTargetPath, err)
+	}
+	if self.Dev == parent.Dev {
+		return fmt.Errorf("skipping shutdown of %s: not a mountpoint (%w)", stagingTargetPath, os.ErrNotExist) // the fd is on the parent (node root) fs
+	}
+
+	if err := ioctlSetPointerInt(fd, fsIocShutdown, 0); err != nil {
+		if errors.Is(err, unix.ENOTTY) || errors.Is(err, unix.EINVAL) || errors.Is(err, unix.EOPNOTSUPP) {
+			return nil // filesystem does not support shutdown (e.g. btrfs)
+		}
+		return fmt.Errorf("failed to shut down filesystem at %s: %w", stagingTargetPath, err)
+	}
+	return nil
 }
