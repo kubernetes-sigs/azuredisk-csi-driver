@@ -174,13 +174,57 @@ there.
 2. `NodeStageVolume` recognizes the volume as QAD (the `attach-sequence`
    annotation is present), reads `blob-url`/`claim-identifier` from the PV
    annotations, increments `attach-sequence`, and performs the physical
-   node-driven attach through the WireServer endpoint.
+   node-driven attach through the WireServer endpoint. It returns success once
+   the attach is accepted; device discovery and mounting happen in
+   `NodePublishVolume` (see [Node staging, publishing, and the LUN](#node-staging-publishing-and-the-lun)).
 
 > [!IMPORTANT]
 > Keep the `NodeDrivenAttachDetach` feature gate enabled for the full lifetime
 > of every node-driven volume. Existing PV annotations do not bypass the gate;
 > disabling it prevents the driver from completing the QAD attach and detach
 > paths.
+
+## Node staging, publishing, and the LUN
+
+For QAD volumes the node splits its work so that CSI is the authoritative record
+of attach state, independent of when the disk's LUN becomes visible on the node.
+The controller-driven (non-QAD) path is unchanged: it still discovers the LUN
+from the publish context and formats and mounts during `NodeStageVolume`.
+
+| Operation | QAD volume | Controller-driven volume (unchanged) |
+| --- | --- | --- |
+| `NodeStageVolume` | Physical attach only. Returns success once WireServer reports the disk attached. Performs no device discovery, format, or mount. | Discovers the LUN, formats, and mounts at the staging path. |
+| `NodePublishVolume` | Rediscovers the current LUN from WireServer, waits for the device to enumerate, formats and mounts at the staging path, then bind-mounts to the pod target. | Bind-mounts the staging path to the pod target. |
+| `NodeUnstageVolume` | Unmounts the staging path and performs the physical detach. | Unmounts the staging path. |
+
+### Why the LUN is not persisted
+
+The LUN assigned to a QAD disk can differ every time the volume moves to a
+different node, so it is never stored on the PV. `NodeStageVolume` records only
+that the disk is attached. `NodePublishVolume` re-queries WireServer (the source
+of truth) for the current LUN each time it runs, and returns a retryable
+`Unavailable` error while the disk state or the guest device is not yet
+available. This keeps attach state correct across moves without a stale cached
+LUN, and lets `NodeStageVolume` report success even when the LUN is not yet
+visible on the node.
+
+Detach does not depend on the LUN: `NodeUnstageVolume` decides whether to detach
+from the `attach-sequence` annotation, so teardown is correct even if a LUN was
+never persisted or never became visible.
+
+### Caveat: kubelet restart before the first successful publish
+
+Because `NodeStageVolume` returns success without mounting anything at the
+staging path, there is a window between a successful attach and the first
+successful `NodePublishVolume` where the staging path is not a mount point.
+
+Kubelet reconstructs volume state after a restart by inspecting existing mounts.
+If kubelet restarts during that window, reconstruction may not observe a staged
+device. This is safe for detach correctness — `NodeUnstageVolume` still detaches
+based on the `attach-sequence` annotation, and the QAD attach is idempotent, so
+a re-issued `NodeStageVolume` simply re-confirms the existing attach. The disk
+cannot be stranded attached. The observable effect is limited to kubelet
+re-driving stage/publish for the affected volume.
 
 ## Limitations
 
