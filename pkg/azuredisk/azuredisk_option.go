@@ -83,6 +83,7 @@ type DriverOptions struct {
 	ConvertRWCachingModeForIntreePV    bool
 	KubeAPIQPS                         float64
 	KubeAPIBurst                       int
+	DisableReadOnlyRemount             bool
 }
 
 func (o *DriverOptions) AddFlags() *flag.FlagSet {
@@ -146,5 +147,6 @@ func (o *DriverOptions) AddFlags() *flag.FlagSet {
 	fs.BoolVar(&o.ConvertRWCachingModeForIntreePV, "convert-rw-caching-mode-for-intree-pv", false, "convert ReadWrite cachingMode to ReadOnly for intree PVs to avoid issues")
 	fs.Float64Var(&o.KubeAPIQPS, "kube-api-qps", 0, "QPS for kubernetes API client (0 uses default)")
 	fs.IntVar(&o.KubeAPIBurst, "kube-api-burst", 0, "Burst for kubernetes API client (0 uses default)")
+	fs.BoolVar(&o.DisableReadOnlyRemount, "disable-read-only-remount", false, "skips the read-only remount at node unstage, risking lost writes and corruption of the next disk on fast LUN reuse")
 	return fs
 }

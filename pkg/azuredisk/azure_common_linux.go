@@ -40,6 +40,7 @@ import (
 	utilexec "k8s.io/utils/exec"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
 	csiMetrics "sigs.k8s.io/azuredisk-csi-driver/pkg/metrics"
+	"sigs.k8s.io/azuredisk-csi-driver/pkg/mounter"
 )
 
 const (
@@ -57,6 +58,7 @@ const (
 var (
 	getDeviceNameFromMount = mount.GetDeviceNameFromMount
 	cleanupMountPoint      = mount.CleanupMountPoint
+	remountReadOnly        = mounter.RemountReadOnly
 	ioctlSetInt            = unix.IoctlSetInt
 	ioctlSetPointerInt     = unix.IoctlSetPointerInt
 	// wholeDiskNameRegexp captures the whole-disk prefix of a SCSI (sd*) or NVMe (nvme*) device name,
@@ -672,6 +674,15 @@ func unmountAndInvalidateDevice(stagingTargetPath string, io azureutils.IOHandle
 			devicePath = resolved
 		}
 	}
+
+	// Makes the file-system read-only across all mount namespaces to ensure that there are no active writers
+	// and to prevent a retained superblock from persistently poisoning a subsequent disk with the same LUN slot.
+	// NVMe devices in particular need this because they have no per-disk equivalent to SCSI device deletion
+	// and any component (like udev) which accesses the block device can replenish its cache after we invalidate it.
+	if err := remountReadOnly(stagingTargetPath, m); err != nil {
+		return err
+	}
+
 	// Shut down the fs before unmounting so a private clone can't keep it alive and re-dirty the cache.
 	if err := shutdownFilesystem(stagingTargetPath); err != nil && !errors.Is(err, os.ErrNotExist) {
 		klog.Errorf("shutdownFilesystem - %v", err)

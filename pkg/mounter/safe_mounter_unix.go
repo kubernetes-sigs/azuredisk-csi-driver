@@ -30,3 +30,22 @@ func NewSafeMounter(_, _, _ bool, maxConcurrentFormat int, concurrentFormatTimeo
 	opt := mount.WithMaxConcurrentFormat(maxConcurrentFormat, concurrentFormatTimeout)
 	return mount.NewSafeFormatAndMount(mount.New(""), utilexec.New(), opt), nil
 }
+
+type interfaceWithOpts struct {
+	mount.Interface
+	disableReadOnlyRemount bool
+}
+
+func toInterfaceWithOpts(m *mount.SafeFormatAndMount) interfaceWithOpts {
+	if iface, ok := m.Interface.(interfaceWithOpts); ok {
+		return iface
+	}
+	return interfaceWithOpts{Interface: m.Interface}
+}
+
+// DisableReadOnlyRemount stops the mounter's file systems from being remounted as read-only before they're unmounted.
+func DisableReadOnlyRemount(m *mount.SafeFormatAndMount) {
+	iface := toInterfaceWithOpts(m)
+	iface.disableReadOnlyRemount = true
+	m.Interface = iface
+}
