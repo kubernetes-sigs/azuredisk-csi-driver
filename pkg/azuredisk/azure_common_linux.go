@@ -614,6 +614,15 @@ func unmountAndInvalidateDevice(stagingTargetPath string, io azureutils.IOHandle
 			devicePath = resolved
 		}
 	}
+
+	err = unix.Mount("", stagingTargetPath, "", unix.MS_REMOUNT|unix.MS_RDONLY, "")
+	switch {
+	case err == nil, errors.Is(err, os.ErrNotExist), errors.Is(err, unix.EINVAL), errors.Is(err, unix.EROFS):
+		// already unmounted or already read-only; nothing to do
+	default:
+		return fmt.Errorf("failed to make %s read-only: %v", stagingTargetPath, err)
+	}
+
 	// Shut down the fs before unmounting so a private clone can't keep it alive and re-dirty the cache.
 	if err := shutdownFilesystem(stagingTargetPath); err != nil && !errors.Is(err, os.ErrNotExist) {
 		klog.Errorf("shutdownFilesystem - %v", err)
