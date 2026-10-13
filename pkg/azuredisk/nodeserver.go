@@ -173,6 +173,19 @@ func getDefaultFsType() string {
 	return defaultLinuxFsType
 }
 
+// postAttachErrorCode returns the gRPC code for a NodeStage failure that happens
+// after the node-driven (QAD) physical attach already succeeded. A retryable code
+// (Unavailable) keeps kubelet's device state uncertain, which guarantees
+// NodeUnstage (and the QAD detach) runs on teardown so the attach is not
+// stranded. Controller-driven volumes keep Internal because the controller, not
+// the node, performs the detach.
+func postAttachErrorCode(qadAttached bool) codes.Code {
+	if qadAttached {
+		return codes.Unavailable
+	}
+	return codes.Internal
+}
+
 // NodeStageVolume mount disk device to a staging path
 func (d *Driver) NodeStageVolume(ctx context.Context, req *csi.NodeStageVolumeRequest) (*csi.NodeStageVolumeResponse, error) {
 	volumeID := req.GetVolumeId()
@@ -251,6 +264,12 @@ func (d *Driver) NodeStageVolume(ctx context.Context, req *csi.NodeStageVolumeRe
 		}
 	}
 
+	// qadAttached records that the node-driven (QAD) physical attach already
+	// succeeded, so post-attach failures return a retryable code (see
+	// postAttachErrorCode) to keep kubelet's device state uncertain and ensure
+	// NodeUnstage still runs to detach.
+	qadAttached := false
+
 	if pv != nil && d.hasQADInfo(pv) {
 		blobURL := pv.Annotations[consts.BlobURLAnnotation]
 		claimIdentifier := pv.Annotations[consts.ClaimIdentifierAnnotation]
@@ -322,6 +341,10 @@ func (d *Driver) NodeStageVolume(ctx context.Context, req *csi.NodeStageVolumeRe
 			klog.Errorf("NodeStageVolume: QAD attach failed for volume %s: status=%s, message=%q, error=%+v", volumeID, statusResp.Status, statusResp.StatusMessage, statusResp.Error)
 			return nil, status.Errorf(codes.Internal, "NodeStageVolume: QAD attach failed for volume %q with status %q", volumeID, statusResp.Status)
 		}
+
+		// The QAD physical attach succeeded; later failures must be retryable so
+		// kubelet marks the device uncertain and still runs NodeUnstage to detach.
+		qadAttached = true
 	} else if !hasLUN {
 		return nil, status.Error(codes.InvalidArgument, "lun not provided")
 	}
@@ -331,7 +354,7 @@ func (d *Driver) NodeStageVolume(ctx context.Context, req *csi.NodeStageVolumeRe
 	recordSpanResult(devSpan, err)
 	devSpan.End()
 	if err != nil {
-		return nil, status.Errorf(codes.Internal, "failed to find disk on lun %s. %v", lun, err)
+		return nil, status.Errorf(postAttachErrorCode(qadAttached), "failed to find disk on lun %s. %v", lun, err)
 	}
 
 	// If perf optimizations are enabled
@@ -339,13 +362,13 @@ func (d *Driver) NodeStageVolume(ctx context.Context, req *csi.NodeStageVolumeRe
 	if d.getPerfOptimizationEnabled() {
 		profile, accountType, diskSizeGibStr, diskIopsStr, diskBwMbpsStr, deviceSettings, err := optimization.GetDiskPerfAttributes(req.GetVolumeContext())
 		if err != nil {
-			return nil, status.Errorf(codes.Internal, "failed to get perf attributes for %s. Error: %v", source, err)
+			return nil, status.Errorf(postAttachErrorCode(qadAttached), "failed to get perf attributes for %s. Error: %v", source, err)
 		}
 
 		if d.getDeviceHelper().DiskSupportsPerfOptimization(profile, accountType) {
 			if err := d.getDeviceHelper().OptimizeDiskPerformance(d.getNodeInfo(), source, profile, accountType,
 				diskSizeGibStr, diskIopsStr, diskBwMbpsStr, deviceSettings); err != nil {
-				return nil, status.Errorf(codes.Internal, "failed to optimize device performance for target(%s) error(%s)", source, err)
+				return nil, status.Errorf(postAttachErrorCode(qadAttached), "failed to optimize device performance for target(%s) error(%s)", source, err)
 			}
 		} else {
 			klog.V(6).Infof("NodeStageVolume: perf optimization is disabled for %s. perfProfile %s accountType %s", source, profile, accountType)
@@ -361,7 +384,7 @@ func (d *Driver) NodeStageVolume(ctx context.Context, req *csi.NodeStageVolumeRe
 
 	mnt, err := d.ensureMountPoint(target)
 	if err != nil {
-		return nil, status.Errorf(codes.Internal, "could not mount target %q: %v", target, err)
+		return nil, status.Errorf(postAttachErrorCode(qadAttached), "could not mount target %q: %v", target, err)
 	}
 	if mnt {
 		klog.V(2).Infof("NodeStageVolume: already mounted on target %s", target)
@@ -378,13 +401,8 @@ func (d *Driver) NodeStageVolume(ctx context.Context, req *csi.NodeStageVolumeRe
 
 	// FormatAndMount will format only if needed
 	klog.V(2).Infof("NodeStageVolume: formatting %s and mounting at %s with mount options(%s)", source, target, options)
-	_, fmtSpan := startSpan(ctx, "formatAndMount",
-		attribute.String("fs_type", fstype))
-	err = d.formatAndMount(source, target, fstype, options)
-	recordSpanResult(fmtSpan, err)
-	fmtSpan.End()
-	if err != nil {
-		return nil, status.Errorf(codes.Internal, "could not format %s(lun: %s), and mount it at %s, failed with %v", source, lun, target, err)
+	if err := d.formatAndMount(source, target, fstype, options); err != nil {
+		return nil, status.Errorf(postAttachErrorCode(qadAttached), "could not format %s(lun: %s), and mount it at %s, failed with %v", source, lun, target, err)
 	}
 	klog.V(2).Infof("NodeStageVolume: format %s and mounting at %s successfully.", source, target)
 
@@ -403,12 +421,8 @@ func (d *Driver) NodeStageVolume(ctx context.Context, req *csi.NodeStageVolumeRe
 	// if resize is required, resize filesystem
 	if needResize {
 		klog.V(2).Infof("NodeStageVolume: fs resize initiating on target(%s) volumeid(%s)", target, volumeID)
-		_, resizeSpan := startSpan(ctx, "resizeVolume")
-		err = resizeVolume(source, target, d.mounter)
-		recordSpanResult(resizeSpan, err)
-		resizeSpan.End()
-		if err != nil {
-			return nil, status.Errorf(codes.Internal, "NodeStageVolume: could not resize volume %s (%s):  %v", source, target, err)
+		if err := resizeVolume(source, target, d.mounter); err != nil {
+			return nil, status.Errorf(postAttachErrorCode(qadAttached), "NodeStageVolume: could not resize volume %s (%s):  %v", source, target, err)
 		}
 		klog.V(2).Infof("NodeStageVolume: fs resize successful on target(%s) volumeid(%s).", target, volumeID)
 	}
@@ -446,11 +460,8 @@ func (d *Driver) NodeUnstageVolume(ctx context.Context, req *csi.NodeUnstageVolu
 	defer d.volumeLocks.Release(volumeID)
 
 	klog.V(2).Infof("NodeUnstageVolume: unmounting %s", stagingTargetPath)
-	_, umSpan := startSpan(ctx, "unmount")
-	err := CleanupMountPoint(stagingTargetPath, d.mounter, true /*extensiveMountPointCheck*/)
-	recordSpanResult(umSpan, err)
-	umSpan.End()
-	if err != nil {
+	// Unmount and invalidate the backing device so a fast LUN/namespace reuse can't serve stale content.
+	if err := unmountAndInvalidateDevice(stagingTargetPath, d.ioHandler, d.mounter); err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to unmount staging target %q: %v", stagingTargetPath, err)
 	}
 	klog.V(2).Infof("NodeUnstageVolume: unmount %s successfully", stagingTargetPath)

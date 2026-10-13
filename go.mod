@@ -14,7 +14,7 @@ require (
 	github.com/fsnotify/fsnotify v1.10.1
 	github.com/go-ole/go-ole v1.3.0
 	github.com/golang/protobuf v1.5.4
-	github.com/grpc-ecosystem/go-grpc-middleware/providers/prometheus v1.1.0
+	github.com/grpc-ecosystem/go-grpc-middleware/providers/prometheus v1.1.1
 	github.com/kata-containers/kata-containers/src/runtime v0.0.0-20260720212037-ddf307a5a057
 	github.com/kubernetes-csi/csi-lib-utils v0.19.0
 	github.com/kubernetes-csi/csi-proxy/client v1.3.0
@@ -30,7 +30,7 @@ require (
 	go.opentelemetry.io/otel/sdk v1.47.0
 	go.opentelemetry.io/otel/trace v1.47.0
 	go.uber.org/mock v0.6.0
-	golang.org/x/net v0.59.0
+	golang.org/x/net v0.60.0
 	golang.org/x/sync v0.23.0
 	golang.org/x/sys v0.48.0
 	google.golang.org/grpc v1.84.0

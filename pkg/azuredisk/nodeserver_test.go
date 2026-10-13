@@ -1486,6 +1486,14 @@ func TestGetQADCachePolicy(t *testing.T) {
 	}
 }
 
+// TestPostAttachErrorCode verifies that failures after a successful QAD attach
+// are retryable (so kubelet keeps the device uncertain and still runs
+// NodeUnstage), while controller-driven volumes keep a terminal Internal code.
+func TestPostAttachErrorCode(t *testing.T) {
+	assert.Equal(t, codes.Unavailable, postAttachErrorCode(true))
+	assert.Equal(t, codes.Internal, postAttachErrorCode(false))
+}
+
 func TestExecuteQADDiskOperationNullStatus(t *testing.T) {
 	tests := []struct {
 		name          string

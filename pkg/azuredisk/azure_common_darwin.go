@@ -123,3 +123,8 @@ func rescanAllVolumes(io azureutils.IOHandler) error {
 func (d *Driver) GetVolumeStats(ctx context.Context, m *mount.SafeFormatAndMount, volumeID, target string, hostutil hostUtil) ([]*csi.VolumeUsage, error) {
 	return []*csi.VolumeUsage{}, nil
 }
+
+// unmountAndInvalidateDevice just unmounts on Darwin (present only so unit tests build on macOS).
+func unmountAndInvalidateDevice(stagingTargetPath string, _ azureutils.IOHandler, m *mount.SafeFormatAndMount) error {
+	return CleanupMountPoint(stagingTargetPath, m, true /*extensiveMountPointCheck*/)
+}

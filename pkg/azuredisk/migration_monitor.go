@@ -418,10 +418,17 @@ func (m *MigrationProgressMonitor) checkMigrationProgress(task *MigrationTask) (
 		return false, fmt.Errorf("failed to get disk %s: %v", task.DiskURI, err)
 	}
 
-	// Check completion percentage if available
+	// A nil CompletionPercent means there is no pending background copy for the
+	// disk - the same "done" state the Azure portal shows - whether the copy
+	// finished or there was nothing to copy in the first place.
 	var completionPercent float32
-	if disk.Properties != nil && disk.Properties.CompletionPercent != nil {
-		completionPercent = *disk.Properties.CompletionPercent
+	if disk.Properties != nil {
+		if disk.Properties.CompletionPercent != nil {
+			completionPercent = *disk.Properties.CompletionPercent
+		} else {
+			klog.V(2).Infof("disk(%s) has no CompletionPercent, treating migration as complete", task.DiskURI)
+			completionPercent = 100
+		}
 	}
 
 	// Report progress if significant milestone reached

@@ -294,8 +294,8 @@ github.com/google/uuid
 # github.com/gorilla/websocket v1.5.4-0.20250319132907-e064f32e3674
 ## explicit; go 1.20
 github.com/gorilla/websocket
-# github.com/grpc-ecosystem/go-grpc-middleware/providers/prometheus v1.1.0
-## explicit; go 1.21
+# github.com/grpc-ecosystem/go-grpc-middleware/providers/prometheus v1.1.1
+## explicit; go 1.23.0
 github.com/grpc-ecosystem/go-grpc-middleware/providers/prometheus
 # github.com/grpc-ecosystem/go-grpc-middleware/v2 v2.3.0
 ## explicit; go 1.23
@@ -596,7 +596,7 @@ golang.org/x/exp/slices
 # golang.org/x/mod v0.41.0
 ## explicit; go 1.26.0
 golang.org/x/mod/semver
-# golang.org/x/net v0.59.0
+# golang.org/x/net v0.60.0
 ## explicit; go 1.26.0
 golang.org/x/net/context
 golang.org/x/net/html
