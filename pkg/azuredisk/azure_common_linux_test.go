@@ -28,8 +28,8 @@ import (
 	"time"
 
 	"golang.org/x/sys/unix"
-	mount "k8s.io/mount-utils"
 	"k8s.io/component-base/metrics/legacyregistry"
+	mount "k8s.io/mount-utils"
 	"k8s.io/utils/exec"
 	testingexec "k8s.io/utils/exec/testing"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
