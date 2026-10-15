@@ -851,6 +851,13 @@ func IsThrottlingError(err error) bool {
 	return false
 }
 
+// GetRetryAfterSeconds returns the ARM "Retry-After" back-off (in seconds)
+// parsed from a throttling error, or 0 when none is present. It exposes the
+// package-internal parser so callers such as tracing can surface the delay.
+func GetRetryAfterSeconds(err error) int {
+	return getRetryAfterSeconds(err)
+}
+
 // getRetryAfterSeconds returns the number of seconds to wait from the error message
 func getRetryAfterSeconds(err error) int {
 	if err == nil {
