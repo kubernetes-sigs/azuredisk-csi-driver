@@ -1,0 +1,47 @@
+{{- if .Values.rbac.create -}}
+---
+kind: ClusterRole
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: csi-{{ .Values.rbac.name }}-node-role
+rules:
+  - apiGroups: [""]
+    resources: ["secrets"]
+    verbs: ["get"]
+  - apiGroups: [""]
+    resources: ["nodes"]
+    verbs: ["get", "patch"]
+  {{- if .Values.driver.featureGates.KataMount }}
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get"]
+  - apiGroups: ["node.k8s.io"]
+    resources: ["runtimeclasses"]
+    verbs: ["get"]
+  {{- end }}
+  - apiGroups: ["storage.k8s.io"]
+    resources: ["csinodes"]
+    verbs: ["get"]
+  - apiGroups: ["storage.k8s.io"]
+    resources: ["volumeattachments"]
+    verbs: ["get", "list", "watch"]
+  {{- if .Values.driver.featureGates.NodeDrivenAttachDetach }}
+  # QAD looks up and patches PVs on the node; only needed when the feature is enabled.
+  - apiGroups: [""]
+    resources: ["persistentvolumes"]
+    verbs: ["get", "list", "watch", "patch", "update"]
+  {{- end }}
+---
+kind: ClusterRoleBinding
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: csi-{{ .Values.rbac.name }}-node-secret-binding
+subjects:
+  - kind: ServiceAccount
+    name: {{ .Values.serviceAccount.node }}
+    namespace: {{ .Release.Namespace }}
+roleRef:
+  kind: ClusterRole
+  name: csi-{{ .Values.rbac.name }}-node-role
+  apiGroup: rbac.authorization.k8s.io
+{{ end }}
