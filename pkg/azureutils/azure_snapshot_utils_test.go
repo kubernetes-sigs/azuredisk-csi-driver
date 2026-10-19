@@ -475,7 +475,7 @@ func TestGetEntriesAndNextToken(t *testing.T) {
 			snapshots,
 			&csi.ListSnapshotsResponse{
 				Entries:   entries,
-				NextToken: "1",
+				NextToken: "",
 			},
 			error(nil),
 		},
@@ -491,6 +491,40 @@ func TestGetEntriesAndNextToken(t *testing.T) {
 			},
 			error(nil),
 		},
+	}
+
+	for _, tc := range []struct {
+		name      string
+		snapshots []*armcompute.Snapshot
+		volumeID  string
+		wantCount int
+	}{
+		{name: "empty"},
+		{name: "two pages", snapshots: []*armcompute.Snapshot{snapshot, snapshot}, wantCount: 2},
+		{name: "matching volume", snapshots: []*armcompute.Snapshot{snapshot, snapshot}, volumeID: sourceVolumeID, wantCount: 2},
+		{name: "no matching volume", snapshots: snapshots, volumeID: "other-volume"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			req := &csi.ListSnapshotsRequest{MaxEntries: 1, SourceVolumeId: tc.volumeID}
+			count := 0
+			for page := 0; ; page++ {
+				if page > len(tc.snapshots)+1 {
+					t.Fatal("pagination did not terminate")
+				}
+				resp, err := GetEntriesAndNextToken(req, tc.snapshots)
+				if err != nil {
+					t.Fatalf("page %d with token %q: %v", page, req.StartingToken, err)
+				}
+				count += len(resp.Entries)
+				if resp.NextToken == "" {
+					break
+				}
+				req.StartingToken = resp.NextToken
+			}
+			if count != tc.wantCount {
+				t.Fatalf("got %d snapshots, want %d", count, tc.wantCount)
+			}
+		})
 	}
 
 	for _, test := range tests {
