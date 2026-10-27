@@ -48,14 +48,12 @@ controller:
   #     - Topology=true                # Enables topology-aware volume provisioning
   #     - VolumeAttributesClass=true   # Enables support for VolumeAttributesClass
   #   csiResizer:
-  #     - RecoverVolumeExpansionFailure=true  # Enables recovery from volume expansion failures
   #     - VolumeAttributesClass=true          # Enables support for VolumeAttributesClass
   featureGates:
     csiProvisioner:
       - Topology=true
       - VolumeAttributesClass=true
     csiResizer:
-      - RecoverVolumeExpansionFailure=true
       - VolumeAttributesClass=true
 
   VMSSDetachTimeoutInSeconds: 200

@@ -131,7 +131,7 @@ spec:
             - "-leader-election"
             - "--leader-election-namespace=kube-system"
             - '-handle-volume-inuse-error=false'
-            - '-feature-gates=RecoverVolumeExpansionFailure=true,VolumeAttributesClass=true'
+            - '-feature-gates=VolumeAttributesClass=true'
             - "-timeout=240s"
             - "--retry-interval-max=30m"
           env:
