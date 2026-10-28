@@ -21,6 +21,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"sync"
 
 	v1 "k8s.io/api/core/v1"
 	storagev1 "k8s.io/api/storage/v1"
@@ -100,8 +101,23 @@ func isNodeBeingDrained(node *v1.Node) bool {
 	return false
 }
 
+// attachmentDeletionSignal carries the "this node has no VolumeAttachment left"
+// state between the initial check of waitForVolumeAttachments and its event
+// handlers. Its channel is both the waiter's signal and the informer's stop
+// channel, so it has to be closed exactly once: a second close panics, and the
+// panic kills the preStop process instead of letting it report success.
+type attachmentDeletionSignal struct {
+	closeOnce             sync.Once
+	allAttachmentsDeleted chan struct{}
+}
+
+func (s *attachmentDeletionSignal) markAllDeleted() {
+	s.closeOnce.Do(func() { close(s.allAttachmentsDeleted) })
+}
+
 func waitForVolumeAttachments(clientset kubernetes.Interface, nodeName string) error {
-	allAttachmentsDeleted := make(chan struct{})
+	signal := &attachmentDeletionSignal{allAttachmentsDeleted: make(chan struct{})}
+	allAttachmentsDeleted := signal.allAttachmentsDeleted
 
 	factory := informers.NewSharedInformerFactory(clientset, 0)
 	informer := factory.Storage().V1().VolumeAttachments().Informer()
@@ -114,7 +130,7 @@ func waitForVolumeAttachments(clientset kubernetes.Interface, nodeName string) e
 				klog.Errorf("UpdateFunc: error asserting object as type VolumeAttachment obj %s", va)
 			}
 			if va.Spec.NodeName == nodeName {
-				if err := checkVolumeAttachments(clientset, nodeName, allAttachmentsDeleted); err != nil {
+				if err := checkVolumeAttachments(clientset, nodeName, signal); err != nil {
 					klog.Errorf("checkVolumeAttachments failed: %v", err)
 				}
 			}
@@ -126,7 +142,7 @@ func waitForVolumeAttachments(clientset kubernetes.Interface, nodeName string) e
 				klog.Errorf("UpdateFunc: error asserting object as type VolumeAttachment obj %s", va)
 			}
 			if va.Spec.NodeName == nodeName {
-				if err := checkVolumeAttachments(clientset, nodeName, allAttachmentsDeleted); err != nil {
+				if err := checkVolumeAttachments(clientset, nodeName, signal); err != nil {
 					klog.Errorf("checkVolumeAttachments failed: %v", err)
 				}
 			}
@@ -138,7 +154,7 @@ func waitForVolumeAttachments(clientset kubernetes.Interface, nodeName string) e
 
 	go informer.Run(allAttachmentsDeleted)
 
-	if err := checkVolumeAttachments(clientset, nodeName, allAttachmentsDeleted); err != nil {
+	if err := checkVolumeAttachments(clientset, nodeName, signal); err != nil {
 		klog.Errorf("checkVolumeAttachments failed: %v", err)
 	}
 
@@ -147,7 +163,7 @@ func waitForVolumeAttachments(clientset kubernetes.Interface, nodeName string) e
 	return nil
 }
 
-func checkVolumeAttachments(clientset kubernetes.Interface, nodeName string, allAttachmentsDeleted chan struct{}) error {
+func checkVolumeAttachments(clientset kubernetes.Interface, nodeName string, signal *attachmentDeletionSignal) error {
 	allAttachments, err := clientset.StorageV1().VolumeAttachments().List(context.Background(), metav1.ListOptions{TimeoutSeconds: ptr.To(int64(2))})
 	if err != nil {
 		return fmt.Errorf("checkVolumeAttachments: failed to list VolumeAttachments: %w", err)
@@ -161,6 +177,6 @@ func checkVolumeAttachments(clientset kubernetes.Interface, nodeName string, all
 		}
 	}
 
-	close(allAttachmentsDeleted)
+	signal.markAllDeleted()
 	return nil
 }
