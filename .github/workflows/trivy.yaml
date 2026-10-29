@@ -12,7 +12,7 @@ jobs:
       - name: Set up Go 1.x
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
-          go-version: 1.26.6
+          go-version: 1.26.10
         id: go
 
       - name: Checkout code
@@ -29,7 +29,8 @@ jobs:
       - name: Run Trivy vulnerability scanner
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25  # v0.36.0
         env:
-          TRIVY_DB_REPOSITORY: "public.ecr.aws/aquasecurity/trivy-db:2"
+          # Fall back to another registry if a DB mirror is rate-limited or unavailable.
+          TRIVY_DB_REPOSITORY: "mirror.gcr.io/aquasec/trivy-db:2,ghcr.io/aquasecurity/trivy-db:2,public.ecr.aws/aquasecurity/trivy-db:2"
         with:
           image-ref: 'test/azuredisk-csi:latest'
           format: 'table'

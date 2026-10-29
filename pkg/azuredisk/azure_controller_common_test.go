@@ -826,6 +826,15 @@ func TestSetDiskLun(t *testing.T) {
 			expectedLun: -1,
 			expectedErr: true,
 		},
+		{
+			desc:         "LUNs outside the allocatable range shall be ignored, not indexed into used",
+			nodeName:     "nodeName",
+			diskURI:      "diskURI",
+			occupiedLuns: []int{-1, maxLUN, maxLUN + 1, 1000},
+			diskMap:      map[string]*provider.AttachDiskOptions{"diskURI": {}},
+			expectedLun:  3,
+			expectedErr:  false,
+		},
 	}
 
 	for i, test := range testCases {

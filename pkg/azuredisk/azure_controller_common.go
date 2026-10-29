@@ -757,7 +757,7 @@ func (c *controllerCommon) SetDiskLun(ctx context.Context, nodeName types.NodeNa
 	}
 
 	for _, lun := range occupiedLuns {
-		if lun >= 0 && lun <= maxLUN {
+		if lun >= 0 && lun < maxLUN {
 			used[int32(lun)] = true
 		}
 	}

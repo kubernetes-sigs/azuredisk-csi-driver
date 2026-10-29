@@ -19,8 +19,13 @@ package hooks
 import (
 	"testing"
 
+	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 	v1 "k8s.io/api/core/v1"
+	storagev1 "k8s.io/api/storage/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/client-go/kubernetes/fake"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azuredisk/mockkubeclient"
 )
 
@@ -87,6 +92,76 @@ func TestPreStop(t *testing.T) {
 
 			if !tc.wantErr && err != nil {
 				t.Fatalf("PreStop returned error when KUBE_NODE_NAME is present; got: %v, want: %v", err, tc.wantErr)
+			}
+		})
+	}
+}
+
+func volumeAttachmentForNode(nodeName, name string) *storagev1.VolumeAttachment {
+	return &storagev1.VolumeAttachment{
+		ObjectMeta: metav1.ObjectMeta{Name: name},
+		Spec:       storagev1.VolumeAttachmentSpec{NodeName: nodeName},
+	}
+}
+
+// checkVolumeAttachments is called by the initial check of waitForVolumeAttachments
+// and again for every VolumeAttachment event, so several calls can find the node
+// already empty. Only the first of them may close the channel: closing it twice
+// panics and takes the preStop hook down with it.
+func TestCheckVolumeAttachmentsSignal(t *testing.T) {
+	const nodeName = "node-1"
+
+	testCases := []struct {
+		name        string
+		attachments []runtime.Object
+		checks      int
+		wantClosed  bool
+	}{
+		{
+			name:        "attachment for this node does not signal",
+			attachments: []runtime.Object{volumeAttachmentForNode(nodeName, "va-1")},
+			checks:      1,
+			wantClosed:  false,
+		},
+		{
+			// the hook only waits for the attachments of its own node
+			name:        "attachment for another node still signals",
+			attachments: []runtime.Object{volumeAttachmentForNode("node-2", "va-2")},
+			checks:      1,
+			wantClosed:  true,
+		},
+		{
+			name:       "no attachment for this node signals",
+			checks:     1,
+			wantClosed: true,
+		},
+		{
+			name:       "second empty check does not close the channel again",
+			checks:     2,
+			wantClosed: true,
+		},
+	}
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			clientset := fake.NewClientset(tc.attachments...)
+			signal := &attachmentDeletionSignal{allAttachmentsDeleted: make(chan struct{})}
+
+			for range tc.checks {
+				require.NotPanics(t, func() {
+					err := checkVolumeAttachments(clientset, nodeName, signal)
+					require.NoError(t, err)
+				})
+			}
+
+			select {
+			case <-signal.allAttachmentsDeleted:
+				if !tc.wantClosed {
+					t.Errorf("checkVolumeAttachments closed allAttachmentsDeleted while the node still has an attachment")
+				}
+			default:
+				if tc.wantClosed {
+					t.Errorf("checkVolumeAttachments did not close allAttachmentsDeleted although the node has no attachment")
+				}
 			}
 		})
 	}

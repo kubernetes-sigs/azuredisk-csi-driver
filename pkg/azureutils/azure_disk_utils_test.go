@@ -24,6 +24,7 @@ import (
 	"reflect"
 	"regexp"
 	"runtime"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -2007,12 +2008,16 @@ func TestRemoveOptionIfExists(t *testing.T) {
 	}
 
 	for _, test := range tests {
+		original := slices.Clone(test.options)
 		result, exists := RemoveOptionIfExists(test.options, test.removeOption)
 		if !reflect.DeepEqual(result, test.expectedOptions) {
 			t.Errorf("test[%s]: unexpected output: %v, expected result: %v", test.desc, result, test.expectedOptions)
 		}
 		if exists != test.expected {
 			t.Errorf("test[%s]: unexpected output: %v, expected result: %v", test.desc, exists, test.expected)
+		}
+		if !reflect.DeepEqual(test.options, original) {
+			t.Errorf("test[%s]: input slice was mutated: got %v, want %v", test.desc, test.options, original)
 		}
 	}
 }

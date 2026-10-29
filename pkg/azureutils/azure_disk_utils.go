@@ -908,7 +908,10 @@ func GenerateVolumeName(clusterName, pvName string, maxLength int) string {
 func RemoveOptionIfExists(options []string, removeOption string) ([]string, bool) {
 	for i, option := range options {
 		if option == removeOption {
-			return append(options[:i], options[i+1:]...), true
+			result := make([]string, 0, len(options)-1)
+			result = append(result, options[:i]...)
+			result = append(result, options[i+1:]...)
+			return result, true
 		}
 	}
 	return options, false
