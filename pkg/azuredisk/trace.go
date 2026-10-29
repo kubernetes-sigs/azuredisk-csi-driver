@@ -50,9 +50,9 @@ func RegisterARMThrottleTracing() {
 	if _, ok := client.Transport.(*armThrottleTracingTransport); ok {
 		return
 	}
-	copy := *client
-	copy.Transport = &armThrottleTracingTransport{RoundTripper: client.Transport}
-	azclient.DefaultResourceClientTransport = &copy
+	tracingClient := *client
+	tracingClient.Transport = &armThrottleTracingTransport{RoundTripper: client.Transport}
+	azclient.DefaultResourceClientTransport = &tracingClient
 }
 
 func (t *armThrottleTracingTransport) RoundTrip(req *http.Request) (*http.Response, error) {
