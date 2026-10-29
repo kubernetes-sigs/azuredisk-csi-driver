@@ -20,6 +20,7 @@ import (
 	"context"
 	"fmt"
 	"math"
+	"net/http"
 	"os"
 	"strconv"
 	"strings"
@@ -35,7 +36,37 @@ import (
 	oteltrace "go.opentelemetry.io/otel/trace"
 	"k8s.io/klog/v2"
 	azureutils "sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
+	"sigs.k8s.io/cloud-provider-azure/pkg/azclient"
 )
+
+type armThrottleTracingTransport struct {
+	http.RoundTripper
+}
+
+// RegisterARMThrottleTracing observes ARM responses before the SDK's throttling
+// policy discards their headers. Call only at startup, before creating clients.
+func RegisterARMThrottleTracing() {
+	client := azclient.DefaultResourceClientTransport
+	if _, ok := client.Transport.(*armThrottleTracingTransport); ok {
+		return
+	}
+	copy := *client
+	copy.Transport = &armThrottleTracingTransport{RoundTripper: client.Transport}
+	azclient.DefaultResourceClientTransport = &copy
+}
+
+func (t *armThrottleTracingTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	resp, err := t.RoundTripper.RoundTrip(req)
+	if resp != nil && resp.StatusCode == http.StatusTooManyRequests {
+		retryAfter := strings.TrimSpace(resp.Header.Get("Retry-After"))
+		// Preserve HTTP-date values; label numeric delays as seconds without a sleep-policy cap.
+		if _, parseErr := strconv.ParseUint(retryAfter, 10, 64); parseErr == nil {
+			retryAfter += "s"
+		}
+		recordThrottleEvent(req.Context(), eventARMHTTPThrottled, retryAfter)
+	}
+	return resp, err
+}
 
 const (
 	// tracerName is attached to every span as the instrumentation scope so
@@ -73,6 +104,9 @@ const (
 
 	// eventThrottled marks an ARM/library throttling back-off inside a span.
 	eventThrottled = "throttled"
+
+	// eventARMHTTPThrottled identifies an HTTP 429 response, not the operation outcome.
+	eventARMHTTPThrottled = "arm_http_throttled"
 
 	// correlationBaggageKey is the OTel baggage key under which the canonical
 	// per-request correlation value (the disk name, e.g. pvc-<uid>) is carried

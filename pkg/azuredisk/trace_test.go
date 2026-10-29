@@ -22,14 +22,115 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"io"
+	"net/http"
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
+	"github.com/Azure/azure-sdk-for-go/sdk/azcore/runtime"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"k8s.io/klog/v2"
+	"sigs.k8s.io/cloud-provider-azure/pkg/azclient"
+	"sigs.k8s.io/cloud-provider-azure/pkg/azclient/policy/retryrepectthrottled"
 )
+
+func TestARMThrottleRetryAfter(t *testing.T) {
+	t.Setenv(tracesExporterEnv, "klog")
+	t.Setenv("OTEL_TRACES_SAMPLER", "always_on")
+	t.Setenv(spanVerbosityEnv, "2")
+	buf, restore := captureKlogAtSpanVerbosity(t)
+	defer restore()
+	previousProvider := otel.GetTracerProvider()
+	defer otel.SetTracerProvider(previousProvider)
+	provider, err := InitOtelTracing()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = provider.Shutdown(context.Background()) }()
+	previousTransport := azclient.DefaultResourceClientTransport
+	defer func() { azclient.DefaultResourceClientTransport = previousTransport }()
+
+	for _, test := range []struct {
+		name       string
+		status     int
+		retryAfter string
+		wantDelay  string
+	}{
+		{name: "uncapped seconds", status: http.StatusTooManyRequests, retryAfter: "1800", wantDelay: "1800s"},
+		{name: "HTTP date", status: http.StatusTooManyRequests, retryAfter: "Thu, 29 Oct 2026 14:00:00 GMT", wantDelay: "Thu, 29 Oct 2026 14:00:00 GMT"},
+		{name: "missing header", status: http.StatusTooManyRequests},
+		{name: "success", status: http.StatusOK, retryAfter: "60"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			response := &http.Response{
+				StatusCode: test.status,
+				Header:     http.Header{"Retry-After": []string{test.retryAfter}},
+				Body:       io.NopCloser(strings.NewReader("{}")),
+			}
+			inner := testRoundTripper(func(req *http.Request) (*http.Response, error) {
+				response.Request = req
+				return response, nil
+			})
+			client := &http.Client{Transport: inner, Timeout: time.Minute}
+			azclient.DefaultResourceClientTransport = client
+			RegisterARMThrottleTracing()
+			wrapped := azclient.DefaultResourceClientTransport
+			RegisterARMThrottleTracing()
+			if azclient.DefaultResourceClientTransport != wrapped || wrapped.Timeout != client.Timeout {
+				t.Fatal("registration changed client settings or wrapped twice")
+			}
+			options, err := azclient.GetDefaultResourceClientOption(nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			options.Retry.MaxRetries = -1
+			pipeline := runtime.NewPipeline("tracing-test", "v1.0.0", runtime.PipelineOptions{}, &options.ClientOptions)
+			ctx, span := startSpan(context.Background(), test.name)
+			req, err := runtime.NewRequest(ctx, http.MethodGet, "https://management.azure.com/test")
+			if err != nil {
+				t.Fatal(err)
+			}
+			resp, requestErr := pipeline.Do(req)
+			if resp != response {
+				t.Fatal("response was replaced")
+			}
+			if test.status == http.StatusTooManyRequests && !errors.Is(requestErr, retryrepectthrottled.ErrTooManyRequest) {
+				t.Fatalf("throttling error changed: %v", requestErr)
+			}
+			if test.status == http.StatusOK && requestErr != nil {
+				t.Fatal(requestErr)
+			}
+			if resp != nil && resp.Body != nil {
+				defer resp.Body.Close()
+			}
+			recordThrottleIfThrottled(ctx, requestErr)
+			span.End()
+			if err := provider.ForceFlush(context.Background()); err != nil {
+				t.Fatal(err)
+			}
+			klog.Flush()
+			out := buf.String()
+			buf.Reset()
+			if test.status == http.StatusOK {
+				if strings.Contains(out, eventThrottled) {
+					t.Fatalf("successful request recorded throttling: %s", out)
+				}
+				return
+			}
+			wantEvents := eventARMHTTPThrottled
+			if test.wantDelay != "" {
+				wantEvents += " retry_after=" + test.wantDelay
+			}
+			wantEvents += "; " + eventThrottled
+			if !strings.Contains(out, `events="`+wantEvents+`"`) {
+				t.Fatalf("want distinct HTTP and operation events %q: %s", wantEvents, out)
+			}
+		})
+	}
+}
 
 // klogFlagsOnce ensures klog flags are registered on the default flag set only
 // once across all tests in this file (registering twice panics).
