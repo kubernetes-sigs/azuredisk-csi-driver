@@ -89,6 +89,9 @@ func handlePreStopHook(kubeconfig string) {
 }
 
 func handle() {
+	if driverOptions.EnableOtelTracing {
+		azureutils.RegisterRateLimiterTracing()
+	}
 	runtime.GOMAXPROCS(int(driverOptions.GoMaxProcs))
 	klog.Infof("Sys info: NumCPU: %v MAXPROC: %v", runtime.NumCPU(), runtime.GOMAXPROCS(0))
 

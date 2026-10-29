@@ -49,7 +49,6 @@ import (
 	"k8s.io/client-go/kubernetes/scheme"
 	clientcorev1 "k8s.io/client-go/kubernetes/typed/core/v1"
 	corelisters "k8s.io/client-go/listers/core/v1"
-	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/record"
 	"k8s.io/klog/v2"
@@ -302,12 +301,7 @@ func NewDriver(options *DriverOptions) *Driver {
 	}
 	var kubeClient clientset.Interface
 	if kubeConfig != nil {
-		kubeClientConfig := kubeConfig
-		if driver.enableOtelTracing {
-			kubeClientConfig = rest.CopyConfig(kubeConfig)
-			azureutils.WrapConfigRateLimiterWithTracing(kubeClientConfig)
-		}
-		kubeClient, err = clientset.NewForConfig(kubeClientConfig)
+		kubeClient, err = clientset.NewForConfig(kubeConfig)
 		if err != nil {
 			klog.Warningf("get kubeclient failed with error: %v", err)
 		}
@@ -423,12 +417,7 @@ func NewDriver(options *DriverOptions) *Driver {
 
 	if kubeConfig != nil && driver.checkDiskCountForBatching && driver.NodeID == "" {
 		// Create a metadata-only node informer to cache node labels locally (controller only)
-		metadataClientConfig := kubeConfig
-		if driver.enableOtelTracing {
-			metadataClientConfig = rest.CopyConfig(kubeConfig)
-			azureutils.WrapConfigRateLimiterWithTracing(metadataClientConfig)
-		}
-		metadataClient, err := metadata.NewForConfig(metadataClientConfig)
+		metadataClient, err := metadata.NewForConfig(kubeConfig)
 		if err != nil {
 			klog.Warningf("failed to create metadata client: %v, node informer will not be used", err)
 		} else {

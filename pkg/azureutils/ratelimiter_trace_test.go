@@ -17,42 +17,126 @@ limitations under the License.
 package azureutils
 
 import (
+	"context"
+	"net/url"
 	"testing"
+	"time"
 
+	"go.opentelemetry.io/otel/sdk/trace"
+	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
-	"k8s.io/client-go/util/flowcontrol"
+	"k8s.io/client-go/tools/metrics"
 )
 
-func TestWrapConfigRateLimiterWithTracing(t *testing.T) {
-	t.Run("preserves custom limiter", func(t *testing.T) {
-		custom := flowcontrol.NewFakeAlwaysRateLimiter()
-		config := &rest.Config{RateLimiter: custom}
+type rateLimiterLatencyObservation struct {
+	ctx     context.Context
+	verb    string
+	u       url.URL
+	latency time.Duration
+	calls   int
+}
 
-		WrapConfigRateLimiterWithTracing(config)
+func (o *rateLimiterLatencyObservation) Observe(ctx context.Context, verb string, u url.URL, latency time.Duration) {
+	o.ctx, o.verb, o.u, o.latency = ctx, verb, u, latency
+	o.calls++
+}
 
-		wrapped, ok := config.RateLimiter.(*tracingRateLimiter)
-		if !ok || wrapped.RateLimiter != custom {
-			t.Fatalf("custom limiter was not wrapped: %#v", config.RateLimiter)
-		}
-		WrapConfigRateLimiterWithTracing(config)
-		if config.RateLimiter != wrapped {
-			t.Fatal("rate limiter was wrapped more than once")
-		}
-	})
+type rateLimiterSpanExporter struct {
+	spans []trace.ReadOnlySpan
+}
 
-	t.Run("preserves disabled throttling", func(t *testing.T) {
-		config := &rest.Config{QPS: -1}
-		WrapConfigRateLimiterWithTracing(config)
-		if config.RateLimiter != nil {
-			t.Fatalf("negative QPS created a rate limiter: %#v", config.RateLimiter)
-		}
-	})
+func (e *rateLimiterSpanExporter) ExportSpans(_ context.Context, spans []trace.ReadOnlySpan) error {
+	e.spans = append(e.spans, spans...)
+	return nil
+}
 
-	t.Run("wraps default limiter", func(t *testing.T) {
-		config := &rest.Config{}
-		WrapConfigRateLimiterWithTracing(config)
-		if _, ok := config.RateLimiter.(*tracingRateLimiter); !ok {
-			t.Fatalf("default limiter was not wrapped: %#v", config.RateLimiter)
+func (*rateLimiterSpanExporter) Shutdown(context.Context) error { return nil }
+
+func TestRateLimiterLatencyTracing(t *testing.T) {
+	for _, test := range []struct {
+		name      string
+		waited    time.Duration
+		recording bool
+		wantEvent bool
+	}{
+		{name: "short wait", waited: kubeRateLimitWaitThreshold - time.Millisecond, recording: true},
+		{name: "threshold wait", waited: kubeRateLimitWaitThreshold, recording: true, wantEvent: true},
+		{name: "not recording", waited: 2 * kubeRateLimitWaitThreshold},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			recorder := &rateLimiterSpanExporter{}
+			sampler := trace.NeverSample()
+			if test.recording {
+				sampler = trace.AlwaysSample()
+			}
+			provider := trace.NewTracerProvider(trace.WithSyncer(recorder), trace.WithSampler(sampler))
+			defer func() { _ = provider.Shutdown(context.Background()) }()
+			ctx, span := provider.Tracer("test").Start(context.Background(), "GetNode")
+			original := &rateLimiterLatencyObservation{}
+			observer := &tracingRateLimiterLatency{LatencyMetric: original}
+			u := url.URL{Scheme: "https", Host: "kubernetes", Path: "/api/v1/nodes/node"}
+
+			observer.Observe(ctx, "GET", u, test.waited)
+			span.End()
+
+			if original.calls != 1 || original.ctx != ctx || original.verb != "GET" || original.u != u || original.latency != test.waited {
+				t.Fatalf("original metrics observer did not receive the unchanged observation: %+v", original)
+			}
+			spans := recorder.spans
+			if !test.recording {
+				if len(spans) != 0 {
+					t.Fatal("non-recording span was exported")
+				}
+				return
+			}
+			if len(spans) != 1 {
+				t.Fatalf("got %d spans, want 1", len(spans))
+			}
+			events := spans[0].Events()
+			if !test.wantEvent {
+				if len(events) != 0 {
+					t.Fatalf("short wait produced events: %v", events)
+				}
+				return
+			}
+			if len(events) != 1 || events[0].Name != "kube_client_ratelimited" {
+				t.Fatalf("expected one rate-limiter event, got %v", events)
+			}
+			attrs := events[0].Attributes
+			if len(attrs) != 1 || string(attrs[0].Key) != "wait_ms" || attrs[0].Value.AsInt64() != test.waited.Milliseconds() {
+				t.Fatalf("incorrect wait attributes: %v", attrs)
+			}
+		})
+	}
+}
+
+func TestRegisterRateLimiterTracingPreservesLimiters(t *testing.T) {
+	previous := metrics.RateLimiterLatency
+	t.Cleanup(func() { metrics.RateLimiterLatency = previous })
+	original := &rateLimiterLatencyObservation{}
+	metrics.RateLimiterLatency = original
+	RegisterRateLimiterTracing()
+	wrapped := metrics.RateLimiterLatency
+	RegisterRateLimiterTracing()
+	if metrics.RateLimiterLatency != wrapped {
+		t.Fatal("metrics observer was wrapped more than once")
+	}
+
+	client, err := kubernetes.NewForConfig(&rest.Config{Host: "https://kubernetes"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	coreLimiter := client.CoreV1().RESTClient().GetRateLimiter()
+	storageLimiter := client.StorageV1().RESTClient().GetRateLimiter()
+	if coreLimiter == nil || storageLimiter == nil || coreLimiter == storageLimiter {
+		t.Fatal("default CoreV1 and StorageV1 limiters must be present and independent")
+	}
+	for i := 0; i < rest.DefaultBurst; i++ {
+		if !coreLimiter.TryAccept() {
+			t.Fatalf("CoreV1 burst exhausted after %d requests", i)
 		}
-	})
+	}
+	if !storageLimiter.TryAccept() {
+		t.Fatal("CoreV1 exhausted StorageV1's independent budget")
+	}
 }

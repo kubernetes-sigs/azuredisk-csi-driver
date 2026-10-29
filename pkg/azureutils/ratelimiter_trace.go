@@ -18,12 +18,12 @@ package azureutils
 
 import (
 	"context"
+	"net/url"
 	"time"
 
 	"go.opentelemetry.io/otel/attribute"
 	oteltrace "go.opentelemetry.io/otel/trace"
-	"k8s.io/client-go/rest"
-	"k8s.io/client-go/util/flowcontrol"
+	"k8s.io/client-go/tools/metrics"
 )
 
 // kubeRateLimitWaitThreshold is the minimum client-side rate-limiter wait
@@ -31,71 +31,30 @@ import (
 // token-bucket jitter and would only add noise to traces.
 const kubeRateLimitWaitThreshold = 50 * time.Millisecond
 
-// tracingRateLimiter wraps a client-go flowcontrol.RateLimiter and records a
-// span event whenever a Kubernetes API request is held back by the client-side
-// rate limiter (QPS/Burst exhaustion) for longer than
-// kubeRateLimitWaitThreshold. This surfaces client-side back-pressure in
-// traces, complementing the ARM server-side throttling ("throttled") events.
-//
-// It uses the OpenTelemetry API directly (rather than the azuredisk tracing
-// helpers) so that this package does not import the azuredisk package, which
-// would create an import cycle.
-type tracingRateLimiter struct {
-	flowcontrol.RateLimiter
+type tracingRateLimiterLatency struct {
+	metrics.LatencyMetric
 }
 
-func newTracingRateLimiter(inner flowcontrol.RateLimiter) *tracingRateLimiter {
-	return &tracingRateLimiter{RateLimiter: inner}
+// RegisterRateLimiterTracing adds span events to client-go's existing wait-time
+// observer without changing limiters or suppressing metrics. Call it at startup,
+// after metrics registration and before starting any Kubernetes clients.
+// Repeated calls before clients start are safe.
+func RegisterRateLimiterTracing() {
+	if _, ok := metrics.RateLimiterLatency.(*tracingRateLimiterLatency); ok {
+		return
+	}
+	metrics.RateLimiterLatency = &tracingRateLimiterLatency{LatencyMetric: metrics.RateLimiterLatency}
 }
 
-// WrapConfigRateLimiterWithTracing wraps config.RateLimiter so that Kubernetes
-// API requests blocked by client-side QPS/Burst exhaustion surface as span
-// events. It preserves custom and disabled limiters and is idempotent.
-func WrapConfigRateLimiterWithTracing(config *rest.Config) {
-	if config == nil {
-		return
-	}
-	if _, ok := config.RateLimiter.(*tracingRateLimiter); ok {
-		return
-	}
-	if config.RateLimiter != nil {
-		config.RateLimiter = newTracingRateLimiter(config.RateLimiter)
-		return
-	}
-	if config.QPS < 0 {
-		return
-	}
-	effectiveQPS := config.QPS
-	if effectiveQPS == 0 {
-		effectiveQPS = rest.DefaultQPS
-	}
-	effectiveBurst := config.Burst
-	if effectiveBurst == 0 {
-		effectiveBurst = rest.DefaultBurst
-	}
-	if effectiveBurst < 0 {
-		return
-	}
-	config.RateLimiter = newTracingRateLimiter(flowcontrol.NewTokenBucketRateLimiter(effectiveQPS, effectiveBurst))
-}
-
-// Wait times how long the underlying limiter blocks the request and, when the
-// wait exceeds the threshold, adds a "kube_client_ratelimited" event to the
-// currently active span. When tracing is disabled the active span is a no-op
-// (IsRecording() == false) and nothing is recorded.
-func (t *tracingRateLimiter) Wait(ctx context.Context) error {
-	start := time.Now()
-	err := t.RateLimiter.Wait(ctx)
-	waited := time.Since(start)
-	// Only record a rate-limit event on a successful wait. When the limiter
-	// returns an error (e.g. ctx deadline/cancel after a long wait), the time
-	// spent is a canceled request, not successful client-side back-pressure.
-	if err == nil && waited >= kubeRateLimitWaitThreshold {
+// Observe records time spent waiting, including canceled/failed waits: client-go's
+// metric hook provides duration but not the outcome of the wait.
+func (t *tracingRateLimiterLatency) Observe(ctx context.Context, verb string, u url.URL, waited time.Duration) {
+	t.LatencyMetric.Observe(ctx, verb, u, waited)
+	if waited >= kubeRateLimitWaitThreshold {
 		if span := oteltrace.SpanFromContext(ctx); span.IsRecording() {
 			span.AddEvent("kube_client_ratelimited", oteltrace.WithAttributes(
 				attribute.Int64("wait_ms", waited.Milliseconds()),
 			))
 		}
 	}
-	return err
 }

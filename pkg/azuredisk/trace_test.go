@@ -243,43 +243,37 @@ func TestDiskCorrelationPropagatesToChildSpans(t *testing.T) {
 
 func TestParseTracesExporters(t *testing.T) {
 	tests := []struct {
-		name     string
-		value    string
-		wantKlog bool
-		wantOTLP bool
+		name           string
+		value          string
+		endpoint       string
+		tracesEndpoint string
+		wantKlog       bool
+		wantOTLP       bool
 	}{
-		{name: "default", wantKlog: true, wantOTLP: true},
+		{name: "default without endpoint", wantKlog: true},
+		{name: "whitespace without endpoint", value: "  ", wantKlog: true},
+		{name: "default with endpoint", endpoint: "http://collector:4317", wantKlog: true, wantOTLP: true},
+		{name: "default with traces endpoint", tracesEndpoint: "http://collector:4317", wantKlog: true, wantOTLP: true},
+		{name: "whitespace with endpoint", value: "  ", endpoint: "http://collector:4317", wantKlog: true, wantOTLP: true},
+		{name: "blank endpoints", endpoint: "  ", tracesEndpoint: "  ", wantKlog: true},
 		{name: "klog", value: "klog", wantKlog: true},
+		{name: "klog with endpoint", value: "klog", endpoint: "http://collector:4317", wantKlog: true},
 		{name: "otlp", value: "otlp", wantOTLP: true},
+		{name: "otlp with endpoint", value: "otlp", endpoint: "http://collector:4317", wantOTLP: true},
+		{name: "otlp with traces endpoint", value: "otlp", tracesEndpoint: "http://collector:4317", wantOTLP: true},
 		{name: "both", value: " KLOG, OTLP ", wantKlog: true, wantOTLP: true},
 		{name: "none", value: "none"},
+		{name: "none with endpoint", value: "none", endpoint: "http://collector:4317"},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
+			t.Setenv("OTEL_EXPORTER_OTLP_ENDPOINT", test.endpoint)
+			t.Setenv("OTEL_EXPORTER_OTLP_TRACES_ENDPOINT", test.tracesEndpoint)
 			gotKlog, gotOTLP := parseTracesExporters(test.value)
 			if gotKlog != test.wantKlog || gotOTLP != test.wantOTLP {
 				t.Fatalf("parseTracesExporters(%q) = (%v, %v), want (%v, %v)", test.value, gotKlog, gotOTLP, test.wantKlog, test.wantOTLP)
 			}
 		})
-	}
-}
-
-func TestHasOTLPEndpoint(t *testing.T) {
-	t.Setenv(otlpEndpointEnv, "")
-	t.Setenv(otlpTracesEndpointEnv, "")
-	if hasOTLPEndpoint() {
-		t.Fatal("hasOTLPEndpoint() = true without an endpoint")
-	}
-
-	t.Setenv(otlpEndpointEnv, "http://collector:4317")
-	if !hasOTLPEndpoint() {
-		t.Fatalf("hasOTLPEndpoint() = false with %s set", otlpEndpointEnv)
-	}
-
-	t.Setenv(otlpEndpointEnv, "")
-	t.Setenv(otlpTracesEndpointEnv, "http://collector:4317")
-	if !hasOTLPEndpoint() {
-		t.Fatalf("hasOTLPEndpoint() = false with %s set", otlpTracesEndpointEnv)
 	}
 }
 

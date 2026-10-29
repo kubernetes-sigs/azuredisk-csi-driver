@@ -50,11 +50,6 @@ const (
 	// tracesExporterEnv selects which span exporters are enabled.
 	tracesExporterEnv = "OTEL_TRACES_EXPORTER"
 
-	// The OTLP SDK honors these variables; their presence controls whether the
-	// optional OTLP exporter is attached.
-	otlpEndpointEnv       = "OTEL_EXPORTER_OTLP_ENDPOINT"
-	otlpTracesEndpointEnv = "OTEL_EXPORTER_OTLP_TRACES_ENDPOINT"
-
 	// defaultKlogSpanVerbosity is the default klog verbosity at which spans are
 	// logged. It is deliberately low (V(2)) so that enabling tracing produces
 	// usable span lines at normal production verbosity, without requiring the
@@ -257,7 +252,9 @@ func spanKeysAndValues(span trace.ReadOnlySpan) []interface{} {
 
 // InitOtelTracing initializes and registers a global OpenTelemetry
 // TracerProvider for the driver. Spans are exported to the container logs via
-// klog and, when an OTLP endpoint is configured, over OTLP/gRPC. The returned
+// klog by default and additionally over OTLP/gRPC when an endpoint is configured.
+// OTEL_TRACES_EXPORTER overrides this selection; explicit OTLP selection uses
+// the SDK's endpoint defaults when no endpoint is configured. The returned
 // TracerProvider must be shut down on exit to flush any buffered spans. It is
 // only called when tracing is enabled, so there is zero cost when tracing is
 // disabled.
@@ -295,15 +292,11 @@ func InitOtelTracing() (*trace.TracerProvider, error) {
 		opts = append(opts, trace.WithBatcher(&klogSpanExporter{}))
 	}
 	if enableOTLP {
-		if hasOTLPEndpoint() {
-			exporter, exporterErr := otlptrace.New(ctx, otlptracegrpc.NewClient())
-			if exporterErr != nil {
-				klog.ErrorS(exporterErr, "otel tracing: failed to create OTLP exporter; continuing without it")
-			} else {
-				opts = append(opts, trace.WithBatcher(exporter))
-			}
+		exporter, exporterErr := otlptrace.New(ctx, otlptracegrpc.NewClient())
+		if exporterErr != nil {
+			klog.ErrorS(exporterErr, "otel tracing: failed to create OTLP exporter; continuing without it")
 		} else {
-			klog.V(2).Infof("otel tracing: OTLP exporter requested but neither %s nor %s is set; skipping OTLP", otlpEndpointEnv, otlpTracesEndpointEnv)
+			opts = append(opts, trace.WithBatcher(exporter))
 		}
 	}
 
@@ -317,7 +310,8 @@ func InitOtelTracing() (*trace.TracerProvider, error) {
 
 func parseTracesExporters(value string) (klogEnabled, otlpEnabled bool) {
 	if strings.TrimSpace(value) == "" {
-		return true, true
+		return true, strings.TrimSpace(os.Getenv("OTEL_EXPORTER_OTLP_ENDPOINT")) != "" ||
+			strings.TrimSpace(os.Getenv("OTEL_EXPORTER_OTLP_TRACES_ENDPOINT")) != ""
 	}
 	for _, exporter := range strings.Split(value, ",") {
 		switch strings.ToLower(strings.TrimSpace(exporter)) {
@@ -330,9 +324,4 @@ func parseTracesExporters(value string) (klogEnabled, otlpEnabled bool) {
 		}
 	}
 	return
-}
-
-func hasOTLPEndpoint() bool {
-	return strings.TrimSpace(os.Getenv(otlpEndpointEnv)) != "" ||
-		strings.TrimSpace(os.Getenv(otlpTracesEndpointEnv)) != ""
 }
