@@ -1494,6 +1494,12 @@ func TestPostAttachErrorCode(t *testing.T) {
 	assert.Equal(t, codes.Internal, postAttachErrorCode(false))
 }
 
+func TestGetPartition(t *testing.T) {
+	assert.Equal(t, "/dev/sdd1", getPartition("/dev/sdd", "1"))
+	assert.Equal(t, "/dev/nvme0n1p2", getPartition("/dev/nvme0n1", "2"))
+	assert.Equal(t, "/dev/disk/azure/data/by-lun/3-part1", getPartition("/dev/disk/azure/data/by-lun/3", "1"))
+}
+
 func TestExecuteQADDiskOperationNullStatus(t *testing.T) {
 	tests := []struct {
 		name          string
@@ -1995,7 +2001,7 @@ func TestNodePublishVolume(t *testing.T) {
 			expectedErr: testutil.TestError{},
 			expectedInfo: &directvolume.MountInfo{
 				VolumeType: kataDirectVolumeType,
-				Device:     "/dev/sdd-part1",
+				Device:     "/dev/sdd1",
 				FsType:     defaultLinuxFsType,
 				Metadata:   map[string]string{},
 				Options:    []string{"discard"},

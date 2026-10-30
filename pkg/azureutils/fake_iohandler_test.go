@@ -25,7 +25,11 @@ import (
 )
 
 func TestNewFakeIOHandlerReadDir(t *testing.T) {
-	iohandler := NewFakeIOHandler()
+	readErr := fmt.Errorf("read failed")
+	iohandler := NewFakeIOHandlerWithOptions(FakeIOHandlerOptions{
+		Dirs:   map[string][]string{"/dir": {"file"}, "/empty": {}},
+		Errors: map[string]error{"/broken": readErr},
+	})
 
 	tests := []struct {
 		dirname          string
@@ -33,57 +37,28 @@ func TestNewFakeIOHandlerReadDir(t *testing.T) {
 		expectedErr      error
 	}{
 		{
+			"/dir",
+			[]os.DirEntry{
+				&fakeDirEntry{
+					name: "file",
+				},
+			},
+			nil,
+		},
+		{
+			"/empty",
+			[]os.DirEntry{},
+			nil,
+		},
+		{
+			"/broken",
+			nil,
+			readErr,
+		},
+		{
 			"/home/",
 			nil,
-			fmt.Errorf("bad dir"),
-		},
-		{
-			"/sys/bus/scsi/devices",
-			[]os.DirEntry{
-				&fakeDirEntry{
-					name: "3:0:0:1",
-				},
-				&fakeDirEntry{
-					name: "4:0:0:0",
-				},
-				&fakeDirEntry{
-					name: "4:0:0:1",
-				},
-				&fakeDirEntry{
-					name: "host1",
-				},
-				&fakeDirEntry{
-					name: "target2:0:0",
-				},
-			},
-			nil,
-		},
-		{
-			"/sys/bus/scsi/devices/4:0:0:1/block",
-			[]os.DirEntry{
-				&fakeDirEntry{
-					name: "sdd",
-				},
-			},
-			nil,
-		},
-		{
-			"/sys/bus/scsi/devices/3:0:0:2/block",
-			[]os.DirEntry{
-				&fakeDirEntry{
-					name: "sde",
-				},
-			},
-			nil,
-		},
-		{
-			"/sys/class/scsi_host/",
-			[]os.DirEntry{
-				&fakeDirEntry{
-					name: "host0",
-				},
-			},
-			nil,
+			os.ErrNotExist,
 		},
 	}
 
@@ -110,55 +85,44 @@ func TestNewFakeIOHandlerReadDir(t *testing.T) {
 }
 
 func TestNewFakeIOHandlerWriteFile(t *testing.T) {
-	iohandler := NewFakeIOHandler()
+	writeErr := fmt.Errorf("write failed")
 
 	tests := []struct {
-		filename    string
-		data        []byte
-		perm        os.FileMode
-		expectedErr error
+		writeErr           error
+		expectedFileExists bool
 	}{
 		{
-			"file",
 			nil,
-			os.FileMode(0700),
-			nil,
+			true,
+		},
+		{
+			writeErr,
+			false,
 		},
 	}
 
 	for _, test := range tests {
-		resultErr := iohandler.WriteFile(test.filename, test.data, test.perm)
-		if !reflect.DeepEqual(resultErr, test.expectedErr) {
-			t.Errorf("filename: %v, data: %v, perm: %v, resultErr: %v, expectedErr: %v", test.filename, test.data, test.perm, resultErr, test.expectedErr)
-		}
-	}
-}
-
-func TestNewFakeIOHandlerReadLink(t *testing.T) {
-	iohandler := NewFakeIOHandler()
-
-	tests := []struct {
-		name         string
-		expectedLink string
-		expectedErr  error
-	}{
-		{
-			"file",
-			"/dev/azure/disk/sda",
-			nil,
-		},
-	}
-
-	for _, test := range tests {
-		resultLink, resultErr := iohandler.Readlink(test.name)
-		if !reflect.DeepEqual(resultLink, test.expectedLink) || !reflect.DeepEqual(resultErr, test.expectedErr) {
-			t.Errorf("name: %v, resultLink: %v, expectedLink: %v, resultErr: %v, expectedErr: %v", test.name, resultLink, test.expectedLink, resultErr, test.expectedErr)
+		iohandler := NewFakeIOHandlerWithOptions(FakeIOHandlerOptions{
+			WriteError: test.writeErr,
+			OnWrite: func(dirs map[string][]string) {
+				dirs["/dir"] = []string{"file"}
+			},
+		})
+		resultErr := iohandler.WriteFile("/dir/file", []byte("data"), os.FileMode(0700))
+		expectedWrites := []FakeWrite{{Path: "/dir/file", Data: "data", Perm: os.FileMode(0700)}}
+		_, statErr := iohandler.Stat("/dir/file")
+		if resultErr != test.writeErr || !reflect.DeepEqual(iohandler.Writes(), expectedWrites) || (statErr == nil) != test.expectedFileExists {
+			t.Errorf("writeErr: %v, resultErr: %v, writes: %v, statErr: %v", test.writeErr, resultErr, iohandler.Writes(), statErr)
 		}
 	}
 }
 
 func TestNewFakeIOHandlerReadFile(t *testing.T) {
-	iohandler := NewFakeIOHandler()
+	readErr := fmt.Errorf("read failed")
+	iohandler := NewFakeIOHandlerWithOptions(FakeIOHandlerOptions{
+		Files:  map[string][]byte{"/file": []byte("data")},
+		Errors: map[string]error{"/broken": readErr},
+	})
 
 	tests := []struct {
 		filename      string
@@ -166,19 +130,19 @@ func TestNewFakeIOHandlerReadFile(t *testing.T) {
 		expectedErr   error
 	}{
 		{
-			"file.unknown",
-			nil,
-			fmt.Errorf("unknown file"),
-		},
-		{
-			"file.vendor",
-			[]byte("Msft    \n"),
+			"/file",
+			[]byte("data"),
 			nil,
 		},
 		{
-			"file.model",
-			[]byte("Virtual Disk \n"),
+			"/broken",
 			nil,
+			readErr,
+		},
+		{
+			"/missing",
+			nil,
+			os.ErrNotExist,
 		},
 	}
 
@@ -186,6 +150,40 @@ func TestNewFakeIOHandlerReadFile(t *testing.T) {
 		resultBytes, resultErr := iohandler.ReadFile(test.filename)
 		if !reflect.DeepEqual(resultBytes, test.expectedBytes) || (!reflect.DeepEqual(resultErr, test.expectedErr)) {
 			t.Errorf("filename: %v, resultBytes: %v, expectedBytes: %v, resultErr: %v, expectedErr: %v", test.filename, resultBytes, test.expectedBytes, resultErr, test.expectedErr)
+		}
+	}
+}
+
+func TestNewFakeIOHandlerStat(t *testing.T) {
+	statErr := fmt.Errorf("stat failed")
+	iohandler := NewFakeIOHandlerWithOptions(FakeIOHandlerOptions{
+		Dirs:   map[string][]string{"/dev": {"sdd"}},
+		Errors: map[string]error{"/dev/sde": statErr},
+	})
+
+	tests := []struct {
+		filename    string
+		expectedErr error
+	}{
+		{
+			"/dev/sdd",
+			nil,
+		},
+		{
+			"/dev/sde",
+			statErr,
+		},
+		{
+			"/dev/sdf",
+			os.ErrNotExist,
+		},
+	}
+
+	for _, test := range tests {
+		_, resultStatErr := iohandler.Stat(test.filename)
+		resultOpenErr := iohandler.CheckOpenable(test.filename)
+		if resultStatErr != test.expectedErr || resultOpenErr != test.expectedErr {
+			t.Errorf("filename: %v, resultStatErr: %v, resultOpenErr: %v, expectedErr: %v", test.filename, resultStatErr, resultOpenErr, test.expectedErr)
 		}
 	}
 }

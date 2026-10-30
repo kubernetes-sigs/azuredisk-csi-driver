@@ -17,10 +17,12 @@ limitations under the License.
 package azureutils
 
 import (
-	"fmt"
 	"io/fs"
+	"maps"
 	"os"
-	"strings"
+	"path"
+	"sync"
+	"syscall"
 	"time"
 )
 
@@ -74,73 +76,143 @@ func (fd *fakeDirEntry) IsDir() bool {
 }
 
 var (
-	lunStr    = "1"
-	diskPath  = "4:0:0:" + lunStr
-	devName   = "sdd"
-	lunStr1   = "2"
-	diskPath1 = "3:0:0:" + lunStr1
-	devName1  = "sde"
+	lunStr   = "1"
+	diskPath = "2:0:0:" + lunStr
+	devName  = "sdd"
+	// Azure attaches SCSI data disks to this controller (the GUID is a fixed constant)
+	dataDiskControllerPath = "/sys/bus/vmbus/devices/f8b3781b-1e82-4818-a1c3-63d806ec15bb"
 )
 
-type fakeIOHandler struct{}
+// FakeIOHandlerOptions describes the files a FakeIOHandler serves.
+type FakeIOHandlerOptions struct {
+	// Dirs lists each directory's entries; a path exists if its parent directory lists it.
+	Dirs map[string][]string
+	// Files holds the contents ReadFile returns for each file.
+	Files map[string][]byte
+	// Errors holds the error that ReadDir, Stat, ReadFile and CheckOpenable return for a path.
+	Errors map[string]error
+	// OpensNeeded holds the number of times CheckOpenable should return ENXIO before succeeding.
+	OpensNeeded map[string]int
+	// WriteError is returned by every WriteFile call; the write is still recorded.
+	WriteError error
+	// OnWrite runs after each successful write so a test can mimic the kernel, e.g. by adding a disk after a SCSI scan.
+	OnWrite func(dirs map[string][]string)
+}
 
+// FakeWrite is a WriteFile call recorded by a FakeIOHandler.
+type FakeWrite struct {
+	Path string
+	Data string
+	Perm os.FileMode
+}
+
+// FakeIOHandler is an IOHandler that serves files from in-memory tables and records writes.
+type FakeIOHandler struct {
+	mutex   sync.Mutex
+	options FakeIOHandlerOptions
+	writes  []FakeWrite
+}
+
+// NewFakeIOHandler returns a FakeIOHandler for a healthy node whose SCSI data disk at LUN 1 is /dev/sdd.
 func NewFakeIOHandler() IOHandler {
-	return &fakeIOHandler{}
+	scsiTarget := dataDiskControllerPath + "/host2/target2:0:0"
+	scsiDevice := scsiTarget + "/" + diskPath
+	return NewFakeIOHandlerWithOptions(FakeIOHandlerOptions{
+		Dirs: map[string][]string{
+			dataDiskControllerPath: {"channels", "host2"},
+			scsiTarget:             {diskPath},
+			scsiDevice + "/block":  {devName},
+			"/dev":                 {devName},
+		},
+	})
 }
 
-func (handler *fakeIOHandler) ReadDir(dirname string) ([]os.DirEntry, error) {
-	switch dirname {
-	case "/sys/bus/scsi/devices":
-		f1 := &fakeDirEntry{
-			name: "3:0:0:1",
-		}
-		f2 := &fakeDirEntry{
-			name: "4:0:0:0",
-		}
-		f3 := &fakeDirEntry{
-			name: diskPath,
-		}
-		f4 := &fakeDirEntry{
-			name: "host1",
-		}
-		f5 := &fakeDirEntry{
-			name: "target2:0:0",
-		}
-		return []os.DirEntry{f1, f2, f3, f4, f5}, nil
-	case "/sys/bus/scsi/devices/" + diskPath + "/block":
-		n := &fakeDirEntry{
-			name: devName,
-		}
-		return []os.DirEntry{n}, nil
-	case "/sys/bus/scsi/devices/" + diskPath1 + "/block":
-		n := &fakeDirEntry{
-			name: devName1,
-		}
-		return []os.DirEntry{n}, nil
-	case "/sys/class/scsi_host/":
-		n := &fakeDirEntry{
-			name: "host0",
-		}
-		return []os.DirEntry{n}, nil
+// NewFakeIOHandlerWithOptions returns a FakeIOHandler that serves files as the options describe.
+func NewFakeIOHandlerWithOptions(options FakeIOHandlerOptions) *FakeIOHandler {
+	// Copy maps that can be changed by the handler, so the inputs are left alone.
+	dirs := make(map[string][]string, len(options.Dirs))
+	for dirname, names := range options.Dirs {
+		dirs[dirname] = append([]string(nil), names...)
 	}
-
-	return nil, fmt.Errorf("bad dir")
+	options.Dirs = dirs
+	options.OpensNeeded = maps.Clone(options.OpensNeeded)
+	return &FakeIOHandler{options: options}
 }
 
-func (handler *fakeIOHandler) WriteFile(_ string, _ []byte, _ os.FileMode) error {
+// Writes returns the WriteFile calls made so far.
+func (handler *FakeIOHandler) Writes() []FakeWrite {
+	handler.mutex.Lock()
+	defer handler.mutex.Unlock()
+	return append([]FakeWrite(nil), handler.writes...)
+}
+
+func (handler *FakeIOHandler) ReadDir(dirname string) ([]os.DirEntry, error) {
+	handler.mutex.Lock()
+	defer handler.mutex.Unlock()
+	if err, ok := handler.options.Errors[dirname]; ok {
+		return nil, err
+	}
+	names, ok := handler.options.Dirs[dirname]
+	if !ok {
+		return nil, os.ErrNotExist
+	}
+	entries := make([]os.DirEntry, 0, len(names))
+	for _, name := range names {
+		entries = append(entries, &fakeDirEntry{name: name})
+	}
+	return entries, nil
+}
+
+func (handler *FakeIOHandler) WriteFile(filename string, data []byte, perm os.FileMode) error {
+	handler.mutex.Lock()
+	defer handler.mutex.Unlock()
+	handler.writes = append(handler.writes, FakeWrite{Path: filename, Data: string(data), Perm: perm})
+	if handler.options.WriteError != nil {
+		return handler.options.WriteError
+	}
+	if handler.options.OnWrite != nil {
+		handler.options.OnWrite(handler.options.Dirs)
+	}
 	return nil
 }
 
-func (handler *fakeIOHandler) Readlink(_ string) (string, error) {
-	return "/dev/azure/disk/sda", nil
+func (handler *FakeIOHandler) ReadFile(filename string) ([]byte, error) {
+	if err, ok := handler.options.Errors[filename]; ok {
+		return nil, err
+	}
+	data, ok := handler.options.Files[filename]
+	if !ok {
+		return nil, os.ErrNotExist
+	}
+	return data, nil
 }
 
-func (handler *fakeIOHandler) ReadFile(filename string) ([]byte, error) {
-	if strings.HasSuffix(filename, "vendor") {
-		return []byte("Msft    \n"), nil
+func (handler *FakeIOHandler) Stat(filename string) (os.FileInfo, error) {
+	handler.mutex.Lock()
+	defer handler.mutex.Unlock()
+	if err, ok := handler.options.Errors[filename]; ok {
+		return nil, err
 	}
-	if strings.HasSuffix(filename, "model") {
-		return []byte("Virtual Disk \n"), nil
+	name := path.Base(filename)
+	for _, entry := range handler.options.Dirs[path.Dir(filename)] {
+		if entry == name {
+			return fakeFileInfo{name: name}, nil
+		}
 	}
-	return nil, fmt.Errorf("unknown file")
+	return nil, os.ErrNotExist
+}
+
+func (handler *FakeIOHandler) CheckOpenable(filename string) error {
+	_, err := handler.Stat(filename)
+	if err == nil {
+		if handler.options.OpensNeeded != nil {
+			handler.mutex.Lock()
+			defer handler.mutex.Unlock()
+			if handler.options.OpensNeeded[filename] > 0 {
+				handler.options.OpensNeeded[filename]--
+				return syscall.ENXIO
+			}
+		}
+	}
+	return err
 }

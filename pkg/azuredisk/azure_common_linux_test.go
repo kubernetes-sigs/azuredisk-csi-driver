@@ -895,27 +895,6 @@ func TestFlushAndInvalidateBlockDevice(t *testing.T) {
 	})
 }
 
-// recordingIOHandler is an azureutils.IOHandler that records WriteFile calls so tests can assert the
-// SCSI device-delete side effect of unmountAndInvalidateDevice.
-type recordingIOHandler struct {
-	writes   []ioWrite
-	writeErr error
-}
-
-type ioWrite struct {
-	path string
-	data string
-	perm os.FileMode
-}
-
-func (h *recordingIOHandler) WriteFile(filename string, data []byte, perm os.FileMode) error {
-	h.writes = append(h.writes, ioWrite{path: filename, data: string(data), perm: perm})
-	return h.writeErr
-}
-func (h *recordingIOHandler) ReadDir(string) ([]os.DirEntry, error) { return nil, nil }
-func (h *recordingIOHandler) Readlink(string) (string, error)       { return "", nil }
-func (h *recordingIOHandler) ReadFile(string) ([]byte, error)       { return nil, nil }
-
 // installUnmountSeams overrides the unmountAndInvalidateDevice indirection seams (restoring them on
 // cleanup) so the destructive sequence can be driven deterministically without real devices or root.
 // It records the shutdown/unmount/flush steps, in order, into *events.
@@ -964,7 +943,7 @@ func TestUnmountAndInvalidateDeviceSequence(t *testing.T) {
 	t.Run("successful cleanup flushes partition+whole-disk and deletes the SCSI device", func(t *testing.T) {
 		var events []string
 		installUnmountSeams(t, "/dev/sdzz1", nil, nil, nil, &events)
-		io := &recordingIOHandler{}
+		io := azureutils.NewFakeIOHandlerWithOptions(azureutils.FakeIOHandlerOptions{})
 
 		if err := unmountAndInvalidateDevice(staging, io, newMounter(t)); err != nil {
 			t.Fatalf("unmountAndInvalidateDevice returned error: %v", err)
@@ -973,18 +952,18 @@ func TestUnmountAndInvalidateDeviceSequence(t *testing.T) {
 		if !reflect.DeepEqual(events, want) {
 			t.Fatalf("sequence = %v, want %v", events, want)
 		}
-		if len(io.writes) != 1 {
-			t.Fatalf("delete writes = %d, want 1 (%+v)", len(io.writes), io.writes)
+		if len(io.Writes()) != 1 {
+			t.Fatalf("delete writes = %d, want 1 (%+v)", len(io.Writes()), io.Writes())
 		}
-		w := io.writes[0]
-		if want := "/sys/class/block/sdzz/device/delete"; w.path != want {
-			t.Errorf("delete path = %q, want %q", w.path, want)
+		w := io.Writes()[0]
+		if want := "/sys/class/block/sdzz/device/delete"; w.Path != want {
+			t.Errorf("delete path = %q, want %q", w.Path, want)
 		}
-		if w.data != "1" {
-			t.Errorf("delete data = %q, want %q", w.data, "1")
+		if w.Data != "1" {
+			t.Errorf("delete data = %q, want %q", w.Data, "1")
 		}
-		if w.perm != 0o200 {
-			t.Errorf("delete perm = %#o, want 0200", w.perm)
+		if w.Perm != 0o200 {
+			t.Errorf("delete perm = %#o, want 0200", w.Perm)
 		}
 	})
 
@@ -992,7 +971,7 @@ func TestUnmountAndInvalidateDeviceSequence(t *testing.T) {
 		var events []string
 		unmountErr := errors.New("boom: unmount failed")
 		installUnmountSeams(t, "/dev/sdzz1", nil, unmountErr, nil, &events)
-		io := &recordingIOHandler{}
+		io := azureutils.NewFakeIOHandlerWithOptions(azureutils.FakeIOHandlerOptions{})
 
 		err := unmountAndInvalidateDevice(staging, io, newMounter(t))
 		if !errors.Is(err, unmountErr) {
@@ -1001,15 +980,15 @@ func TestUnmountAndInvalidateDeviceSequence(t *testing.T) {
 		if want := []string{"shutdown", "unmount"}; !reflect.DeepEqual(events, want) {
 			t.Fatalf("sequence = %v, want %v (flush/delete must not run after unmount failure)", events, want)
 		}
-		if len(io.writes) != 0 {
-			t.Fatalf("delete writes = %d, want 0 after unmount failure", len(io.writes))
+		if len(io.Writes()) != 0 {
+			t.Fatalf("delete writes = %d, want 0 after unmount failure", len(io.Writes()))
 		}
 	})
 
 	t.Run("nvme device is flushed but never deleted", func(t *testing.T) {
 		var events []string
 		installUnmountSeams(t, "/dev/nvme9n9", nil, nil, nil, &events)
-		io := &recordingIOHandler{}
+		io := azureutils.NewFakeIOHandlerWithOptions(azureutils.FakeIOHandlerOptions{})
 
 		if err := unmountAndInvalidateDevice(staging, io, newMounter(t)); err != nil {
 			t.Fatalf("unmountAndInvalidateDevice returned error: %v", err)
@@ -1017,8 +996,8 @@ func TestUnmountAndInvalidateDeviceSequence(t *testing.T) {
 		if want := []string{"shutdown", "unmount", "flush:/dev/nvme9n9"}; !reflect.DeepEqual(events, want) {
 			t.Fatalf("sequence = %v, want %v", events, want)
 		}
-		if len(io.writes) != 0 {
-			t.Fatalf("NVMe must not be deleted; got writes %+v", io.writes)
+		if len(io.Writes()) != 0 {
+			t.Fatalf("NVMe must not be deleted; got writes %+v", io.Writes())
 		}
 	})
 
@@ -1026,7 +1005,7 @@ func TestUnmountAndInvalidateDeviceSequence(t *testing.T) {
 		var events []string
 		// A failed device lookup (not mounted) yields an empty device -> early return after unmount.
 		installUnmountSeams(t, "", errors.New("not mounted"), nil, nil, &events)
-		io := &recordingIOHandler{}
+		io := azureutils.NewFakeIOHandlerWithOptions(azureutils.FakeIOHandlerOptions{})
 
 		for i := 0; i < 2; i++ { // retry-safe: a second call behaves identically
 			if err := unmountAndInvalidateDevice(staging, io, newMounter(t)); err != nil {
@@ -1036,8 +1015,8 @@ func TestUnmountAndInvalidateDeviceSequence(t *testing.T) {
 		if want := []string{"shutdown", "unmount", "shutdown", "unmount"}; !reflect.DeepEqual(events, want) {
 			t.Fatalf("sequence = %v, want %v", events, want)
 		}
-		if len(io.writes) != 0 {
-			t.Fatalf("no device -> no delete; got writes %+v", io.writes)
+		if len(io.Writes()) != 0 {
+			t.Fatalf("no device -> no delete; got writes %+v", io.Writes())
 		}
 	})
 
@@ -1046,7 +1025,7 @@ func TestUnmountAndInvalidateDeviceSequence(t *testing.T) {
 		// A device-mapper path matches neither sd* nor nvme*, so wholeDiskName is empty: no extra
 		// whole-disk flush target is appended, and the SCSI delete is skipped.
 		installUnmountSeams(t, "/dev/mapper/test-vol", nil, nil, nil, &events)
-		io := &recordingIOHandler{}
+		io := azureutils.NewFakeIOHandlerWithOptions(azureutils.FakeIOHandlerOptions{})
 
 		if err := unmountAndInvalidateDevice(staging, io, newMounter(t)); err != nil {
 			t.Fatalf("unmountAndInvalidateDevice returned error: %v", err)
@@ -1054,15 +1033,15 @@ func TestUnmountAndInvalidateDeviceSequence(t *testing.T) {
 		if want := []string{"shutdown", "unmount", "flush:/dev/mapper/test-vol"}; !reflect.DeepEqual(events, want) {
 			t.Fatalf("sequence = %v, want %v", events, want)
 		}
-		if len(io.writes) != 0 {
-			t.Fatalf("non-sd/non-nvme must not be deleted; got writes %+v", io.writes)
+		if len(io.Writes()) != 0 {
+			t.Fatalf("non-sd/non-nvme must not be deleted; got writes %+v", io.Writes())
 		}
 	})
 
 	t.Run("flush errors do not skip the SCSI device delete", func(t *testing.T) {
 		var events []string
 		installUnmountSeams(t, "/dev/sdzz1", nil, nil, errors.New("flush boom"), &events)
-		io := &recordingIOHandler{}
+		io := azureutils.NewFakeIOHandlerWithOptions(azureutils.FakeIOHandlerOptions{})
 
 		if err := unmountAndInvalidateDevice(staging, io, newMounter(t)); err != nil {
 			t.Fatalf("unmountAndInvalidateDevice returned error: %v", err)
@@ -1072,22 +1051,250 @@ func TestUnmountAndInvalidateDeviceSequence(t *testing.T) {
 		if want := []string{"shutdown", "unmount", "flush:/dev/sdzz1", "flush:/dev/sdzz"}; !reflect.DeepEqual(events, want) {
 			t.Fatalf("sequence = %v, want %v", events, want)
 		}
-		if len(io.writes) != 1 || io.writes[0].path != "/sys/class/block/sdzz/device/delete" {
-			t.Fatalf("delete must still happen despite flush errors; writes = %+v", io.writes)
+		if len(io.Writes()) != 1 || io.Writes()[0].Path != "/sys/class/block/sdzz/device/delete" {
+			t.Fatalf("delete must still happen despite flush errors; writes = %+v", io.Writes())
 		}
 	})
 
 	t.Run("SCSI device delete failure is swallowed (returns nil)", func(t *testing.T) {
 		var events []string
 		installUnmountSeams(t, "/dev/sdzz1", nil, nil, nil, &events)
-		io := &recordingIOHandler{writeErr: errors.New("permission denied")}
+		io := azureutils.NewFakeIOHandlerWithOptions(azureutils.FakeIOHandlerOptions{WriteError: errors.New("permission denied")})
 
 		// A failed SCSI delete is best-effort: it is logged, not returned.
 		if err := unmountAndInvalidateDevice(staging, io, newMounter(t)); err != nil {
 			t.Fatalf("unmountAndInvalidateDevice returned error: %v, want nil (delete failure is best-effort)", err)
 		}
-		if len(io.writes) != 1 {
-			t.Fatalf("expected one delete attempt, got %+v", io.writes)
+		if len(io.Writes()) != 1 {
+			t.Fatalf("expected one delete attempt, got %+v", io.Writes())
 		}
 	})
+}
+
+func TestSetSCSIScanMode(t *testing.T) {
+	tests := []struct {
+		name       string
+		mode       string
+		options    azureutils.FakeIOHandlerOptions
+		wantWrites []string
+		wantErr    bool
+	}{
+		{
+			name:       "manual replaces async",
+			mode:       "manual",
+			options:    azureutils.FakeIOHandlerOptions{Files: map[string][]byte{sysScsiScanModePath: []byte("async\n")}},
+			wantWrites: []string{sysScsiScanModePath + "=manual"},
+		},
+		{
+			name:       "async replaces manual",
+			mode:       "async",
+			options:    azureutils.FakeIOHandlerOptions{Files: map[string][]byte{sysScsiScanModePath: []byte("manual\n")}},
+			wantWrites: []string{sysScsiScanModePath + "=async"},
+		},
+		{
+			name:       "sync replaces manual",
+			mode:       "sync",
+			options:    azureutils.FakeIOHandlerOptions{Files: map[string][]byte{sysScsiScanModePath: []byte("manual\n")}},
+			wantWrites: []string{sysScsiScanModePath + "=sync"},
+		},
+		{
+			name:    "the current mode isn't rewritten",
+			mode:    "manual",
+			options: azureutils.FakeIOHandlerOptions{Files: map[string][]byte{sysScsiScanModePath: []byte("manual\n")}},
+		},
+		{
+			name:       "empty means manual",
+			mode:       "",
+			options:    azureutils.FakeIOHandlerOptions{Files: map[string][]byte{sysScsiScanModePath: []byte("async\n")}},
+			wantWrites: []string{sysScsiScanModePath + "=manual"},
+		},
+		{
+			name:       "the mode is trimmed and lowercased",
+			mode:       " Async ",
+			options:    azureutils.FakeIOHandlerOptions{Files: map[string][]byte{sysScsiScanModePath: []byte("manual\n")}},
+			wantWrites: []string{sysScsiScanModePath + "=async"},
+		},
+		{
+			name:       "an unsupported mode means manual",
+			mode:       "none",
+			options:    azureutils.FakeIOHandlerOptions{Files: map[string][]byte{sysScsiScanModePath: []byte("async\n")}},
+			wantWrites: []string{sysScsiScanModePath + "=manual"},
+		},
+		{
+			name:    "unchanged neither reads nor writes the mode",
+			mode:    "unchanged",
+			options: azureutils.FakeIOHandlerOptions{Errors: map[string]error{sysScsiScanModePath: errors.New("read failed")}},
+		},
+		{
+			name:    "a read failure is returned without writing",
+			mode:    "manual",
+			options: azureutils.FakeIOHandlerOptions{Errors: map[string]error{sysScsiScanModePath: errors.New("read failed")}},
+			wantErr: true,
+		},
+		{
+			name: "a write failure is returned",
+			mode: "manual",
+			options: azureutils.FakeIOHandlerOptions{
+				Files:      map[string][]byte{sysScsiScanModePath: []byte("async\n")},
+				WriteError: errors.New("write failed"),
+			},
+			wantWrites: []string{sysScsiScanModePath + "=manual"},
+			wantErr:    true,
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			io := azureutils.NewFakeIOHandlerWithOptions(test.options)
+			err := setSCSIScanMode(io, test.mode)
+			if (err != nil) != test.wantErr {
+				t.Errorf("err = %v, wantErr %v", err, test.wantErr)
+			}
+			var gotWrites []string
+			for _, w := range io.Writes() {
+				gotWrites = append(gotWrites, w.Path+"="+w.Data)
+			}
+			if !reflect.DeepEqual(gotWrites, test.wantWrites) {
+				t.Errorf("writes = %q, want %q", gotWrites, test.wantWrites)
+			}
+		})
+	}
+}
+
+func TestFindDiskByLunExtended(t *testing.T) {
+	scsiTarget := sysScsiDataDiskControllerPath + "/host1/target1:0:0"
+	scsiDevice := scsiTarget + "/1:0:0:12"
+	scanWrite := sysScsiDataDiskControllerPath + "/host1/scsi_host/host1/scan=0 0 12"
+	diskPresent := map[string][]string{
+		sysScsiDataDiskControllerPath: {"channels", "host1"},
+		scsiTarget:                    {"1:0:0:12"},
+		scsiDevice + "/block":         {"sdz"},
+		"/dev":                        {"sdz"},
+	}
+	addDisk := func(dirs map[string][]string) {
+		dirs[scsiTarget] = []string{"1:0:0:12"}
+		dirs[scsiDevice+"/block"] = []string{"sdz"}
+		dirs["/dev"] = []string{"sdz"}
+	}
+	tests := []struct {
+		name        string
+		dirs        map[string][]string
+		errs        map[string]error
+		opensNeeded map[string]int
+		writeErr    error
+		onWrite     func(map[string][]string)
+		wantPath    string
+		wantErr     bool
+		wantWrites  []string
+	}{
+		{
+			name:     "present disk is returned without scanning",
+			dirs:     diskPresent,
+			wantPath: "/dev/sdz",
+		},
+		{
+			name:       "missing disk is scanned for at its LUN only",
+			dirs:       map[string][]string{sysScsiDataDiskControllerPath: {"host1"}},
+			onWrite:    addDisk,
+			wantPath:   "/dev/sdz",
+			wantWrites: []string{scanWrite},
+		},
+		{
+			name: "disk still being added returns nothing without scanning",
+			dirs: map[string][]string{
+				sysScsiDataDiskControllerPath: {"host1"},
+				scsiTarget:                    {"1:0:0:12"},
+			},
+		},
+		{
+			name:       "LUN absent after scanning is not there yet",
+			dirs:       map[string][]string{sysScsiDataDiskControllerPath: {"host1"}},
+			wantWrites: []string{scanWrite},
+		},
+		{
+			name:    "unreadable controller is an error, without falling back or scanning",
+			errs:    map[string]error{sysScsiDataDiskControllerPath: unix.EMFILE},
+			wantErr: true,
+		},
+		{
+			name:    "unreadable SCSI device is an error, without scanning",
+			dirs:    map[string][]string{sysScsiDataDiskControllerPath: {"host1"}},
+			errs:    map[string]error{scsiDevice: unix.EMFILE},
+			wantErr: true,
+		},
+		{
+			name:     "missing controller falls back to the NVMe by-lun link, without scanning",
+			dirs:     map[string][]string{"/dev/disk/azure/data/by-lun": {"12"}},
+			wantPath: "/dev/disk/azure/data/by-lun/12",
+		},
+		{
+			name: "missing controller and by-lun link is not there yet",
+		},
+		{
+			name:    "by-lun link that can't be checked is an error",
+			errs:    map[string]error{"/dev/disk/azure/data/by-lun/12": unix.EACCES},
+			wantErr: true,
+		},
+		{
+			name:    "controller without a SCSI host is an error",
+			dirs:    map[string][]string{sysScsiDataDiskControllerPath: {"channels"}},
+			wantErr: true,
+		},
+		{
+			name:       "failed scan is an error",
+			dirs:       map[string][]string{sysScsiDataDiskControllerPath: {"host1"}},
+			writeErr:   unix.EACCES,
+			wantErr:    true,
+			wantWrites: []string{scanWrite},
+		},
+		{
+			name: "empty block folder returns nothing without scanning",
+			dirs: map[string][]string{
+				sysScsiDataDiskControllerPath: {"host1"},
+				scsiTarget:                    {"1:0:0:12"},
+				scsiDevice + "/block":         {},
+			},
+		},
+		{
+			name: "unreadable block folder is an error",
+			dirs: map[string][]string{
+				sysScsiDataDiskControllerPath: {"host1"},
+				scsiTarget:                    {"1:0:0:12"},
+			},
+			errs:    map[string]error{scsiDevice + "/block": unix.EMFILE},
+			wantErr: true,
+		},
+		{
+			name: "disk not yet openable returns nothing without scanning",
+			dirs: diskPresent,
+			errs: map[string]error{"/dev/sdz": unix.ENXIO},
+		},
+		{
+			name:    "disk that can't be opened is an error",
+			dirs:    diskPresent,
+			errs:    map[string]error{"/dev/sdz": unix.EACCES},
+			wantErr: true,
+		},
+		{
+			name:        "disk that becomes openable during the wait is returned",
+			dirs:        diskPresent,
+			opensNeeded: map[string]int{"/dev/sdz": 3},
+			wantPath:    "/dev/sdz",
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			io := azureutils.NewFakeIOHandlerWithOptions(azureutils.FakeIOHandlerOptions{Dirs: test.dirs, Errors: test.errs, OpensNeeded: test.opensNeeded, WriteError: test.writeErr, OnWrite: test.onWrite})
+			path, err := findDiskByLun(12, io, nil)
+			if path != test.wantPath || (err != nil) != test.wantErr {
+				t.Errorf("findDiskByLun = (%q, %v), want (%q, error %v)", path, err, test.wantPath, test.wantErr)
+			}
+			var gotWrites []string
+			for _, w := range io.Writes() {
+				gotWrites = append(gotWrites, w.Path+"="+w.Data)
+			}
+			if !reflect.DeepEqual(gotWrites, test.wantWrites) {
+				t.Errorf("writes = %q, want %q", gotWrites, test.wantWrites)
+			}
+		})
+	}
 }

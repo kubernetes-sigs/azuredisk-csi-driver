@@ -18,13 +18,15 @@ package azureutils
 
 import (
 	"os"
+	"syscall"
 )
 
 type IOHandler interface {
 	ReadDir(dirname string) ([]os.DirEntry, error)
 	WriteFile(filename string, data []byte, perm os.FileMode) error
-	Readlink(name string) (string, error)
 	ReadFile(filename string) ([]byte, error)
+	Stat(filename string) (os.FileInfo, error)
+	CheckOpenable(filename string) error
 }
 
 type osIOHandler struct{}
@@ -41,10 +43,18 @@ func (handler *osIOHandler) WriteFile(filename string, data []byte, perm os.File
 	return os.WriteFile(filename, data, perm)
 }
 
-func (handler *osIOHandler) Readlink(name string) (string, error) {
-	return os.Readlink(name)
-}
-
 func (handler *osIOHandler) ReadFile(filename string) ([]byte, error) {
 	return os.ReadFile(filename)
+}
+
+func (handler *osIOHandler) Stat(filename string) (os.FileInfo, error) {
+	return os.Stat(filename)
+}
+
+func (handler *osIOHandler) CheckOpenable(filename string) error {
+	fd, err := syscall.Open(filename, syscall.O_RDONLY|syscall.O_CLOEXEC, 0)
+	if err != nil {
+		return err
+	}
+	return syscall.Close(fd)
 }

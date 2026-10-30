@@ -191,7 +191,7 @@ func (d *Driver) kataRestoreStaging(req *csi.NodePublishVolumeRequest) error {
 		return err
 	}
 	if partition, ok := req.VolumeContext[consts.VolumeAttributePartition]; ok {
-		device += "-part" + partition
+		device = getPartition(device, partition)
 	}
 	if err := volumehelper.MakeDir(req.StagingTargetPath); err != nil {
 		return err

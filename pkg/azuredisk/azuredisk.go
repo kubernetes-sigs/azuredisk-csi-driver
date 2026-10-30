@@ -158,6 +158,7 @@ type Driver struct {
 	disableAVSetNodes                  bool
 	removeNotReadyTaint                bool
 	neverStopTaintRemoval              bool
+	scsiScanMode                       string
 	kubeClient                         clientset.Interface
 	enableKataMount                    bool
 	isKataNode                         bool
@@ -248,6 +249,7 @@ func NewDriver(options *DriverOptions) *Driver {
 	driver.disableAVSetNodes = options.DisableAVSetNodes
 	driver.removeNotReadyTaint = options.RemoveNotReadyTaint
 	driver.neverStopTaintRemoval = options.NeverStopTaintRemoval
+	driver.scsiScanMode = options.SCSIScanMode
 	driver.maxConcurrentFormat = options.MaxConcurrentFormat
 	driver.concurrentFormatTimeout = options.ConcurrentFormatTimeout
 	if options.MaxConcurrentFormat > 0 {
@@ -522,6 +524,14 @@ func (d *Driver) Run(ctx context.Context) error {
 		klog.Fatalf("%v", err)
 	}
 	klog.Infof("\nDRIVER INFORMATION:\n-------------------\n%s\n\nStreaming logs below:", versionMeta)
+
+	// Before serving requests, set the kernel's SCSI scan mode. In manual mode, the default, the kernel doesn't scan
+	// for SCSI disks on its own, so it can't bring back a disk removed at unstage before Azure detaches it.
+	if d.NodeID != "" {
+		if err := setSCSIScanMode(d.ioHandler, d.scsiScanMode); err != nil {
+			klog.Errorf("failed to set SCSI scan mode: %v", err)
+		}
+	}
 
 	opts := []grpc.ServerOption{
 		grpc.ChainUnaryInterceptor(

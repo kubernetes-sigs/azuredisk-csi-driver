@@ -142,6 +142,7 @@ spec:
             - "--endpoint=$(CSI_ENDPOINT)"
             - "--nodeid=$(KUBE_NODE_NAME)"
             - "--enable-perf-optimization={{ .Values.linux.enablePerfOptimization }}"
+            - "--scsi-scan-mode={{ .Values.linux.scsiScanMode }}"
             - "--drivername={{ .Values.driver.name }}"
             - "--feature-gates=NodeDrivenAttachDetach={{ .Values.driver.featureGates.NodeDrivenAttachDetach }},KataMount={{ .Values.driver.featureGates.KataMount }}"
             - "--volume-attach-limit={{ .Values.driver.volumeAttachLimit }}"
@@ -238,10 +239,6 @@ spec:
               readOnly: true
             - mountPath: /dev
               name: device-dir
-            - mountPath: /sys/bus/scsi/devices
-              name: sys-devices-dir
-            - mountPath: /sys/class/
-              name: sys-class
             {{- if .Values.driver.featureGates.KataMount }}
             - mountPath: /run/kata-containers/shared/direct-volumes
               name: kata-direct-volumes
@@ -294,14 +291,6 @@ spec:
             path: /dev
             type: Directory
           name: device-dir
-        - hostPath:
-            path: /sys/bus/scsi/devices
-            type: Directory
-          name: sys-devices-dir
-        - hostPath:
-            path: /sys/class/
-            type: Directory
-          name: sys-class
         {{- if .Values.driver.featureGates.KataMount }}
         - hostPath:
             path: /run/kata-containers/shared/direct-volumes/
