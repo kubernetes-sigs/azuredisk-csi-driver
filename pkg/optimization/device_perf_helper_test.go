@@ -198,6 +198,11 @@ func TestAccountSupportsPerfOptimization(t *testing.T) {
 			want:        false,
 		},
 		{
+			name:        "PremiumV2_LRS doesn't supports optimization",
+			accountType: "PremiumV2_LRS",
+			want:        false,
+		},
+		{
 			name:        "invalid account doesn't supports optimization",
 			accountType: "asdad",
 			want:        false,
