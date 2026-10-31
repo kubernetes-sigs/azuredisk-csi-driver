@@ -39,6 +39,7 @@ require (
 	k8s.io/client-go v0.35.7
 	k8s.io/cloud-provider v0.35.7
 	k8s.io/component-base v0.35.7
+	k8s.io/component-helpers v0.35.7
 	k8s.io/klog/v2 v2.140.0
 	k8s.io/kubernetes v1.35.4
 	k8s.io/mount-utils v0.34.0-alpha.0.0.20250505161257-5984695ef68d
@@ -153,7 +154,6 @@ require (
 	gopkg.in/inf.v0 v0.9.1 // indirect
 	k8s.io/apiextensions-apiserver v0.31.4 // indirect
 	k8s.io/apiserver v0.35.7 // indirect
-	k8s.io/component-helpers v0.35.7 // indirect
 	k8s.io/controller-manager v0.35.7 // indirect
 	k8s.io/csi-translation-lib v0.31.4 // indirect
 	k8s.io/kube-openapi v0.0.0-20250910181357-589584f1c912 // indirect
