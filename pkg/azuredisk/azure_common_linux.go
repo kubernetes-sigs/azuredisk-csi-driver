@@ -44,9 +44,12 @@ import (
 
 const (
 	sysClassBlockPath   = "/sys/class/block/"
+	sysClassNVMePath    = "/sys/class/nvme/"
 	sysScsiScanModePath = "/sys/module/scsi_mod/parameters/scan"
 	// Azure attaches SCSI data disks to this controller (the GUID is a fixed constant)
 	sysScsiDataDiskControllerPath = "/sys/bus/vmbus/devices/f8b3781b-1e82-4818-a1c3-63d806ec15bb"
+	// Azure attaches NVMe data disks to controllers whose model starts with this, e.g. "MSFT NVMe Accelerator v1.0"
+	nvmeDataDiskControllerModelPrefix = "MSFT NVMe Accelerator"
 	// 'fsck' found errors and corrected them
 	fsckErrorsCorrected = 1
 	// 'fsck' found errors but exited without correcting them
@@ -108,7 +111,7 @@ func findDiskByLun(lun int, io azureutils.IOHandler, _ *mount.SafeFormatAndMount
 	if errors.Is(err, os.ErrNotExist) {
 		byLunPath := fmt.Sprintf("/dev/disk/azure/data/by-lun/%d", lun)
 		if _, err := io.Stat(byLunPath); errors.Is(err, os.ErrNotExist) {
-			return "", nil
+			return "", rescanNVMeDataDiskControllers(io)
 		} else if err != nil {
 			return "", fmt.Errorf("failed to check existence of block device %s: %w", byLunPath, err)
 		}
@@ -171,6 +174,32 @@ func findDiskByLun(lun int, io azureutils.IOHandler, _ *mount.SafeFormatAndMount
 		return devicePath, nil
 	}
 	return "", nil
+}
+
+// rescanNVMeDataDiskControllers asks the kernel to asynchronously rescan Azure's NVMe data disk controllers for disks it missed.
+func rescanNVMeDataDiskControllers(io azureutils.IOHandler) error {
+	controllers, err := io.ReadDir(sysClassNVMePath)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
+	} else if err != nil {
+		return fmt.Errorf("failed to list NVMe controllers: %w", err)
+	}
+	for _, controller := range controllers {
+		model, err := io.ReadFile(filepath.Join(sysClassNVMePath, controller.Name(), "model"))
+		if errors.Is(err, os.ErrNotExist) || errors.Is(err, unix.ENODEV) {
+			continue
+		} else if err != nil {
+			return fmt.Errorf("failed to read model of NVMe controller %s: %w", controller.Name(), err)
+		} else if !strings.HasPrefix(string(model), nvmeDataDiskControllerModelPrefix) {
+			continue
+		}
+		klog.V(2).Infof("requesting rescan of NVMe controller %s", controller.Name())
+		err = io.WriteFile(filepath.Join(sysClassNVMePath, controller.Name(), "rescan_controller"), []byte("1"), 0200)
+		if err != nil && !errors.Is(err, os.ErrNotExist) && !errors.Is(err, unix.ENODEV) {
+			return fmt.Errorf("failed to request rescan of NVMe controller %s: %w", controller.Name(), err)
+		}
+	}
+	return nil
 }
 
 func formatAndMount(source, target, fstype string, options []string, m *mount.SafeFormatAndMount, formatSem chan any, formatTimeout time.Duration) error {

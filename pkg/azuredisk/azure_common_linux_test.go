@@ -1175,9 +1175,20 @@ func TestFindDiskByLunExtended(t *testing.T) {
 		dirs[scsiDevice+"/block"] = []string{"sdz"}
 		dirs["/dev"] = []string{"sdz"}
 	}
+	nvmeControllers := map[string][]string{sysClassNVMePath: {"nvme0", "nvme1", "nvme2"}}
+	nvmeModels := map[string][]byte{
+		filepath.Join(sysClassNVMePath, "nvme0", "model"): []byte("MSFT NVMe Accelerator v1.0              \n"),
+		filepath.Join(sysClassNVMePath, "nvme1", "model"): []byte("Microsoft NVMe Direct Disk v2           \n"),
+		filepath.Join(sysClassNVMePath, "nvme2", "model"): []byte("MSFT NVMe Accelerator v2.0              \n"),
+	}
+	nvmeRescanWrites := []string{
+		filepath.Join(sysClassNVMePath, "nvme0", "rescan_controller") + "=1",
+		filepath.Join(sysClassNVMePath, "nvme2", "rescan_controller") + "=1",
+	}
 	tests := []struct {
 		name        string
 		dirs        map[string][]string
+		files       map[string][]byte
 		errs        map[string]error
 		opensNeeded map[string]int
 		writeErr    error
@@ -1211,7 +1222,7 @@ func TestFindDiskByLunExtended(t *testing.T) {
 			wantWrites: []string{scanWrite},
 		},
 		{
-			name:    "unreadable controller is an error, without falling back or scanning",
+			name:    "unreadable SCSI controller is an error, without falling back or scanning",
 			errs:    map[string]error{sysScsiDataDiskControllerPath: unix.EMFILE},
 			wantErr: true,
 		},
@@ -1222,17 +1233,57 @@ func TestFindDiskByLunExtended(t *testing.T) {
 			wantErr: true,
 		},
 		{
-			name:     "missing controller falls back to the NVMe by-lun link, without scanning",
+			name:     "missing SCSI controller falls back to the by-lun path, without scanning",
 			dirs:     map[string][]string{"/dev/disk/azure/data/by-lun": {"12"}},
 			wantPath: "/dev/disk/azure/data/by-lun/12",
 		},
 		{
-			name: "missing controller and by-lun link is not there yet",
+			name:       "missing SCSI controller and by-lun path rescans every NVMe data disk controller",
+			dirs:       nvmeControllers,
+			files:      nvmeModels,
+			wantWrites: nvmeRescanWrites,
 		},
 		{
-			name:    "by-lun link that can't be checked is an error",
+			name: "missing SCSI and NVMe controllers without by-lun path returns nothing without scanning",
+		},
+		{
+			name:    "by-lun path that can't be checked is an error",
 			errs:    map[string]error{"/dev/disk/azure/data/by-lun/12": unix.EACCES},
 			wantErr: true,
+		},
+		{
+			name:    "unreadable NVMe controller list is an error",
+			errs:    map[string]error{sysClassNVMePath: unix.EMFILE},
+			wantErr: true,
+		},
+		{
+			name:    "unreadable NVMe controller model is an error, without rescanning",
+			dirs:    nvmeControllers,
+			files:   nvmeModels,
+			errs:    map[string]error{filepath.Join(sysClassNVMePath, "nvme0", "model"): unix.EACCES},
+			wantErr: true,
+		},
+		{
+			name:       "NVMe controller without a model file is skipped",
+			dirs:       nvmeControllers,
+			files:      nvmeModels,
+			errs:       map[string]error{filepath.Join(sysClassNVMePath, "nvme0", "model"): unix.ENOENT},
+			wantWrites: nvmeRescanWrites[1:],
+		},
+		{
+			name:       "failed NVMe rescan is an error",
+			dirs:       nvmeControllers,
+			files:      nvmeModels,
+			writeErr:   unix.EACCES,
+			wantErr:    true,
+			wantWrites: nvmeRescanWrites[:1],
+		},
+		{
+			name:       "NVMe controller being removed during its rescan is skipped",
+			dirs:       nvmeControllers,
+			files:      nvmeModels,
+			writeErr:   unix.ENODEV,
+			wantWrites: nvmeRescanWrites,
 		},
 		{
 			name:    "controller without a SCSI host is an error",
@@ -1283,7 +1334,7 @@ func TestFindDiskByLunExtended(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			io := azureutils.NewFakeIOHandlerWithOptions(azureutils.FakeIOHandlerOptions{Dirs: test.dirs, Errors: test.errs, OpensNeeded: test.opensNeeded, WriteError: test.writeErr, OnWrite: test.onWrite})
+			io := azureutils.NewFakeIOHandlerWithOptions(azureutils.FakeIOHandlerOptions{Dirs: test.dirs, Files: test.files, Errors: test.errs, OpensNeeded: test.opensNeeded, WriteError: test.writeErr, OnWrite: test.onWrite})
 			path, err := findDiskByLun(12, io, nil)
 			if path != test.wantPath || (err != nil) != test.wantErr {
 				t.Errorf("findDiskByLun = (%q, %v), want (%q, error %v)", path, err, test.wantPath, test.wantErr)
