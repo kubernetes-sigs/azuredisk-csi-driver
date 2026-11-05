@@ -84,6 +84,7 @@ type DriverOptions struct {
 	KubeAPIQPS                         float64
 	KubeAPIBurst                       int
 	DisableReadOnlyRemount             bool
+	DisableNVMeDeviceVerification      bool
 }
 
 func (o *DriverOptions) AddFlags() *flag.FlagSet {
@@ -148,5 +149,6 @@ func (o *DriverOptions) AddFlags() *flag.FlagSet {
 	fs.Float64Var(&o.KubeAPIQPS, "kube-api-qps", 0, "QPS for kubernetes API client (0 uses default)")
 	fs.IntVar(&o.KubeAPIBurst, "kube-api-burst", 0, "Burst for kubernetes API client (0 uses default)")
 	fs.BoolVar(&o.DisableReadOnlyRemount, "disable-read-only-remount", false, "skips the read-only remount at node unstage, risking lost writes and corruption of the next disk on fast LUN reuse")
+	fs.BoolVar(&o.DisableNVMeDeviceVerification, "disable-nvme-device-verification", false, "skips the NVMe device identity check at node stage, risking use of a stale block device on fast LUN reuse")
 	return fs
 }

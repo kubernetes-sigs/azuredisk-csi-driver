@@ -197,8 +197,9 @@ type Driver struct {
 	clusterResourceIDLock sync.Mutex
 	// interval between Azure async operation polls; defaults to 5s when unset
 	pollInterval time.Duration
-	// disableReadOnlyRemount helps prevent fast LUN reuse from corrupting disks
-	disableReadOnlyRemount bool
+	// disableReadOnlyRemount and disableNVMeDeviceVerification disable features that work together to prevent fast LUN reuse from corrupting disks
+	disableReadOnlyRemount        bool
+	disableNVMeDeviceVerification bool
 }
 
 // NewDriver Creates a NewCSIDriver object. Assumes vendor version is equal to driver version &
@@ -272,6 +273,7 @@ func NewDriver(options *DriverOptions) *Driver {
 	driver.enableMigrationMonitor = options.EnableMigrationMonitor
 	driver.convertRWCachingModeForIntreePV = options.ConvertRWCachingModeForIntreePV
 	driver.disableReadOnlyRemount = options.DisableReadOnlyRemount
+	driver.disableNVMeDeviceVerification = options.DisableNVMeDeviceVerification
 
 	if driver.NodeID == "" {
 		// nodeid is not needed in controller component

@@ -357,6 +357,13 @@ func (d *Driver) NodeStageVolume(ctx context.Context, req *csi.NodeStageVolumeRe
 		return nil, status.Errorf(postAttachErrorCode(qadAttached), "failed to find disk on lun %s. %v", lun, err)
 	}
 
+	// For NVMe, reject a recycled namespace still serving a prior disk's cached identity; no-op for SCSI.
+	if !d.disableNVMeDeviceVerification {
+		if err = verifyNVMeNamespaceIdentity(source, lun, d.ioHandler); err != nil {
+			return nil, status.Errorf(codes.Internal, "NodeStageVolume: %v", err)
+		}
+	}
+
 	// If perf optimizations are enabled
 	// tweak device settings to enhance performance
 	if d.getPerfOptimizationEnabled() {

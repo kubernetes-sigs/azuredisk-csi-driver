@@ -158,6 +158,7 @@ spec:
             - "--metrics-address=0.0.0.0:{{ .Values.node.metricsPort }}"
             - "--remove-not-ready-taint={{ .Values.node.removeNotReadyTaint }}"
             - "--disable-read-only-remount={{ .Values.linux.disableReadOnlyRemount }}"
+            - "--disable-nvme-device-verification={{ .Values.linux.disableNVMeDeviceVerification }}"
 {{- if ne .Values.node.hostNetwork true }}
           ports:
             - containerPort: {{ .Values.node.livenessProbe.healthPort }}
