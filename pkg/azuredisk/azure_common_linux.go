@@ -585,7 +585,7 @@ func (d *Driver) GetVolumeStats(_ context.Context, m *mount.SafeFormatAndMount, 
 // unmountAndInvalidateDevice shuts down the fs, unmounts the staging path and invalidates the backing device's caches
 // so any pending changes are flushed, mitigating cache inconsistencies especially with SCSI devices.
 // The fs shutdown and device cache invalidation are best-effort; only an unmount error is returned.
-func unmountAndInvalidateDevice(stagingTargetPath string, io azureutils.IOHandler, m *mount.SafeFormatAndMount) error {
+func unmountAndInvalidateDevice(stagingTargetPath string, io azureutils.IOHandler, m *mount.SafeFormatAndMount, enableSCSIDeviceDeletion bool) error {
 	// Resolve the underlying block device while still mounted.
 	devicePath, _, err := getDeviceNameFromMount(m, stagingTargetPath)
 	if err != nil {
@@ -621,9 +621,9 @@ func unmountAndInvalidateDevice(stagingTargetPath string, io azureutils.IOHandle
 		}
 	}
 
-	// Delete SCSI devices so the next NodeStageVolume sees a fresh one. NVMe has no per-disk
+	// Optionally delete SCSI devices so the next NodeStageVolume sees a fresh one. NVMe has no per-disk
 	// equivalent and will be handled by an identity check in NodeStageVolume instead (ToDo).
-	if strings.HasPrefix(wholeDiskName, "sd") {
+	if enableSCSIDeviceDeletion && strings.HasPrefix(wholeDiskName, "sd") {
 		deletePath := filepath.Join(sysClassBlockPath, wholeDiskName, "device", "delete")
 		if err := io.WriteFile(deletePath, []byte("1"), 0200); err != nil {
 			klog.Errorf("unmountAndInvalidateDevice - failed to delete SCSI disk %s: %v", wholeDiskName, err)
