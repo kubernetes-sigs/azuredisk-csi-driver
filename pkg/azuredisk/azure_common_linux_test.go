@@ -961,12 +961,47 @@ func TestUnmountAndInvalidateDeviceSequence(t *testing.T) {
 		return m
 	}
 
-	t.Run("successful cleanup flushes partition+whole-disk and deletes the SCSI device", func(t *testing.T) {
+	for _, test := range []struct {
+		name string
+		args []string
+	}{
+		{name: "device deletion is disabled by default"},
+		{name: "device deletion is explicitly disabled", args: []string{"--enable-scsi-device-deletion=false"}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			options := &DriverOptions{}
+			if err := options.AddFlags().Parse(test.args); err != nil {
+				t.Fatal(err)
+			}
+			d := NewDriver(options)
+			var events []string
+			installUnmountSeams(t, "/dev/sdzz1", nil, nil, nil, &events)
+			io := &recordingIOHandler{}
+
+			if err := unmountAndInvalidateDevice(staging, io, newMounter(t), d.enableSCSIDeviceDeletion); err != nil {
+				t.Fatalf("unmountAndInvalidateDevice returned error: %v", err)
+			}
+			want := []string{"shutdown", "unmount", "flush:/dev/sdzz1", "flush:/dev/sdzz"}
+			if !reflect.DeepEqual(events, want) {
+				t.Fatalf("sequence = %v, want %v", events, want)
+			}
+			if len(io.writes) != 0 {
+				t.Fatalf("device deletion is disabled; got writes %+v", io.writes)
+			}
+		})
+	}
+
+	t.Run("explicitly enabled cleanup flushes partition+whole-disk and deletes the SCSI device", func(t *testing.T) {
+		options := &DriverOptions{}
+		if err := options.AddFlags().Parse([]string{"--enable-scsi-device-deletion=true"}); err != nil {
+			t.Fatal(err)
+		}
+		d := NewDriver(options)
 		var events []string
 		installUnmountSeams(t, "/dev/sdzz1", nil, nil, nil, &events)
 		io := &recordingIOHandler{}
 
-		if err := unmountAndInvalidateDevice(staging, io, newMounter(t)); err != nil {
+		if err := unmountAndInvalidateDevice(staging, io, newMounter(t), d.enableSCSIDeviceDeletion); err != nil {
 			t.Fatalf("unmountAndInvalidateDevice returned error: %v", err)
 		}
 		want := []string{"shutdown", "unmount", "flush:/dev/sdzz1", "flush:/dev/sdzz"}
@@ -994,7 +1029,7 @@ func TestUnmountAndInvalidateDeviceSequence(t *testing.T) {
 		installUnmountSeams(t, "/dev/sdzz1", nil, unmountErr, nil, &events)
 		io := &recordingIOHandler{}
 
-		err := unmountAndInvalidateDevice(staging, io, newMounter(t))
+		err := unmountAndInvalidateDevice(staging, io, newMounter(t), true)
 		if !errors.Is(err, unmountErr) {
 			t.Fatalf("err = %v, want %v", err, unmountErr)
 		}
@@ -1011,7 +1046,7 @@ func TestUnmountAndInvalidateDeviceSequence(t *testing.T) {
 		installUnmountSeams(t, "/dev/nvme9n9", nil, nil, nil, &events)
 		io := &recordingIOHandler{}
 
-		if err := unmountAndInvalidateDevice(staging, io, newMounter(t)); err != nil {
+		if err := unmountAndInvalidateDevice(staging, io, newMounter(t), true); err != nil {
 			t.Fatalf("unmountAndInvalidateDevice returned error: %v", err)
 		}
 		if want := []string{"shutdown", "unmount", "flush:/dev/nvme9n9"}; !reflect.DeepEqual(events, want) {
@@ -1029,7 +1064,7 @@ func TestUnmountAndInvalidateDeviceSequence(t *testing.T) {
 		io := &recordingIOHandler{}
 
 		for i := 0; i < 2; i++ { // retry-safe: a second call behaves identically
-			if err := unmountAndInvalidateDevice(staging, io, newMounter(t)); err != nil {
+			if err := unmountAndInvalidateDevice(staging, io, newMounter(t), true); err != nil {
 				t.Fatalf("call %d returned error: %v", i, err)
 			}
 		}
@@ -1048,7 +1083,7 @@ func TestUnmountAndInvalidateDeviceSequence(t *testing.T) {
 		installUnmountSeams(t, "/dev/mapper/test-vol", nil, nil, nil, &events)
 		io := &recordingIOHandler{}
 
-		if err := unmountAndInvalidateDevice(staging, io, newMounter(t)); err != nil {
+		if err := unmountAndInvalidateDevice(staging, io, newMounter(t), true); err != nil {
 			t.Fatalf("unmountAndInvalidateDevice returned error: %v", err)
 		}
 		if want := []string{"shutdown", "unmount", "flush:/dev/mapper/test-vol"}; !reflect.DeepEqual(events, want) {
@@ -1064,7 +1099,7 @@ func TestUnmountAndInvalidateDeviceSequence(t *testing.T) {
 		installUnmountSeams(t, "/dev/sdzz1", nil, nil, errors.New("flush boom"), &events)
 		io := &recordingIOHandler{}
 
-		if err := unmountAndInvalidateDevice(staging, io, newMounter(t)); err != nil {
+		if err := unmountAndInvalidateDevice(staging, io, newMounter(t), true); err != nil {
 			t.Fatalf("unmountAndInvalidateDevice returned error: %v", err)
 		}
 		// Flushing is best-effort: both targets are still attempted and, crucially, the delete still
@@ -1083,7 +1118,7 @@ func TestUnmountAndInvalidateDeviceSequence(t *testing.T) {
 		io := &recordingIOHandler{writeErr: errors.New("permission denied")}
 
 		// A failed SCSI delete is best-effort: it is logged, not returned.
-		if err := unmountAndInvalidateDevice(staging, io, newMounter(t)); err != nil {
+		if err := unmountAndInvalidateDevice(staging, io, newMounter(t), true); err != nil {
 			t.Fatalf("unmountAndInvalidateDevice returned error: %v, want nil (delete failure is best-effort)", err)
 		}
 		if len(io.writes) != 1 {
