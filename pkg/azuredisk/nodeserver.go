@@ -23,8 +23,10 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"net/http"
 	"os"
+	"path"
 	"path/filepath"
 	"runtime"
 	"strconv"
@@ -184,6 +186,18 @@ func postAttachErrorCode(qadAttached bool) codes.Code {
 		return codes.Unavailable
 	}
 	return codes.Internal
+}
+
+// getPartition returns the path of a disk's partition, following the kernel's naming for device
+// nodes directly under /dev (e.g. sdd1, nvme0n1p1) and udev's "-part" suffix for symlinks.
+func getPartition(devicePath, partition string) string {
+	if path.Dir(devicePath) != "/dev" {
+		return devicePath + "-part" + partition
+	}
+	if last := devicePath[len(devicePath)-1]; last >= '0' && last <= '9' {
+		return devicePath + "p" + partition
+	}
+	return devicePath + partition
 }
 
 // NodeStageVolume mount disk device to a staging path
@@ -396,7 +410,7 @@ func (d *Driver) NodeStageVolume(ctx context.Context, req *csi.NodeStageVolumeRe
 
 	// If partition is specified, should mount it only instead of the entire disk.
 	if partition, ok := req.GetVolumeContext()[consts.VolumeAttributePartition]; ok {
-		source = source + "-part" + partition
+		source = getPartition(source, partition)
 	}
 
 	// FormatAndMount will format only if needed
@@ -672,7 +686,7 @@ func (d *Driver) NodePublishVolume(ctx context.Context, req *csi.NodePublishVolu
 
 		// Use the same filesystem partition selected by NodeStageVolume.
 		if partition, ok := params[consts.VolumeAttributePartition]; ok {
-			device = device + "-part" + partition
+			device = getPartition(device, partition)
 		}
 
 		fsGroup, fsGroupChangePolicy := getPodFSGroup(kataPod, volumeCapability, req.GetReadonly())
@@ -1219,10 +1233,18 @@ func (d *Driver) getDevicePathWithLUN(lunStr string) (string, error) {
 	scsiHostRescan(d.ioHandler, d.mounter)
 
 	newDevicePath := ""
-	err = kwait.PollUntilContextTimeout(context.Background(), 1*time.Second, 2*time.Minute, true, func(context.Context) (bool, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	defer cancel()
+	backoff := kwait.Backoff{
+		Duration: 500 * time.Millisecond,
+		Factor:   1.2,
+		Jitter:   0.5,
+		Steps:    math.MaxInt,
+	}
+	err = kwait.ExponentialBackoffWithContext(ctx, backoff, func(context.Context) (bool, error) {
 		var err error
 		if newDevicePath, err = findDiskByLun(int(lun), d.ioHandler, d.mounter); err != nil {
-			return false, fmt.Errorf("azureDisk - findDiskByLun(%v) failed with error(%s)", lun, err)
+			return false, fmt.Errorf("azureDisk - findDiskByLun(%v) failed: %w", lun, err)
 		}
 
 		// did we find it?
@@ -1233,7 +1255,7 @@ func (d *Driver) getDevicePathWithLUN(lunStr string) (string, error) {
 		return false, nil
 	})
 	if errors.Is(err, context.DeadlineExceeded) && newDevicePath == "" {
-		err = fmt.Errorf("azureDisk - findDiskByLun(%v) failed within timeout", lun)
+		err = fmt.Errorf("azureDisk - findDiskByLun(%v) attempts exceeded timeout", lun)
 	}
 	return newDevicePath, err
 }

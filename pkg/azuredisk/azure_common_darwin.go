@@ -39,6 +39,8 @@ const sysClassBlockPath = "/sys/class/block/"
 func scsiHostRescan(io azureutils.IOHandler, m *mount.SafeFormatAndMount) {
 }
 
+func setSCSIScanMode(_ azureutils.IOHandler, _ string) error { return nil }
+
 func formatAndMount(source, target, fstype string, options []string, m *mount.SafeFormatAndMount, _ chan any, _ time.Duration) error {
 	return nil
 }

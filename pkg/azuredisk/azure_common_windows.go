@@ -43,6 +43,9 @@ func formatAndMount(source, target, fstype string, options []string, m *mount.Sa
 	return fmt.Errorf("could not cast to csi proxy class")
 }
 
+// setSCSIScanMode does nothing on Windows: the SCSI scan mode is a Linux kernel setting.
+func setSCSIScanMode(_ azureutils.IOHandler, _ string) error { return nil }
+
 func scsiHostRescan(io azureutils.IOHandler, m *mount.SafeFormatAndMount) {
 	var err error
 	if proxy, ok := m.Interface.(mounter.CSIProxyMounter); ok {

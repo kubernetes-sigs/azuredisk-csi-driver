@@ -865,7 +865,7 @@ func TestKataStageAfterPublishAndRestart(t *testing.T) {
 	req := kataTestRequest(t)
 	req.Readonly = true
 	req.VolumeContext[consts.VolumeAttributePartition] = "1"
-	require.NoError(t, mounts.Mount("/dev/sdd-part1", req.StagingTargetPath, "ext4", []string{"discard"}))
+	require.NoError(t, mounts.Mount("/dev/sdd1", req.StagingTargetPath, "ext4", []string{"discard"}))
 	_, err := d.NodeStageVolume(context.Background(), kataTestStageRequest(req))
 	require.NoError(t, err)
 	_, err = d.NodePublishVolume(context.Background(), req)
@@ -1430,7 +1430,7 @@ func TestKataRestoreAfterUnpublishWithoutStage(t *testing.T) {
 			device := "/dev/sdd"
 			if scenario.partition != "" {
 				req.VolumeContext[consts.VolumeAttributePartition] = scenario.partition
-				device += "-part" + scenario.partition
+				device += scenario.partition
 			}
 			require.NoError(t, mounts.Mount(device, req.StagingTargetPath, scenario.fsType, scenario.flags))
 			_, err := d.NodeStageVolume(context.Background(), kataTestStageRequest(req))

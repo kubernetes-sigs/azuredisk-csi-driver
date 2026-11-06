@@ -34,11 +34,6 @@ var (
 		Path: nonExistingPath,
 		Err:  syscall.ENOENT,
 	}
-	errSymlinkNotExist error = &fs.PathError{
-		Op:   "readlink",
-		Path: nonExistingPath,
-		Err:  syscall.ENOENT,
-	}
 
 	sampleText = "The quick brown fox jumps over the lazy dog."
 )
@@ -83,24 +78,17 @@ func TestOSIOHandler_ReadWriteFile(t *testing.T) {
 	require.Equal(t, err, errPathNotExist)
 }
 
-func TestOSIOHandler_ReadLink(t *testing.T) {
-	tmpDir := t.TempDir()
-	targetFile := filepath.Join(tmpDir, "targetfile")
-	linkFile := filepath.Join(tmpDir, "linkfile")
-
-	f, err := os.Create(targetFile)
-	require.NoError(t, err)
-	f.Close()
-
-	err = os.Symlink(targetFile, linkFile)
-	require.NoError(t, err)
+func TestOSIOHandler_StatAndCheckOpenable(t *testing.T) {
+	tmpFile := filepath.Join(t.TempDir(), "testfile.txt")
+	require.NoError(t, os.WriteFile(tmpFile, []byte(sampleText), 0600))
 
 	handler := NewOSIOHandler()
 
-	result, err := handler.Readlink(linkFile)
+	_, err := handler.Stat(tmpFile)
 	require.NoError(t, err)
-	require.Equal(t, targetFile, result)
+	require.NoError(t, handler.CheckOpenable(tmpFile))
 
-	_, err = handler.Readlink(nonExistingPath)
-	require.Equal(t, err, errSymlinkNotExist)
+	_, err = handler.Stat(nonExistingPath)
+	require.ErrorIs(t, err, os.ErrNotExist)
+	require.ErrorIs(t, handler.CheckOpenable(nonExistingPath), os.ErrNotExist)
 }

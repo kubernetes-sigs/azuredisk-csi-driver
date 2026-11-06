@@ -43,7 +43,13 @@ import (
 )
 
 const (
-	sysClassBlockPath = "/sys/class/block/"
+	sysClassBlockPath   = "/sys/class/block/"
+	sysClassNVMePath    = "/sys/class/nvme/"
+	sysScsiScanModePath = "/sys/module/scsi_mod/parameters/scan"
+	// Azure attaches SCSI data disks to this controller (the GUID is a fixed constant)
+	sysScsiDataDiskControllerPath = "/sys/bus/vmbus/devices/f8b3781b-1e82-4818-a1c3-63d806ec15bb"
+	// Azure attaches NVMe data disks to controllers whose model starts with this, e.g. "MSFT NVMe Accelerator v1.0"
+	nvmeDataDiskControllerModelPrefix = "MSFT NVMe Accelerator"
 	// 'fsck' found errors and corrected them
 	fsckErrorsCorrected = 1
 	// 'fsck' found errors but exited without correcting them
@@ -64,85 +70,136 @@ var (
 	wholeDiskNameRegexp = regexp.MustCompile(`^sd[a-z]+|^nvme[0-9]+n[0-9]+`)
 )
 
-// exclude those used by azure as resource and OS root in /dev/disk/azure, /dev/disk/azure/scsi0
-// "/dev/disk/azure/scsi0" dir is populated in Standard_DC4s/DC2s on Ubuntu 18.04
-func listAzureDiskPath(io azureutils.IOHandler) []string {
-	var azureDiskList []string
-	azureResourcePaths := []string{"/dev/disk/azure/", "/dev/disk/azure/scsi0/"}
-	for _, azureDiskPath := range azureResourcePaths {
-		if dirs, err := io.ReadDir(azureDiskPath); err == nil {
-			for _, f := range dirs {
-				name := f.Name()
-				diskPath := filepath.Join(azureDiskPath, name)
-				if link, linkErr := io.Readlink(diskPath); linkErr == nil {
-					sd := link[(strings.LastIndex(link, "/") + 1):]
-					azureDiskList = append(azureDiskList, sd)
-				}
-			}
-		}
-	}
-	klog.V(12).Infof("Azure sys disks paths: %v", azureDiskList)
-	return azureDiskList
-}
+// scsiHostRescan does nothing on Linux because findDiskByLun scans only the LUN it needs, and only when it's missing.
+func scsiHostRescan(_ azureutils.IOHandler, _ *mount.SafeFormatAndMount) {}
 
-// getDiskLinkByDevName get disk link by device name from devLinkPath, e.g. /dev/disk/azure/, /dev/disk/by-id/
-func getDiskLinkByDevName(io azureutils.IOHandler, devLinkPath, devName string) (string, error) {
-	dirs, err := io.ReadDir(devLinkPath)
-	klog.V(12).Infof("azureDisk - begin to find %s from %s", devName, devLinkPath)
-	if err == nil {
-		for _, f := range dirs {
-			diskPath := devLinkPath + f.Name()
-			klog.V(12).Infof("azureDisk - begin to Readlink: %s", diskPath)
-			link, linkErr := io.Readlink(diskPath)
-			if linkErr != nil {
-				klog.Warningf("azureDisk - read link (%s) error: %v", diskPath, linkErr)
-				continue
-			}
-			if strings.HasSuffix(link, devName) {
-				return diskPath, nil
-			}
-		}
-		return "", fmt.Errorf("device name(%s) is not found under %s", devName, devLinkPath)
+// setSCSIScanMode sets the kernel's SCSI scan mode to newMode or manual if newMode is empty or unsupported.
+// Manual stops the kernel from scanning for new SCSI disks on its own to avoid inappropriately timed disk removals.
+func setSCSIScanMode(io azureutils.IOHandler, newMode string) error {
+	newMode = strings.TrimSpace(strings.ToLower(newMode))
+	switch newMode {
+	case "":
+		newMode = "manual"
+	case "manual", "async", "sync":
+	case "unchanged":
+		klog.V(2).Infof("leaving SCSI scan mode unchanged")
+		return nil
+	default:
+		klog.Errorf("interpreting unsupported SCSI scan mode %q as manual (supported values: manual, async, sync, unchanged)", newMode)
+		newMode = "manual"
 	}
-	return "", fmt.Errorf("read %s error: %v", devLinkPath, err)
-}
-
-func scsiHostRescan(io azureutils.IOHandler, _ *mount.SafeFormatAndMount) {
-	scsiPath := "/sys/class/scsi_host/"
-	if dirs, err := io.ReadDir(scsiPath); err == nil {
-		for _, f := range dirs {
-			name := scsiPath + f.Name() + "/scan"
-			data := []byte("- - -")
-			if err = io.WriteFile(name, data, 0666); err != nil {
-				klog.Warningf("failed to rescan scsi host %s", name)
-			}
-		}
-	} else {
-		klog.Warningf("failed to read %s, err %v", scsiPath, err)
+	data, err := io.ReadFile(sysScsiScanModePath)
+	if err != nil {
+		return fmt.Errorf("failed to read SCSI scan mode from %s: %w", sysScsiScanModePath, err)
 	}
+	mode := strings.TrimSpace(string(data))
+	if mode == newMode {
+		klog.V(2).Infof("SCSI scan mode is already %s", mode)
+		return nil
+	}
+	if err := io.WriteFile(sysScsiScanModePath, []byte(newMode), 0644); err != nil {
+		return fmt.Errorf("failed to change SCSI scan mode from %q to %q: %w", mode, newMode, err)
+	}
+	klog.Infof("changed SCSI scan mode from %q to %q", mode, newMode)
+	return nil
 }
 
 func findDiskByLun(lun int, io azureutils.IOHandler, _ *mount.SafeFormatAndMount) (string, error) {
-	azureDisks := listAzureDiskPath(io)
-	device, err := findDiskByLunWithConstraint(lun, io, azureDisks)
-	if err == nil && device != "" {
-		return device, nil
+	// Scanning SCSI hosts on NVMe VM SKUs takes over 2 seconds on average,
+	// so avoid it if the node doesn't have a SCSI data disk controller.
+	dataDiskControllerEntries, err := io.ReadDir(sysScsiDataDiskControllerPath)
+	if errors.Is(err, os.ErrNotExist) {
+		byLunPath := fmt.Sprintf("/dev/disk/azure/data/by-lun/%d", lun)
+		if _, err := io.Stat(byLunPath); errors.Is(err, os.ErrNotExist) {
+			return "", rescanNVMeDataDiskControllers(io)
+		} else if err != nil {
+			return "", fmt.Errorf("failed to check existence of block device %s: %w", byLunPath, err)
+		}
+		klog.V(2).Infof("found %s for lun %d", byLunPath, lun)
+		return byLunPath, nil
+	} else if err != nil {
+		return "", fmt.Errorf("failed to read SCSI data disk controller: %w", err)
 	}
 
-	devPaths := []string{
-		fmt.Sprintf("/dev/disk/azure/scsi1/lun%d", lun),
-		fmt.Sprintf("/dev/disk/azure/data/by-lun/%d", lun),
-	}
-	klog.Warningf("failed to find disk by lun %d, err %v, fall back to search in following device path: %s", lun, err, devPaths)
-	for _, devPath := range devPaths {
-		if _, err := os.Stat(devPath); err == nil {
-			if device, err := io.Readlink(devPath); err == nil {
-				klog.V(2).Infof("found device path %s linked to %s by lun %d", devPath, device, lun)
-				return devPath, nil
-			}
+	scsiHostName := ""
+	for _, entry := range dataDiskControllerEntries {
+		if strings.HasPrefix(entry.Name(), "host") {
+			scsiHostName = entry.Name()
+			break
 		}
 	}
-	return "", fmt.Errorf("failed to find disk by lun %d", lun)
+	if scsiHostName == "" {
+		return "", fmt.Errorf("found no SCSI host for the data disk controller")
+	}
+
+	// Azure data disks are at channel 0, target 0 of the controller's SCSI host.
+	// Scan only for the LUN that we need to ensure orderly disk additions and removals.
+	scsiHostID := strings.TrimPrefix(scsiHostName, "host")
+	scsiDevice := filepath.Join(sysScsiDataDiskControllerPath, scsiHostName, "target"+scsiHostID+":0:0", fmt.Sprintf("%s:0:0:%d", scsiHostID, lun))
+	_, err = io.Stat(scsiDevice)
+	if errors.Is(err, os.ErrNotExist) {
+		scanPath := filepath.Join(sysScsiDataDiskControllerPath, scsiHostName, "scsi_host", scsiHostName, "scan")
+		if err := io.WriteFile(scanPath, []byte(fmt.Sprintf("0 0 %d", lun)), 0200); err != nil {
+			return "", fmt.Errorf("failed to rescan SCSI host %s for lun %d: %w", scsiHostID, lun, err)
+		}
+		// The kernel creates a new disk's SCSI device entry as part of the scan,
+		// so if it didn't appear, return to the caller to allow a later rescan on re-entry.
+		if _, err = io.Stat(scsiDevice); errors.Is(err, os.ErrNotExist) {
+			return "", nil
+		}
+	}
+	if err != nil {
+		return "", fmt.Errorf("failed to check existence of SCSI device entry for lun %d: %w", lun, err)
+	}
+
+	// It takes a small amount of time after a SCSI scan for the block device to become ready.
+	// As such, we wait up to 180ms in total, in incrementally longer intervals (5ms, 10ms, 15ms, ..., 40ms), for the device to appear
+	// before returning to the caller and resorting to its much longer exponential backoff in the order of seconds.
+	for i := time.Duration(0); i <= 8; i++ {
+		time.Sleep(5 * i * time.Millisecond)
+		disks, err := io.ReadDir(filepath.Join(scsiDevice, "block"))
+		if errors.Is(err, os.ErrNotExist) || (err == nil && len(disks) == 0) {
+			continue
+		} else if err != nil {
+			return "", fmt.Errorf("failed to retrieve block device name for lun %d from %s: %w", lun, scsiDevice, err)
+		}
+		devicePath := "/dev/" + disks[0].Name()
+		if err := io.CheckOpenable(devicePath); err != nil {
+			if errors.Is(err, os.ErrNotExist) || errors.Is(err, unix.ENXIO) {
+				continue
+			}
+			return "", fmt.Errorf("failed to open block device %s for lun %d: %w", devicePath, lun, err)
+		}
+		klog.V(2).Infof("block device %s for lun %d is ready", devicePath, lun)
+		return devicePath, nil
+	}
+	return "", nil
+}
+
+// rescanNVMeDataDiskControllers asks the kernel to asynchronously rescan Azure's NVMe data disk controllers for disks it missed.
+func rescanNVMeDataDiskControllers(io azureutils.IOHandler) error {
+	controllers, err := io.ReadDir(sysClassNVMePath)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
+	} else if err != nil {
+		return fmt.Errorf("failed to list NVMe controllers: %w", err)
+	}
+	for _, controller := range controllers {
+		model, err := io.ReadFile(filepath.Join(sysClassNVMePath, controller.Name(), "model"))
+		if errors.Is(err, os.ErrNotExist) || errors.Is(err, unix.ENODEV) {
+			continue
+		} else if err != nil {
+			return fmt.Errorf("failed to read model of NVMe controller %s: %w", controller.Name(), err)
+		} else if !strings.HasPrefix(string(model), nvmeDataDiskControllerModelPrefix) {
+			continue
+		}
+		klog.V(2).Infof("requesting rescan of NVMe controller %s", controller.Name())
+		err = io.WriteFile(filepath.Join(sysClassNVMePath, controller.Name(), "rescan_controller"), []byte("1"), 0200)
+		if err != nil && !errors.Is(err, os.ErrNotExist) && !errors.Is(err, unix.ENODEV) {
+			return fmt.Errorf("failed to request rescan of NVMe controller %s: %w", controller.Name(), err)
+		}
+	}
+	return nil
 }
 
 func formatAndMount(source, target, fstype string, options []string, m *mount.SafeFormatAndMount, formatSem chan any, formatTimeout time.Duration) error {
@@ -298,97 +355,6 @@ func mkfsWithConcurrencyLimit(m *mount.SafeFormatAndMount, formatSem chan any, f
 	}
 
 	return m.Exec.Command("mkfs."+fstype, args...).CombinedOutput()
-}
-
-// finds a device mounted to "current" node
-func findDiskByLunWithConstraint(lun int, io azureutils.IOHandler, azureDisks []string) (string, error) {
-	var err error
-	sysPath := "/sys/bus/scsi/devices"
-	if dirs, err := io.ReadDir(sysPath); err == nil {
-		for _, f := range dirs {
-			name := f.Name()
-			// look for path like /sys/bus/scsi/devices/3:0:0:1
-			arr := strings.Split(name, ":")
-			if len(arr) < 4 {
-				continue
-			}
-			if len(azureDisks) == 0 {
-				klog.V(4).Infof("/dev/disk/azure is not populated, now try to parse %v directly", name)
-				target, err := strconv.Atoi(arr[0])
-				if err != nil {
-					klog.Errorf("failed to parse target from %v (%v), err %v", arr[0], name, err)
-					continue
-				}
-				// as observed, targets 0-3 are used by OS disks. Skip them
-				if target <= 3 {
-					continue
-				}
-			}
-
-			// extract LUN from the path.
-			// LUN is the last index of the array, i.e. 1 in /sys/bus/scsi/devices/3:0:0:1
-			l, err := strconv.Atoi(arr[3])
-			if err != nil {
-				// unknown path format, continue to read the next one
-				klog.V(4).Infof("azure disk - failed to parse lun from %v (%v), err %v", arr[3], name, err)
-				continue
-			}
-			if lun == l {
-				// find the matching LUN
-				// read vendor and model to ensure it is a VHD disk
-				vendorPath := filepath.Join(sysPath, name, "vendor")
-				vendorBytes, err := io.ReadFile(vendorPath)
-				if err != nil {
-					klog.Errorf("failed to read device vendor, err: %v", err)
-					continue
-				}
-				vendor := strings.TrimSpace(string(vendorBytes))
-				if strings.ToUpper(vendor) != "MSFT" {
-					klog.V(4).Infof("vendor doesn't match VHD, got %s", vendor)
-					continue
-				}
-
-				modelPath := filepath.Join(sysPath, name, "model")
-				modelBytes, err := io.ReadFile(modelPath)
-				if err != nil {
-					klog.Errorf("failed to read device model, err: %v", err)
-					continue
-				}
-				model := strings.TrimSpace(string(modelBytes))
-				if strings.ToUpper(model) != "VIRTUAL DISK" {
-					klog.V(4).Infof("model doesn't match VHD, got %s", model)
-					continue
-				}
-
-				// find a disk, validate name
-				dir := filepath.Join(sysPath, name, "block")
-				if dev, err := io.ReadDir(dir); err == nil {
-					found := false
-					devName := dev[0].Name()
-					for _, diskName := range azureDisks {
-						klog.V(12).Infof("azureDisk - validating disk %q with sys disk %q", devName, diskName)
-						if devName == diskName {
-							found = true
-							break
-						}
-					}
-					if !found {
-						devLinkPaths := []string{"/dev/disk/azure/scsi1/", "/dev/disk/by-id/"}
-						for _, devLinkPath := range devLinkPaths {
-							diskPath, err := getDiskLinkByDevName(io, devLinkPath, devName)
-							if err == nil {
-								klog.V(4).Infof("azureDisk - found %s by %s under %s", diskPath, devName, devLinkPath)
-								return diskPath, nil
-							}
-							klog.Warningf("azureDisk - getDiskLinkByDevName by %s under %s failed, error: %v", devName, devLinkPath, err)
-						}
-						return "/dev/" + devName, nil
-					}
-				}
-			}
-		}
-	}
-	return "", err
 }
 
 func preparePublishPath(_ string, _ *mount.SafeFormatAndMount) error {

@@ -75,6 +75,7 @@ type DriverOptions struct {
 	DisableAVSetNodes                  bool
 	RemoveNotReadyTaint                bool
 	NeverStopTaintRemoval              bool
+	SCSIScanMode                       string
 	TaintRemovalInitialDelayInSeconds  int64
 	MaxConcurrentFormat                int64
 	ConcurrentFormatTimeout            int64
@@ -137,6 +138,7 @@ func (o *DriverOptions) AddFlags() *flag.FlagSet {
 	fs.BoolVar(&o.DisableAVSetNodes, "disable-avset-nodes", false, "disable DisableAvailabilitySetNodes in cloud config for controller")
 	fs.BoolVar(&o.RemoveNotReadyTaint, "remove-not-ready-taint", true, "remove NotReady taint from node when node is ready")
 	fs.BoolVar(&o.NeverStopTaintRemoval, "never-stop-taint-removal", true, "if true, taint removal will never stop, otherwise it will stop after the first successful removal")
+	fs.StringVar(&o.SCSIScanMode, "scsi-scan-mode", "manual", "async or sync lets the Linux kernel scan SCSI disks on its own, risking inappropriately timed disk removals")
 	fs.Int64Var(&o.TaintRemovalInitialDelayInSeconds, "taint-removal-initial-delay-seconds", 30, "initial delay in seconds for taint removal")
 	fs.StringVar(&o.Endpoint, "endpoint", "unix://tmp/csi.sock", "CSI endpoint")
 	fs.Int64Var(&o.MaxConcurrentFormat, "max-concurrent-format", 2, "maximum number of concurrent format exec calls")

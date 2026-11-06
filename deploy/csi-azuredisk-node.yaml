@@ -162,10 +162,6 @@ spec:
               readOnly: true
             - mountPath: /dev
               name: device-dir
-            - mountPath: /sys/bus/scsi/devices
-              name: sys-devices-dir
-            - mountPath: /sys/class/
-              name: sys-class
             - mountPath: /run/kata-containers/shared/direct-volumes
               name: kata-direct-volumes
           resources:
@@ -199,14 +195,6 @@ spec:
             path: /dev
             type: Directory
           name: device-dir
-        - hostPath:
-            path: /sys/bus/scsi/devices
-            type: Directory
-          name: sys-devices-dir
-        - hostPath:
-            path: /sys/class/
-            type: Directory
-          name: sys-class
         - hostPath:
             path: /run/kata-containers/shared/direct-volumes/
             type: DirectoryOrCreate

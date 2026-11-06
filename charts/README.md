@@ -233,6 +233,7 @@ The following table lists the configurable parameters of the latest Azure Disk C
 | `linux.dsName`                                    | name of driver daemonset on linux                          |`csi-azuredisk-node`                                                         |
 | `linux.kubelet`                                   | configure kubelet directory path on Linux agent node       | `/var/lib/kubelet`                                                |
 | `linux.getNodeInfoFromLabels`                     | get node info from node labels instead of IMDS on Linux agent node       | `false`                                                |
+| `linux.scsiScanMode`                              | `async` or `sync` lets the Linux kernel scan SCSI disks on its own, risking inappropriately timed disk removals | `manual`                                               |
 | `linux.enableRegistrationProbe`                   | enable [kubelet-registration-probe](https://github.com/kubernetes-csi/node-driver-registrar#health-check-with-an-exec-probe) on Linux driver config     | `true`
 | `linux.distro`                                    | configure ssl certificates for different Linux distribution(available values: `debian`, `fedora`)                  | `debian`                                                |
 | `linux.tolerations`                               | linux node driver tolerations                              |                                                              |

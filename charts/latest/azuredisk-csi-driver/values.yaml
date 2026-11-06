@@ -223,6 +223,7 @@ linux:
   kubelet: /var/lib/kubelet
   distro: debian # available values: debian, fedora
   enablePerfOptimization: true
+  scsiScanMode: manual # async or sync lets the kernel scan SCSI disks on its own, risking inappropriately timed disk removals
   otelTracing:
     enabled: false
     otelServiceName: csi-azuredisk-node
