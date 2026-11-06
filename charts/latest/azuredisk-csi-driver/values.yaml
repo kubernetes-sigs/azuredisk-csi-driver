@@ -231,6 +231,8 @@ linux:
     - operator: "Exists"
   hostNetwork: true # this setting could be disabled if perfProfile is `none`
   getNodeInfoFromLabels: false # get node info from node labels instead of IMDS
+  disableReadOnlyRemount: false # skips the read-only remount at node unstage, risking lost writes and corruption of the next disk on fast LUN reuse
+  disableNVMeDeviceVerification: false # skips the NVMe device identity check at node stage, risking use of a stale block device on fast LUN reuse
   labels: {}
   annotations: {}
   podLabels: {}

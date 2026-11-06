@@ -443,3 +443,6 @@ func NewSafeMounter(enableWindowsHostProcess, useWinCIMAPI, useCSIProxyGAInterfa
 	klog.Errorf("failed to connect to csi-proxy v1beta with error: %v", err)
 	return nil, err
 }
+
+// DisableReadOnlyRemount is a no-op on Windows, which doesn't remount file systems as read-only.
+func DisableReadOnlyRemount(*mount.SafeFormatAndMount) {}

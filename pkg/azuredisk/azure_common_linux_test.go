@@ -27,6 +27,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
 	"golang.org/x/sys/unix"
 	"k8s.io/component-base/metrics/legacyregistry"
 	mount "k8s.io/mount-utils"
@@ -755,6 +756,50 @@ func TestRescanAllVolumes(t *testing.T) {
 	}
 }
 
+// fakeNVMeIOHandler is a configurable azureutils.IOHandler for the device-freshness tests: ReadFile
+// is served from files, and WriteFile calls are recorded in written.
+type fakeNVMeIOHandler struct {
+	files   map[string]string
+	written map[string][]byte
+}
+
+func (h *fakeNVMeIOHandler) ReadFile(name string) ([]byte, error) {
+	if data, ok := h.files[name]; ok {
+		return []byte(data), nil
+	}
+	return nil, os.ErrNotExist
+}
+
+func (h *fakeNVMeIOHandler) WriteFile(name string, data []byte, _ os.FileMode) error {
+	if h.written == nil {
+		h.written = map[string][]byte{}
+	}
+	h.written[name] = data
+	return nil
+}
+
+func (h *fakeNVMeIOHandler) ReadDir(string) ([]os.DirEntry, error) { return nil, nil }
+func (h *fakeNVMeIOHandler) Readlink(string) (string, error)       { return "", nil }
+
+func TestNVMeControllerRegexp(t *testing.T) {
+	tests := []struct {
+		device string
+		want   string
+	}{
+		{"nvme0n1", "nvme0"},
+		{"nvme12n3", "nvme12"},
+		{"nvme0n1p1", "nvme0"},
+		{"sdc", ""},
+		{"sdc1", ""},
+		{"", ""},
+	}
+	for _, tc := range tests {
+		if got := nvmeControllerRegexp.FindString(tc.device); got != tc.want {
+			t.Errorf("nvmeControllerRegexp.FindString(%q) = %q, want %q", tc.device, got, tc.want)
+		}
+	}
+}
+
 func TestWholeDiskNameRegexp(t *testing.T) {
 	tests := []struct {
 		device string
@@ -918,21 +963,27 @@ func (h *recordingIOHandler) ReadFile(string) ([]byte, error)       { return nil
 
 // installUnmountSeams overrides the unmountAndInvalidateDevice indirection seams (restoring them on
 // cleanup) so the destructive sequence can be driven deterministically without real devices or root.
-// It records the shutdown/unmount/flush steps, in order, into *events.
-func installUnmountSeams(t *testing.T, devicePath string, devErr, cleanupErr, flushErr error, events *[]string) {
+// It records the remount/shutdown/unmount/flush steps, in order, into *events.
+func installUnmountSeams(t *testing.T, devicePath string, devErr, remountErr, cleanupErr, flushErr error, events *[]string) {
 	t.Helper()
 	origGet := getDeviceNameFromMount
+	origRemount := remountReadOnly
 	origShutdown := shutdownFilesystem
 	origCleanup := cleanupMountPoint
 	origFlush := flushAndInvalidateBlockDevice
 	t.Cleanup(func() {
 		getDeviceNameFromMount = origGet
+		remountReadOnly = origRemount
 		shutdownFilesystem = origShutdown
 		cleanupMountPoint = origCleanup
 		flushAndInvalidateBlockDevice = origFlush
 	})
 	getDeviceNameFromMount = func(_ mount.Interface, _ string) (string, int, error) {
 		return devicePath, 1, devErr
+	}
+	remountReadOnly = func(_ string, _ *mount.SafeFormatAndMount) error {
+		*events = append(*events, "remount")
+		return remountErr
 	}
 	shutdownFilesystem = func(string) error {
 		*events = append(*events, "shutdown")
@@ -949,7 +1000,7 @@ func installUnmountSeams(t *testing.T, devicePath string, devErr, cleanupErr, fl
 }
 
 // TestUnmountAndInvalidateDeviceSequence verifies that unmountAndInvalidateDevice
-// performs shutdown -> unmount -> flush -> delete as expected for various kinds of inputs.
+// performs remount -> shutdown -> unmount -> flush -> delete as expected for various kinds of inputs.
 func TestUnmountAndInvalidateDeviceSequence(t *testing.T) {
 	const staging = "/var/lib/kubelet/plugins/kubernetes.io/csi/pv/globalmount"
 
@@ -963,13 +1014,13 @@ func TestUnmountAndInvalidateDeviceSequence(t *testing.T) {
 
 	t.Run("successful cleanup flushes partition+whole-disk and deletes the SCSI device", func(t *testing.T) {
 		var events []string
-		installUnmountSeams(t, "/dev/sdzz1", nil, nil, nil, &events)
+		installUnmountSeams(t, "/dev/sdzz1", nil, nil, nil, nil, &events)
 		io := &recordingIOHandler{}
 
 		if err := unmountAndInvalidateDevice(staging, io, newMounter(t)); err != nil {
 			t.Fatalf("unmountAndInvalidateDevice returned error: %v", err)
 		}
-		want := []string{"shutdown", "unmount", "flush:/dev/sdzz1", "flush:/dev/sdzz"}
+		want := []string{"remount", "shutdown", "unmount", "flush:/dev/sdzz1", "flush:/dev/sdzz"}
 		if !reflect.DeepEqual(events, want) {
 			t.Fatalf("sequence = %v, want %v", events, want)
 		}
@@ -990,15 +1041,15 @@ func TestUnmountAndInvalidateDeviceSequence(t *testing.T) {
 
 	t.Run("unmount failure prevents flush and delete", func(t *testing.T) {
 		var events []string
-		unmountErr := errors.New("boom: unmount failed")
-		installUnmountSeams(t, "/dev/sdzz1", nil, unmountErr, nil, &events)
+		unmountErr := errors.New("unmount failed")
+		installUnmountSeams(t, "/dev/sdzz1", nil, nil, unmountErr, nil, &events)
 		io := &recordingIOHandler{}
 
 		err := unmountAndInvalidateDevice(staging, io, newMounter(t))
 		if !errors.Is(err, unmountErr) {
 			t.Fatalf("err = %v, want %v", err, unmountErr)
 		}
-		if want := []string{"shutdown", "unmount"}; !reflect.DeepEqual(events, want) {
+		if want := []string{"remount", "shutdown", "unmount"}; !reflect.DeepEqual(events, want) {
 			t.Fatalf("sequence = %v, want %v (flush/delete must not run after unmount failure)", events, want)
 		}
 		if len(io.writes) != 0 {
@@ -1006,15 +1057,33 @@ func TestUnmountAndInvalidateDeviceSequence(t *testing.T) {
 		}
 	})
 
+	t.Run("remount read-only failure prevents shutdown, unmount, flush and delete", func(t *testing.T) {
+		var events []string
+		remountErr := errors.New("remount read-only failed")
+		installUnmountSeams(t, "/dev/sdzz1", nil, remountErr, nil, nil, &events)
+		io := &recordingIOHandler{}
+
+		err := unmountAndInvalidateDevice(staging, io, newMounter(t))
+		if !errors.Is(err, remountErr) {
+			t.Fatalf("err = %v, want %v", err, remountErr)
+		}
+		if want := []string{"remount"}; !reflect.DeepEqual(events, want) {
+			t.Fatalf("sequence = %v, want %v (nothing else may run after remount read-only failure)", events, want)
+		}
+		if len(io.writes) != 0 {
+			t.Fatalf("delete writes = %d, want 0 after remount read-only failure", len(io.writes))
+		}
+	})
+
 	t.Run("nvme device is flushed but never deleted", func(t *testing.T) {
 		var events []string
-		installUnmountSeams(t, "/dev/nvme9n9", nil, nil, nil, &events)
+		installUnmountSeams(t, "/dev/nvme9n9", nil, nil, nil, nil, &events)
 		io := &recordingIOHandler{}
 
 		if err := unmountAndInvalidateDevice(staging, io, newMounter(t)); err != nil {
 			t.Fatalf("unmountAndInvalidateDevice returned error: %v", err)
 		}
-		if want := []string{"shutdown", "unmount", "flush:/dev/nvme9n9"}; !reflect.DeepEqual(events, want) {
+		if want := []string{"remount", "shutdown", "unmount", "flush:/dev/nvme9n9"}; !reflect.DeepEqual(events, want) {
 			t.Fatalf("sequence = %v, want %v", events, want)
 		}
 		if len(io.writes) != 0 {
@@ -1025,7 +1094,7 @@ func TestUnmountAndInvalidateDeviceSequence(t *testing.T) {
 	t.Run("already-unstaged path is idempotent (no device, no flush/delete)", func(t *testing.T) {
 		var events []string
 		// A failed device lookup (not mounted) yields an empty device -> early return after unmount.
-		installUnmountSeams(t, "", errors.New("not mounted"), nil, nil, &events)
+		installUnmountSeams(t, "", errors.New("not mounted"), nil, nil, nil, &events)
 		io := &recordingIOHandler{}
 
 		for i := 0; i < 2; i++ { // retry-safe: a second call behaves identically
@@ -1033,7 +1102,7 @@ func TestUnmountAndInvalidateDeviceSequence(t *testing.T) {
 				t.Fatalf("call %d returned error: %v", i, err)
 			}
 		}
-		if want := []string{"shutdown", "unmount", "shutdown", "unmount"}; !reflect.DeepEqual(events, want) {
+		if want := []string{"remount", "shutdown", "unmount", "remount", "shutdown", "unmount"}; !reflect.DeepEqual(events, want) {
 			t.Fatalf("sequence = %v, want %v", events, want)
 		}
 		if len(io.writes) != 0 {
@@ -1045,13 +1114,13 @@ func TestUnmountAndInvalidateDeviceSequence(t *testing.T) {
 		var events []string
 		// A device-mapper path matches neither sd* nor nvme*, so wholeDiskName is empty: no extra
 		// whole-disk flush target is appended, and the SCSI delete is skipped.
-		installUnmountSeams(t, "/dev/mapper/test-vol", nil, nil, nil, &events)
+		installUnmountSeams(t, "/dev/mapper/test-vol", nil, nil, nil, nil, &events)
 		io := &recordingIOHandler{}
 
 		if err := unmountAndInvalidateDevice(staging, io, newMounter(t)); err != nil {
 			t.Fatalf("unmountAndInvalidateDevice returned error: %v", err)
 		}
-		if want := []string{"shutdown", "unmount", "flush:/dev/mapper/test-vol"}; !reflect.DeepEqual(events, want) {
+		if want := []string{"remount", "shutdown", "unmount", "flush:/dev/mapper/test-vol"}; !reflect.DeepEqual(events, want) {
 			t.Fatalf("sequence = %v, want %v", events, want)
 		}
 		if len(io.writes) != 0 {
@@ -1061,7 +1130,7 @@ func TestUnmountAndInvalidateDeviceSequence(t *testing.T) {
 
 	t.Run("flush errors do not skip the SCSI device delete", func(t *testing.T) {
 		var events []string
-		installUnmountSeams(t, "/dev/sdzz1", nil, nil, errors.New("flush boom"), &events)
+		installUnmountSeams(t, "/dev/sdzz1", nil, nil, nil, errors.New("flush failed"), &events)
 		io := &recordingIOHandler{}
 
 		if err := unmountAndInvalidateDevice(staging, io, newMounter(t)); err != nil {
@@ -1069,7 +1138,7 @@ func TestUnmountAndInvalidateDeviceSequence(t *testing.T) {
 		}
 		// Flushing is best-effort: both targets are still attempted and, crucially, the delete still
 		// happens -- a failed flush must never block the removal that prevents stale-cache reuse.
-		if want := []string{"shutdown", "unmount", "flush:/dev/sdzz1", "flush:/dev/sdzz"}; !reflect.DeepEqual(events, want) {
+		if want := []string{"remount", "shutdown", "unmount", "flush:/dev/sdzz1", "flush:/dev/sdzz"}; !reflect.DeepEqual(events, want) {
 			t.Fatalf("sequence = %v, want %v", events, want)
 		}
 		if len(io.writes) != 1 || io.writes[0].path != "/sys/class/block/sdzz/device/delete" {
@@ -1079,7 +1148,7 @@ func TestUnmountAndInvalidateDeviceSequence(t *testing.T) {
 
 	t.Run("SCSI device delete failure is swallowed (returns nil)", func(t *testing.T) {
 		var events []string
-		installUnmountSeams(t, "/dev/sdzz1", nil, nil, nil, &events)
+		installUnmountSeams(t, "/dev/sdzz1", nil, nil, nil, nil, &events)
 		io := &recordingIOHandler{writeErr: errors.New("permission denied")}
 
 		// A failed SCSI delete is best-effort: it is logged, not returned.
@@ -1090,4 +1159,106 @@ func TestUnmountAndInvalidateDeviceSequence(t *testing.T) {
 			t.Fatalf("expected one delete attempt, got %+v", io.writes)
 		}
 	})
+}
+
+func TestGetCachedNVMeID(t *testing.T) {
+	const blockName = "nvme0n1"
+	nguidPath := filepath.Join(sysClassBlockPath, blockName, "nguid")
+	uuidPath := filepath.Join(sysClassBlockPath, blockName, "uuid")
+	nguid := "eec2b1a5-9f0e-4d3c-8b2a-112233445566"
+	diskUUID := "11112222-3333-4444-5555-666677778888"
+
+	tests := []struct {
+		name  string
+		files map[string]string
+		want  uuid.UUID
+	}{
+		{
+			name:  "nguid is preferred over uuid",
+			files: map[string]string{nguidPath: nguid + "\n", uuidPath: diskUUID + "\n"},
+			want:  uuid.MustParse(nguid),
+		},
+		{
+			name:  "falls back to uuid when nguid is absent",
+			files: map[string]string{uuidPath: diskUUID + "\n"},
+			want:  uuid.MustParse(diskUUID),
+		},
+		{
+			name:  "falls back to uuid when nguid is all-zero",
+			files: map[string]string{nguidPath: uuid.Nil.String(), uuidPath: diskUUID},
+			want:  uuid.MustParse(diskUUID),
+		},
+		{
+			name:  "skips an unparsable nguid",
+			files: map[string]string{nguidPath: "not-a-uuid", uuidPath: diskUUID},
+			want:  uuid.MustParse(diskUUID),
+		},
+		{
+			name:  "returns Nil when neither is present",
+			files: map[string]string{},
+			want:  uuid.Nil,
+		},
+		{
+			name:  "returns Nil when both are all-zero",
+			files: map[string]string{nguidPath: uuid.Nil.String(), uuidPath: uuid.Nil.String()},
+			want:  uuid.Nil,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := getCachedNVMeID(&fakeNVMeIOHandler{files: tc.files}, blockName); got != tc.want {
+				t.Fatalf("getCachedNVMeID = %v, want %v", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestVerifyNVMeNamespaceIdentity(t *testing.T) {
+	const (
+		blockName  = "nvme0n1"
+		controller = "nvme0"
+		cachedID   = "11112222-3333-4444-5555-666677778888"
+		otherID    = "99998888-7777-6666-5555-444433332211"
+	)
+	nvmeSource := "/dev/" + blockName
+	cached := map[string]string{filepath.Join(sysClassBlockPath, blockName, "nguid"): cachedID}
+	rescanPath := filepath.Join(sysClassNVMePath, controller, "rescan_controller")
+
+	tests := []struct {
+		name       string
+		source     string
+		lun        string
+		files      map[string]string
+		live       uuid.UUID
+		liveErr    error
+		wantErr    bool
+		wantRescan bool
+	}{
+		{name: "non-NVMe device is skipped", source: "/dev/sdc", lun: "0"},
+		{name: "both ids absent is a no-op", source: nvmeSource, lun: "0"},
+		{name: "unparsable lun fails", source: nvmeSource, lun: "not-a-lun", files: cached, wantErr: true},
+		{name: "live read error fails closed", source: nvmeSource, lun: "0", files: cached, liveErr: errors.New("ioctl failed"), wantErr: true},
+		{name: "match is a no-op", source: nvmeSource, lun: "0", files: cached, live: uuid.MustParse(cachedID)},
+		{name: "mismatch rescans and fails", source: nvmeSource, lun: "0", files: cached, live: uuid.MustParse(otherID), wantErr: true, wantRescan: true},
+		{name: "cached present but live absent is a mismatch", source: nvmeSource, lun: "0", files: cached, live: uuid.Nil, wantErr: true, wantRescan: true},
+		{name: "cached absent but live present is a mismatch", source: nvmeSource, lun: "0", live: uuid.MustParse(otherID), wantErr: true, wantRescan: true},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			defer func(orig func(string, uint32) (uuid.UUID, error)) { getLiveNVMeID = orig }(getLiveNVMeID)
+			getLiveNVMeID = func(string, uint32) (uuid.UUID, error) { return tc.live, tc.liveErr }
+
+			io := &fakeNVMeIOHandler{files: tc.files}
+			err := verifyNVMeNamespaceIdentity(tc.source, tc.lun, io)
+
+			if (err != nil) != tc.wantErr {
+				t.Fatalf("verifyNVMeNamespaceIdentity error = %v, wantErr %v", err, tc.wantErr)
+			}
+			if _, rescanned := io.written[rescanPath]; rescanned != tc.wantRescan {
+				t.Fatalf("rescan issued = %v, want %v (writes: %v)", rescanned, tc.wantRescan, io.written)
+			}
+		})
+	}
 }

@@ -197,6 +197,9 @@ type Driver struct {
 	clusterResourceIDLock sync.Mutex
 	// interval between Azure async operation polls; defaults to 5s when unset
 	pollInterval time.Duration
+	// disableReadOnlyRemount and disableNVMeDeviceVerification disable features that work together to prevent fast LUN reuse from corrupting disks
+	disableReadOnlyRemount        bool
+	disableNVMeDeviceVerification bool
 }
 
 // NewDriver Creates a NewCSIDriver object. Assumes vendor version is equal to driver version &
@@ -269,6 +272,8 @@ func NewDriver(options *DriverOptions) *Driver {
 	driver.kataDirectVolume = &kataDirectVolume{}
 	driver.enableMigrationMonitor = options.EnableMigrationMonitor
 	driver.convertRWCachingModeForIntreePV = options.ConvertRWCachingModeForIntreePV
+	driver.disableReadOnlyRemount = options.DisableReadOnlyRemount
+	driver.disableNVMeDeviceVerification = options.DisableNVMeDeviceVerification
 
 	if driver.NodeID == "" {
 		// nodeid is not needed in controller component
@@ -444,6 +449,9 @@ func NewDriver(options *DriverOptions) *Driver {
 	driver.mounter, err = mounter.NewSafeMounter(driver.enableWindowsHostProcess, driver.useWinCIMAPI, driver.useCSIProxyGAInterface, int(driver.maxConcurrentFormat), time.Duration(driver.concurrentFormatTimeout)*time.Second)
 	if err != nil {
 		klog.Fatalf("Failed to get safe mounter. Error: %v", err)
+	}
+	if driver.disableReadOnlyRemount {
+		mounter.DisableReadOnlyRemount(driver.mounter)
 	}
 
 	controllerCap := []csi.ControllerServiceCapability_RPC_Type{
