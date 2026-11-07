@@ -2,7 +2,7 @@ image:
   baseRepo: mcr.microsoft.com
   azuredisk:
     repository: /oss/v2/kubernetes-csi/azuredisk-csi
-    tag: v1.34.9
+    tag: v1.34.10
     pullPolicy: IfNotPresent
   csiProvisioner:
     repository: /oss/v2/kubernetes-csi/csi-provisioner
@@ -44,7 +44,7 @@ controller:
   # Enabling or disabling certain features may affect the behavior or capabilities of the driver.
   # # Example valid values:
   # featureGates:
-  #   csiProvisioner: 
+  #   csiProvisioner:
   #     - Topology=true                # Enables topology-aware volume provisioning
   #     - VolumeAttributesClass=true   # Enables support for VolumeAttributesClass
   #   csiResizer:
