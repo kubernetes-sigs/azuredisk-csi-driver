@@ -23,6 +23,7 @@ import (
 	"fmt"
 	"os"
 	"path"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -535,5 +536,30 @@ func Test_echoToFile(t *testing.T) {
 				t.Errorf("echoToFile() error = %v, wantErr %v", err, tt.wantErr)
 			}
 		})
+	}
+}
+
+// Every account type admitted by the perf-optimization gate must produce
+// numeric sysfs values. Account types whose SKU publishes no IOPS/BW limits
+// cannot, so they must not be admitted.
+func TestAdmittedAccountTypesProduceNumericSettings(t *testing.T) {
+	deviceHelper := NewDeviceHelper()
+	nodeInfo := &NodeInfo{SkuName: "Standard_DS14", MaxBurstIops: 51200, MaxIops: 51200, MaxBwMbps: 512, MaxBurstBwMbps: 512}
+
+	for _, accountType := range []string{"Premium_LRS", "Premium_ZRS", "StandardSSD_LRS", "StandardSSD_ZRS", "PremiumV2_LRS"} {
+		if !deviceHelper.DiskSupportsPerfOptimization("basic", accountType) {
+			continue
+		}
+		queueDepth, nrRequests, _, maxSectorsKb, _, err := getOptimalDeviceSettings(nodeInfo, DiskSkuMap, "basic", accountType, "128", "", "")
+		require.NoError(t, err)
+		for setting, value := range map[string]string{
+			"device/queue_depth":   queueDepth,
+			"queue/nr_requests":    nrRequests,
+			"queue/max_sectors_kb": maxSectorsKb,
+		} {
+			if _, convErr := strconv.Atoi(value); convErr != nil {
+				t.Errorf("%s would be written as %q for account type %s: not a number", setting, value, accountType)
+			}
+		}
 	}
 }
