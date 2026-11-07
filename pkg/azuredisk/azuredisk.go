@@ -116,6 +116,7 @@ type Driver struct {
 	hostUtil                           hostUtil
 	useCSIProxyGAInterface             bool
 	enableDiskOnlineResize             bool
+	enableSCSIDeviceDeletion           bool
 	allowEmptyCloudConfig              bool
 	enableListVolumes                  bool
 	enableListSnapshots                bool
@@ -183,6 +184,7 @@ func NewDriver(options *DriverOptions) *Driver {
 	driver.userAgentSuffix = options.UserAgentSuffix
 	driver.useCSIProxyGAInterface = options.UseCSIProxyGAInterface
 	driver.enableDiskOnlineResize = options.EnableDiskOnlineResize
+	driver.enableSCSIDeviceDeletion = options.EnableSCSIDeviceDeletion
 	driver.allowEmptyCloudConfig = options.AllowEmptyCloudConfig
 	driver.enableListVolumes = options.EnableListVolumes
 	driver.enableListSnapshots = options.EnableListVolumes
