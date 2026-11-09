@@ -151,6 +151,10 @@ func formatAndMount(source, target, fstype string, options []string, m *mount.Sa
 		return mountWithMetrics(source, target, fstype, newOptions, m)
 	}
 
+	if err := ensureDeviceNotInUse(source); err != nil {
+		return err
+	}
+
 	readOnly := false
 	for _, option := range options {
 		if option == "ro" {
@@ -707,6 +711,21 @@ func unmountAndInvalidateDevice(stagingTargetPath string, io azureutils.IOHandle
 		}
 	}
 
+	return nil
+}
+
+// ensureDeviceNotInUse fails while a filesystem on source is still alive, e.g. held by another mount
+// namespace after the previous unstage. Mounting would reuse that superblock, which unstage may have
+// shut down, so every I/O would return EIO. Failing lets kubelet retry until the holder releases it.
+var ensureDeviceNotInUse = func(source string) error {
+	// O_EXCL without O_CREAT on a block device fails with EBUSY while it is mounted anywhere.
+	fd, err := unix.Open(source, unix.O_RDONLY|unix.O_EXCL|unix.O_CLOEXEC, 0)
+	if errors.Is(err, unix.EBUSY) {
+		return fmt.Errorf("device %s is in use, probably by a filesystem still mounted in another mount namespace", source)
+	}
+	if err == nil {
+		unix.Close(fd)
+	}
 	return nil
 }
 
