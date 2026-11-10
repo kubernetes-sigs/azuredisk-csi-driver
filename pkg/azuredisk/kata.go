@@ -196,6 +196,9 @@ func (d *Driver) kataRestoreStaging(req *csi.NodePublishVolumeRequest) error {
 	if err := volumehelper.MakeDir(req.StagingTargetPath); err != nil {
 		return err
 	}
+	if err := ensureDeviceNotInUse(device); err != nil {
+		return err
+	}
 	options, _ := azureutils.RemoveOptionIfExists(collectMountOptions(fsType, flags), "directmount")
 	// A typed mount fails for an absent/wrong filesystem; it never invokes mkfs
 	// or fsck. Publish Readonly belongs on the target bind, not this staging mount.

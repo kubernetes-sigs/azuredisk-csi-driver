@@ -246,7 +246,7 @@ func TestFormatAndMountFailsWhenDeviceInUse(t *testing.T) {
 	}
 	fakeExec := fakeSafeMounter.Exec.(*testmounter.FakeSafeMounter)
 
-	for _, options := range [][]string{nil, {"ro"}} {
+	for _, options := range [][]string{nil, {"ro"}, {"directmount"}} {
 		if err := formatAndMount("/dev/sdz", "/mnt/test", "ext4", options, fakeSafeMounter, nil, 0); err == nil {
 			t.Fatalf("formatAndMount with options %v returned nil, want an error for a device in use", options)
 		}
