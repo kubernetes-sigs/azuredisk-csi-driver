@@ -45,7 +45,6 @@ type DriverOptions struct {
 
 	//only used in v1
 	EnableDiskOnlineResize             bool
-	EnableSCSIDeviceDeletion           bool
 	AllowEmptyCloudConfig              bool
 	EnableListVolumes                  bool
 	EnableListSnapshots                bool
@@ -109,7 +108,6 @@ func (o *DriverOptions) AddFlags() *flag.FlagSet {
 	fs.Var(&goFlagFeatureGate{gate: o.FeatureGates}, "feature-gates", fmt.Sprintf("A set of Azure Disk CSI driver feature gates in key=value form. Known features: %s", strings.Join(o.FeatureGates.KnownFeatures(), ", ")))
 	//only used in v1
 	fs.BoolVar(&o.EnableDiskOnlineResize, "enable-disk-online-resize", true, "boolean flag to enable disk online resize")
-	fs.BoolVar(&o.EnableSCSIDeviceDeletion, "enable-scsi-device-deletion", false, "delete the Linux SCSI device after unmounting and flushing its caches in NodeUnstageVolume")
 	fs.BoolVar(&o.AllowEmptyCloudConfig, "allow-empty-cloud-config", true, "Whether allow running driver without cloud config")
 	fs.BoolVar(&o.EnableListVolumes, "enable-list-volumes", false, "boolean flag to enable ListVolumes on controller")
 	fs.BoolVar(&o.EnableListSnapshots, "enable-list-snapshots", false, "boolean flag to enable ListSnapshots on controller")

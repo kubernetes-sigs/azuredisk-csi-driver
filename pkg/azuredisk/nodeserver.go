@@ -444,7 +444,7 @@ func (d *Driver) NodeUnstageVolume(ctx context.Context, req *csi.NodeUnstageVolu
 
 	klog.V(2).Infof("NodeUnstageVolume: unmounting %s", stagingTargetPath)
 	// Unmount and invalidate the backing device so a fast LUN/namespace reuse can't serve stale content.
-	if err := unmountAndInvalidateDevice(stagingTargetPath, d.ioHandler, d.mounter, d.enableSCSIDeviceDeletion); err != nil {
+	if err := unmountAndInvalidateDevice(stagingTargetPath, d.ioHandler, d.mounter); err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to unmount staging target %q: %v", stagingTargetPath, err)
 	}
 	klog.V(2).Infof("NodeUnstageVolume: unmount %s successfully", stagingTargetPath)
