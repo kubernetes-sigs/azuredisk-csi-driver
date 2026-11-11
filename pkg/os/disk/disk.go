@@ -212,35 +212,8 @@ func (*powerShellDiskAPI) ListDiskLocations() (map[uint32]Location, error) {
 			continue
 		}
 
-		found := false
-		s := strings.Split(str, ":")
-		if len(s) >= 5 {
-			var d Location
-			for _, item := range s {
-				item = strings.TrimSpace(item)
-				itemSplit := strings.Split(item, " ")
-				if len(itemSplit) == 2 {
-					found = true
-					switch strings.TrimSpace(itemSplit[0]) {
-					case "Adapter":
-						d.Adapter = strings.TrimSpace(itemSplit[1])
-						if d.Adapter == "0" {
-							klog.V(2).Infof("skipping adapter 0 disk, number: %d, location: %s", int(num), str)
-							found = false
-						}
-					case "Target":
-						d.Target = strings.TrimSpace(itemSplit[1])
-					case "LUN":
-						d.LUNID = strings.TrimSpace(itemSplit[1])
-					default:
-						klog.V(6).Infof("Got unknown field : %s=%s", itemSplit[0], itemSplit[1])
-					}
-				}
-			}
-
-			if found {
-				m[uint32(num)] = d
-			}
+		if d, ok := parseDiskLocation(uint32(num), str); ok {
+			m[uint32(num)] = d
 		}
 	}
 	return m, nil
