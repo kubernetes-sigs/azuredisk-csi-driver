@@ -595,9 +595,14 @@ func unmountAndInvalidateDevice(stagingTargetPath string, io azureutils.IOHandle
 			devicePath = resolved
 		}
 	}
+	wholeDiskName := wholeDiskNameRegexp.FindString(filepath.Base(devicePath))
 	// Shut down the fs before unmounting so a private clone can't keep it alive and re-dirty the cache.
-	if err := shutdownFilesystem(stagingTargetPath); err != nil && !errors.Is(err, os.ErrNotExist) {
-		klog.Errorf("shutdownFilesystem - %v", err)
+	// Only do so when the SCSI device is deleted afterwards; otherwise a same-node NodeStageVolume can
+	// remount the shut-down superblock and get EIO on every I/O.
+	if enableSCSIDeviceDeletion && strings.HasPrefix(wholeDiskName, "sd") {
+		if err := shutdownFilesystem(stagingTargetPath); err != nil && !errors.Is(err, os.ErrNotExist) {
+			klog.Errorf("shutdownFilesystem - %v", err)
+		}
 	}
 
 	// Unmount the driver's global mount.
@@ -610,7 +615,6 @@ func unmountAndInvalidateDevice(stagingTargetPath string, io azureutils.IOHandle
 	if devicePath == "" {
 		return nil
 	}
-	wholeDiskName := wholeDiskNameRegexp.FindString(filepath.Base(devicePath))
 	flushTargets := []string{devicePath}
 	if wholeDiskName != "" && "/dev/"+wholeDiskName != devicePath {
 		flushTargets = append(flushTargets, "/dev/"+wholeDiskName)
