@@ -2,14 +2,23 @@ apiVersion: v1
 entries:
   azuredisk-csi-driver:
   - apiVersion: v1
-    appVersion: 1.36.2
-    created: "2026-11-07T17:34:33.792508854Z"
+    appVersion: 1.36.3
+    created: "2026-11-10T23:25:51.390439000Z"
     description: Azure disk Container Storage Interface (CSI) Storage Plugin
-    digest: f1bac5f3684c5dd411ae6c3321c7ee7f014bcb9d2eb85cee5dab2cf6da8c8213
+    digest: 186b6a5a2fe2d87536d719a5730aef8fd406f802701239101780a2edd0095fb9
     name: azuredisk-csi-driver
     urls:
-    - https://raw.githubusercontent.com/kubernetes-sigs/azuredisk-csi-driver/release-1.36/charts/latest/azuredisk-csi-driver-1.36.2.tgz
-    version: 1.36.2
+    - https://raw.githubusercontent.com/kubernetes-sigs/azuredisk-csi-driver/release-1.36/charts/latest/azuredisk-csi-driver-1.36.3.tgz
+    version: 1.36.3
+  - apiVersion: v1
+    appVersion: 1.36.3
+    created: "2026-11-10T23:25:51.390504000Z"
+    description: Azure disk Container Storage Interface (CSI) Storage Plugin
+    digest: 186b6a5a2fe2d87536d719a5730aef8fd406f802701239101780a2edd0095fb9
+    name: azuredisk-csi-driver
+    urls:
+    - https://raw.githubusercontent.com/kubernetes-sigs/azuredisk-csi-driver/release-1.36/charts/v1.36.3/azuredisk-csi-driver-1.36.3.tgz
+    version: 1.36.3
   - apiVersion: v1
     appVersion: 1.36.2
     created: "2026-11-07T17:34:33.794991636Z"
@@ -766,4 +775,4 @@ entries:
     urls:
     - https://raw.githubusercontent.com/kubernetes-sigs/azuredisk-csi-driver/master/charts/v1.1.0/azuredisk-csi-driver-v1.1.0.tgz
     version: v1.1.0
-generated: "2026-11-07T17:34:33.789124644Z"
+generated: "2026-11-10T23:25:51.390521000Z"
