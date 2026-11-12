@@ -36,6 +36,7 @@ import (
 	"google.golang.org/grpc/status"
 	"k8s.io/klog/v2"
 	"k8s.io/kubernetes/pkg/volume"
+	"k8s.io/kubernetes/pkg/volume/util/hostutil"
 	mount "k8s.io/mount-utils"
 	utilexec "k8s.io/utils/exec"
 	"sigs.k8s.io/azuredisk-csi-driver/pkg/azureutils"
@@ -146,6 +147,12 @@ func findDiskByLun(lun int, io azureutils.IOHandler, _ *mount.SafeFormatAndMount
 }
 
 func formatAndMount(source, target, fstype string, options []string, m *mount.SafeFormatAndMount, formatSem chan any, formatTimeout time.Duration) error {
+	if err := ensureDeviceNotInUse(source); err != nil {
+		csiMetrics.NewCSIMetricContext("device_in_use").
+			ObserveFormatAndMountWithLabels(false, csiMetrics.FsType, fstype)
+		return err
+	}
+
 	if newOptions, exists := azureutils.RemoveOptionIfExists(options, "directmount"); exists {
 		klog.V(2).Infof("formatAndMount - skip format for %s, old options: %v, new options: %v", target, options, newOptions)
 		return mountWithMetrics(source, target, fstype, newOptions, m)
@@ -712,6 +719,21 @@ func unmountAndInvalidateDevice(stagingTargetPath string, io azureutils.IOHandle
 	}
 
 	return nil
+}
+
+// ensureDeviceNotInUse fails while a filesystem on source is still alive, e.g. held by another mount
+// namespace after the previous unstage. Mounting would reuse that superblock, which unstage may have
+// shut down, so every I/O would return EIO. Failing lets kubelet retry until the holder releases it.
+var ensureDeviceNotInUse = func(source string) error {
+	// Any error other than EBUSY fails open so staging behaves as before.
+	if inUse, _ := hostutil.ExclusiveOpenFailsOnDevice(source); !inUse {
+		return nil
+	}
+	device := source
+	if resolved, err := filepath.EvalSymlinks(source); err == nil {
+		device = resolved
+	}
+	return fmt.Errorf("device %s is in use, probably by a filesystem still mounted in another mount namespace (find it with: grep -l %s /proc/*/mountinfo)", source, device)
 }
 
 // flushAndInvalidateBlockDevice flushes and drops the raw block-device page cache so

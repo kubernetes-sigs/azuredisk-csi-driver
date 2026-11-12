@@ -154,6 +154,8 @@ func (d *Driver) GetVolumeStats(ctx context.Context, m *mount.SafeFormatAndMount
 	return []*csi.VolumeUsage{}, fmt.Errorf("could not cast to csi proxy class")
 }
 
+var ensureDeviceNotInUse = func(string) error { return nil }
+
 // unmountAndInvalidateDevice only unmounts on Windows; the device-cache invalidation is Linux-only.
 func unmountAndInvalidateDevice(stagingTargetPath string, _ azureutils.IOHandler, m *mount.SafeFormatAndMount, _ bool) error {
 	return CleanupMountPoint(stagingTargetPath, m, true /*unmountVolume*/)

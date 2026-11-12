@@ -124,6 +124,8 @@ func (d *Driver) GetVolumeStats(ctx context.Context, m *mount.SafeFormatAndMount
 	return []*csi.VolumeUsage{}, nil
 }
 
+var ensureDeviceNotInUse = func(string) error { return nil }
+
 // unmountAndInvalidateDevice just unmounts on Darwin (present only so unit tests build on macOS).
 func unmountAndInvalidateDevice(stagingTargetPath string, _ azureutils.IOHandler, m *mount.SafeFormatAndMount, _ bool) error {
 	return CleanupMountPoint(stagingTargetPath, m, true /*extensiveMountPointCheck*/)

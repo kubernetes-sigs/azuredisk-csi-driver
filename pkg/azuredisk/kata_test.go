@@ -1499,6 +1499,27 @@ func TestKataRestoreInterruptedPublishBeforeMetadata(t *testing.T) {
 	assert.Zero(t, exec.CommandCalls)
 }
 
+func TestKataRestoreRefusesDeviceInUse(t *testing.T) {
+	orig := ensureDeviceNotInUse
+	t.Cleanup(func() { ensureDeviceNotInUse = orig })
+	ensureDeviceNotInUse = func(source string) error {
+		return errors.New(source + " is in use")
+	}
+
+	d, mounts, _ := newKataTestDriver(t)
+	req := kataTestRequest(t)
+	req.VolumeContext = nil
+	require.NoError(t, os.Remove(req.StagingTargetPath))
+	d.mounter.Interface = &kataRestoreMounter{Interface: mounts, onMount: func(string, string, string, []string) error {
+		t.Fatal("restore must not mount a device that is in use")
+		return nil
+	}}
+	_, err := d.NodePublishVolume(context.Background(), req)
+	require.Error(t, err)
+	assert.Equal(t, codes.Internal, status.Code(err))
+	assert.Empty(t, mounts.MountPoints)
+}
+
 // TestKataRestoreRejectsUnknownFilesystem models kernel rejection without formatting.
 func TestKataRestoreRejectsUnknownFilesystem(t *testing.T) {
 	for _, format := range []string{"blank", "xfs", "unavailable device"} {

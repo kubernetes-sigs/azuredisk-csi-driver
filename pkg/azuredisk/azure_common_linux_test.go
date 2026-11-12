@@ -233,6 +233,35 @@ func TestFormatAndMountDoesNotReformatWhenAlreadyFormatted(t *testing.T) {
 	}
 }
 
+func TestFormatAndMountFailsWhenDeviceInUse(t *testing.T) {
+	orig := ensureDeviceNotInUse
+	t.Cleanup(func() { ensureDeviceNotInUse = orig })
+	ensureDeviceNotInUse = func(source string) error {
+		return errors.New(source + " is in use")
+	}
+
+	fakeSafeMounter, err := testmounter.NewFakeSafeMounter()
+	if err != nil {
+		t.Fatalf("NewFakeSafeMounter failed: %v", err)
+	}
+	fakeExec := fakeSafeMounter.Exec.(*testmounter.FakeSafeMounter)
+
+	for _, options := range [][]string{nil, {"ro"}, {"directmount"}} {
+		if err := formatAndMount("/dev/sdz", "/mnt/test", "ext4", options, fakeSafeMounter, nil, 0); err == nil {
+			t.Fatalf("formatAndMount with options %v returned nil, want an error for a device in use", options)
+		}
+	}
+	if fakeExec.CommandCalls != 0 {
+		t.Fatalf("formatAndMount ran %d commands, want 0 for a device in use", fakeExec.CommandCalls)
+	}
+}
+
+func TestEnsureDeviceNotInUseIgnoresMissingDevice(t *testing.T) {
+	if err := ensureDeviceNotInUse(filepath.Join(t.TempDir(), "missing")); err != nil {
+		t.Fatalf("ensureDeviceNotInUse on a missing path = %v, want nil", err)
+	}
+}
+
 // TestDetectOrRepairFilesystem verifies detectOrRepairFilesystem's handling of the various fsck
 // exit codes using a fake mounter, which lets us deterministically simulate each outcome without
 // requiring root privileges or real loopback/block devices.
