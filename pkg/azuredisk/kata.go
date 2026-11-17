@@ -193,10 +193,10 @@ func (d *Driver) kataRestoreStaging(req *csi.NodePublishVolumeRequest) error {
 	if partition, ok := req.VolumeContext[consts.VolumeAttributePartition]; ok {
 		device += "-part" + partition
 	}
-	if err := volumehelper.MakeDir(req.StagingTargetPath); err != nil {
+	if err := ensureDeviceNotInUse(device); err != nil {
 		return err
 	}
-	if err := ensureDeviceNotInUse(device); err != nil {
+	if err := volumehelper.MakeDir(req.StagingTargetPath); err != nil {
 		return err
 	}
 	options, _ := azureutils.RemoveOptionIfExists(collectMountOptions(fsType, flags), "directmount")

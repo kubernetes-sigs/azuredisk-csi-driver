@@ -725,11 +725,12 @@ var ensureDeviceNotInUse = func(source string) error {
 	if inUse, _ := hostutil.ExclusiveOpenFailsOnDevice(source); !inUse {
 		return nil
 	}
-	device := source
-	if resolved, err := filepath.EvalSymlinks(source); err == nil {
-		device = resolved
+	var st unix.Stat_t
+	if err := unix.Stat(source, &st); err != nil {
+		return fmt.Errorf("device %s is in use", source)
 	}
-	return fmt.Errorf("device %s is in use, probably by a filesystem still mounted in another mount namespace (find it with: grep -l %s /proc/*/mountinfo)", source, device)
+	return fmt.Errorf("device %s (%d:%d) is in use by another process or mount namespace (mounts: grep -l ' %d:%d ' /proc/*/mountinfo)",
+		source, unix.Major(st.Rdev), unix.Minor(st.Rdev), unix.Major(st.Rdev), unix.Minor(st.Rdev))
 }
 
 // flushAndInvalidateBlockDevice flushes and drops the raw block-device page cache so

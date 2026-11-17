@@ -1518,6 +1518,7 @@ func TestKataRestoreRefusesDeviceInUse(t *testing.T) {
 	require.Error(t, err)
 	assert.Equal(t, codes.Internal, status.Code(err))
 	assert.Empty(t, mounts.MountPoints)
+	assert.NoDirExists(t, req.StagingTargetPath)
 }
 
 // TestKataRestoreRejectsUnknownFilesystem models kernel rejection without formatting.
