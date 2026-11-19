@@ -133,14 +133,6 @@ type Disk struct {
 	SerialNumber string `json:"SerialNumber"`
 }
 
-// Location definition
-type Location struct {
-	Adapter string
-	Bus     string
-	Target  string
-	LUNID   string
-}
-
 // IDs definition
 type IDs struct {
 	Page83       string
