@@ -21,6 +21,8 @@ import (
 	"path/filepath"
 	"strings"
 
+	"k8s.io/klog/v2"
+
 	consts "sigs.k8s.io/azuredisk-csi-driver/pkg/azureconstants"
 )
 
@@ -84,12 +86,29 @@ func isPerfTuningEnabled(profile string) bool {
 }
 
 // accountSupportsPerfOptimization checks to see if account type supports perf optimization
+//
+// An account type whose disk SKUs publish no burst limits cannot be tuned: the basic
+// profile derives queue/max_sectors_kb, device/queue_depth and queue/nr_requests by
+// dividing by those limits, so it produces "NaN" values that the kernel rejects and
+// NodeStageVolume fails. PremiumV2_LRS is the current example - its provisioned limits
+// are per-disk rather than per-tier and are not in DiskSkuMap yet.
 func accountSupportsPerfOptimization(accountType string) bool {
 	accountTypeLower := strings.ToLower(accountType)
-	if strings.HasPrefix(accountTypeLower, "premium") || strings.HasPrefix(accountTypeLower, "standardssd") {
-		return true
+	if !strings.HasPrefix(accountTypeLower, "premium") && !strings.HasPrefix(accountTypeLower, "standardssd") {
+		return false
 	}
-	return false
+
+	if diskSkus, ok := DiskSkuMap[accountTypeLower]; ok {
+		for _, diskSku := range diskSkus {
+			if diskSku.MaxBurstIops > 0 && diskSku.MaxBurstBwMbps > 0 {
+				return true
+			}
+		}
+		klog.V(2).Infof("accountSupportsPerfOptimization: %s does not publish burst IOPS/BW limits, skipping perf optimization", accountType)
+		return false
+	}
+
+	return true
 }
 
 // Gets device setting from the Disk attribute/param but trimming the consts.DeviceSettingsKeyPrefix prefix
