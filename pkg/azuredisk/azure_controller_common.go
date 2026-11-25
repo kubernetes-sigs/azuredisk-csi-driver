@@ -688,7 +688,8 @@ func (c *controllerCommon) GetNodeDataDisks(ctx context.Context, nodeName types.
 	return vmset.GetDataDisks(ctx, nodeName, crt)
 }
 
-// GetDiskLun finds the lun on the host that the vhd is attached to, given a vhd's diskName and diskURI.
+// GetDiskLun finds an attached disk's LUN by its full managed-disk ID or VHD URI.
+// diskName is used only for diagnostics, since names are not unique across resource groups.
 func (c *controllerCommon) GetDiskLun(ctx context.Context, diskName, diskURI string, nodeName types.NodeName) (lun int32, vmState *string, err error) {
 	ctx, span := startSpan(ctx, "GetDiskLun",
 		attribute.String(attrDiskURI, diskURI),
@@ -708,9 +709,11 @@ func (c *controllerCommon) GetDiskLun(ctx context.Context, diskName, diskURI str
 	}
 
 	for _, disk := range disks {
-		if disk.Lun != nil && (disk.Name != nil && diskName != "" && strings.EqualFold(*disk.Name, diskName)) ||
-			(disk.Vhd != nil && disk.Vhd.URI != nil && diskURI != "" && strings.EqualFold(*disk.Vhd.URI, diskURI)) ||
-			(disk.ManagedDisk != nil && strings.EqualFold(*disk.ManagedDisk.ID, diskURI)) {
+		if disk == nil || disk.Lun == nil || diskURI == "" {
+			continue
+		}
+		if (disk.Vhd != nil && disk.Vhd.URI != nil && strings.EqualFold(*disk.Vhd.URI, diskURI)) ||
+			(disk.ManagedDisk != nil && disk.ManagedDisk.ID != nil && strings.EqualFold(*disk.ManagedDisk.ID, diskURI)) {
 			if disk.ToBeDetached != nil && *disk.ToBeDetached {
 				klog.Warningf("azureDisk - found disk(ToBeDetached): lun %d name %s uri %s", *disk.Lun, diskName, diskURI)
 				return -1, provisioningState, fmt.Errorf("disk(%s) is in ToBeDetached state on node(%s): %s", diskURI, nodeName, detachInProgress)

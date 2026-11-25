@@ -3050,7 +3050,7 @@ func TestControllerPublishVolume(t *testing.T) {
 					},
 				}
 				dataDisks := make([]*armcompute.DataDisk, 1)
-				dataDisks[0] = &armcompute.DataDisk{Lun: ptr.To(int32(0)), Name: &testVolumeName}
+				dataDisks[0] = &armcompute.DataDisk{Lun: ptr.To(int32(0)), Name: &testVolumeName, ManagedDisk: &armcompute.ManagedDiskParameters{ID: &id}}
 				vm.Properties.StorageProfile.DataDisks = dataDisks
 				mockVMClient := d.getCloud().ComputeClientFactory.GetVirtualMachineClient().(*mockvmclient.MockInterface)
 				mockVMClient.EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(&vm, nil).AnyTimes()
@@ -3063,7 +3063,7 @@ func TestControllerPublishVolume(t *testing.T) {
 			},
 		},
 		{
-			name: "Volume already attached success",
+			name: "Volume already attached success ignores a name collision",
 			testFunc: func(t *testing.T) {
 				cntl := gomock.NewController(t)
 				defer cntl.Finish()
@@ -3111,15 +3111,24 @@ func TestControllerPublishVolume(t *testing.T) {
 						DataDisks: []*armcompute.DataDisk{},
 					},
 				}
-				dataDisks := make([]*armcompute.DataDisk, 1)
-				dataDisks[0] = &armcompute.DataDisk{Lun: ptr.To(int32(0)), Name: &testVolumeName}
-				vm.Properties.StorageProfile.DataDisks = dataDisks
+				vm.Properties.StorageProfile.DataDisks = []*armcompute.DataDisk{
+					{
+						Lun:         ptr.To(int32(0)),
+						Name:        &testVolumeName,
+						ManagedDisk: &armcompute.ManagedDiskParameters{ID: ptr.To(fmt.Sprintf(consts.ManagedDiskPath, "subs", "other-rg", testVolumeName))},
+					},
+					{
+						Lun:         ptr.To(int32(1)),
+						Name:        &testVolumeName,
+						ManagedDisk: &armcompute.ManagedDiskParameters{ID: &id},
+					},
+				}
 				mockVMClient := d.getCloud().ComputeClientFactory.GetVirtualMachineClient().(*mockvmclient.MockInterface)
 				mockVMClient.EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(&vm, nil).AnyTimes()
-				_, err = d.ControllerPublishVolume(context.Background(), req)
-				if !reflect.DeepEqual(err, nil) {
-					t.Errorf("actualErr: (%v), expectedErr: (<nil>)", err)
-				}
+				resp, err := d.ControllerPublishVolume(context.Background(), req)
+				require.NoError(t, err)
+				require.NotNil(t, resp)
+				assert.Equal(t, "1", resp.PublishContext[consts.LUN])
 			},
 		},
 		{
