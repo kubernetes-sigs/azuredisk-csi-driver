@@ -514,6 +514,11 @@ func TestCommonDetachDisk(t *testing.T) {
 		expectedVMs := setTestVirtualMachines(testCloud, test.vmList, false)
 		mockVMClient := testCloud.ComputeClientFactory.GetVirtualMachineClient().(*mockvmclient.MockInterface)
 		for _, vm := range expectedVMs {
+			for _, disk := range vm.Properties.StorageProfile.DataDisks {
+				if ptr.Deref(disk.Name, "") == test.diskName {
+					disk.ManagedDisk = &armcompute.ManagedDiskParameters{ID: ptr.To(diskURI)}
+				}
+			}
 			mockVMClient.EXPECT().Get(gomock.Any(), testCloud.ResourceGroup, *vm.Name, gomock.Any()).Return(&vm, nil).AnyTimes()
 		}
 		if len(expectedVMs) == 0 {
@@ -735,45 +740,124 @@ func TestCommonUpdateVM(t *testing.T) {
 }
 
 func TestGetDiskLun(t *testing.T) {
-	ctrl := gomock.NewController(t)
-	defer ctrl.Finish()
+	const diskURI = "/subscriptions/subscription/resourceGroups/rg/providers/Microsoft.Compute/disks/disk1"
+	const otherDiskURI = "/subscriptions/subscription/resourceGroups/other-rg/providers/Microsoft.Compute/disks/disk1"
+	const vhdURI = "https://account.blob.core.windows.net/vhds/disk1.vhd"
 
 	testCases := []struct {
 		desc        string
-		diskName    string
 		diskURI     string
+		disks       []*armcompute.DataDisk
 		expectedLun int32
-		expectedErr bool
+		expectedErr string
 	}{
 		{
-			desc:        "LUN -1 and error shall be returned if diskName != disk.Name or diskURI != disk.Vhd.URI",
-			diskName:    "diskx",
+			desc:    "name alone does not identify a disk",
+			diskURI: diskURI,
+			disks: []*armcompute.DataDisk{
+				{Name: ptr.To("disk1"), Lun: ptr.To(int32(0))},
+			},
 			expectedLun: -1,
-			expectedErr: true,
+			expectedErr: consts.CannotFindDiskLUN,
 		},
 		{
-			desc:        "correct LUN and no error shall be returned if diskName = disk.Name",
-			diskName:    "disk1",
-			expectedLun: 0,
-			expectedErr: false,
+			desc:    "name collision with a different resource ID does not match",
+			diskURI: diskURI,
+			disks: []*armcompute.DataDisk{
+				{Name: ptr.To("disk1"), Lun: ptr.To(int32(0)), ManagedDisk: &armcompute.ManagedDiskParameters{ID: ptr.To(otherDiskURI)}},
+			},
+			expectedLun: -1,
+			expectedErr: consts.CannotFindDiskLUN,
+		},
+		{
+			desc:    "matching resource ID wins after a name collision",
+			diskURI: diskURI,
+			disks: []*armcompute.DataDisk{
+				{Name: ptr.To("disk1"), Lun: ptr.To(int32(0)), ManagedDisk: &armcompute.ManagedDiskParameters{ID: ptr.To(otherDiskURI)}, ToBeDetached: ptr.To(true)},
+				{Name: ptr.To("disk1"), Lun: ptr.To(int32(1)), ManagedDisk: &armcompute.ManagedDiskParameters{ID: ptr.To(diskURI)}},
+			},
+			expectedLun: 1,
+		},
+		{
+			desc:    "managed disk ID matching is case insensitive and does not require the name",
+			diskURI: strings.ToUpper(diskURI),
+			disks: []*armcompute.DataDisk{
+				{Lun: ptr.To(int32(2)), ManagedDisk: &armcompute.ManagedDiskParameters{ID: ptr.To(diskURI)}},
+			},
+			expectedLun: 2,
+		},
+		{
+			desc: "empty requested identity does not match an empty managed disk ID",
+			disks: []*armcompute.DataDisk{
+				{Lun: ptr.To(int32(0)), ManagedDisk: &armcompute.ManagedDiskParameters{ID: ptr.To("")}},
+			},
+			expectedLun: -1,
+			expectedErr: consts.CannotFindDiskLUN,
+		},
+		{
+			desc:    "incomplete attachment metadata does not match or panic",
+			diskURI: diskURI,
+			disks: []*armcompute.DataDisk{
+				nil,
+				{Lun: ptr.To(int32(0)), ManagedDisk: &armcompute.ManagedDiskParameters{}},
+				{ManagedDisk: &armcompute.ManagedDiskParameters{ID: ptr.To(diskURI)}},
+				{Vhd: &armcompute.VirtualHardDisk{URI: ptr.To(diskURI)}},
+				{Lun: ptr.To(int32(1)), Vhd: &armcompute.VirtualHardDisk{}},
+			},
+			expectedLun: -1,
+			expectedErr: consts.CannotFindDiskLUN,
+		},
+		{
+			desc:    "VHD URI matching remains case insensitive",
+			diskURI: strings.ToUpper(vhdURI),
+			disks: []*armcompute.DataDisk{
+				{Lun: ptr.To(int32(3)), Vhd: &armcompute.VirtualHardDisk{URI: ptr.To(vhdURI)}},
+			},
+			expectedLun: 3,
+		},
+		{
+			desc:    "name collision does not override a different VHD URI",
+			diskURI: vhdURI,
+			disks: []*armcompute.DataDisk{
+				{Name: ptr.To("disk1"), Lun: ptr.To(int32(0)), Vhd: &armcompute.VirtualHardDisk{URI: ptr.To(vhdURI + ".other")}},
+			},
+			expectedLun: -1,
+			expectedErr: consts.CannotFindDiskLUN,
+		},
+		{
+			desc:    "matching disk pending detach still returns an error",
+			diskURI: diskURI,
+			disks: []*armcompute.DataDisk{
+				{Lun: ptr.To(int32(0)), ManagedDisk: &armcompute.ManagedDiskParameters{ID: ptr.To(diskURI)}, ToBeDetached: ptr.To(true)},
+			},
+			expectedLun: -1,
+			expectedErr: detachInProgress,
 		},
 	}
 
-	for i, test := range testCases {
-		testCloud := provider.GetTestCloud(ctrl)
-		common := &controllerCommon{
-			cloud:   testCloud,
-			lockMap: newLockMap(),
-		}
-		expectedVMs := setTestVirtualMachines(testCloud, map[string]string{"vm1": "PowerState/Running"}, false)
-		mockVMClient := testCloud.ComputeClientFactory.GetVirtualMachineClient().(*mockvmclient.MockInterface)
-		for _, vm := range expectedVMs {
-			mockVMClient.EXPECT().Get(gomock.Any(), testCloud.ResourceGroup, *vm.Name, gomock.Any()).Return(&vm, nil).AnyTimes()
-		}
+	for _, test := range testCases {
+		t.Run(test.desc, func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			testCloud := provider.GetTestCloud(ctrl)
+			common := &controllerCommon{
+				cloud:   testCloud,
+				lockMap: newLockMap(),
+			}
+			expectedVMs := setTestVirtualMachines(testCloud, map[string]string{"vm1": "PowerState/Running"}, false)
+			mockVMClient := testCloud.ComputeClientFactory.GetVirtualMachineClient().(*mockvmclient.MockInterface)
+			for _, vm := range expectedVMs {
+				vm.Properties.StorageProfile.DataDisks = test.disks
+				mockVMClient.EXPECT().Get(gomock.Any(), testCloud.ResourceGroup, *vm.Name, gomock.Any()).Return(&vm, nil).AnyTimes()
+			}
 
-		lun, _, err := common.GetDiskLun(context.Background(), test.diskName, test.diskURI, "vm1")
-		assert.Equal(t, test.expectedLun, lun, "TestCase[%d]: %s", i, test.desc)
-		assert.Equal(t, test.expectedErr, err != nil, "TestCase[%d]: %s", i, test.desc)
+			lun, _, err := common.GetDiskLun(context.Background(), "disk1", test.diskURI, "vm1")
+			assert.Equal(t, test.expectedLun, lun)
+			if test.expectedErr == "" {
+				assert.NoError(t, err)
+			} else {
+				assert.ErrorContains(t, err, test.expectedErr)
+			}
+		})
 	}
 }
 
@@ -1351,8 +1435,9 @@ func TestVerifyAttach(t *testing.T) {
 					if tt.expectDisk {
 						vm.Properties.StorageProfile.DataDisks = []*armcompute.DataDisk{
 							{
-								Lun:  ptr.To(int32(tt.wantLun)),
-								Name: ptr.To(tt.diskName),
+								Lun:         ptr.To(int32(tt.wantLun)),
+								Name:        ptr.To(tt.diskName),
+								ManagedDisk: &armcompute.ManagedDiskParameters{ID: ptr.To(tt.diskURI)},
 							},
 						}
 					}
@@ -1436,8 +1521,9 @@ func TestVerifyDetach(t *testing.T) {
 					if tt.expectDisk {
 						vm.Properties.StorageProfile.DataDisks = []*armcompute.DataDisk{
 							{
-								Lun:  ptr.To(int32(tt.wantLun)),
-								Name: ptr.To(tt.diskName),
+								Lun:         ptr.To(int32(tt.wantLun)),
+								Name:        ptr.To(tt.diskName),
+								ManagedDisk: &armcompute.ManagedDiskParameters{ID: ptr.To(tt.diskURI)},
 							},
 						}
 					}
