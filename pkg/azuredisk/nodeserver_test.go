@@ -24,14 +24,18 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"reflect"
 	"runtime"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"syscall"
 	"testing"
+	"testing/synctest"
+	"time"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute/v7"
@@ -51,6 +55,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/kubernetes/fake"
 	clienttesting "k8s.io/client-go/testing"
+	cloudprovider "k8s.io/cloud-provider"
 	"k8s.io/mount-utils"
 	testingexec "k8s.io/utils/exec/testing"
 	"k8s.io/utils/ptr"
@@ -62,6 +67,8 @@ import (
 	"sigs.k8s.io/azuredisk-csi-driver/test/utils/testutil"
 	"sigs.k8s.io/cloud-provider-azure/pkg/azclient/mock_azclient"
 	mockvmclient "sigs.k8s.io/cloud-provider-azure/pkg/azclient/virtualmachineclient/mock_virtualmachineclient"
+	azureconsts "sigs.k8s.io/cloud-provider-azure/pkg/consts"
+	azure "sigs.k8s.io/cloud-provider-azure/pkg/provider"
 )
 
 const (
@@ -405,7 +412,7 @@ func TestNodeGetInfo(t *testing.T) {
 		},
 		{
 			desc:        "[Failure] Get node information for non-existing VM",
-			expectedErr: status.Error(codes.Internal, fmt.Sprintf("GetNodeInfoFromLabels on node(%s) failed with %s", "fakeNodeID", "kubeClient is nil")),
+			expectedErr: status.Error(codes.Unavailable, "topology is not initialized for node(fakeNodeID): cloud lookup: not found, label lookup: kubeClient is nil"),
 			setupFunc: func(_ *testing.T, d FakeDriver) {
 				mockVMClient := d.getCloud().ComputeClientFactory.GetVirtualMachineClient().(*mockvmclient.MockInterface)
 				mockVMClient.EXPECT().
@@ -440,6 +447,377 @@ func TestNodeGetInfo(t *testing.T) {
 			}
 		})
 	}
+}
+
+// Cloud-backed registration must not confuse unknown topology with a non-zonal
+// VM. Pure label-only mode retains compatibility when no cloud is configured.
+func TestNodeGetInfoTopologyReadiness(t *testing.T) {
+	for _, fromLabels := range []bool{true, false} {
+		t.Run(fmt.Sprintf("fromLabels=%t", fromLabels), func(t *testing.T) {
+			for _, tc := range []struct {
+				name   string
+				labels map[string]string
+				zone   string
+				code   codes.Code
+			}{
+				{name: "no labels", code: codes.Internal},
+				{name: "hostname only", labels: map[string]string{corev1.LabelHostname: "node1"}},
+				{name: "instance type only", labels: map[string]string{consts.InstanceTypeKey: "Standard_E8s_v3"}},
+				{name: "empty zone", labels: map[string]string{consts.WellKnownTopologyKey: ""}},
+				{name: "zonal", labels: map[string]string{consts.WellKnownTopologyKey: "centralus-1"}, zone: "centralus-1"},
+				// Azure's GetZoneByNodeName reports numeric fault domains for non-zonal VMs.
+				{name: "non-zonal fault domain zero", labels: map[string]string{consts.WellKnownTopologyKey: "0"}},
+				{name: "non-zonal fault domain one", labels: map[string]string{consts.WellKnownTopologyKey: "1"}},
+			} {
+				t.Run(tc.name, func(t *testing.T) {
+					d := &Driver{supportZone: true, getNodeInfoFromLabels: fromLabels, cloud: &azure.Cloud{}}
+					d.NodeID = "node1"
+					if !fromLabels {
+						mockVMSet := azure.NewMockVMSet(gomock.NewController(t))
+						d.cloud.VMSet = mockVMSet
+						d.cloud.ComputeClientFactory = mock_azclient.NewMockClientFactory(gomock.NewController(t))
+						// Windows queries the node ID directly; GetZone uses the local hostname elsewhere.
+						nodeName := d.NodeID
+						if runtime.GOOS != "windows" {
+							hostname, err := os.Hostname()
+							require.NoError(t, err)
+							nodeName = strings.ToLower(hostname)
+						}
+						// Explicitly fail the cloud lookup to exercise the label fallback on every OS.
+						mockVMSet.EXPECT().GetZoneByNodeName(gomock.Any(), nodeName).
+							Return(cloudprovider.Zone{}, errors.New("zone lookup failed"))
+					}
+					d.cloud.KubeClient = fake.NewClientset(&corev1.Node{ObjectMeta: metav1.ObjectMeta{Name: d.NodeID, Labels: tc.labels}})
+					resp, err := d.NodeGetInfo(context.Background(), &csi.NodeGetInfoRequest{})
+					wantCode := tc.code
+					if !fromLabels && tc.labels[consts.WellKnownTopologyKey] == "" {
+						wantCode = codes.Unavailable
+					}
+					require.Equal(t, wantCode, status.Code(err), "error: %v", err)
+					if wantCode != codes.OK {
+						require.Nil(t, resp, "unknown topology must not be published")
+						return
+					}
+					want := map[string]string{topologyKey: tc.zone}
+					if tc.zone != "" {
+						want[consts.WellKnownTopologyKey] = tc.zone
+					}
+					require.Equal(t, want, resp.AccessibleTopology.Segments)
+				})
+			}
+		})
+	}
+}
+
+func TestNodeGetInfoTopologyFromMetadata(t *testing.T) {
+	for _, fromLabels := range []bool{false, true} {
+		t.Run(fmt.Sprintf("fromLabels=%t", fromLabels), func(t *testing.T) {
+			for _, tc := range []struct {
+				name, metadata, zone, label string
+				code                        codes.Code
+				httpStatus                  int
+			}{
+				{name: "zonal", metadata: `{"compute":{"location":"centralus","zone":"2"}}`, zone: "centralus-2"},
+				{name: "non-zonal", metadata: `{"compute":{"location":"centralus","zone":"","platformFaultDomain":"0"}}`},
+				{name: "non-zonal fault domain one", metadata: `{"compute":{"location":"centralus","zone":"","platformFaultDomain":"1"}}`},
+				{name: "incomplete metadata", metadata: `{"compute":{"location":"centralus"}}`, code: codes.Unavailable},
+				{name: "empty metadata fields", metadata: `{"compute":{"location":"centralus","zone":"","platformFaultDomain":""}}`, code: codes.Unavailable},
+				{name: "invalid zone", metadata: `{"compute":{"location":"centralus","zone":"invalid"}}`, code: codes.Unavailable},
+				{name: "missing compute", metadata: `{}`, code: codes.Unavailable},
+				{name: "missing location", metadata: `{"compute":{"zone":"2"}}`, code: codes.Unavailable},
+				{name: "missing location with label", metadata: `{"compute":{"zone":"2"}}`, label: "centralus-3", zone: "centralus-3"},
+				{name: "negative fault domain", metadata: `{"compute":{"location":"centralus","platformFaultDomain":"-1"}}`, code: codes.Unavailable},
+				{name: "invalid fault domain", metadata: `{"compute":{"location":"centralus","platformFaultDomain":"unknown"}}`, code: codes.Unavailable},
+				{name: "metadata unavailable", httpStatus: http.StatusServiceUnavailable, code: codes.Unavailable},
+				{name: "metadata unauthorized", httpStatus: http.StatusUnauthorized, code: codes.Unavailable},
+				{name: "incomplete metadata with label", metadata: `{"compute":{"location":"centralus"}}`, label: "centralus-3", zone: "centralus-3"},
+				{name: "unavailable metadata with label", httpStatus: http.StatusServiceUnavailable, label: "centralus-3", zone: "centralus-3"},
+			} {
+				t.Run(tc.name, func(t *testing.T) {
+					server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+						if tc.httpStatus != 0 {
+							w.WriteHeader(tc.httpStatus)
+							return
+						}
+						_, _ = io.WriteString(w, tc.metadata)
+					}))
+					defer server.Close()
+					metadata, err := azure.NewInstanceMetadataService(server.URL)
+					require.NoError(t, err)
+					d := &Driver{supportZone: true, getNodeInfoFromLabels: fromLabels, cloud: &azure.Cloud{}}
+					d.NodeID = "node1"
+					d.cloud.UseInstanceMetadata = true
+					d.cloud.Metadata = metadata
+					// Cloud-first mode also works without a Kubernetes client.
+					if fromLabels || tc.label != "" {
+						d.cloud.KubeClient = fake.NewClientset(&corev1.Node{ObjectMeta: metav1.ObjectMeta{
+							Name: d.NodeID, Labels: map[string]string{consts.InstanceTypeKey: "Standard_E8s_v3", consts.WellKnownTopologyKey: tc.label},
+						}})
+					}
+					resp, err := d.NodeGetInfo(context.Background(), &csi.NodeGetInfoRequest{})
+					require.Equal(t, tc.code, status.Code(err), "error: %v", err)
+					if tc.code != codes.OK {
+						require.Nil(t, resp)
+						return
+					}
+					want := map[string]string{topologyKey: tc.zone}
+					if tc.zone != "" {
+						want[consts.WellKnownTopologyKey] = tc.zone
+					}
+					require.Equal(t, want, resp.AccessibleTopology.Segments)
+				})
+			}
+		})
+	}
+}
+
+// Advance the real provider cache's TTL in virtual time, without replacing the
+// metadata client or requiring a minute-long sleep or a live IMDS endpoint.
+func TestNodeGetInfoTopologyMetadataCacheRecovery(t *testing.T) {
+	for _, fromLabels := range []bool{false, true} {
+		for _, recoveredMetadata := range []string{
+			`{"compute":{"location":"centralus","zone":"2"}}`,
+			`{"compute":{"location":"centralus","platformFaultDomain":"0"}}`,
+		} {
+			t.Run(fmt.Sprintf("fromLabels=%t/%s", fromLabels, recoveredMetadata), func(t *testing.T) {
+				synctest.Test(t, func(t *testing.T) {
+					calls := 0
+					body := `{"compute":{"location":"centralus"}}`
+					originalTransport := http.DefaultTransport
+					http.DefaultTransport = testRoundTripper(func(req *http.Request) (*http.Response, error) {
+						calls++
+						return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(body)), Header: make(http.Header), Request: req}, nil
+					})
+					defer func() { http.DefaultTransport = originalTransport }()
+					metadata, err := azure.NewInstanceMetadataService("http://imds.test")
+					require.NoError(t, err)
+					d := &Driver{supportZone: true, getNodeInfoFromLabels: fromLabels, cloud: &azure.Cloud{}}
+					d.NodeID = "node1"
+					d.cloud.UseInstanceMetadata = true
+					d.cloud.Metadata = metadata
+					d.cloud.KubeClient = fake.NewClientset(&corev1.Node{ObjectMeta: metav1.ObjectMeta{
+						Name: d.NodeID, Labels: map[string]string{consts.InstanceTypeKey: "Standard_E8s_v3"},
+					}})
+					ctx := context.Background()
+					resp, err := d.NodeGetInfo(ctx, &csi.NodeGetInfoRequest{})
+					require.Equal(t, codes.Unavailable, status.Code(err))
+					require.Nil(t, resp)
+					require.Equal(t, 1, calls)
+
+					body = recoveredMetadata
+					// Retries before expiry still use the incomplete cached response.
+					resp, err = d.NodeGetInfo(ctx, &csi.NodeGetInfoRequest{})
+					require.Equal(t, codes.Unavailable, status.Code(err))
+					require.Nil(t, resp)
+					require.Equal(t, 1, calls)
+
+					time.Sleep(azureconsts.MetadataCacheTTL + time.Second)
+					resp, err = d.NodeGetInfo(ctx, &csi.NodeGetInfoRequest{})
+					require.NoError(t, err)
+					require.Equal(t, 2, calls, "expired metadata must be refreshed by topology lookup")
+					want := map[string]string{topologyKey: ""}
+					if strings.Contains(recoveredMetadata, `"zone":"2"`) {
+						want = map[string]string{topologyKey: "centralus-2", consts.WellKnownTopologyKey: "centralus-2"}
+					}
+					require.Equal(t, want, resp.AccessibleTopology.Segments)
+				})
+			})
+		}
+	}
+}
+
+func TestNodeGetInfoTopologyFromARM(t *testing.T) {
+	for _, fromLabels := range []bool{false, true} {
+		for _, tc := range []struct {
+			name, failureDomain string
+			code                codes.Code
+		}{
+			{name: "zonal", failureDomain: "centralus-2"},
+			{name: "non-zonal zero", failureDomain: "0"},
+			{name: "non-zonal one", failureDomain: "1"},
+			{name: "incomplete", code: codes.Unavailable},
+			{name: "missing location", failureDomain: "-2", code: codes.Unavailable},
+			{name: "negative fault domain", failureDomain: "-1", code: codes.Unavailable},
+			{name: "invalid fault domain", failureDomain: "unknown", code: codes.Unavailable},
+		} {
+			t.Run(fmt.Sprintf("fromLabels=%t/%s", fromLabels, tc.name), func(t *testing.T) {
+				ctrl := gomock.NewController(t)
+				d := &Driver{supportZone: true, getNodeInfoFromLabels: fromLabels, cloud: &azure.Cloud{}}
+				d.NodeID = "node1"
+				vmSet := azure.NewMockVMSet(ctrl)
+				d.cloud.VMSet = vmSet
+				d.cloud.ComputeClientFactory = mock_azclient.NewMockClientFactory(ctrl)
+				nodeName := d.NodeID
+				if runtime.GOOS != "windows" {
+					hostname, err := os.Hostname()
+					require.NoError(t, err)
+					nodeName = strings.ToLower(hostname)
+				}
+				vmSet.EXPECT().GetZoneByNodeName(gomock.Any(), nodeName).
+					Return(cloudprovider.Zone{FailureDomain: tc.failureDomain, Region: "centralus"}, nil)
+				d.cloud.KubeClient = fake.NewClientset(&corev1.Node{ObjectMeta: metav1.ObjectMeta{
+					Name: d.NodeID, Labels: map[string]string{consts.InstanceTypeKey: "Standard_E8s_v3"},
+				}})
+				resp, err := d.NodeGetInfo(context.Background(), &csi.NodeGetInfoRequest{})
+				require.Equal(t, tc.code, status.Code(err), "error: %v", err)
+				if tc.code != codes.OK {
+					require.Nil(t, resp)
+					return
+				}
+				want := map[string]string{topologyKey: ""}
+				if tc.failureDomain == "centralus-2" {
+					want = map[string]string{topologyKey: tc.failureDomain, consts.WellKnownTopologyKey: tc.failureDomain}
+				}
+				require.Equal(t, want, resp.AccessibleTopology.Segments)
+			})
+		}
+	}
+}
+
+func TestNodeGetInfoLabelPrecedence(t *testing.T) {
+	for _, zone := range []string{"centralus-1", "0", "1"} {
+		t.Run(zone, func(t *testing.T) {
+			var calls atomic.Int32
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				calls.Add(1)
+				w.WriteHeader(http.StatusServiceUnavailable)
+			}))
+			defer server.Close()
+			metadata, err := azure.NewInstanceMetadataService(server.URL)
+			require.NoError(t, err)
+			d := &Driver{supportZone: true, getNodeInfoFromLabels: true, cloud: &azure.Cloud{}}
+			d.NodeID = "node1"
+			d.VolumeAttachLimit = -1
+			d.cloud.UseInstanceMetadata = true
+			d.cloud.Metadata = metadata
+			d.cloud.KubeClient = fake.NewClientset(&corev1.Node{ObjectMeta: metav1.ObjectMeta{
+				Name: d.NodeID, Labels: map[string]string{consts.InstanceTypeKey: "Standard_E8s_v3", consts.WellKnownTopologyKey: zone},
+			}})
+			resp, err := d.NodeGetInfo(context.Background(), &csi.NodeGetInfoRequest{})
+			require.NoError(t, err)
+			require.Zero(t, calls.Load(), "nonempty labels must not depend on cloud access")
+			want := map[string]string{topologyKey: ""}
+			if zone == "centralus-1" {
+				want = map[string]string{topologyKey: zone, consts.WellKnownTopologyKey: zone}
+			}
+			require.Equal(t, want, resp.AccessibleTopology.Segments)
+			limit, _ := GetMaxDataDiskCount("Standard_E8s_v3")
+			require.Equal(t, limit, resp.MaxVolumesPerNode)
+		})
+	}
+}
+
+func TestNodeGetInfoTopologyUninitializedClients(t *testing.T) {
+	for _, fromLabels := range []bool{false, true} {
+		for _, capability := range []string{"none", "imds", "arm", "vmset"} {
+			t.Run(fmt.Sprintf("fromLabels=%t/%s", fromLabels, capability), func(t *testing.T) {
+				d := &Driver{supportZone: true, getNodeInfoFromLabels: fromLabels, cloud: &azure.Cloud{}}
+				d.NodeID = "node1"
+				switch capability {
+				case "imds":
+					d.cloud.UseInstanceMetadata = true // nil metadata client must not panic
+				case "arm":
+					d.cloud.SubscriptionID = "configured" // nil VMSet must not panic
+				case "vmset":
+					// A partially initialized ARM VMSet must not be called without its factory.
+					d.cloud.VMSet = azure.NewMockVMSet(gomock.NewController(t))
+				}
+				d.cloud.KubeClient = fake.NewClientset(&corev1.Node{ObjectMeta: metav1.ObjectMeta{
+					Name: d.NodeID, Labels: map[string]string{consts.InstanceTypeKey: "Standard_E8s_v3"},
+				}})
+				resp, err := d.NodeGetInfo(context.Background(), &csi.NodeGetInfoRequest{})
+				if fromLabels && capability == "none" {
+					require.NoError(t, err)
+					require.Equal(t, map[string]string{topologyKey: ""}, resp.AccessibleTopology.Segments)
+				} else {
+					require.Equal(t, codes.Unavailable, status.Code(err))
+					require.Nil(t, resp)
+				}
+				// Nonempty labels remain usable even with uninitialized cloud clients.
+				node, err := d.cloud.KubeClient.CoreV1().Nodes().Get(context.Background(), d.NodeID, metav1.GetOptions{})
+				require.NoError(t, err)
+				node.Labels[consts.WellKnownTopologyKey] = "centralus-1"
+				_, err = d.cloud.KubeClient.CoreV1().Nodes().Update(context.Background(), node, metav1.UpdateOptions{})
+				require.NoError(t, err)
+				resp, err = d.NodeGetInfo(context.Background(), &csi.NodeGetInfoRequest{})
+				require.NoError(t, err)
+				require.Equal(t, "centralus-1", resp.AccessibleTopology.Segments[topologyKey])
+			})
+		}
+	}
+}
+
+// A deployment with no cloud config may permanently lack zone labels. Do not
+// turn that supported configuration into an endless registration retry loop.
+func TestNodeGetInfoLabelOnlyCompatibility(t *testing.T) {
+	for _, emptyLabel := range []bool{false, true} {
+		t.Run(fmt.Sprintf("emptyLabel=%t", emptyLabel), func(t *testing.T) {
+			labels := map[string]string{consts.InstanceTypeKey: "Standard_E8s_v3"}
+			if emptyLabel {
+				labels[consts.WellKnownTopologyKey] = ""
+			}
+			d := &Driver{supportZone: true, getNodeInfoFromLabels: true, cloud: &azure.Cloud{}}
+			d.NodeID = "node1"
+			d.VolumeAttachLimit = -1
+			d.ReservedDataDiskSlotNum = 1
+			d.cloud.KubeClient = fake.NewClientset(&corev1.Node{ObjectMeta: metav1.ObjectMeta{Name: d.NodeID, Labels: labels}})
+			limit, _ := GetMaxDataDiskCount("Standard_E8s_v3")
+			for i := 0; i < 3; i++ {
+				resp, err := d.NodeGetInfo(context.Background(), &csi.NodeGetInfoRequest{})
+				require.NoError(t, err)
+				require.Equal(t, map[string]string{topologyKey: ""}, resp.AccessibleTopology.Segments)
+				require.Equal(t, limit-1, resp.MaxVolumesPerNode)
+			}
+		})
+	}
+}
+
+func TestNodeGetInfoTopologyRetry(t *testing.T) {
+	ctx := context.Background()
+	client := fake.NewClientset(&corev1.Node{ObjectMeta: metav1.ObjectMeta{
+		Name: "node1", Labels: map[string]string{consts.InstanceTypeKey: "Standard_E8s_v3"},
+	}})
+	d := &Driver{supportZone: true, getNodeInfoFromLabels: true, cloud: &azure.Cloud{}}
+	d.NodeID = "node1"
+	d.VolumeAttachLimit = -1
+	d.cloud.KubeClient = client
+	d.cloud.VMSet = azure.NewMockVMSet(gomock.NewController(t))
+	d.cloud.ComputeClientFactory = mock_azclient.NewMockClientFactory(gomock.NewController(t))
+	gomock.InOrder(
+		d.cloud.VMSet.(*azure.MockVMSet).EXPECT().GetZoneByNodeName(gomock.Any(), gomock.Any()).Return(cloudprovider.Zone{}, errors.New("metadata pending")),
+		d.cloud.VMSet.(*azure.MockVMSet).EXPECT().GetZoneByNodeName(gomock.Any(), gomock.Any()).Return(cloudprovider.Zone{FailureDomain: "centralus-1"}, nil),
+	)
+	resp, err := d.NodeGetInfo(ctx, &csi.NodeGetInfoRequest{})
+	require.Equal(t, codes.Unavailable, status.Code(err))
+	require.Nil(t, resp)
+	require.Equal(t, int64(-1), d.VolumeAttachLimit)
+
+	// Cloud metadata becomes ready; labels remain permanently zone-less.
+	resp, err = d.NodeGetInfo(ctx, &csi.NodeGetInfoRequest{})
+	require.NoError(t, err)
+	require.Equal(t, map[string]string{topologyKey: "centralus-1", consts.WellKnownTopologyKey: "centralus-1"}, resp.AccessibleTopology.Segments)
+	limit, _ := GetMaxDataDiskCount("Standard_E8s_v3")
+	require.Equal(t, limit, resp.MaxVolumesPerNode)
+}
+
+func TestNodeGetInfoWithoutZoneSupport(t *testing.T) {
+	d := &Driver{getNodeInfoFromLabels: true, cloud: &azure.Cloud{}}
+	d.cloud.UseInstanceMetadata = true // no metadata client: topology lookup must be bypassed
+	d.NodeID = "node1"
+	resp, err := d.NodeGetInfo(context.Background(), &csi.NodeGetInfoRequest{})
+	require.NoError(t, err)
+	require.Equal(t, map[string]string{topologyKey: ""}, resp.AccessibleTopology.Segments)
+
+	// Instance-type lookup is independent of topology when zone support is off.
+	d.VolumeAttachLimit = -1
+	d.cloud.KubeClient = fake.NewClientset(&corev1.Node{ObjectMeta: metav1.ObjectMeta{
+		Name: d.NodeID, Labels: map[string]string{consts.InstanceTypeKey: "Standard_E8s_v3"},
+	}})
+	resp, err = d.NodeGetInfo(context.Background(), &csi.NodeGetInfoRequest{})
+	require.NoError(t, err)
+	limit, _ := GetMaxDataDiskCount("Standard_E8s_v3")
+	require.Equal(t, limit, resp.MaxVolumesPerNode)
+	require.Equal(t, map[string]string{topologyKey: ""}, resp.AccessibleTopology.Segments)
 }
 
 func TestNodeGetVolumeStats(t *testing.T) {

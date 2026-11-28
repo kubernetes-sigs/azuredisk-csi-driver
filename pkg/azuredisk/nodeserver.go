@@ -848,6 +848,32 @@ func (d *Driver) NodeGetCapabilities(_ context.Context, _ *csi.NodeGetCapabiliti
 	}, nil
 }
 
+// getNodeTopologyZone uses the provider's zone/fault-domain interpretation. A
+// numeric fault domain confirms a non-zonal VM; an empty result does not. Guard
+// partially initialized clients: ARM VMSet implementations need a compute client
+// factory, and GetZone dereferences Metadata when UseInstanceMetadata is enabled.
+func (d *Driver) getNodeTopologyZone(ctx context.Context) (cloudprovider.Zone, error) {
+	if d.cloud.UseInstanceMetadata {
+		if d.cloud.Metadata == nil {
+			return cloudprovider.Zone{}, fmt.Errorf("instance metadata client is not initialized")
+		}
+		// GetZone uses an unsafe cache read that ignores expiry. Refresh expired
+		// metadata first so registration retries can observe IMDS recovery even
+		// when incomplete topology bypasses later metadata reads in NodeGetInfo.
+		if _, err := d.cloud.Metadata.GetMetadata(ctx, azcache.CacheReadTypeDefault); err != nil {
+			return cloudprovider.Zone{}, err
+		}
+	} else {
+		if d.cloud.VMSet == nil || d.cloud.ComputeClientFactory == nil {
+			return cloudprovider.Zone{}, fmt.Errorf("cloud VMSet or compute client is not initialized")
+		}
+		if runtime.GOOS == "windows" {
+			return d.cloud.VMSet.GetZoneByNodeName(ctx, d.NodeID)
+		}
+	}
+	return d.cloud.GetZone(ctx)
+}
+
 // NodeGetInfo return info of the node on which this plugin is running
 func (d *Driver) NodeGetInfo(ctx context.Context, _ *csi.NodeGetInfoRequest) (*csi.NodeGetInfoResponse, error) {
 	topology := &csi.Topology{
@@ -859,21 +885,40 @@ func (d *Driver) NodeGetInfo(ctx context.Context, _ *csi.NodeGetInfoRequest) (*c
 
 	if d.supportZone {
 		var zone cloudprovider.Zone
+		// With no cloud configuration, label-only mode cannot distinguish a
+		// non-zonal VM from labels not yet populated. Preserve its empty topology.
+		// Configured but unavailable clients are NOT the same as no capability.
+		cloudConfigured := d.cloud.UseInstanceMetadata || d.cloud.Metadata != nil ||
+			d.cloud.VMSet != nil || d.cloud.ComputeClientFactory != nil || d.cloud.SubscriptionID != ""
+		var cloudErr error
 		if d.getNodeInfoFromLabels {
 			failureDomainFromLabels, instanceTypeFromLabels, err = GetNodeInfoFromLabels(ctx, d.NodeID, d.cloud.KubeClient)
-		} else {
-			if runtime.GOOS == "windows" && (!d.cloud.UseInstanceMetadata || d.cloud.Metadata == nil) {
-				zone, err = d.cloud.VMSet.GetZoneByNodeName(ctx, d.NodeID)
-			} else {
-				zone, err = d.cloud.GetZone(ctx)
+		}
+		if !d.getNodeInfoFromLabels || (failureDomainFromLabels == "" && cloudConfigured) {
+			zone, cloudErr = d.getNodeTopologyZone(ctx)
+			// A nonempty cloud result is not necessarily ready: IMDS can return
+			// a zone without a location ("-2"). Only an availability zone or a
+			// nonnegative numeric fault domain establishes the VM's topology.
+			faultDomain, faultDomainErr := strconv.Atoi(zone.FailureDomain)
+			cloudTopologyReady := azureutils.IsValidAvailabilityZone(zone.FailureDomain, d.cloud.Location) ||
+				(faultDomainErr == nil && faultDomain >= 0)
+			if cloudErr != nil || !cloudTopologyReady {
+				// Do not use partial results returned together with a cloud error.
+				zone = cloudprovider.Zone{}
+				// Also consult labels after a successful but incomplete cloud response.
+				// In label-first mode these were already read above.
+				if !d.getNodeInfoFromLabels {
+					failureDomainFromLabels, instanceTypeFromLabels, err = GetNodeInfoFromLabels(ctx, d.NodeID, d.cloud.KubeClient)
+				}
+				if failureDomainFromLabels == "" {
+					return nil, status.Errorf(codes.Unavailable, "topology is not initialized for node(%s): cloud lookup: %v, label lookup: %v", d.NodeID, cloudErr, err)
+				}
 			}
-			if err != nil {
-				klog.Warningf("get zone(%s) failed with: %v, fall back to get zone from node labels", d.NodeID, err)
-				failureDomainFromLabels, instanceTypeFromLabels, err = GetNodeInfoFromLabels(ctx, d.NodeID, d.cloud.KubeClient)
-			}
+			// Authoritative cloud metadata can suffice without a Kubernetes client.
+			err = nil
 		}
 		if err != nil {
-			return nil, status.Error(codes.Internal, fmt.Sprintf("GetNodeInfoFromLabels on node(%s) failed with %v", d.NodeID, err))
+			return nil, status.Errorf(codes.Internal, "GetNodeInfoFromLabels on node(%s) failed with %v", d.NodeID, err)
 		}
 		if zone.FailureDomain == "" {
 			zone.FailureDomain = failureDomainFromLabels
